@@ -1,0 +1,13 @@
+-- Runs once, automatically, the first time the `postgres` container's data
+-- volume is initialised (see docker-compose.yml: mounted read-only into
+-- /docker-entrypoint-initdb.d/). It only needs to prepare the extension the
+-- app's own tables depend on; alembic (apps/api/alembic) owns every table.
+--
+-- pgvector backs SourceChunk.embedding (vector(1024) — see
+-- alppy.core.config.Settings.embedding_dim and ADR 0001). The initial
+-- migration (apps/api/alembic/versions/0001_initial.py) also runs
+-- `CREATE EXTENSION IF NOT EXISTS vector` itself, so this file is not the
+-- only place it happens — but a schema created straight from `psql` (a
+-- restore, a manual `createdb`, a second database in the same cluster)
+-- should not have to know that.
+CREATE EXTENSION IF NOT EXISTS vector;

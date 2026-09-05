@@ -1,0 +1,26 @@
+{#-
+  One statement in the statement region. No bubbles here: the bubbles live at
+  fixed coordinates in the answer grid at the foot of the page. What the student
+  reads and what the machine reads are deliberately separate.
+
+  `open` items get a ruled answer space and no bubbles at all — printable,
+  never auto-graded.
+-#}
+<article class="print-item" data-item-index="{{ item.item_index }}" data-number="{{ item.number }}" data-type="{{ item.type }}"{% if item.ai_generated %} data-ai-generated="true"{% endif %}>
+  <p class="print-item-statement" data-student-facing="true"><span class="sheet-item-number">{{ item.number }}.</span>{% if item.ai_generated %}<span class="sheet-ai-mark">{{ t.ai }}</span>{% endif %}{{ item.statement }}</p>
+  {%- if item.options %}
+  <ul class="sheet-options" data-student-facing="true">
+    {%- for option in item.options %}
+    <li class="sheet-option"><span class="sheet-option-letter">{{ option.letter }}</span><span class="sheet-option-text">{{ option.text }}</span></li>
+    {%- endfor %}
+  </ul>
+  {%- endif %}
+  {%- if item.is_open %}
+  <div class="sheet-rules" aria-hidden="true">
+    {%- for _ in range(item.open_lines) %}<span class="sheet-rule"></span>{% endfor %}
+  </div>
+  {%- if is_key and item.answer_text %}
+  <p class="sheet-key-answer" data-key-only="true">{{ t.expected }} {{ item.answer_text }}</p>
+  {%- endif %}
+  {%- endif %}
+</article>

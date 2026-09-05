@@ -1,0 +1,71 @@
+// AUTO-GENERATED — DO NOT EDIT.
+// Source of truth: apps/api/alppy/sheets/layout.py (as_dict()).
+// Regenerate with: PYTHONPATH=apps/api python scripts/export-layout.py
+// CI fails if this file is stale (see .github/workflows/ci.yml) --
+// the print markup, the server-side PDF renderer and the scan
+// detector must agree on these numbers exactly, or a scan taken
+// against one printed layout silently misreads against another.
+// layoutVersion: v1
+
+export const SHEET_LAYOUT = {
+  "layoutVersion": "v1",
+  "pageWMm": 210.0,
+  "pageHMm": 297.0,
+  "marginMm": 14.0,
+  "fiducialMm": 8.0,
+  "fiducialCentresMm": {
+    "tl": [
+      18.0,
+      18.0
+    ],
+    "tr": [
+      192.0,
+      18.0
+    ],
+    "bl": [
+      18.0,
+      279.0
+    ],
+    "br": [
+      192.0,
+      279.0
+    ]
+  },
+  "frame": {
+    "x0Mm": 18.0,
+    "y0Mm": 18.0,
+    "wMm": 174.0,
+    "hMm": 261.0
+  },
+  "headerTopMm": 26.0,
+  "itemsTopMm": 48.0,
+  "itemsBottomMm": 196.0,
+  "uidGrid": {
+    "originMm": [
+      120.0,
+      30.0
+    ],
+    "cellMm": 4.0,
+    "gapMm": 1.0,
+    "cells": 8,
+    "rows": 4
+  },
+  "grid": {
+    "topMm": 202.0,
+    "originMm": [
+      24.0,
+      206.0
+    ],
+    "rows": 8,
+    "groups": 2,
+    "groupPitchMm": 88.0,
+    "rowPitchMm": 8.5,
+    "numberWMm": 14.0,
+    "bubblePitchMm": 8.0,
+    "bubbleDMm": 5.0,
+    "maxOptions": 4
+  },
+  "itemsPerPage": 16
+} as const;
+
+export type SheetLayout = typeof SHEET_LAYOUT;

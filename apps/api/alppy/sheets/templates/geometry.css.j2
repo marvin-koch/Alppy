@@ -1,0 +1,306 @@
+/* ==========================================================================
+   GENERATED — do not edit. Every number below is computed from
+   apps/api/alppy/sheets/layout.py, layout version {{ g.version }}.
+
+   This stylesheet carries no design decisions and no colour literals: tokens.css,
+   base.css and print.css (inlined above, unmodified) own the look. All this file
+   does is pin the machine-readable furniture — fiducials, UID grid, statement
+   region, answer grid — to the exact millimetre coordinates the scan detector
+   samples. It exists because those coordinates live in Python, and a hand-written
+   copy of them in CSS is precisely the drift that would mis-grade a class. The
+   handful of .sheet-* classes below are the sheet-only chrome print.css does not
+   name; they read tokens like everything else.
+   ========================================================================== */
+
+/* -- One .print-page is one physical A4 page, in both media. --------------
+ * On screen .print-page is the paper itself (210x297mm, 14mm padding).
+ * In print, print.css strips the padding and @page supplies the 14mm margin,
+ * so the element covers only the 182x269mm content box. .sheet-geometry
+ * reconciles the two: it always spans the whole sheet of paper, so every child
+ * below can use raw page coordinates straight out of layout.py. */
+.print-page {
+  position: relative;
+  height: var(--print-page-h);
+  overflow: hidden;
+}
+
+.sheet-geometry {
+  position: absolute;
+  inset: 0;
+}
+
+@media print {
+  /* The screen preview stacks pages with a gap; on paper a gap would push a
+     blank page out of the printer. */
+  .print-sheet {
+    display: block;
+    gap: 0;
+  }
+
+  .print-page {
+    height: {{ g.content_h }}mm;
+    margin: 0;
+  }
+
+  .sheet-geometry {
+    inset: -{{ g.margin }}mm;
+  }
+}
+
+/* -- Fills that survive "do not print background graphics" ----------------
+ * The fiducials are borders for this reason and print.css says so. The two
+ * other filled things on the page — a set UID cell and a marked bubble on the
+ * answer key — are declared as `background` there, and a background is exactly
+ * what Chromium drops when we render with print_background=False. So they get
+ * the same treatment: a border half the box wide fills the box with ink. The
+ * colour still comes from print.css; only the width is set here. */
+.print-uid-cell[data-filled='true'] {
+  border-width: {{ g.uid_cell / 2 }}mm;
+}
+
+.print-bubble-mark[data-key='true'] {
+  border-width: {{ g.bubble_d / 2 }}mm;
+}
+
+/* -- Header: title and administrative meta, stopping short of the UID grid - */
+.print-header {
+  position: absolute;
+  left: {{ g.margin }}mm;
+  top: {{ g.header_top }}mm;
+  width: {{ g.header_w }}mm;
+  height: {{ g.header_h }}mm;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1mm;
+  overflow: hidden;
+}
+
+/* -- The UID, printed twice ----------------------------------------------
+ * The grid is what the detector reads; the text is what a human reads when the
+ * checksum fails and the page has to be assigned by hand. */
+.print-uid-grid {
+  position: absolute;
+  left: {{ g.uid_x }}mm;
+  top: {{ g.uid_y }}mm;
+  grid-template-rows: repeat({{ g.uid_rows }}, {{ g.uid_cell }}mm);
+  grid-auto-columns: {{ g.uid_cell }}mm;
+  gap: {{ g.uid_gap }}mm;
+}
+
+.print-uid {
+  position: absolute;
+  left: {{ g.uid_text_x }}mm;
+  top: {{ g.uid_y }}mm;
+  width: {{ g.uid_text_w }}mm;
+  height: {{ g.uid_grid_h }}mm;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+
+.sheet-uid-label {
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* The one mark that tells a teacher at arm's length which of the two documents
+   they are holding. Always two documents: the blank sheet and the answer key. */
+.sheet-key-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-s);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1pt solid var(--c-ink-900);
+  border-radius: var(--r-pill);
+  padding: 0 2mm;
+  margin-right: 2mm;
+  vertical-align: middle;
+}
+
+/* -- Statement region ----------------------------------------------------
+ * Fixed height, clipped. pagination.py is what keeps content inside it; the
+ * clip is the last line of defence so an under-estimate can never push the
+ * answer grid off its coordinates. */
+.sheet-items {
+  position: absolute;
+  left: {{ g.margin }}mm;
+  top: {{ g.items_top }}mm;
+  width: {{ g.col_w }}mm;
+  height: {{ g.items_h }}mm;
+  overflow: hidden;
+}
+
+.sheet-instructions {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  margin-bottom: 2mm;
+}
+
+.print-item:last-child {
+  border-bottom: 0;
+}
+
+.sheet-item-number {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-right: 2mm;
+}
+
+/* The one place the mandarin accent appears on paper. It carries a word, not
+   just a colour: a photocopier turns the colour into grey. */
+.sheet-ai-mark {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-s);
+  font-weight: 700;
+  color: var(--c-accent-600);
+  border: var(--print-rule) solid var(--c-accent-600);
+  border-radius: var(--r-pill);
+  padding: 0 1.5mm;
+  margin-right: 2mm;
+}
+
+.sheet-options {
+  list-style: none;
+  padding-left: {{ g.option_indent }}mm;
+  margin-top: 1mm;
+}
+
+.sheet-option {
+  display: flex;
+  gap: 2mm;
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}
+
+.sheet-option-letter {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  min-width: {{ g.option_letter_w }}mm;
+}
+
+/* Free text: a ruled space, never a bubble. Printed, never auto-graded. */
+.sheet-rules {
+  margin-top: {{ g.open_margin }}mm;
+}
+
+.sheet-rule {
+  display: block;
+  height: {{ g.open_pitch }}mm;
+  border-bottom: var(--print-rule) solid var(--c-line);
+}
+
+.sheet-key-answer {
+  margin-top: 1mm;
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* -- The fixed answer grid ------------------------------------------------
+ * Not inline with the statements. Statement height varies with the text; this
+ * does not, which is what lets the detector find every bubble from the four
+ * corner marks alone without understanding a single word on the page. */
+.sheet-grid {
+  position: absolute;
+  inset: 0;
+}
+
+.sheet-grid-caption {
+  position: absolute;
+  left: {{ g.margin }}mm;
+  top: {{ g.caption_top }}mm;
+  width: {{ g.col_w }}mm;
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  font-weight: 700;
+}
+
+.sheet-grid-row {
+  position: absolute;
+  width: {{ g.row_w }}mm;
+  height: {{ g.bubble_d }}mm;
+}
+{% for left in g.group_lefts %}
+.sheet-grid-row[data-group='{{ loop.index0 }}'] { left: {{ left }}mm; }
+{%- endfor %}
+{% for top in g.row_tops %}
+.sheet-grid-row[data-row='{{ loop.index0 }}'] { top: {{ top }}mm; }
+{%- endfor %}
+
+.sheet-grid-number {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: {{ g.number_text_w }}mm;
+  height: {{ g.bubble_d }}mm;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: 10pt;
+  line-height: {{ g.bubble_d }}mm;
+}
+
+/* Absolutely positioned, but still the flex box print.css declares: a flex
+   container blockifies its children, and .print-bubble-mark is a <span> whose
+   5mm x 5mm would otherwise be ignored — an inline box cannot be a circle. */
+.print-bubble {
+  position: absolute;
+  top: 0;
+  width: {{ g.bubble_d }}mm;
+  height: {{ g.bubble_d }}mm;
+}
+{% for left in g.option_lefts %}
+.print-bubble[data-option='{{ loop.index0 }}'] { left: {{ left }}mm; }
+{%- endfor %}
+
+/* The letter sits ABOVE its bubble, in the slack between grid rows. Inside the
+   bubble it would be ink the detector counts as a mark; beside it there is no
+   room before the next bubble at {{ g.bubble_pitch }}mm. */
+.print-bubble-letter {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: {{ g.bubble_d }}mm;
+  text-align: center;
+  line-height: {{ g.letter_line }}mm;
+}
+
+.sheet-grid-open {
+  position: absolute;
+  left: {{ g.number_w }}mm;
+  top: 0;
+  height: {{ g.bubble_d }}mm;
+  line-height: {{ g.bubble_d }}mm;
+  font-size: var(--text-body-s);
+  color: var(--c-ink-700);
+}
+
+/* -- Footer, kept clear of the two bottom fiducials ----------------------- */
+.print-footer {
+  position: absolute;
+  left: {{ g.footer_x }}mm;
+  top: {{ g.footer_top }}mm;
+  width: {{ g.footer_w }}mm;
+  margin-top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2mm;
+}
+
+/* THE PHOTOCOPIER IS BLACK AND WHITE. print.css gives every band a colour AND a
+   distinct underline; the legend has to show both, so it never sets a colour
+   itself and never drops the underline. */
+.sheet-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3mm;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+}

@@ -1,0 +1,36 @@
+{#-
+  A complete, standalone print document.
+
+  The three design-system stylesheets are inlined VERBATIM from
+  packages/ui/src/design/ at render time — not copied into this repo, not
+  re-implemented — so the browser print preview and the server-rendered PDF
+  cannot drift apart. The fourth block is generated from layout.py.
+
+  data-theme="light" is deliberate: the sheet is paper, and paper does not
+  follow the reader's dark-mode preference.
+-#}
+<!doctype html>
+<html lang="{{ lang }}" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ doc_title }}</title>
+<style>/* packages/ui/src/design/tokens.css */
+{{ css.tokens }}
+</style>
+<style>/* packages/ui/src/design/base.css */
+{{ css.base }}
+</style>
+<style>/* packages/ui/src/design/print.css */
+{{ css.print }}
+</style>
+<style>/* generated from alppy.sheets.layout, layout {{ layout_version }} */
+{{ css.geometry }}
+</style>
+</head>
+<body>
+<div class="print-sheet" data-sheet-kind="{{ kind }}" data-layout-version="{{ layout_version }}">
+{% for page in pages %}{% include "_page.html.j2" %}
+{% endfor %}</div>
+</body>
+</html>

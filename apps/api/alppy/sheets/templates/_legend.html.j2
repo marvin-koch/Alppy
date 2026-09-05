@@ -1,0 +1,12 @@
+{#-
+  The mastery legend. THE PHOTOCOPIER IS BLACK AND WHITE, so every band carries
+  a colour AND a distinct underline (solid, dashed, dotted, double, wavy), both
+  supplied by print.css's .print-band[data-band=...]. Neither is optional: the
+  colour is for the screen preview and the one colour print, the underline is
+  what survives the third-generation copy.
+-#}
+<ul class="sheet-legend" aria-label="{{ t.legend }}">
+  {%- for band in bands %}
+  <li><span class="print-band" data-band="{{ band.key }}">{{ band.label }}</span></li>
+  {%- endfor %}
+</ul>

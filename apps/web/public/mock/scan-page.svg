@@ -1,0 +1,55 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 595 842" width="595" height="842" role="img">
+  <title>Placeholder scanned page used by the fixture layer</title>
+  <rect width="595" height="842" fill="white"/>
+  <g fill="black">
+    <rect x="40" y="40" width="22" height="22"/>
+    <rect x="533" y="40" width="22" height="22"/>
+    <rect x="40" y="780" width="22" height="22"/>
+    <rect x="533" y="780" width="22" height="22"/>
+  </g>
+  <g stroke="black" stroke-width="1" fill="none">
+    <line x1="40" y1="100" x2="555" y2="100"/>
+    <line x1="40" y1="760" x2="555" y2="760"/>
+  </g>
+  <g font-family="monospace" font-size="14" fill="black">
+    <text x="40" y="92">7B_04</text>
+    <text x="430" y="92">Fractions - v1</text>
+  </g>
+  <g stroke="black" stroke-width="0.8" fill="none">
+    <g>
+      <line x1="40" y1="150" x2="420" y2="150"/>
+      <circle cx="60" cy="180" r="9"/><circle cx="110" cy="180" r="9"/>
+      <circle cx="160" cy="180" r="9"/><circle cx="210" cy="180" r="9"/>
+    </g>
+    <g>
+      <line x1="40" y1="240" x2="470" y2="240"/>
+      <circle cx="60" cy="270" r="9"/><circle cx="110" cy="270" r="9"/>
+      <circle cx="160" cy="270" r="9"/><circle cx="210" cy="270" r="9"/>
+    </g>
+    <g>
+      <line x1="40" y1="330" x2="380" y2="330"/>
+      <circle cx="60" cy="360" r="9"/><circle cx="110" cy="360" r="9"/>
+    </g>
+    <g>
+      <line x1="40" y1="420" x2="500" y2="420"/>
+      <circle cx="60" cy="450" r="9"/><circle cx="110" cy="450" r="9"/>
+      <circle cx="160" cy="450" r="9"/><circle cx="210" cy="450" r="9"/>
+    </g>
+    <g>
+      <line x1="40" y1="510" x2="440" y2="510"/>
+      <circle cx="60" cy="540" r="9"/><circle cx="110" cy="540" r="9"/>
+    </g>
+    <g>
+      <line x1="40" y1="600" x2="460" y2="600"/>
+      <circle cx="60" cy="630" r="9"/><circle cx="110" cy="630" r="9"/>
+      <circle cx="160" cy="630" r="9"/><circle cx="210" cy="630" r="9"/>
+    </g>
+  </g>
+  <g fill="black">
+    <circle cx="110" cy="180" r="9"/>
+    <circle cx="160" cy="270" r="9"/>
+    <circle cx="60" cy="360" r="9"/>
+    <circle cx="210" cy="450" r="9"/>
+    <circle cx="110" cy="630" r="9"/>
+  </g>
+</svg>

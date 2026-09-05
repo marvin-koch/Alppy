@@ -1,0 +1,49 @@
+{#-
+  ONE .print-page IS ONE PHYSICAL PAGE — never "one student's copy".
+
+  A copy that overflows becomes several of these, and each one carries its own
+  header and its own UID (as text and as the pre-filled grid). That is the whole
+  reason this template takes a page and not a student: the alternative is a
+  second sheet with no header and no code, belonging to nobody, which is exactly
+  the page that comes back from the classroom impossible to grade.
+-#}
+<section class="print-page" data-page="{{ page.number }}" data-copy-uid="{{ page.copy_uid }}" data-copy-page="{{ page.copy_page }}">
+  <div class="sheet-geometry">
+    {#- Corner fiducials. BORDERS, not backgrounds, so they survive the
+        browser's default "do not print background graphics"; the scan pipeline
+        deskews and registers the page from these four squares alone. -#}
+    <span data-fiducial="tl" aria-hidden="true"></span>
+    <span data-fiducial="tr" aria-hidden="true"></span>
+    <span data-fiducial="bl" aria-hidden="true"></span>
+    <span data-fiducial="br" aria-hidden="true"></span>
+
+    <header class="print-header">
+      <h2 class="print-title">{% if is_key %}<span class="sheet-key-badge" data-key-only="true">{{ t.key_badge }}</span>{% endif %}{{ page.title }}</h2>
+      <p class="print-meta">{{ page.meta }}</p>
+    </header>
+
+    {#- The UID grid: 32 checksummed bits, pre-filled. This is what the detector
+        reads, which is why the happy path needs no OCR. -#}
+    <div class="print-uid-grid" data-uid="{{ page.copy_uid }}" aria-hidden="true">
+      {%- for cell in page.uid_cells -%}
+      <span class="print-uid-cell" data-slot="{{ cell.slot }}" data-row="{{ cell.row }}" data-filled="{{ 'true' if cell.filled else 'false' }}"></span>
+      {%- endfor -%}
+    </div>
+    <div class="print-uid">
+      <span class="sheet-uid-label">{{ t.code }}</span>
+      <span class="print-uid-text">{{ page.copy_uid }}</span>
+    </div>
+
+    <section class="sheet-items" data-student-facing="true">
+      <p class="sheet-instructions">{{ t.instructions }}</p>
+      {% for item in page.statements %}{% include "_item.html.j2" %}{% endfor %}
+    </section>
+
+    {% include "_answer_grid.html.j2" %}
+
+    <footer class="print-footer">
+      <span class="print-meta">{{ t.page }} {{ page.number }}/{{ page.count }} &middot; {{ page.copy_uid }} &middot; {{ t.layout }} {{ layout_version }}</span>
+      {% if show_legend %}{% include "_legend.html.j2" %}{% endif %}
+    </footer>
+  </div>
+</section>

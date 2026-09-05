@@ -1,0 +1,19 @@
+{
+  "$schema": "http://json.schemastore.org/stylelintrc",
+  "rules": {
+    "color-no-hex": true,
+    "color-named": "never",
+    "function-disallowed-list": ["rgb", "rgba", "hsl", "hsla"]
+  },
+  "overrides": [
+    {
+      "comment": "DESIGN.md §10.4: tokens.css and print.css are the documented exemption — tokens.css DECLARES every colour once, print.css OVERWRITES tokens for the black-and-white page rather than bypassing them. Every other stylesheet must read var(--c-*).",
+      "files": ["**/design/tokens.css", "**/design/print.css"],
+      "rules": {
+        "color-no-hex": null,
+        "color-named": null,
+        "function-disallowed-list": null
+      }
+    }
+  ]
+}

@@ -1,0 +1,66 @@
+# Fast, local checks that mirror .github/workflows/ci.yml so problems are
+# caught before push rather than in CI. Run `pre-commit install` once after
+# cloning (see CONTRIBUTING.md).
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v5.0.0
+    hooks:
+      - id: trailing-whitespace
+        exclude: '\.mako$'
+      - id: end-of-file-fixer
+        exclude: '\.mako$'
+      - id: check-yaml
+      - id: check-json
+      - id: check-added-large-files
+        args: ['--maxkb=2000']
+      - id: check-merge-conflict
+      - id: mixed-line-ending
+        args: ['--fix=lf']
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.8.6
+    hooks:
+      - id: ruff
+        name: ruff (lint apps/api)
+        args: ['--fix']
+        files: ^apps/api/
+      - id: ruff-format
+        name: ruff (format apps/api)
+        files: ^apps/api/
+
+  - repo: local
+    hooks:
+      - id: mypy
+        name: mypy (apps/api)
+        entry: bash -c 'cd apps/api && ../../.venv/bin/mypy alppy'
+        language: system
+        files: ^apps/api/alppy/.*\.py$
+        pass_filenames: false
+
+      - id: prettier
+        name: prettier --check
+        entry: node_modules/.bin/prettier --check
+        language: system
+        files: \.(ts|tsx|css|json|md)$
+        exclude: ^(pnpm-lock\.yaml|packages/ui/dist/)
+
+      - id: stylelint
+        name: stylelint (no colour literals outside tokens.css/print.css)
+        entry: node_modules/.bin/stylelint
+        language: system
+        files: \.css$
+        exclude: ^packages/ui/dist/
+
+      - id: i18n-sync
+        name: i18n key sync (fr/de/en)
+        entry: node scripts/check-i18n.mjs
+        language: system
+        files: ^apps/web/messages/.*\.json$
+        pass_filenames: false
+
+      - id: export-layout
+        name: layout.generated.ts is up to date
+        entry: bash -c 'PYTHONPATH=apps/api .venv/bin/python scripts/export-layout.py && git diff --exit-code packages/shared/src/layout.generated.ts'
+        language: system
+        files: ^apps/api/alppy/sheets/layout\.py$
+        pass_filenames: false

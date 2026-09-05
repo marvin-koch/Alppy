@@ -1,0 +1,25 @@
+{#-
+  The fixed answer grid: two column groups of eight rows, sixteen items, always
+  at the same millimetre coordinates whatever the statements above happen to say.
+
+  Every row is addressed by its PAGE-LOCAL index (0..15) — the same index
+  `detector.detect_item` uses. The number printed next to it is the running
+  question number, which is what the student matches against the statement.
+
+  On the answer key, and only there, the correct bubble carries data-key="true".
+-#}
+<section class="sheet-grid" aria-label="{{ t.answers }}">
+  <p class="sheet-grid-caption">{{ t.answers }}</p>
+  {%- for row in page.rows %}
+  <div class="sheet-grid-row" data-group="{{ row.group }}" data-row="{{ row.row }}" data-item-index="{{ row.item_index }}" data-options="{{ row.option_count }}">
+    <span class="sheet-grid-number">{{ row.number }}.</span>
+    {%- if row.gradeable -%}
+    {%- for bubble in row.bubbles %}
+    <span class="print-bubble" data-option="{{ bubble.index }}"><span class="print-bubble-letter">{{ bubble.letter }}</span><span class="print-bubble-mark"{% if bubble.key %} data-key="true"{% endif %}></span></span>
+    {%- endfor %}
+    {%- else %}
+    <span class="sheet-grid-open">{{ t.written }}</span>
+    {%- endif %}
+  </div>
+  {%- endfor %}
+</section>
