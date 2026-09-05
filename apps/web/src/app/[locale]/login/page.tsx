@@ -65,7 +65,7 @@ export default function LoginPage() {
             variant="primary"
             block
             loading={login.isPending}
-            loadingLabel={t('signingIn')}
+            busyLabel={t('signingIn')}
           >
             {t('signIn')}
           </Button>

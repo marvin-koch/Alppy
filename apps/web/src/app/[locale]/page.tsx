@@ -24,7 +24,7 @@ export default function HomePage() {
   const tm = useTranslations('mastery');
   const te = useTranslations('errors.generic');
   const bandLabels = useBandLabels();
-  const { formatDate } = useFormatters();
+  const fmt = useFormatters();
   const { data, isLoading, isError, error, refetch } = useHome();
 
   if (isLoading) {
@@ -99,7 +99,7 @@ export default function HomePage() {
                         {c.last_sheet_title ?? t('noSheetYet')}
                         {c.last_sheet_at ? (
                           <span className="ml-2 font-normal text-ink-500">
-                            {formatDate(c.last_sheet_at)}
+                            {fmt.date(c.last_sheet_at)}
                           </span>
                         ) : null}
                       </dd>

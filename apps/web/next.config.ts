@@ -1,6 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
 /**
@@ -12,6 +15,10 @@ const apiOrigin = process.env.ALPPY_API_ORIGIN;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  // The Docker image copies .next/standalone and nothing else: no pnpm store,
+  // no source, no dev dependencies.
+  output: 'standalone',
+  outputFileTracingRoot: path.join(__dirname, '../../'),
   transpilePackages: ['@alppy/ui'],
   eslint: { ignoreDuringBuilds: true },
   async rewrites() {

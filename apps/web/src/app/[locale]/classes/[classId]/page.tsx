@@ -47,7 +47,6 @@ export default function ClassPage({
       map.set(`${cell.student_id}:${cell.competency_id}`, {
         band: cell.band as MasteryBand,
         score: cell.score,
-        provisional: cell.provisional,
       });
     }
     return map;

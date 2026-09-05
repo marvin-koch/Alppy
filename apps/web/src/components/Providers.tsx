@@ -1,10 +1,13 @@
 'use client';
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { useTranslations } from 'next-intl';
 import { ToastProvider, TooltipProvider } from '@alppy/ui';
 import { useState, type ReactNode } from 'react';
 
 export function Providers({ children }: { children: ReactNode }) {
+  const t = useTranslations('common');
+  const a11y = useTranslations('a11y');
   const [client] = useState(
     () =>
       new QueryClient({
@@ -27,7 +30,9 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <QueryClientProvider client={client}>
       <TooltipProvider>
-        <ToastProvider>{children}</ToastProvider>
+        <ToastProvider regionLabel={a11y('loading')} dismissLabel={t('close')}>
+          {children}
+        </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

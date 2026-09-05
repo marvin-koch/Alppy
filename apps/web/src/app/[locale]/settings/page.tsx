@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, Field, SegmentedControl, Toggle } from '@alppy/ui';
+import { Card, Field, SegmentedControl, Toggle } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useState } from 'react';
 
