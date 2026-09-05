@@ -2,62 +2,85 @@ import { forwardRef, type SVGProps } from 'react';
 import { cx } from '../lib/cx';
 
 export interface AlppyMarkProps extends Omit<SVGProps<SVGSVGElement>, 'width' | 'height' | 'ref'> {
-  /** Rendered box, px. */
+  /** Rendered box, px. Below 24 the `small` cut is used automatically. */
   size?: number;
   /**
-   * `brand` — the slate in violet, chalk, and the mandarin dot.
-   * `mono`  — everything in `currentColor` for print, the footer, a favicon
-   *           mask, or anywhere the mark must survive one ink.
+   * `primary`  — violet slate, white chalk. The default.
+   * `ink`      — on light backgrounds where the violet would compete.
+   * `knockout` — no plate, strokes only, for use inside an existing container.
+   * `mono`     — one ink, `currentColor`: print, the footer, a favicon mask.
    */
-  tone?: 'brand' | 'mono';
+  tone?: 'primary' | 'ink' | 'knockout' | 'mono';
   /**
-   * Accessible name. Omit when the mark sits beside the wordmark (the text
-   * carries the name) — it is then `aria-hidden`. The app supplies the string.
+   * Accessible name. Omit when the mark sits beside the wordmark — the text
+   * carries the name and the mark is then `aria-hidden`. The library ships no
+   * strings: the app supplies it.
    */
   title?: string;
 }
 
 /**
- * The Alppy mark: a slate (rectangle, radius 7) crossed by a chalk stroke that
- * carries an alpine notch, plus the mandarin dot. Drawn here, not licensed
- * (DESIGN.md §7). The mandarin dot is the one sanctioned use of the accent
- * outside AI-generated content.
+ * The Alppy mark — **"Le sourire"**.
+ *
+ * Two slopes meeting at a summit with a smile in the valley between them. The
+ * crossbar of the **A** is the smile: one move, no added element. It reads as a
+ * letter, as two peaks, and as a face turned friendly.
+ *
+ * Geometry transcribed from the shipped brand library
+ * (`docs/design/alppy-brand-assets/brand/logo/`), not redrawn: 64-unit grid,
+ * slate inset 3u with radius 17u, stroke 6.2u round-capped, feet at 16.2u and
+ * 47.8u on a 46.8u baseline, apex at 16.8u. The smile is a quadratic with an
+ * 18.8u chord at height 35.2u and a 5u rise, its ends on the axis of the
+ * slopes, so all three strokes read as one continuous drawing.
+ *
+ * **The mark carries no mandarin accent.** The accent is functional inside the
+ * product, where it means AI-generated content; spending it on the logo would
+ * cost it that meaning.
+ *
+ * Never stretch, recolour, rotate, or shadow it.
  */
 export const AlppyMark = forwardRef<SVGSVGElement, AlppyMarkProps>(function AlppyMark(
-  { size = 32, tone = 'brand', title, className, ...rest },
+  { size = 32, tone = 'primary', title, className, ...rest },
   ref,
 ) {
   const named = typeof title === 'string' && title.length > 0;
-  const slate = tone === 'mono' ? 'none' : 'var(--c-primary-500)';
-  const slateEdge = tone === 'mono' ? 'currentColor' : 'var(--c-primary-600)';
-  const chalk = tone === 'mono' ? 'currentColor' : 'var(--c-surface)';
-  const dot = tone === 'mono' ? 'currentColor' : 'var(--c-accent-500)';
+
+  // Below 24px the smile lifts and opens, or it closes up into a blot.
+  const small = size < 24;
+  const smile = small ? 'M23.24 34.0 Q32 43.2 40.76 34.0' : 'M22.61 35.2 Q32 45.2 41.39 35.2';
+  const strokeWidth = small ? 6.0 : 6.2;
+
+  const plate = tone === 'knockout' || tone === 'mono' ? null : tone === 'ink'
+    ? 'var(--c-ink-900)'
+    : 'var(--c-primary-500)';
+  const chalk =
+    tone === 'mono' || tone === 'knockout' ? 'currentColor' : 'var(--c-surface)';
 
   return (
     <svg
       ref={ref}
       xmlns="http://www.w3.org/2000/svg"
-      viewBox="0 0 40 40"
+      viewBox="0 0 64 64"
       width={size}
       height={size}
-      fill="none"
       focusable="false"
       role={named ? 'img' : undefined}
       aria-hidden={named ? undefined : true}
-      className={cx('block shrink-0', className)}
+      className={cx('inline-block shrink-0 align-middle', className)}
       {...rest}
     >
       {named ? <title>{title}</title> : null}
-      <rect x="3" y="7" width="34" height="26" rx="7" fill={slate} stroke={slateEdge} strokeWidth="2" />
-      <path
-        d="M9 27h4l5.5-11 3.5 6 3-4.5L29.5 27H31"
+      {plate ? <rect x="3" y="3" width="58" height="58" rx="17" fill={plate} /> : null}
+      <g
         fill="none"
-        stroke={chalk}
-        strokeWidth="2.6"
+        stroke={tone === 'knockout' ? 'var(--c-primary-500)' : chalk}
+        strokeWidth={strokeWidth}
         strokeLinecap="round"
         strokeLinejoin="round"
-      />
-      <circle cx="31" cy="12.5" r="3.2" fill={dot} />
+      >
+        <path d="M16.2 46.8 L32 16.8 L47.8 46.8" />
+        <path d={smile} />
+      </g>
     </svg>
   );
 });

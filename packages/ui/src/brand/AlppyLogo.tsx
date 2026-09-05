@@ -5,7 +5,8 @@ import { AlppyWordmark } from './AlppyWordmark';
 
 export interface AlppyLogoProps extends HTMLAttributes<HTMLSpanElement> {
   size?: 'sm' | 'md' | 'lg';
-  tone?: 'brand' | 'mono';
+  /** Passed through to the mark. See AlppyMarkProps. */
+  tone?: 'primary' | 'ink' | 'knockout' | 'mono';
   /** Hide the wordmark (collapsed rail, favicon-sized headers). */
   markOnly?: boolean;
   /** Accessible name used only when `markOnly` — the app supplies the string. */
@@ -16,7 +17,7 @@ const MARK_PX: Record<'sm' | 'md' | 'lg', number> = { sm: 24, md: 32, lg: 44 };
 
 /** Mark + wordmark, side by side. Never the wordmark inside the slate. */
 export const AlppyLogo = forwardRef<HTMLSpanElement, AlppyLogoProps>(function AlppyLogo(
-  { size = 'md', tone = 'brand', markOnly = false, title, className, ...rest },
+  { size = 'md', tone = 'primary', markOnly = false, title, className, ...rest },
   ref,
 ) {
   return (

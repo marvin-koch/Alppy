@@ -4,6 +4,28 @@ Alppy is a teacher-facing tool for Swiss compulsory school (Sek I / cycle 3).
 Read [`docs/plan.md`](docs/plan.md) for what it does and
 [`DESIGN.md`](DESIGN.md) before touching any UI.
 
+## The brand library is shipped, not described — use it
+
+`docs/design/` holds the real **"Craie Alpine"** identity: the manual
+(`Alppy-identite-visuelle.pdf`, 8 A3 plates), the philosophy note, and
+`alppy-brand-assets/brand/` with `logo/` (26 files), `icons/` (48 pictograms),
+`illustrations/` (7), `mastery/` (5 band glyphs) and `alppy-mastery-tokens.css`.
+
+**Import those files. Do not redraw them.** Where the shipped assets disagree
+with prose anywhere else in the repo, including DESIGN.md, **the assets win**:
+
+- The mark is **"Le sourire"** — two slopes meeting at a summit with a smile in
+  the valley, forming an **A**, on a violet rounded slate. Not a slate crossed
+  by a chalk stroke.
+- **The mark carries no mandarin accent.** The accent is functional inside the
+  product; putting it in the logo spends it on decoration.
+- **Pictogram stroke is 2.2 — never 2, never 3.**
+- `--c-mastery-ok` is **`#86CF5B`**, and every band ships a `-glyph` colour at a
+  constant luminance of 0.46 with a *computed* background opacity, so the ramp
+  stays monotonic in greyscale. That calibration is the whole point: the sheets
+  get photocopied. Do not re-derive these by eye.
+- Band glyphs are disc 4/4, 3/4, 2/4, 1/4 and a dashed ring — the third channel.
+
 ---
 
 ## Commands

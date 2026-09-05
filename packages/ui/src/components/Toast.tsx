@@ -9,7 +9,7 @@ import {
   type ReactNode,
 } from 'react';
 import { cx } from '../lib/cx';
-import { IconCross } from '../icons/set';
+import { IconClose } from '../icons/set';
 
 export type ToastVariant = 'default' | 'success' | 'warn' | 'danger';
 
@@ -181,7 +181,7 @@ export function Toast({ toast, onDismiss, dismissLabel }: ToastProps) {
         aria-label={dismissLabel}
         className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md text-canvas"
       >
-        <IconCross size={18} />
+        <IconClose size={18} />
       </button>
     </div>
   );

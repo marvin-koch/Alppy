@@ -98,3 +98,29 @@ The migration is diffed table-by-table against `Base.metadata`.
 ### D18 · Tests run on SQLite with a test-only type swap for `Vector`/`JSONB`
 CI stays fast and contributors need no Postgres for the unit suite. Integration
 tests that exercise pgvector run against the Postgres service container.
+
+### D19 · The shipped brand library outranks the written brief
+`docs/design/` (the "Craie Alpine" manual plus `alppy-brand-assets/`) arrived after
+the first UI was built and contradicts the brief in three places. The assets win,
+and the prose has been corrected rather than the assets adapted:
+
+1. **The mark is "Le sourire"** — two slopes meeting at a summit with a smile in
+   the valley, forming an **A** — not a slate crossed by a chalk stroke.
+2. **The mark carries no mandarin accent.** The brief asked for a mandarin dot.
+   The library forbids it, correctly: the accent is functional inside the product
+   (it means AI-generated content) and putting it in the logo spends it on
+   decoration. This is the stronger reading of the brief's own rule.
+3. **`--c-mastery-ok` is `#86CF5B`**, a yellow-green, not the info blue that
+   deriving the band scale from the state families produced (superseding D15).
+   The shipped scale ships matching glyph colours at a constant luminance of 0.46
+   and computed background opacities that keep the ramp monotonic in greyscale.
+
+Pictogram stroke is **2.2** exactly, and the band glyphs are disc 4/4 · 3/4 · 2/4
+· 1/4 · dashed ring — a coarse quarter-turn per band, because that survives a
+photocopy and a 12 px rendering where a subtle density ramp does not.
+
+Icons and illustrations are **generated** from the assets by
+`packages/ui/scripts/generate-{icons,illustrations}.py` rather than transcribed by
+hand, so refreshing the brand is a re-run and not a design exercise. The
+illustration generator maps the flat export hexes back onto tokens (so the
+drawings follow the theme) and **fails** if an asset introduces a fourth colour.

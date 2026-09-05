@@ -1,6 +1,6 @@
 import { forwardRef, type HTMLAttributes } from 'react';
 import { cx } from '../../lib/cx';
-import { IconSparkle } from '../../icons/set';
+import { IconAi } from '../../icons/set';
 
 export interface AiBadgeProps extends HTMLAttributes<HTMLSpanElement> {
   /**
@@ -28,7 +28,7 @@ export const AiBadge = forwardRef<HTMLSpanElement, AiBadgeProps>(function AiBadg
       className={cx('ard-chip', size === 'sm' && 'px-2 py-0.5', className)}
       {...rest}
     >
-      <IconSparkle size={size === 'sm' ? 12 : 14} strokeWidth={2.4} aria-hidden="true" />
+      <IconAi size={size === 'sm' ? 12 : 14} strokeWidth={2.4} aria-hidden="true" />
       {label}
     </span>
   );

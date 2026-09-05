@@ -61,27 +61,51 @@
   --c-info-100: #dcf0ff; /* derived */
 
   /* — The ordered domain scale. The most important colour decision here. —
-     Five mastery bands. NEVER colour alone: every use carries dot + label +
-     tint density, and in print a distinct underline style (see print.css). */
-  --c-mastery-solid: var(--c-success-500);
-  --c-mastery-solid-tint: var(--c-success-100);
-  --c-mastery-solid-ink: var(--c-success-600);
+     Five mastery bands, taken verbatim from the shipped brand library
+     (docs/design/alppy-brand-assets/brand/alppy-mastery-tokens.css).
 
-  --c-mastery-ok: var(--c-info-500);
-  --c-mastery-ok-tint: var(--c-info-100);
-  --c-mastery-ok-ink: var(--c-info-600);
+     These values are CALIBRATED, not chosen, and must not be re-derived by eye:
+     each background opacity lands the blended luminance on a target so the ramp
+     stays strictly monotonic in greyscale, and every glyph colour is darkened to
+     a constant luminance of 0.46 so all five bands have equal contrast. The
+     sheets get photocopied — greyscale is the test that matters.
 
-  --c-mastery-weak: var(--c-warn-500);
-  --c-mastery-weak-tint: var(--c-warn-100);
-  --c-mastery-weak-ink: var(--c-warn-600);
+     Note --c-mastery-ok is a yellow-green, not the info blue a derivation from
+     the state families would suggest: the scale runs green -> yellow-green ->
+     amber -> red -> grey so that it stays ordered when the colour is removed.
 
-  --c-mastery-fading: var(--c-danger-500);
-  --c-mastery-fading-tint: var(--c-danger-100);
-  --c-mastery-fading-ink: var(--c-danger-600);
+     NEVER colour alone: always band + glyph + written label. */
+  --c-mastery-solid: #00c48c;
+  --c-mastery-ok: #86cf5b;
+  --c-mastery-weak: #ffc93c;
+  --c-mastery-fading: #ff5a5f;
+  --c-mastery-none: #a9a3c7;
 
-  --c-mastery-none: var(--c-ink-300);
-  --c-mastery-none-tint: var(--c-surface-2);
-  --c-mastery-none-ink: var(--c-ink-500);
+  --c-mastery-solid-glyph: #00996d;
+  --c-mastery-ok-glyph: #56853a;
+  --c-mastery-weak-glyph: #947523;
+  --c-mastery-fading-glyph: #ee5459;
+  --c-mastery-none-glyph: #77738c;
+
+  --c-mastery-solid-bg-opacity: 0.536;
+  --c-mastery-ok-bg-opacity: 0.567;
+  --c-mastery-weak-bg-opacity: 0.561;
+  --c-mastery-fading-bg-opacity: 0.154;
+  --c-mastery-none-bg-opacity: 0.116;
+
+  /* Convenience aliases so components can stay declarative. The tint is the
+     band colour at its calibrated opacity over the surface. */
+  --c-mastery-solid-tint: color-mix(in srgb, var(--c-mastery-solid) 53.6%, var(--c-surface));
+  --c-mastery-ok-tint: color-mix(in srgb, var(--c-mastery-ok) 56.7%, var(--c-surface));
+  --c-mastery-weak-tint: color-mix(in srgb, var(--c-mastery-weak) 56.1%, var(--c-surface));
+  --c-mastery-fading-tint: color-mix(in srgb, var(--c-mastery-fading) 15.4%, var(--c-surface));
+  --c-mastery-none-tint: color-mix(in srgb, var(--c-mastery-none) 11.6%, var(--c-surface));
+
+  --c-mastery-solid-ink: var(--c-mastery-solid-glyph);
+  --c-mastery-ok-ink: var(--c-mastery-ok-glyph);
+  --c-mastery-weak-ink: var(--c-mastery-weak-glyph);
+  --c-mastery-fading-ink: var(--c-mastery-fading-glyph);
+  --c-mastery-none-ink: var(--c-mastery-none-glyph);
 
   /* — Footer. Separate, and does NOT invert between themes: stays slate. — */
   --c-foot-bg: #1b1735;

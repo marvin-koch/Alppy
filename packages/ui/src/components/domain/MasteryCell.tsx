@@ -20,37 +20,50 @@ export interface BandGlyphProps {
 }
 
 /**
- * A density ramp — full · half · ringed · hollow · dash — so the five bands are
- * distinguishable with no colour at all.
+ * The band glyph — the third channel, independent of colour.
+ *
+ * Geometry transcribed from the shipped brand library
+ * (`docs/design/alppy-brand-assets/brand/mastery/`), not invented: a disc of
+ * radius 8.624 on a 44-unit grid, filled in quarters, with a constant ring so
+ * the outline reads the same at every band.
+ *
+ *   solid  full disc        ok  3/4        weak  2/4
+ *   fading 1/4              none  dashed ring, no fill
+ *
+ * A quarter-turn per band is deliberately coarse: it survives a photocopy and a
+ * 12px rendering, which a subtle density ramp does not.
  */
 export function BandGlyph({ band, size = 12, className }: BandGlyphProps) {
+  // Pie wedges, all starting at 12 o'clock and sweeping clockwise.
+  const WEDGE: Partial<Record<MasteryBand, string>> = {
+    ok: 'M22 22L22 13.376A8.624 8.624 0 1 1 13.376 22Z',
+    weak: 'M22 22L22 13.376A8.624 8.624 0 0 1 22 30.624Z',
+    fading: 'M22 22L22 13.376A8.624 8.624 0 0 1 30.624 22Z',
+  };
+
   return (
     <svg
-      viewBox="0 0 12 12"
+      viewBox="0 0 44 44"
       width={size}
       height={size}
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.6"
       aria-hidden="true"
       focusable="false"
       className={cx('shrink-0', className)}
     >
-      {band === 'solid' ? <circle cx="6" cy="6" r="4.6" fill="currentColor" stroke="none" /> : null}
-      {band === 'ok' ? (
-        <>
-          <circle cx="6" cy="6" r="4.4" />
-          <path d="M6 1.6a4.4 4.4 0 0 0 0 8.8Z" fill="currentColor" stroke="none" />
-        </>
+      {band === 'solid' ? (
+        <circle cx="22" cy="22" r="8.624" fill="currentColor" stroke="none" />
       ) : null}
-      {band === 'weak' ? (
-        <>
-          <circle cx="6" cy="6" r="4.4" />
-          <circle cx="6" cy="6" r="1.6" fill="currentColor" stroke="none" />
-        </>
-      ) : null}
-      {band === 'fading' ? <circle cx="6" cy="6" r="4.4" strokeDasharray="2.2 1.8" /> : null}
-      {band === 'none' ? <path d="M2.4 6h7.2" strokeLinecap="round" /> : null}
+      {WEDGE[band] ? <path d={WEDGE[band]} fill="currentColor" stroke="none" /> : null}
+      <circle
+        cx="22"
+        cy="22"
+        r="8.624"
+        strokeWidth="1.9"
+        strokeLinecap="round"
+        {...(band === 'none' ? { strokeDasharray: '2.6 3.4' } : {})}
+      />
     </svg>
   );
 }

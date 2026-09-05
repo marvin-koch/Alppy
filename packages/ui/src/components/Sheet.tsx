@@ -1,7 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ReactElement, ReactNode } from 'react';
 import { cx } from '../lib/cx';
-import { IconCross } from '../icons/set';
+import { IconClose } from '../icons/set';
 
 export interface SheetProps {
   open?: boolean;
@@ -86,7 +86,7 @@ export function Sheet({
                 className="ard-btn -mr-1 -mt-1 aspect-square min-w-11 px-0"
                 data-variant="ghost"
               >
-                <IconCross size={20} />
+                <IconClose size={20} />
               </button>
             </Dialog.Close>
           </div>

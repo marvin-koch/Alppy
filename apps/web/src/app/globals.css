@@ -1,0 +1,7 @@
+/* The design system. tokens -> base -> motion -> print -> recipes, in order. */
+@import '@alppy/ui/styles';
+
+/* Tailwind v4 scans sources declared here. packages/ui must be included or the
+   classes its components emit are stripped from the build. */
+@source "../../src";
+@source "../../../../packages/ui/src";

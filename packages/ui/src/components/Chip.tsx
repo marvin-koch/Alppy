@@ -1,7 +1,7 @@
 import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cx } from '../lib/cx';
 import type { StatusVariant } from '../lib/types';
-import { IconCross } from '../icons/set';
+import { IconClose } from '../icons/set';
 
 interface ChipBaseProps extends HTMLAttributes<HTMLSpanElement> {
   /**
@@ -39,7 +39,7 @@ export const Chip = forwardRef<HTMLSpanElement, ChipProps>(function Chip(
           aria-label={removeLabel}
           className="-mr-1 ml-1 inline-flex h-6 w-6 items-center justify-center rounded-pill hover:bg-primary-100"
         >
-          <IconCross size={14} strokeWidth={2.4} />
+          <IconClose size={14} strokeWidth={2.4} />
         </button>
       ) : null}
     </span>

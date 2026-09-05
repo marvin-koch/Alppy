@@ -1,8 +1,16 @@
-# Alppy — Design direction: "Encre violette"
+# Alppy — Design direction: "Encre violette" / "Craie Alpine"
 
-These are shipped values, not suggestions. Copy them exactly. If `encre-violette.css` is ever
-added to the repo it becomes the source of truth for tokens and recipes; until then the source of
-truth is this file, reconstructed into `packages/ui/src/design/{tokens,base,motion,print}.css`.
+> **The shipped brand library outranks this document.** `docs/design/` contains the real identity —
+> the manual (`Alppy-identite-visuelle.pdf`, 8 A3 plates), `Craie-Alpine-philosophie.md`, and
+> `alppy-brand-assets/brand/` with the logo, 48 pictograms, 7 illustrations, the 5 mastery band
+> glyphs and `alppy-mastery-tokens.css`. Where this file and those assets disagree, **the assets
+> win**, and this file has been corrected to match. See §2 and §7 for the three places that changed.
+>
+> Assets are imported, never redrawn: `packages/ui/scripts/generate-icons.py` and
+> `generate-illustrations.py` transcribe them into React components.
+
+These are shipped values, not suggestions. Copy them exactly. The tokens and recipes live in
+`packages/ui/src/design/{tokens,base,motion,print,recipes}.css`.
 
 Read this before writing any UI.
 
@@ -75,13 +83,23 @@ between themes: the footer stays slate in both.
 The most important colour decision in the product. Five mastery bands, used in the matrix (F3) and
 everywhere mastery is shown. Never colour alone: always dot + label + tint density.
 
-| Band | Threshold | Token | FR / DE / EN label |
-|---|---|---|---|
-| Solid — mastered | ≥ 0.90 | `--c-mastery-solid` | Acquis / Gefestigt / Solid |
-| To review — due soon | 0.75 – 0.90 | `--c-mastery-ok` | À revoir / Bald fällig / To review |
-| Fragile | 0.60 – 0.75 | `--c-mastery-weak` | Fragile / Unsicher / Fragile |
-| Fading — losing it | < 0.60 | `--c-mastery-fading` | S'efface / Verblasst / Fading |
-| Not yet seen | never assessed | `--c-mastery-none` | Pas encore vu / Noch nicht gesehen / Not yet seen |
+Values and glyphs come from the shipped `alppy-mastery-tokens.css` and `mastery/*.svg`. The
+background opacities are **computed, not chosen**: each lands the blended luminance on a target so
+the ramp stays strictly monotonic in greyscale, and every glyph colour is darkened to a constant
+luminance of 0.46 so all five bands carry equal contrast. The sheets get photocopied — greyscale is
+the test that matters, so do not re-derive these by eye.
+
+| Band | Threshold | Colour | Glyph colour | Glyph | FR / DE / EN label |
+|---|---|---|---|---|---|
+| Solid — mastered | ≥ 0.90 | `#00C48C` | `#00996D` | disc 4/4 | Acquis / Gefestigt / Solid |
+| To review — due soon | 0.75 – 0.90 | `#86CF5B` | `#56853A` | disc 3/4 | À revoir / Bald fällig / To review |
+| Fragile | 0.60 – 0.75 | `#FFC93C` | `#947523` | disc 2/4 | Fragile / Unsicher / Fragile |
+| Fading — losing it | < 0.60 | `#FF5A5F` | `#EE5459` | disc 1/4 | S'efface / Verblasst / Fading |
+| Not yet seen | never assessed | `#A9A3C7` | `#77738C` | dashed ring | Pas encore vu / Noch nicht gesehen / Not yet seen |
+
+Note `--c-mastery-ok` is a **yellow-green**, not the info blue that deriving the scale from the
+state families would suggest. The ramp runs green → yellow-green → amber → red → grey so that it
+stays ordered when the colour is taken away.
 
 ---
 
@@ -191,14 +209,33 @@ styled component kit, no shadcn theme, no lucide/heroicons.
 
 ## 7. Icons, illustrations, brand — everything drawn in the repo
 
-- **Icons:** ~70 strokes on a 24 px grid, stroke 2–2.4 px, `stroke-linecap` and `stroke-linejoin`
-  round, `currentColor` everywhere. Draw only what the MVP needs; no library, no borrowed marks.
-- **Illustrations:** flat SVG, 120×120. Seven classroom objects (slate, compass, sheet, curve,
-  clock, tray, cup). Three colours only: `primary-100` fill, `primary-500` stroke, `accent-500` for
-  the single point of attention. Always `data-decorative` — calm mode removes them.
-- **Brand mark:** a slate (rectangle, radius 7) crossed by a chalk stroke plus the mandarin dot,
-  adapted for Alppy with an alpine notch in the chalk stroke. ~12 lines of SVG, drawn not licensed.
-  The wordmark "Alppy" is Fredoka 700 beside the mark, never inside it.
+All three come from the shipped library and are **generated, not hand-drawn**.
+
+- **Pictograms:** the 48 in `alppy-brand-assets/brand/icons/`. 24 px grid, 20×20 safe area, stroke
+  **2.2 — never 2, never 3**, round caps and joins, `currentColor` only. Solid fills are reserved
+  for dots and pips: a pictogram stays a line drawing. Below 16 px, use a label instead.
+  `packages/ui/src/icons/extra.tsx` holds the short list of glyphs the product needs that the
+  library does not ship (currently just the mobile drawer's hamburger), drawn to the same spec.
+- **Illustrations:** the 7 in `alppy-brand-assets/brand/illustrations/` — slate, compass, sheet,
+  curve, clock, tray, summit. Flat, 120×120, three colours only: `primary-100` fill, `primary-500`
+  stroke, `accent-500` for the single point of attention. The generator maps those flat hexes back
+  onto tokens so the drawings follow the theme, and fails if the asset drifts to a fourth colour.
+  Always `data-decorative` — calm mode removes them. **No mascot**, deliberately.
+- **Brand mark — "Le sourire":** two slopes meeting at a summit with a smile in the valley between
+  them. The crossbar of the **A** is the smile: one move, no added element. It reads as a letter, as
+  two peaks, and as a face turned friendly. 64-unit grid, slate inset 3u radius 17u, stroke 6.2u
+  round-capped, feet at 16.2u and 47.8u on a 46.8u baseline, apex at 16.8u; the smile is a quadratic
+  with an 18.8u chord at height 35.2u and a 5u rise. Below 24 px the smile lifts to 34.0u and opens,
+  or it closes into a blot.
+
+  **The mark carries no mandarin accent.** An earlier draft of this document called for a mandarin
+  dot; the brand library forbids it, and it is right to. The accent is functional inside the product,
+  where it means AI-generated content — spending it on the logo would cost it that meaning.
+
+  Never stretch, recolour, rotate, or shadow the mark. The wordmark "Alppy" is Fredoka 700 **beside**
+  the mark, never inside it; cap height 0.62 of the mark height, aligned on the cap band rather than
+  the bounding box (the descenders in *pp* and *y* make naive centring wrong). Clear space is 1/4 of
+  the mark height on all four sides.
 
 ---
 

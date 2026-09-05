@@ -1,0 +1,21 @@
+/* Alppy — the ordered mastery scale.
+   Background opacities are calibrated so luminance is strictly monotonic;
+   glyph colours are darkened to a constant luminance (0.46) for equal contrast.
+   Never use these colours alone: always band + glyph + written label. */
+:root {
+  --c-mastery-solid: #00C48C;
+  --c-mastery-ok: #86CF5B;
+  --c-mastery-weak: #FFC93C;
+  --c-mastery-fading: #FF5A5F;
+  --c-mastery-none: #A9A3C7;
+  --c-mastery-solid-glyph: #00996D;
+  --c-mastery-ok-glyph: #56853A;
+  --c-mastery-weak-glyph: #947523;
+  --c-mastery-fading-glyph: #EE5459;
+  --c-mastery-none-glyph: #77738C;
+  --c-mastery-solid-bg-opacity: 0.536;
+  --c-mastery-ok-bg-opacity: 0.567;
+  --c-mastery-weak-bg-opacity: 0.561;
+  --c-mastery-fading-bg-opacity: 0.154;
+  --c-mastery-none-bg-opacity: 0.116;
+}
