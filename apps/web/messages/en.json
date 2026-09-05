@@ -1,0 +1,299 @@
+{
+  "app": {
+    "name": "Alppy",
+    "tagline": "Teach more personally, work more efficiently"
+  },
+  "nav": {
+    "home": "Home",
+    "classes": "Classes",
+    "sources": "Textbooks",
+    "sheets": "Sheets",
+    "scans": "Corrections",
+    "adaptive": "Adaptive sheets",
+    "settings": "Settings",
+    "openMenu": "Open menu",
+    "closeMenu": "Close menu",
+    "skipToContent": "Skip to main content",
+    "currentClass": "Current class",
+    "currentSubject": "Current subject",
+    "switchClass": "Switch class",
+    "switchSubject": "Switch subject"
+  },
+  "auth": {
+    "signIn": "Sign in",
+    "signOut": "Sign out",
+    "email": "Email address",
+    "password": "Password",
+    "signingIn": "Signing in…",
+    "invalidCredentials": "Email address or password is incorrect.",
+    "welcomeBack": "Welcome back"
+  },
+  "home": {
+    "title": "Your classes",
+    "greeting": "Hello {name}",
+    "lastSheet": "Last sheet",
+    "noSheetYet": "No sheet yet",
+    "pendingCorrections": "{count, plural, =0 {No corrections pending} one {# correction pending} other {# corrections pending}}",
+    "needAttention": "{count, plural, =0 {Nobody needs attention} one {# student needs attention} other {# students need attention}}",
+    "students": "{count, plural, one {# student} other {# students}}",
+    "empty": {
+      "title": "No classes yet",
+      "body": "Create a class to start building sheets.",
+      "action": "Create a class"
+    }
+  },
+  "classes": {
+    "title": "Class {code}",
+    "roster": "Roster",
+    "matrix": "Mastery matrix",
+    "addStudents": "Add students",
+    "rosterHelp": "Paste the list, one student per line: first name and last name.",
+    "rosterPreview": "{count, plural, one {# student detected} other {# students detected}}",
+    "studentNumber": "No.",
+    "studentUid": "Identifier",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "create": "Create class",
+    "code": "Class code",
+    "codeHelp": "For example 7B or 11AB.",
+    "codeInvalid": "The code must look like 7B or 11AB.",
+    "empty": {
+      "title": "No students",
+      "body": "Add your roster to start tracking progress.",
+      "action": "Add students"
+    }
+  },
+  "mastery": {
+    "title": "Mastery",
+    "band": {
+      "solid": "Solid",
+      "ok": "To review",
+      "weak": "Fragile",
+      "fading": "Fading",
+      "none": "Not yet seen"
+    },
+    "bandHelp": {
+      "solid": "Mastered — 90 % or above",
+      "ok": "Due for review soon — 75 to 90 %",
+      "weak": "Fragile — 60 to 75 %",
+      "fading": "Losing it — below 60 %",
+      "none": "Never assessed"
+    },
+    "legend": "Legend",
+    "provisional": "Provisional",
+    "provisionalHelp": "Too few answers to be sure.",
+    "reviewDue": "review in {days, plural, =0 {today} one {# day} other {# days}}",
+    "reviewOverdue": "due for review now",
+    "attempts": "{count, plural, =0 {no answers} one {# answer} other {# answers}}",
+    "score": "Score",
+    "cellLabel": "{student}, {competency}: {band}, {percent} %",
+    "notAssessed": "Not assessed",
+    "empty": {
+      "title": "No mastery data",
+      "body": "Correct a first sheet to fill the matrix.",
+      "action": "Create a sheet"
+    }
+  },
+  "student": {
+    "profile": "Student profile",
+    "strengths": "Strengths",
+    "gaps": "Gaps",
+    "trend": "Trend",
+    "history": "History",
+    "overall": "Overall score",
+    "noGaps": "No gaps detected.",
+    "noStrengths": "No established strength yet."
+  },
+  "sources": {
+    "title": "Textbooks",
+    "upload": "Upload a PDF",
+    "uploadHelp": "Drop a textbook or workbook here, or click to choose a file.",
+    "uploading": "Uploading…",
+    "indexing": "Indexing…",
+    "indexed": "Indexed",
+    "failed": "Failed",
+    "pages": "{count, plural, one {# page} other {# pages}}",
+    "exercisesFound": "{count, plural, =0 {no exercises extracted} one {# exercise extracted} other {# exercises extracted}}",
+    "language": "Language",
+    "fileTooLarge": "File too large (maximum {max} MB).",
+    "fileWrongType": "Format not supported. Please use a PDF.",
+    "empty": {
+      "title": "No textbooks",
+      "body": "Upload your textbooks so Alppy can propose exercises from them.",
+      "action": "Upload a PDF"
+    }
+  },
+  "sheets": {
+    "title": "Sheets",
+    "new": "New sheet",
+    "builder": "Sheet builder",
+    "sheetTitle": "Sheet title",
+    "chapters": "Chapters",
+    "intent": "Intent",
+    "intentPlaceholder": "revise fractions before the test",
+    "intentHelp": "Describe the lesson in a few words; Alppy uses it to rank exercises.",
+    "propose": "Propose exercises",
+    "proposing": "Finding exercises…",
+    "proposals": "Proposals",
+    "selected": "{count, plural, =0 {no exercises kept} one {# exercise kept} other {# exercises kept}}",
+    "keep": "Keep",
+    "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "editStatement": "Edit statement",
+    "difficulty": "Difficulty",
+    "provenance": "Provenance",
+    "source": "Source",
+    "page": "Page",
+    "similarity": "Similarity",
+    "why": "Why this proposal",
+    "preview": "Print preview",
+    "print": "Print",
+    "generatePdf": "Generate PDFs",
+    "generating": "Generating…",
+    "downloadBlank": "Download sheet",
+    "downloadKey": "Download answer key",
+    "blank": "Student sheet",
+    "answerKey": "Answer key",
+    "bothSheets": "Alppy always produces two documents: the blank sheet and its answer key.",
+    "pageOf": "Page {current} of {total}",
+    "empty": {
+      "title": "No sheets",
+      "body": "Build your first sheet from your textbooks.",
+      "action": "New sheet"
+    }
+  },
+  "scans": {
+    "title": "Corrections",
+    "upload": "Upload copies",
+    "uploadHelp": "PDF or photos. A phone photo is fine.",
+    "takePhoto": "Take a photo",
+    "processing": "Analysing copies…",
+    "review": "Review detections",
+    "reviewHelp": "Uncertain answers appear first. Correct them before confirming.",
+    "detected": "Detected",
+    "identifiedAs": "Identified as {uid}",
+    "notIdentified": "Student not identified",
+    "assignManually": "Assign manually",
+    "chooseStudent": "Choose a student",
+    "confidence": "Confidence",
+    "lowConfidence": "Low confidence",
+    "outcome": {
+      "detected": "Read",
+      "low_confidence": "To check",
+      "blank": "No answer",
+      "multiple": "Multiple marks",
+      "corrected": "Corrected by you",
+      "not_gradeable": "Not automatically gradeable"
+    },
+    "itemsToCheck": "{count, plural, =0 {nothing to check} one {# answer to check} other {# answers to check}}",
+    "confirm": "Confirm results",
+    "confirming": "Saving…",
+    "confirmed": "Results saved",
+    "registrationFailed": "Page unreadable: the four corner marks were not found.",
+    "registrationHelp": "Take the photo again, making sure all four corners of the sheet are in frame.",
+    "empty": {
+      "title": "No copies",
+      "body": "Upload the scanned copies to grade them automatically.",
+      "action": "Upload copies"
+    }
+  },
+  "adaptive": {
+    "title": "Adaptive sheets",
+    "subtitle": "One sheet per student, targeted at their gaps",
+    "targeting": "Targeted competencies",
+    "itemsPerStudent": "Exercises per student",
+    "allowGeneration": "Allow AI generation",
+    "allowGenerationHelp": "Generated exercises top up the ones found in your textbooks.",
+    "propose": "Prepare sheets",
+    "preparing": "Preparing…",
+    "retrieved": "From your textbooks",
+    "generated": "AI-generated",
+    "aiBadge": "AI",
+    "aiGenerated": "AI-generated exercise",
+    "aiNotice": "AI-generated exercises are marked in orange. Review them before printing.",
+    "approve": "Approve",
+    "approveAll": "Approve all",
+    "approved": "Approved",
+    "needsApproval": "{count, plural, one {# exercise to approve} other {# exercises to approve}}",
+    "notApprovedWarning": "Generated exercises must be approved before they can be printed.",
+    "exportBatch": "Export PDF batch",
+    "exporting": "Exporting…",
+    "batchReady": "Batch ready: one sheet per student, a single PDF.",
+    "empty": {
+      "title": "No gaps identified yet",
+      "body": "Correct at least one sheet so Alppy can target each student's needs.",
+      "action": "View corrections"
+    }
+  },
+  "settings": {
+    "title": "Settings",
+    "appearance": "Appearance",
+    "language": "Interface language",
+    "languageHelp": "Exercises stay in the language of the textbook.",
+    "theme": "Theme",
+    "themeSystem": "System",
+    "themeLight": "Light",
+    "themeDark": "Dark",
+    "contrast": "High contrast",
+    "contrastHelp": "Pure black and thicker borders.",
+    "motion": "Reduce motion",
+    "motionHelp": "Countdowns stay animated: they carry information.",
+    "calm": "Reading mode",
+    "calmHelp": "Hides decorative illustrations.",
+    "saved": "Saved"
+  },
+  "exercise": {
+    "type": {
+      "mcq": "Multiple choice",
+      "true_false": "True or false",
+      "open": "Free response"
+    },
+    "true": "True",
+    "false": "False",
+    "openNotGraded": "Free response — not automatically graded",
+    "answer": "Answer",
+    "explanation": "Explanation",
+    "difficultyLevel": "Level {level} of 5"
+  },
+  "common": {
+    "save": "Save",
+    "cancel": "Cancel",
+    "close": "Close",
+    "delete": "Delete",
+    "edit": "Edit",
+    "back": "Back",
+    "next": "Next",
+    "previous": "Previous",
+    "search": "Search",
+    "filter": "Filter",
+    "loading": "Loading…",
+    "retry": "Try again",
+    "confirm": "Confirm",
+    "of": "of",
+    "percent": "{value} %",
+    "yes": "Yes",
+    "no": "No"
+  },
+  "errors": {
+    "generic": {
+      "title": "Something went wrong",
+      "body": "Try again in a moment. If it keeps happening, reload the page.",
+      "action": "Try again"
+    },
+    "notFound": {
+      "title": "Page not found",
+      "body": "This page does not exist, or you do not have access to it.",
+      "action": "Back to home"
+    },
+    "offline": "You appear to be offline.",
+    "unauthorized": "Your session has expired. Please sign in again."
+  },
+  "a11y": {
+    "loading": "Loading",
+    "sortAscending": "Sort ascending",
+    "sortDescending": "Sort descending",
+    "decorative": "Decorative illustration",
+    "progressRing": "Progress: {percent} %"
+  }
+}

@@ -1,0 +1,299 @@
+{
+  "app": {
+    "name": "Alppy",
+    "tagline": "Enseigner plus personnellement, plus efficacement"
+  },
+  "nav": {
+    "home": "Accueil",
+    "classes": "Classes",
+    "sources": "Manuels",
+    "sheets": "Fiches",
+    "scans": "Corrections",
+    "adaptive": "Fiches adaptées",
+    "settings": "Réglages",
+    "openMenu": "Ouvrir le menu",
+    "closeMenu": "Fermer le menu",
+    "skipToContent": "Aller au contenu principal",
+    "currentClass": "Classe courante",
+    "currentSubject": "Discipline courante",
+    "switchClass": "Changer de classe",
+    "switchSubject": "Changer de discipline"
+  },
+  "auth": {
+    "signIn": "Se connecter",
+    "signOut": "Se déconnecter",
+    "email": "Adresse e-mail",
+    "password": "Mot de passe",
+    "signingIn": "Connexion…",
+    "invalidCredentials": "Adresse e-mail ou mot de passe incorrect.",
+    "welcomeBack": "Bon retour"
+  },
+  "home": {
+    "title": "Vos classes",
+    "greeting": "Bonjour {name}",
+    "lastSheet": "Dernière fiche",
+    "noSheetYet": "Aucune fiche pour l'instant",
+    "pendingCorrections": "{count, plural, =0 {Aucune correction en attente} one {# correction en attente} other {# corrections en attente}}",
+    "needAttention": "{count, plural, =0 {Personne à surveiller} one {# élève à surveiller} other {# élèves à surveiller}}",
+    "students": "{count, plural, one {# élève} other {# élèves}}",
+    "empty": {
+      "title": "Aucune classe pour l'instant",
+      "body": "Créez une classe pour commencer à construire des fiches.",
+      "action": "Créer une classe"
+    }
+  },
+  "classes": {
+    "title": "Classe {code}",
+    "roster": "Effectif",
+    "matrix": "Matrice de maîtrise",
+    "addStudents": "Ajouter des élèves",
+    "rosterHelp": "Collez la liste, un élève par ligne : prénom et nom.",
+    "rosterPreview": "{count, plural, one {# élève détecté} other {# élèves détectés}}",
+    "studentNumber": "N°",
+    "studentUid": "Identifiant",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "create": "Créer la classe",
+    "code": "Code de classe",
+    "codeHelp": "Par exemple 7B ou 11AB.",
+    "codeInvalid": "Le code doit ressembler à 7B ou 11AB.",
+    "empty": {
+      "title": "Aucun élève",
+      "body": "Ajoutez votre effectif pour commencer à suivre les progrès.",
+      "action": "Ajouter des élèves"
+    }
+  },
+  "mastery": {
+    "title": "Maîtrise",
+    "band": {
+      "solid": "Acquis",
+      "ok": "À revoir",
+      "weak": "Fragile",
+      "fading": "S'efface",
+      "none": "Pas encore vu"
+    },
+    "bandHelp": {
+      "solid": "Maîtrisé — au moins 90 %",
+      "ok": "À revoir bientôt — 75 à 90 %",
+      "weak": "Fragile — 60 à 75 %",
+      "fading": "En train de s'effacer — moins de 60 %",
+      "none": "Jamais évalué"
+    },
+    "legend": "Légende",
+    "provisional": "Provisoire",
+    "provisionalHelp": "Trop peu de réponses pour être sûr.",
+    "reviewDue": "révision dans {days, plural, =0 {aujourd'hui} one {# jour} other {# jours}}",
+    "reviewOverdue": "à revoir maintenant",
+    "attempts": "{count, plural, =0 {aucune réponse} one {# réponse} other {# réponses}}",
+    "score": "Score",
+    "cellLabel": "{student}, {competency} : {band}, {percent} %",
+    "notAssessed": "Non évalué",
+    "empty": {
+      "title": "Aucune donnée de maîtrise",
+      "body": "Corrigez une première fiche pour remplir la matrice.",
+      "action": "Créer une fiche"
+    }
+  },
+  "student": {
+    "profile": "Profil de l'élève",
+    "strengths": "Points forts",
+    "gaps": "Lacunes",
+    "trend": "Évolution",
+    "history": "Historique",
+    "overall": "Score global",
+    "noGaps": "Aucune lacune détectée.",
+    "noStrengths": "Pas encore de point fort établi."
+  },
+  "sources": {
+    "title": "Manuels",
+    "upload": "Téléverser un PDF",
+    "uploadHelp": "Déposez un manuel ou un cahier d'exercices, ou cliquez pour choisir un fichier.",
+    "uploading": "Téléversement…",
+    "indexing": "Indexation en cours…",
+    "indexed": "Indexé",
+    "failed": "Échec",
+    "pages": "{count, plural, one {# page} other {# pages}}",
+    "exercisesFound": "{count, plural, =0 {aucun exercice extrait} one {# exercice extrait} other {# exercices extraits}}",
+    "language": "Langue",
+    "fileTooLarge": "Fichier trop volumineux (maximum {max} Mo).",
+    "fileWrongType": "Format non accepté. Utilisez un PDF.",
+    "empty": {
+      "title": "Aucun manuel",
+      "body": "Téléversez vos manuels pour qu'Alppy puisse en proposer des exercices.",
+      "action": "Téléverser un PDF"
+    }
+  },
+  "sheets": {
+    "title": "Fiches",
+    "new": "Nouvelle fiche",
+    "builder": "Constructeur de fiche",
+    "sheetTitle": "Titre de la fiche",
+    "chapters": "Chapitres",
+    "intent": "Intention",
+    "intentPlaceholder": "révision fractions avant le test",
+    "intentHelp": "Décrivez la leçon en quelques mots ; Alppy s'en sert pour classer les exercices.",
+    "propose": "Proposer des exercices",
+    "proposing": "Recherche d'exercices…",
+    "proposals": "Propositions",
+    "selected": "{count, plural, =0 {aucun exercice retenu} one {# exercice retenu} other {# exercices retenus}}",
+    "keep": "Garder",
+    "remove": "Retirer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "editStatement": "Modifier l'énoncé",
+    "difficulty": "Difficulté",
+    "provenance": "Provenance",
+    "source": "Source",
+    "page": "Page",
+    "similarity": "Similarité",
+    "why": "Pourquoi cette proposition",
+    "preview": "Aperçu avant impression",
+    "print": "Imprimer",
+    "generatePdf": "Générer les PDF",
+    "generating": "Génération…",
+    "downloadBlank": "Télécharger la fiche",
+    "downloadKey": "Télécharger le corrigé",
+    "blank": "Fiche élève",
+    "answerKey": "Corrigé",
+    "bothSheets": "Alppy produit toujours deux documents : la fiche vierge et son corrigé.",
+    "pageOf": "Page {current} sur {total}",
+    "empty": {
+      "title": "Aucune fiche",
+      "body": "Construisez votre première fiche à partir de vos manuels.",
+      "action": "Nouvelle fiche"
+    }
+  },
+  "scans": {
+    "title": "Corrections",
+    "upload": "Téléverser les copies",
+    "uploadHelp": "PDF ou photos. Une photo prise au téléphone convient.",
+    "takePhoto": "Prendre une photo",
+    "processing": "Analyse des copies…",
+    "review": "Vérifier les détections",
+    "reviewHelp": "Les réponses peu sûres apparaissent en premier. Corrigez avant de valider.",
+    "detected": "Détecté",
+    "identifiedAs": "Identifié comme {uid}",
+    "notIdentified": "Élève non identifié",
+    "assignManually": "Attribuer manuellement",
+    "chooseStudent": "Choisir un élève",
+    "confidence": "Confiance",
+    "lowConfidence": "Confiance faible",
+    "outcome": {
+      "detected": "Lu",
+      "low_confidence": "À vérifier",
+      "blank": "Sans réponse",
+      "multiple": "Plusieurs marques",
+      "corrected": "Corrigé par vous",
+      "not_gradeable": "Non corrigible automatiquement"
+    },
+    "itemsToCheck": "{count, plural, =0 {rien à vérifier} one {# réponse à vérifier} other {# réponses à vérifier}}",
+    "confirm": "Valider les résultats",
+    "confirming": "Enregistrement…",
+    "confirmed": "Résultats enregistrés",
+    "registrationFailed": "Page illisible : les repères d'angle n'ont pas été trouvés.",
+    "registrationHelp": "Reprenez la photo en cadrant les quatre coins de la feuille.",
+    "empty": {
+      "title": "Aucune copie",
+      "body": "Téléversez les copies scannées pour les corriger automatiquement.",
+      "action": "Téléverser les copies"
+    }
+  },
+  "adaptive": {
+    "title": "Fiches adaptées",
+    "subtitle": "Une fiche par élève, ciblée sur ses lacunes",
+    "targeting": "Compétences ciblées",
+    "itemsPerStudent": "Exercices par élève",
+    "allowGeneration": "Autoriser la génération par IA",
+    "allowGenerationHelp": "Les exercices générés complètent ceux trouvés dans vos manuels.",
+    "propose": "Préparer les fiches",
+    "preparing": "Préparation…",
+    "retrieved": "Depuis vos manuels",
+    "generated": "Généré par IA",
+    "aiBadge": "IA",
+    "aiGenerated": "Exercice généré par IA",
+    "aiNotice": "Les exercices générés par IA sont signalés en orange. Relisez-les avant impression.",
+    "approve": "Approuver",
+    "approveAll": "Tout approuver",
+    "approved": "Approuvé",
+    "needsApproval": "{count, plural, one {# exercice à approuver} other {# exercices à approuver}}",
+    "notApprovedWarning": "Les exercices générés doivent être approuvés avant d'être imprimés.",
+    "exportBatch": "Exporter le lot PDF",
+    "exporting": "Export…",
+    "batchReady": "Lot prêt : une fiche par élève, un seul PDF.",
+    "empty": {
+      "title": "Pas encore de lacunes identifiées",
+      "body": "Corrigez au moins une fiche pour qu'Alppy puisse cibler les besoins de chaque élève.",
+      "action": "Voir les corrections"
+    }
+  },
+  "settings": {
+    "title": "Réglages",
+    "appearance": "Apparence",
+    "language": "Langue de l'interface",
+    "languageHelp": "Les exercices restent dans la langue du manuel.",
+    "theme": "Thème",
+    "themeSystem": "Système",
+    "themeLight": "Clair",
+    "themeDark": "Sombre",
+    "contrast": "Contraste élevé",
+    "contrastHelp": "Noir pur et bordures épaissies.",
+    "motion": "Réduire les animations",
+    "motionHelp": "Les comptes à rebours restent animés : ils portent une information.",
+    "calm": "Mode lecture",
+    "calmHelp": "Masque les illustrations décoratives.",
+    "saved": "Enregistré"
+  },
+  "exercise": {
+    "type": {
+      "mcq": "Choix multiple",
+      "true_false": "Vrai ou faux",
+      "open": "Réponse libre"
+    },
+    "true": "Vrai",
+    "false": "Faux",
+    "openNotGraded": "Réponse libre — non corrigée automatiquement",
+    "answer": "Réponse",
+    "explanation": "Explication",
+    "difficultyLevel": "Niveau {level} sur 5"
+  },
+  "common": {
+    "save": "Enregistrer",
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "delete": "Supprimer",
+    "edit": "Modifier",
+    "back": "Retour",
+    "next": "Suivant",
+    "previous": "Précédent",
+    "search": "Rechercher",
+    "filter": "Filtrer",
+    "loading": "Chargement…",
+    "retry": "Réessayer",
+    "confirm": "Confirmer",
+    "of": "sur",
+    "percent": "{value} %",
+    "yes": "Oui",
+    "no": "Non"
+  },
+  "errors": {
+    "generic": {
+      "title": "Quelque chose n'a pas fonctionné",
+      "body": "Réessayez dans un instant. Si le problème persiste, rechargez la page.",
+      "action": "Réessayer"
+    },
+    "notFound": {
+      "title": "Page introuvable",
+      "body": "Cette page n'existe pas ou vous n'y avez pas accès.",
+      "action": "Retour à l'accueil"
+    },
+    "offline": "Vous semblez hors ligne.",
+    "unauthorized": "Votre session a expiré. Reconnectez-vous."
+  },
+  "a11y": {
+    "loading": "Chargement en cours",
+    "sortAscending": "Trier par ordre croissant",
+    "sortDescending": "Trier par ordre décroissant",
+    "decorative": "Illustration décorative",
+    "progressRing": "Progression : {percent} %"
+  }
+}

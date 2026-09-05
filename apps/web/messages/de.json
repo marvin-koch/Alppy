@@ -1,0 +1,299 @@
+{
+  "app": {
+    "name": "Alppy",
+    "tagline": "Persönlicher unterrichten, effizienter arbeiten"
+  },
+  "nav": {
+    "home": "Start",
+    "classes": "Klassen",
+    "sources": "Lehrmittel",
+    "sheets": "Arbeitsblätter",
+    "scans": "Korrekturen",
+    "adaptive": "Angepasste Blätter",
+    "settings": "Einstellungen",
+    "openMenu": "Menü öffnen",
+    "closeMenu": "Menü schliessen",
+    "skipToContent": "Zum Hauptinhalt springen",
+    "currentClass": "Aktuelle Klasse",
+    "currentSubject": "Aktuelles Fach",
+    "switchClass": "Klasse wechseln",
+    "switchSubject": "Fach wechseln"
+  },
+  "auth": {
+    "signIn": "Anmelden",
+    "signOut": "Abmelden",
+    "email": "E-Mail-Adresse",
+    "password": "Passwort",
+    "signingIn": "Anmeldung läuft…",
+    "invalidCredentials": "E-Mail-Adresse oder Passwort ist falsch.",
+    "welcomeBack": "Willkommen zurück"
+  },
+  "home": {
+    "title": "Ihre Klassen",
+    "greeting": "Guten Tag, {name}",
+    "lastSheet": "Letztes Arbeitsblatt",
+    "noSheetYet": "Noch kein Arbeitsblatt",
+    "pendingCorrections": "{count, plural, =0 {Keine offenen Korrekturen} one {# offene Korrektur} other {# offene Korrekturen}}",
+    "needAttention": "{count, plural, =0 {Niemand im Blick zu behalten} one {# Lernende:r braucht Aufmerksamkeit} other {# Lernende brauchen Aufmerksamkeit}}",
+    "students": "{count, plural, one {# Lernende:r} other {# Lernende}}",
+    "empty": {
+      "title": "Noch keine Klasse",
+      "body": "Legen Sie eine Klasse an, um Arbeitsblätter zu erstellen.",
+      "action": "Klasse anlegen"
+    }
+  },
+  "classes": {
+    "title": "Klasse {code}",
+    "roster": "Klassenliste",
+    "matrix": "Kompetenzmatrix",
+    "addStudents": "Lernende hinzufügen",
+    "rosterHelp": "Liste einfügen, eine Person pro Zeile: Vorname und Name.",
+    "rosterPreview": "{count, plural, one {# Person erkannt} other {# Personen erkannt}}",
+    "studentNumber": "Nr.",
+    "studentUid": "Kennung",
+    "firstName": "Vorname",
+    "lastName": "Name",
+    "create": "Klasse anlegen",
+    "code": "Klassenkürzel",
+    "codeHelp": "Zum Beispiel 7B oder 11AB.",
+    "codeInvalid": "Das Kürzel muss wie 7B oder 11AB aussehen.",
+    "empty": {
+      "title": "Keine Lernenden",
+      "body": "Fügen Sie Ihre Klassenliste hinzu, um den Lernstand zu verfolgen.",
+      "action": "Lernende hinzufügen"
+    }
+  },
+  "mastery": {
+    "title": "Lernstand",
+    "band": {
+      "solid": "Gefestigt",
+      "ok": "Bald fällig",
+      "weak": "Unsicher",
+      "fading": "Verblasst",
+      "none": "Noch nicht gesehen"
+    },
+    "bandHelp": {
+      "solid": "Gefestigt — mindestens 90 %",
+      "ok": "Bald zu wiederholen — 75 bis 90 %",
+      "weak": "Unsicher — 60 bis 75 %",
+      "fading": "Verblasst — unter 60 %",
+      "none": "Nie geprüft"
+    },
+    "legend": "Legende",
+    "provisional": "Vorläufig",
+    "provisionalHelp": "Zu wenige Antworten für eine sichere Einschätzung.",
+    "reviewDue": "Wiederholung in {days, plural, =0 {heute} one {# Tag} other {# Tagen}}",
+    "reviewOverdue": "jetzt zu wiederholen",
+    "attempts": "{count, plural, =0 {keine Antwort} one {# Antwort} other {# Antworten}}",
+    "score": "Wert",
+    "cellLabel": "{student}, {competency}: {band}, {percent} %",
+    "notAssessed": "Nicht geprüft",
+    "empty": {
+      "title": "Noch keine Lernstandsdaten",
+      "body": "Korrigieren Sie ein erstes Arbeitsblatt, um die Matrix zu füllen.",
+      "action": "Arbeitsblatt erstellen"
+    }
+  },
+  "student": {
+    "profile": "Profil",
+    "strengths": "Stärken",
+    "gaps": "Lücken",
+    "trend": "Verlauf",
+    "history": "Verlauf der Arbeitsblätter",
+    "overall": "Gesamtwert",
+    "noGaps": "Keine Lücken erkannt.",
+    "noStrengths": "Noch keine gefestigte Stärke."
+  },
+  "sources": {
+    "title": "Lehrmittel",
+    "upload": "PDF hochladen",
+    "uploadHelp": "Lehrmittel oder Arbeitsheft hierher ziehen oder klicken, um eine Datei zu wählen.",
+    "uploading": "Wird hochgeladen…",
+    "indexing": "Wird indexiert…",
+    "indexed": "Indexiert",
+    "failed": "Fehlgeschlagen",
+    "pages": "{count, plural, one {# Seite} other {# Seiten}}",
+    "exercisesFound": "{count, plural, =0 {keine Aufgabe extrahiert} one {# Aufgabe extrahiert} other {# Aufgaben extrahiert}}",
+    "language": "Sprache",
+    "fileTooLarge": "Datei zu gross (maximal {max} MB).",
+    "fileWrongType": "Format nicht unterstützt. Bitte ein PDF verwenden.",
+    "empty": {
+      "title": "Keine Lehrmittel",
+      "body": "Laden Sie Ihre Lehrmittel hoch, damit Alppy daraus Aufgaben vorschlagen kann.",
+      "action": "PDF hochladen"
+    }
+  },
+  "sheets": {
+    "title": "Arbeitsblätter",
+    "new": "Neues Arbeitsblatt",
+    "builder": "Arbeitsblatt zusammenstellen",
+    "sheetTitle": "Titel des Arbeitsblatts",
+    "chapters": "Kapitel",
+    "intent": "Absicht",
+    "intentPlaceholder": "Brüche wiederholen vor der Prüfung",
+    "intentHelp": "Beschreiben Sie die Lektion in wenigen Worten; Alppy ordnet die Aufgaben danach.",
+    "propose": "Aufgaben vorschlagen",
+    "proposing": "Aufgaben werden gesucht…",
+    "proposals": "Vorschläge",
+    "selected": "{count, plural, =0 {keine Aufgabe gewählt} one {# Aufgabe gewählt} other {# Aufgaben gewählt}}",
+    "keep": "Behalten",
+    "remove": "Entfernen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "editStatement": "Aufgabentext bearbeiten",
+    "difficulty": "Schwierigkeit",
+    "provenance": "Herkunft",
+    "source": "Quelle",
+    "page": "Seite",
+    "similarity": "Ähnlichkeit",
+    "why": "Warum dieser Vorschlag",
+    "preview": "Druckvorschau",
+    "print": "Drucken",
+    "generatePdf": "PDF erzeugen",
+    "generating": "Wird erzeugt…",
+    "downloadBlank": "Arbeitsblatt herunterladen",
+    "downloadKey": "Lösungsblatt herunterladen",
+    "blank": "Arbeitsblatt",
+    "answerKey": "Lösungsblatt",
+    "bothSheets": "Alppy erzeugt immer zwei Dokumente: das leere Blatt und das Lösungsblatt.",
+    "pageOf": "Seite {current} von {total}",
+    "empty": {
+      "title": "Keine Arbeitsblätter",
+      "body": "Stellen Sie Ihr erstes Arbeitsblatt aus Ihren Lehrmitteln zusammen.",
+      "action": "Neues Arbeitsblatt"
+    }
+  },
+  "scans": {
+    "title": "Korrekturen",
+    "upload": "Kopien hochladen",
+    "uploadHelp": "PDF oder Fotos. Ein Handyfoto genügt.",
+    "takePhoto": "Foto aufnehmen",
+    "processing": "Kopien werden ausgewertet…",
+    "review": "Erkennung prüfen",
+    "reviewHelp": "Unsichere Antworten stehen zuoberst. Korrigieren Sie vor dem Bestätigen.",
+    "detected": "Erkannt",
+    "identifiedAs": "Erkannt als {uid}",
+    "notIdentified": "Lernende:r nicht erkannt",
+    "assignManually": "Manuell zuordnen",
+    "chooseStudent": "Person wählen",
+    "confidence": "Sicherheit",
+    "lowConfidence": "Geringe Sicherheit",
+    "outcome": {
+      "detected": "Gelesen",
+      "low_confidence": "Zu prüfen",
+      "blank": "Keine Antwort",
+      "multiple": "Mehrere Markierungen",
+      "corrected": "Von Ihnen korrigiert",
+      "not_gradeable": "Nicht automatisch korrigierbar"
+    },
+    "itemsToCheck": "{count, plural, =0 {nichts zu prüfen} one {# Antwort zu prüfen} other {# Antworten zu prüfen}}",
+    "confirm": "Ergebnisse bestätigen",
+    "confirming": "Wird gespeichert…",
+    "confirmed": "Ergebnisse gespeichert",
+    "registrationFailed": "Seite unlesbar: die vier Eckmarken wurden nicht gefunden.",
+    "registrationHelp": "Fotografieren Sie erneut und achten Sie darauf, alle vier Ecken zu erfassen.",
+    "empty": {
+      "title": "Keine Kopien",
+      "body": "Laden Sie die eingescannten Kopien hoch, um sie automatisch zu korrigieren.",
+      "action": "Kopien hochladen"
+    }
+  },
+  "adaptive": {
+    "title": "Angepasste Blätter",
+    "subtitle": "Ein Arbeitsblatt pro Person, auf ihre Lücken zugeschnitten",
+    "targeting": "Anvisierte Kompetenzen",
+    "itemsPerStudent": "Aufgaben pro Person",
+    "allowGeneration": "KI-Generierung erlauben",
+    "allowGenerationHelp": "Generierte Aufgaben ergänzen die aus Ihren Lehrmitteln gefundenen.",
+    "propose": "Blätter vorbereiten",
+    "preparing": "Wird vorbereitet…",
+    "retrieved": "Aus Ihren Lehrmitteln",
+    "generated": "Von KI erzeugt",
+    "aiBadge": "KI",
+    "aiGenerated": "Von KI erzeugte Aufgabe",
+    "aiNotice": "Von KI erzeugte Aufgaben sind orange markiert. Bitte vor dem Druck prüfen.",
+    "approve": "Freigeben",
+    "approveAll": "Alle freigeben",
+    "approved": "Freigegeben",
+    "needsApproval": "{count, plural, one {# Aufgabe freizugeben} other {# Aufgaben freizugeben}}",
+    "notApprovedWarning": "Generierte Aufgaben müssen vor dem Druck freigegeben werden.",
+    "exportBatch": "PDF-Stapel exportieren",
+    "exporting": "Export läuft…",
+    "batchReady": "Stapel bereit: ein Arbeitsblatt pro Person, ein einziges PDF.",
+    "empty": {
+      "title": "Noch keine Lücken erkannt",
+      "body": "Korrigieren Sie mindestens ein Arbeitsblatt, damit Alppy gezielt arbeiten kann.",
+      "action": "Korrekturen ansehen"
+    }
+  },
+  "settings": {
+    "title": "Einstellungen",
+    "appearance": "Darstellung",
+    "language": "Sprache der Oberfläche",
+    "languageHelp": "Aufgaben bleiben in der Sprache des Lehrmittels.",
+    "theme": "Farbschema",
+    "themeSystem": "System",
+    "themeLight": "Hell",
+    "themeDark": "Dunkel",
+    "contrast": "Hoher Kontrast",
+    "contrastHelp": "Reines Schwarz und dickere Ränder.",
+    "motion": "Animationen reduzieren",
+    "motionHelp": "Countdowns bleiben animiert: sie tragen eine Information.",
+    "calm": "Lesemodus",
+    "calmHelp": "Blendet dekorative Illustrationen aus.",
+    "saved": "Gespeichert"
+  },
+  "exercise": {
+    "type": {
+      "mcq": "Mehrfachauswahl",
+      "true_false": "Richtig oder falsch",
+      "open": "Freie Antwort"
+    },
+    "true": "Richtig",
+    "false": "Falsch",
+    "openNotGraded": "Freie Antwort — wird nicht automatisch korrigiert",
+    "answer": "Antwort",
+    "explanation": "Erklärung",
+    "difficultyLevel": "Stufe {level} von 5"
+  },
+  "common": {
+    "save": "Speichern",
+    "cancel": "Abbrechen",
+    "close": "Schliessen",
+    "delete": "Löschen",
+    "edit": "Bearbeiten",
+    "back": "Zurück",
+    "next": "Weiter",
+    "previous": "Vorheriges",
+    "search": "Suchen",
+    "filter": "Filtern",
+    "loading": "Wird geladen…",
+    "retry": "Erneut versuchen",
+    "confirm": "Bestätigen",
+    "of": "von",
+    "percent": "{value} %",
+    "yes": "Ja",
+    "no": "Nein"
+  },
+  "errors": {
+    "generic": {
+      "title": "Etwas ist schiefgelaufen",
+      "body": "Versuchen Sie es gleich noch einmal. Bleibt der Fehler, laden Sie die Seite neu.",
+      "action": "Erneut versuchen"
+    },
+    "notFound": {
+      "title": "Seite nicht gefunden",
+      "body": "Diese Seite existiert nicht oder Sie haben keinen Zugriff darauf.",
+      "action": "Zurück zum Start"
+    },
+    "offline": "Sie scheinen offline zu sein.",
+    "unauthorized": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+  },
+  "a11y": {
+    "loading": "Wird geladen",
+    "sortAscending": "Aufsteigend sortieren",
+    "sortDescending": "Absteigend sortieren",
+    "decorative": "Dekorative Illustration",
+    "progressRing": "Fortschritt: {percent} %"
+  }
+}
