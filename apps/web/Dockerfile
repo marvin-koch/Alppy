@@ -1,0 +1,41 @@
+# syntax=docker/dockerfile:1
+#
+# Alppy web. Multi-stage: the final image carries the standalone Next.js output
+# and nothing else — no pnpm store, no source, no dev dependencies.
+
+FROM node:22-alpine AS base
+ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
+RUN corepack enable
+
+# --- dependencies -----------------------------------------------------------
+FROM base AS deps
+WORKDIR /repo
+COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc ./
+COPY apps/web/package.json apps/web/
+COPY packages/ui/package.json packages/ui/
+COPY packages/shared/package.json packages/shared/
+RUN pnpm install --frozen-lockfile || pnpm install
+
+# --- build ------------------------------------------------------------------
+FROM base AS build
+WORKDIR /repo
+COPY --from=deps /repo/node_modules ./node_modules
+COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+COPY . .
+ENV NEXT_TELEMETRY_DISABLED=1
+RUN pnpm --filter @alppy/web build
+
+# --- runtime ----------------------------------------------------------------
+FROM node:22-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
+
+RUN addgroup -g 10001 -S alppy && adduser -u 10001 -S alppy -G alppy
+
+COPY --from=build --chown=alppy:alppy /repo/apps/web/.next/standalone ./
+COPY --from=build --chown=alppy:alppy /repo/apps/web/.next/static ./apps/web/.next/static
+COPY --from=build --chown=alppy:alppy /repo/apps/web/public ./apps/web/public
+
+USER alppy
+EXPOSE 3000
+CMD ["node", "apps/web/server.js"]
