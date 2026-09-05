@@ -91,7 +91,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         data-app-header
         className="sticky top-0 z-30 flex items-center justify-between border-b border-line bg-surface px-4 py-3 md:hidden"
       >
-        <Link href="/" className="no-underline">
+        {/* The logo is a link home, so it is a tap target and takes the 44px
+            floor like every other one. */}
+        <Link href="/" className="flex min-h-11 items-center no-underline">
           <AlppyLogo size="sm" />
         </Link>
         <IconButton
@@ -114,7 +116,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       <div className="md:flex">
         {/* Persistent rail from md up */}
         <aside className="hidden w-60 shrink-0 border-r border-line bg-surface p-4 md:block md:min-h-screen">
-          <Link href="/" className="mb-6 block no-underline">
+          <Link href="/" className="mb-6 flex min-h-11 items-center no-underline">
             <AlppyLogo size="md" />
           </Link>
           {nav()}

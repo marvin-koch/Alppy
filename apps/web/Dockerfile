@@ -22,7 +22,7 @@ WORKDIR /repo
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY . .
-ENV NEXT_TELEMETRY_DISABLED=1
+ENV NEXT_TELEMETRY_DISABLED=1 ALPPY_STANDALONE=1
 RUN pnpm --filter @alppy/web build
 
 # --- runtime ----------------------------------------------------------------

@@ -15,10 +15,13 @@ const apiOrigin = process.env.ALPPY_API_ORIGIN;
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
-  // The Docker image copies .next/standalone and nothing else: no pnpm store,
-  // no source, no dev dependencies.
-  output: 'standalone',
-  outputFileTracingRoot: path.join(__dirname, '../../'),
+  // Standalone only for the Docker image, which copies .next/standalone and
+  // nothing else: no pnpm store, no source, no dev dependencies. It is opt-in
+  // because `next start` refuses to serve a standalone build, and the e2e suite
+  // wants a plain production server.
+  ...(process.env.ALPPY_STANDALONE === '1'
+    ? { output: 'standalone' as const, outputFileTracingRoot: path.join(__dirname, '../../') }
+    : {}),
   transpilePackages: ['@alppy/ui'],
   eslint: { ignoreDuringBuilds: true },
   async rewrites() {
