@@ -1,0 +1,582 @@
+{
+  "competencies": [
+    {
+      "curriculum": "LP21",
+      "code": "MA.1.A",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Zahl und Variable — Operieren und Benennen",
+        "fr": "Nombre et variable — Opérer et nommer",
+        "en": "Number and variable — Operating and naming"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler verstehen und verwenden Begriffe und Symbole zu Zahl und Variable, lesen und schreiben Zahlen und operieren mit ihnen.",
+        "fr": "Les élèves comprennent et utilisent les termes et symboles relatifs aux nombres et aux variables, lisent et écrivent des nombres et opèrent avec eux.",
+        "en": "Students understand and use terms and symbols for numbers and variables, read and write numbers, and operate with them."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.1.C",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Zahl und Variable — Mathematisieren und Darstellen",
+        "fr": "Nombre et variable — Mathématiser et représenter",
+        "en": "Number and variable — Mathematising and representing"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Terme vergleichen und umformen, Gleichungen lösen sowie Gesetze und Regeln anwenden.",
+        "fr": "Les élèves peuvent comparer et transformer des termes, résoudre des équations et appliquer des lois et des règles.",
+        "en": "Students can compare and transform terms, solve equations, and apply laws and rules."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.2.A",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Form und Raum — Operieren und Benennen",
+        "fr": "Forme et espace — Opérer et nommer",
+        "en": "Shape and space — Operating and naming"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Figuren und Körper herstellen, Beziehungen erkennen sowie Grössen an Figuren und Körpern berechnen.",
+        "fr": "Les élèves peuvent construire des figures et des solides, en reconnaître les propriétés et en calculer les grandeurs.",
+        "en": "Students can construct figures and solids, recognise their properties, and compute measurements on them."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.2.C",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Form und Raum — Mathematisieren und Darstellen",
+        "fr": "Forme et espace — Mathématiser et représenter",
+        "en": "Shape and space — Mathematising and representing"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Figuren mit verschiedenen Techniken und Materialien darstellen und in andere Formen überführen.",
+        "fr": "Les élèves peuvent représenter des figures à l'aide de différentes techniques et de différents matériaux et les transformer.",
+        "en": "Students can represent figures using various techniques and materials, and transform them into other forms."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.A",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Grössen, Funktionen, Daten und Zufall — Operieren und Benennen",
+        "fr": "Grandeurs, fonctions, données et hasard — Opérer et nommer",
+        "en": "Quantities, functions, data and chance — Operating and naming"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler verstehen und verwenden Begriffe und Symbole zu Grössen, Funktionen, Daten und Zufall.",
+        "fr": "Les élèves comprennent et utilisent les termes et symboles relatifs aux grandeurs, aux fonctions, aux données et au hasard.",
+        "en": "Students understand and use terms and symbols for quantities, functions, data and chance."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.B",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Grössen, Funktionen, Daten und Zufall — Erforschen und Argumentieren",
+        "fr": "Grandeurs, fonctions, données et hasard — Explorer et argumenter",
+        "en": "Quantities, functions, data and chance — Exploring and arguing"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Sachsituationen zu Statistik, Kombinatorik und Wahrscheinlichkeit erforschen, Vermutungen formulieren und überprüfen.",
+        "fr": "Les élèves peuvent explorer des situations concrètes en lien avec la statistique, la combinatoire et les probabilités, formuler et vérifier des conjectures.",
+        "en": "Students can explore real-world situations involving statistics, combinatorics and probability, and formulate and check conjectures."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.C",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Grössen, Funktionen, Daten und Zufall — Mathematisieren und Darstellen",
+        "fr": "Grandeurs, fonctions, données et hasard — Mathématiser et représenter",
+        "en": "Quantities, functions, data and chance — Mathematising and representing"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Daten erheben, ordnen, darstellen, auswerten sowie Sachsituationen mathematisieren und Ergebnisse interpretieren.",
+        "fr": "Les élèves peuvent collecter, organiser, représenter et exploiter des données, mathématiser des situations concrètes et interpréter les résultats.",
+        "en": "Students can collect, organise, represent and evaluate data, mathematise real-world situations and interpret results."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.1.A.2",
+      "parent_code": "MA.1.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Zahlen vergleichen, ordnen, runden und Ergebnisse überschlagen",
+        "fr": "Comparer, ordonner et arrondir des nombres, estimer des résultats",
+        "en": "Compare, order and round numbers, and estimate results"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können flexibel zählen, Zahlen der Grösse nach ordnen und Ergebnisse überschlagen.",
+        "fr": "Les élèves peuvent compter avec souplesse, ordonner des nombres selon leur grandeur et estimer des résultats.",
+        "en": "Students can count flexibly, order numbers by size, and estimate results."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.1.A.3",
+      "parent_code": "MA.1.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Grundoperationen ausführen: addieren, subtrahieren, multiplizieren, dividieren, potenzieren",
+        "fr": "Effectuer les opérations de base : addition, soustraction, multiplication, division, mise en puissance",
+        "en": "Carry out the basic operations: add, subtract, multiply, divide, raise to a power"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können mit natürlichen, gebrochenen und rationalen Zahlen die vier Grundoperationen sowie das Potenzieren ausführen.",
+        "fr": "Les élèves peuvent effectuer les quatre opérations de base et la mise en puissance avec des nombres naturels, des fractions et des nombres rationnels.",
+        "en": "Students can carry out the four basic operations and exponentiation with natural numbers, fractions and rational numbers."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.1.C.1",
+      "parent_code": "MA.1.C",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Terme umformen und Gleichungen lösen",
+        "fr": "Transformer des termes et résoudre des équations",
+        "en": "Transform terms and solve equations"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Terme vergleichen und umformen, Gleichungen lösen sowie Gesetze und Regeln anwenden.",
+        "fr": "Les élèves peuvent comparer et transformer des termes, résoudre des équations et appliquer des lois et des règles.",
+        "en": "Students can compare and transform terms, solve equations, and apply laws and rules."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.2.A.1",
+      "parent_code": "MA.2.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Flächeninhalt, Kantenlängen, Oberfläche und Volumen berechnen",
+        "fr": "Calculer l'aire, les longueurs d'arête, la surface et le volume",
+        "en": "Calculate area, edge lengths, surface area and volume"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können den Flächeninhalt von Dreiecken und Vierecken sowie Kantenlängen, Oberfläche und Volumen von Quadern berechnen.",
+        "fr": "Les élèves peuvent calculer l'aire de triangles et de quadrilatères ainsi que les longueurs d'arête, la surface et le volume de pavés droits.",
+        "en": "Students can calculate the area of triangles and quadrilaterals, and the edge lengths, surface area and volume of cuboids."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.2.A.2",
+      "parent_code": "MA.2.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Den Satz des Pythagoras anwenden",
+        "fr": "Appliquer le théorème de Pythagore",
+        "en": "Apply the Pythagorean theorem"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können den Satz des Pythagoras anwenden, um fehlende Streckenlängen im rechtwinkligen Dreieck zu berechnen.",
+        "fr": "Les élèves peuvent appliquer le théorème de Pythagore pour calculer des longueurs manquantes dans un triangle rectangle.",
+        "en": "Students can apply the Pythagorean theorem to calculate missing lengths in a right-angled triangle."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.2.C.1",
+      "parent_code": "MA.2.C",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Ansichten und Netze darstellen",
+        "fr": "Représenter des vues et des développements",
+        "en": "Represent views and nets"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Figuren mit verschiedenen Techniken und Materialien darstellen, Ansichten (Grundriss, Aufriss, Seitenriss) zeichnen und Netze von Körpern entwerfen.",
+        "fr": "Les élèves peuvent représenter des figures à l'aide de différentes techniques et matériaux, dessiner des vues (plan, élévation, profil) et concevoir des développements de solides.",
+        "en": "Students can represent figures using various techniques and materials, draw views (plan, elevation, side view) and design nets of solids."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.A.2",
+      "parent_code": "MA.3.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Grössen schätzen, messen, umwandeln, runden und mit ihnen rechnen",
+        "fr": "Estimer, mesurer, convertir, arrondir des grandeurs et calculer avec elles",
+        "en": "Estimate, measure, convert, round and calculate with quantities"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Grössen wie Längen, Massen, Zeiten oder Geldbeträge schätzen, messen, umwandeln, runden und damit rechnen, einschliesslich Prozentangaben.",
+        "fr": "Les élèves peuvent estimer, mesurer, convertir, arrondir des grandeurs telles que longueurs, masses, durées ou montants, et effectuer des calculs avec elles, y compris les pourcentages.",
+        "en": "Students can estimate, measure, convert, round and calculate with quantities such as lengths, masses, durations or amounts, including percentages."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.A.3",
+      "parent_code": "MA.3.A",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Funktionale Zusammenhänge beschreiben und Funktionswerte bestimmen",
+        "fr": "Décrire des relations fonctionnelles et déterminer des valeurs de fonction",
+        "en": "Describe functional relationships and determine function values"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können funktionale Zusammenhänge, insbesondere proportionale Zusammenhänge, beschreiben und Funktionswerte bestimmen.",
+        "fr": "Les élèves peuvent décrire des relations fonctionnelles, en particulier des relations de proportionnalité, et déterminer des valeurs de fonction.",
+        "en": "Students can describe functional relationships, in particular proportional relationships, and determine function values."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.B.2",
+      "parent_code": "MA.3.B",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Sachsituationen zu Statistik, Kombinatorik und Wahrscheinlichkeit erforschen",
+        "fr": "Explorer des situations concrètes de statistique, combinatoire et probabilité",
+        "en": "Explore real-world situations in statistics, combinatorics and probability"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Sachsituationen zur Statistik, Kombinatorik und Wahrscheinlichkeit erforschen, Vermutungen formulieren und überprüfen.",
+        "fr": "Les élèves peuvent explorer des situations concrètes en lien avec la statistique, la combinatoire et les probabilités, formuler et vérifier des conjectures.",
+        "en": "Students can explore real-world situations involving statistics, combinatorics and probability, and formulate and check conjectures."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.C.1",
+      "parent_code": "MA.3.C",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Daten erheben, ordnen, darstellen und auswerten",
+        "fr": "Collecter, organiser, représenter et exploiter des données",
+        "en": "Collect, organise, represent and evaluate data"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Daten zu Statistik, Kombinatorik und Wahrscheinlichkeit erheben, ordnen, darstellen, auswerten und interpretieren.",
+        "fr": "Les élèves peuvent collecter, organiser, représenter, exploiter et interpréter des données de statistique, de combinatoire et de probabilité.",
+        "en": "Students can collect, organise, represent, evaluate and interpret data in statistics, combinatorics and probability."
+      }
+    },
+    {
+      "curriculum": "LP21",
+      "code": "MA.3.C.2",
+      "parent_code": "MA.3.C",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "de": "Sachsituationen mathematisieren und Ergebnisse interpretieren",
+        "fr": "Mathématiser des situations concrètes et interpréter les résultats",
+        "en": "Mathematise real-world situations and interpret results"
+      },
+      "description": {
+        "de": "Die Schülerinnen und Schüler können Sachsituationen mathematisieren, darstellen, berechnen sowie Ergebnisse interpretieren und überprüfen.",
+        "fr": "Les élèves peuvent mathématiser des situations concrètes, les représenter, effectuer des calculs, puis interpréter et vérifier les résultats.",
+        "en": "Students can mathematise real-world situations, represent and compute them, and then interpret and check the results."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 31",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Poser et résoudre des problèmes pour modéliser le plan et l'espace",
+        "de": "Poser et résoudre des problèmes pour modéliser le plan et l'espace (Espace/Géométrie)",
+        "en": "Posing and solving problems to model the plane and space (Space/Geometry)"
+      },
+      "description": {
+        "fr": "Résolution de problèmes géométriques en lien avec les figures et les transformations étudiées, dans l'axe thématique Espace.",
+        "de": "Lösen geometrischer Probleme im Zusammenhang mit untersuchten Figuren und Transformationen (thematische Achse Raum).",
+        "en": "Solving geometric problems related to the figures and transformations studied, in the Space thematic strand."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 32",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Poser et résoudre des problèmes pour construire et structurer des représentations des nombres réels",
+        "de": "Poser et résoudre des problèmes pour construire et structurer des représentations des nombres réels (Zahlen und Operationen)",
+        "en": "Posing and solving problems to construct and structure representations of real numbers (Numbers and Operations)"
+      },
+      "description": {
+        "fr": "Résolution de problèmes numériques en lien avec les ensembles de nombres travaillés, l'écriture de ces nombres et les opérations étudiées.",
+        "de": "Lösen numerischer Probleme im Zusammenhang mit den behandelten Zahlenmengen, ihrer Schreibweise und den untersuchten Operationen.",
+        "en": "Solving numerical problems related to the number sets studied, their notation, and the operations covered."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 33",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Résoudre des problèmes numériques et algébriques",
+        "de": "Résoudre des problèmes numériques et algébriques (Funktionen und Algebra)",
+        "en": "Solving numerical and algebraic problems (Functions and Algebra)"
+      },
+      "description": {
+        "fr": "Résolution de problèmes en lien avec les notions étudiées (fonctions, diagrammes, expressions algébriques et équations) et de problèmes de proportionnalité, dans l'axe thématique Fonctions et algèbre.",
+        "de": "Lösen von Problemen im Zusammenhang mit Funktionen, Diagrammen, algebraischen Ausdrücken, Gleichungen und Proportionalität (thematische Achse Funktionen und Algebra).",
+        "en": "Solving problems related to functions, diagrams, algebraic expressions, equations and proportionality, in the Functions and Algebra thematic strand."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 34",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Mobiliser la mesure pour comparer des grandeurs",
+        "de": "Mobiliser la mesure pour comparer des grandeurs (Grössen und Messen)",
+        "en": "Using measurement to compare quantities (Quantities and Measurement)"
+      },
+      "description": {
+        "fr": "Résolution de problèmes de mesurage en lien avec les grandeurs et les théorèmes étudiés, dans l'axe thématique Grandeurs et mesures.",
+        "de": "Lösen von Messproblemen im Zusammenhang mit untersuchten Grössen und Lehrsätzen (thematische Achse Grössen und Messen).",
+        "en": "Solving measurement problems related to the quantities and theorems studied, in the Quantities and Measurement thematic strand."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 35",
+      "parent_code": null,
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Modéliser des phénomènes naturels, techniques, sociaux ou des situations mathématiques",
+        "de": "Modéliser des phénomènes naturels, techniques, sociaux ou des situations mathématiques (Modellieren)",
+        "en": "Modelling natural, technical or social phenomena, or mathematical situations (Modelling)"
+      },
+      "description": {
+        "fr": "Axe transversal visant l'apprentissage des démarches de modélisation, développé à travers les autres axes thématiques et la résolution de problèmes de recherche.",
+        "de": "Übergreifende Achse zum Erlernen von Modellierungsverfahren, die in den anderen thematischen Achsen sowie bei der Bearbeitung von Forschungsproblemen entwickelt wird.",
+        "en": "A cross-cutting strand for learning modelling approaches, developed through the other thematic strands and through open-ended research problems."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 31.1",
+      "parent_code": "MSN 31",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Figures planes, transformations et isométries",
+        "de": "Ebene Figuren, Transformationen und Isometrien",
+        "en": "Plane figures, transformations and isometries"
+      },
+      "description": {
+        "fr": "Reconnaissance, dénomination, description et construction de figures planes et de leurs transformations (symétries, isométries).",
+        "de": "Erkennen, Benennen, Beschreiben und Konstruieren ebener Figuren und ihrer Transformationen (Symmetrien, Isometrien).",
+        "en": "Recognising, naming, describing and constructing plane figures and their transformations (symmetries, isometries)."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 31.2",
+      "parent_code": "MSN 31",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Théorème de Pythagore et relations métriques dans le triangle rectangle",
+        "de": "Satz des Pythagoras und metrische Beziehungen im rechtwinkligen Dreieck",
+        "en": "The Pythagorean theorem and metric relations in the right triangle"
+      },
+      "description": {
+        "fr": "Résolution de problèmes de mesurage utilisant le théorème de Pythagore pour déterminer des longueurs ou affirmer qu'un angle est droit.",
+        "de": "Lösen von Messproblemen mithilfe des Satzes des Pythagoras zur Bestimmung von Streckenlängen oder zum Nachweis eines rechten Winkels.",
+        "en": "Solving measurement problems using the Pythagorean theorem to determine lengths or to establish that an angle is right."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 31.3",
+      "parent_code": "MSN 31",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Solides : représentations, vues et développements",
+        "de": "Körper: Darstellungen, Ansichten und Netze",
+        "en": "Solids: representations, views and nets"
+      },
+      "description": {
+        "fr": "Représentation de solides usuels (prisme, cylindre, pyramide) par des vues et des développements.",
+        "de": "Darstellung gebräuchlicher Körper (Prisma, Zylinder, Pyramide) mittels Ansichten und Netzen.",
+        "en": "Representing common solids (prism, cylinder, pyramid) through views and nets."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 32.1",
+      "parent_code": "MSN 32",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Nombres réels : entiers, décimaux, fractions et nombres relatifs",
+        "de": "Reelle Zahlen: ganze Zahlen, Dezimalzahlen, Brüche und relative Zahlen",
+        "en": "Real numbers: integers, decimals, fractions and relative numbers"
+      },
+      "description": {
+        "fr": "Connaissance et utilisation de différentes écritures d'un même nombre, comparaison et représentation des nombres réels, y compris les fractions et les nombres relatifs.",
+        "de": "Kenntnis und Verwendung verschiedener Schreibweisen derselben Zahl, Vergleich und Darstellung reeller Zahlen, einschliesslich Brüche und relativer Zahlen.",
+        "en": "Knowing and using different ways of writing the same number, comparing and representing real numbers, including fractions and relative numbers."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 32.2",
+      "parent_code": "MSN 32",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Propriétés des nombres et des opérations pour établir des preuves",
+        "de": "Eigenschaften von Zahlen und Operationen zur Beweisführung",
+        "en": "Properties of numbers and operations used to build proofs"
+      },
+      "description": {
+        "fr": "Utilisation des propriétés des nombres et des opérations pour organiser des calculs, donner des estimations et établir des preuves.",
+        "de": "Verwendung der Eigenschaften von Zahlen und Operationen, um Berechnungen zu organisieren, Schätzungen abzugeben und Beweise zu führen.",
+        "en": "Using the properties of numbers and operations to organise calculations, make estimates and build proofs."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 33.1",
+      "parent_code": "MSN 33",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Algèbre — calcul littéral",
+        "de": "Algebra — Termrechnen",
+        "en": "Algebra — literal calculation"
+      },
+      "description": {
+        "fr": "Connaissance et utilisation des règles et conventions d'écriture algébrique, élaboration et manipulation d'expressions littérales.",
+        "de": "Kenntnis und Anwendung der Regeln und Konventionen algebraischer Schreibweise, Bildung und Umformung von Termen.",
+        "en": "Knowing and applying the rules and conventions of algebraic notation, and constructing and manipulating literal expressions."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 33.2",
+      "parent_code": "MSN 33",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Algèbre — équations et systèmes d'équations",
+        "de": "Algebra — Gleichungen und Gleichungssysteme",
+        "en": "Algebra — equations and systems of equations"
+      },
+      "description": {
+        "fr": "Traduction d'une situation par une équation, résolution d'équations du premier degré et de systèmes d'équations à l'aide des règles d'équivalence.",
+        "de": "Übersetzen einer Situation in eine Gleichung, Lösen von Gleichungen ersten Grades und von Gleichungssystemen mithilfe von Äquivalenzregeln.",
+        "en": "Translating a situation into an equation, and solving first-degree equations and systems of equations using equivalence rules."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 33.3",
+      "parent_code": "MSN 33",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Fonctions et proportionnalité",
+        "de": "Funktionen und Proportionalität",
+        "en": "Functions and proportionality"
+      },
+      "description": {
+        "fr": "Reconnaissance de situations pouvant être modélisées par des fonctions, résolution de problèmes de proportionnalité (échelle, pourcentage, pente, vitesse).",
+        "de": "Erkennen von Situationen, die durch Funktionen modelliert werden können, Lösen von Proportionalitätsproblemen (Massstab, Prozent, Steigung, Geschwindigkeit).",
+        "en": "Recognising situations that can be modelled by functions, and solving proportionality problems (scale, percentage, slope, speed)."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 33.4",
+      "parent_code": "MSN 33",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Diagrammes : lecture, interprétation et réalisation",
+        "de": "Diagramme: Lesen, Interpretieren und Erstellen",
+        "en": "Diagrams: reading, interpreting and creating"
+      },
+      "description": {
+        "fr": "Lecture de données et interprétation de diagrammes, réalisation de diagrammes cartésiens, en colonnes ou circulaires.",
+        "de": "Ablesen von Daten und Interpretieren von Diagrammen, Erstellen von kartesischen, Säulen- oder Kreisdiagrammen.",
+        "en": "Reading data and interpreting diagrams, and creating Cartesian, bar or pie charts."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 34.1",
+      "parent_code": "MSN 34",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Aires et périmètres de figures planes",
+        "de": "Flächeninhalte und Umfänge ebener Figuren",
+        "en": "Areas and perimeters of plane figures"
+      },
+      "description": {
+        "fr": "Calcul de l'aire et du périmètre de figures planes usuelles (rectangle, triangle, trapèze, cercle) dans des situations de mesurage.",
+        "de": "Berechnung von Flächeninhalt und Umfang gebräuchlicher ebener Figuren (Rechteck, Dreieck, Trapez, Kreis) in Messsituationen.",
+        "en": "Calculating the area and perimeter of common plane figures (rectangle, triangle, trapezoid, circle) in measurement situations."
+      }
+    },
+    {
+      "curriculum": "PER",
+      "code": "MSN 34.2",
+      "parent_code": "MSN 34",
+      "subject": "mathematics",
+      "cycle": 3,
+      "labels": {
+        "fr": "Volumes et aires de solides",
+        "de": "Volumen und Oberflächen von Körpern",
+        "en": "Volumes and surface areas of solids"
+      },
+      "description": {
+        "fr": "Calcul du volume et de l'aire de solides usuels (pavé droit, cylindre, prisme) dans des situations de mesurage.",
+        "de": "Berechnung von Volumen und Oberfläche gebräuchlicher Körper (Quader, Zylinder, Prisma) in Messsituationen.",
+        "en": "Calculating the volume and surface area of common solids (cuboid, cylinder, prism) in measurement situations."
+      }
+    }
+  ]
+}

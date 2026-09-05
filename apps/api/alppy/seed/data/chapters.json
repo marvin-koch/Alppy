@@ -1,0 +1,54 @@
+{
+  "chapters": [
+    {
+      "key": "fractions",
+      "subject": "mathematics",
+      "labels": { "fr": "Fractions", "de": "Brüche", "en": "Fractions" },
+      "competency_codes": ["MSN 32.1", "MA.1.A.3", "MA.1.A.2"]
+    },
+    {
+      "key": "proportionality",
+      "subject": "mathematics",
+      "labels": { "fr": "Proportionnalité", "de": "Proportionalität", "en": "Proportionality" },
+      "competency_codes": ["MSN 33.3", "MA.3.A.3"]
+    },
+    {
+      "key": "linear_equations",
+      "subject": "mathematics",
+      "labels": { "fr": "Équations linéaires", "de": "Lineare Gleichungen", "en": "Linear equations" },
+      "competency_codes": ["MSN 33.2", "MA.1.C.1"]
+    },
+    {
+      "key": "plane_geometry_pythagoras",
+      "subject": "mathematics",
+      "labels": {
+        "fr": "Géométrie plane et théorème de Pythagore",
+        "de": "Ebene Geometrie und Satz des Pythagoras",
+        "en": "Plane geometry and the Pythagorean theorem"
+      },
+      "competency_codes": ["MSN 31.2", "MSN 31.1", "MA.2.A.2", "MA.2.C.1"]
+    },
+    {
+      "key": "areas_volumes",
+      "subject": "mathematics",
+      "labels": { "fr": "Aires et volumes", "de": "Flächen und Volumen", "en": "Areas and volumes" },
+      "competency_codes": ["MSN 34.1", "MSN 34.2", "MSN 31.3", "MA.2.A.1"]
+    },
+    {
+      "key": "data_probability",
+      "subject": "mathematics",
+      "labels": {
+        "fr": "Statistiques et probabilités",
+        "de": "Daten und Wahrscheinlichkeit",
+        "en": "Data and probability"
+      },
+      "competency_codes": ["MSN 33.4", "MA.3.B.2", "MA.3.C.1"]
+    },
+    {
+      "key": "percentages",
+      "subject": "mathematics",
+      "labels": { "fr": "Pourcentages", "de": "Prozentrechnung", "en": "Percentages" },
+      "competency_codes": ["MA.3.C.2", "MA.3.A.2", "MSN 33.3"]
+    }
+  ]
+}
