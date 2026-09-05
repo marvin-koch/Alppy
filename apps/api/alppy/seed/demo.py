@@ -58,26 +58,30 @@ class StudentProfile:
 
 
 # A deliberate spread, so the matrix shows all five bands and the adaptive
-# feature has something real to target.
+# feature has real targets. Calibrated against the band thresholds rather than
+# picked by feel: the median student sits around 0.82, which lands in "to
+# review" once the recency factor is applied, a few reach "solid", and a real
+# tail sits in "fragile"/"fading" so there is something to differentiate for.
+# A class whose median reads "fading" would be a broken demo, not a candid one.
 DEMO_PROFILES: dict[str, StudentProfile] = {
-    "Léa": StudentProfile(0.94, 0.9, 1.0, 0.02),
-    "Noah": StudentProfile(0.62, 0.5, 0.9, 0.18, ("fractions",)),
-    "Elif": StudentProfile(0.88, 0.85, 1.0, 0.05),
-    "Mathis": StudentProfile(0.45, 0.4, 0.8, 0.10, ("fractions", "linear-equations")),
-    "Sofia": StudentProfile(0.79, 0.75, 1.0, 0.0),
-    "Jonas": StudentProfile(0.55, 0.55, 0.7, -0.12, ("proportionality",)),
-    "Amélie": StudentProfile(0.91, 0.9, 1.0, 0.0),
-    "Luca": StudentProfile(0.68, 0.6, 0.95, 0.08),
-    "Nora": StudentProfile(0.83, 0.8, 1.0, 0.04),
-    "Théo": StudentProfile(0.38, 0.45, 0.6, 0.05, ("fractions", "areas-volumes")),
-    "Ines": StudentProfile(0.86, 0.85, 1.0, -0.02),
-    "Robin": StudentProfile(0.71, 0.5, 0.9, 0.0, ("data-probability",)),
-    "Clara": StudentProfile(0.96, 0.95, 1.0, 0.0),
-    "Adrien": StudentProfile(0.58, 0.5, 0.85, 0.15),
-    "Maya": StudentProfile(0.74, 0.7, 1.0, 0.06),
-    "Yanis": StudentProfile(0.49, 0.45, 0.75, -0.08, ("linear-equations",)),
-    "Julie": StudentProfile(0.89, 0.88, 1.0, 0.03),
-    "Samuel": StudentProfile(0.66, 0.6, 0.9, 0.12, ("proportionality",)),
+    "Léa": StudentProfile(0.96, 0.92, 1.0, 0.02),
+    "Noah": StudentProfile(0.74, 0.55, 0.9, 0.18, ("fractions",)),
+    "Elif": StudentProfile(0.93, 0.88, 1.0, 0.05),
+    "Mathis": StudentProfile(0.58, 0.45, 0.8, 0.10, ("fractions", "linear-equations")),
+    "Sofia": StudentProfile(0.87, 0.78, 1.0, 0.0),
+    "Jonas": StudentProfile(0.68, 0.58, 0.7, -0.12, ("proportionality",)),
+    "Amélie": StudentProfile(0.94, 0.9, 1.0, 0.0),
+    "Luca": StudentProfile(0.80, 0.62, 0.95, 0.08),
+    "Nora": StudentProfile(0.90, 0.83, 1.0, 0.04),
+    "Théo": StudentProfile(0.52, 0.48, 0.6, 0.05, ("fractions", "areas-volumes")),
+    "Ines": StudentProfile(0.92, 0.87, 1.0, -0.02),
+    "Robin": StudentProfile(0.82, 0.52, 0.9, 0.0, ("data-probability",)),
+    "Clara": StudentProfile(0.97, 0.95, 1.0, 0.0),
+    "Adrien": StudentProfile(0.71, 0.55, 0.85, 0.15),
+    "Maya": StudentProfile(0.85, 0.72, 1.0, 0.06),
+    "Yanis": StudentProfile(0.62, 0.48, 0.75, -0.08, ("linear-equations",)),
+    "Julie": StudentProfile(0.93, 0.89, 1.0, 0.03),
+    "Samuel": StudentProfile(0.78, 0.62, 0.9, 0.12, ("proportionality",)),
 }
 
 # Three weeks of lessons, most recent last. Each is (days_ago, chapter_key).

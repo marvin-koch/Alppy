@@ -246,9 +246,7 @@ def _pack_page(
     for block in blocks:
         for i, piece in enumerate(_split_oversized(block.text, limit=max_chars)):
             opens_exercise = block.starts_exercise and i == 0
-            if buffer and opens_exercise and len(buffer) >= min_chars:
-                flush()
-            elif buffer and len(buffer) + len(piece) + 2 > max_chars:
+            if (buffer and opens_exercise and len(buffer) >= min_chars) or (buffer and len(buffer) + len(piece) + 2 > max_chars):
                 flush()
 
             if not buffer:

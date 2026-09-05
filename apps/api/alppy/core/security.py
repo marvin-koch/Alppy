@@ -18,7 +18,7 @@ from dataclasses import dataclass
 from typing import Any, Final
 
 from argon2 import PasswordHasher
-from argon2.exceptions import InvalidHashError, VerifyMismatchError, VerificationError
+from argon2.exceptions import InvalidHashError, VerificationError, VerifyMismatchError
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 
 from alppy.core.config import Settings, get_settings

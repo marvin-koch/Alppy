@@ -36,11 +36,12 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy.orm import Session
+
 from alppy.core.logging import get_logger
 from alppy.db.session import SessionLocal
 from alppy.models import Job
 from alppy.models.enums import JobStatus
-from sqlalchemy.orm import Session
 
 log = get_logger(__name__)
 
@@ -56,6 +57,19 @@ def _make_progress_cb(db: Session, job: Job) -> ProgressCB:
         db.commit()
 
     return _progress
+
+
+def _uuid_from(job: Job, key: str) -> UUID:
+    """Pull an id out of the job payload, failing loudly if it is missing.
+
+    The payload is written by the request handler that enqueued the job; a
+    missing key is a programming error, and a job that silently does nothing is
+    worse than one that fails visibly in the teacher's job list.
+    """
+    raw = (job.payload or {}).get(key)
+    if not raw:
+        raise ValueError(f"job {job.id} ({job.kind}) has no {key} in its payload")
+    return UUID(str(raw))
 
 
 def _run_job(job_id: str, fn: PipelineFn) -> None:
@@ -112,7 +126,10 @@ async def ingest_source(ctx: dict[str, Any], job_id: str) -> None:
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
         from alppy.ingest.pipeline import ingest_source as run_ingest_source
 
-        return run_ingest_source(db, job, on_progress=on_progress)  # type: ignore[no-any-return]
+        source_id = _uuid_from(job, "source_id")
+        run_ingest_source(db, source_id=source_id)
+        on_progress(1.0, "indexed")
+        return {"source_id": str(source_id)}
 
     await asyncio.to_thread(_run_job, job_id, _call)
 
@@ -125,7 +142,11 @@ async def render_sheet(ctx: dict[str, Any], job_id: str) -> None:
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
         from alppy.sheets.render import render_sheet_pdfs
 
-        return render_sheet_pdfs(db, job, on_progress=on_progress)  # type: ignore[no-any-return]
+        sheet_id = _uuid_from(job, "sheet_id")
+        blank_key, answer_key = render_sheet_pdfs(db, sheet_id=sheet_id)
+        on_progress(1.0, "sheet and answer key rendered")
+        # Always two documents: the blank sheet and its answer key.
+        return {"blank_pdf_key": blank_key, "answer_key_pdf_key": answer_key}
 
     await asyncio.to_thread(_run_job, job_id, _call)
 
@@ -136,9 +157,15 @@ async def process_scan(ctx: dict[str, Any], job_id: str) -> None:
     ``docs/architecture.md`` Flow 3."""
 
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
-        from alppy.services.scan_service import process_scan as run_process_scan
+        from alppy.services.scan_processing import process_scan as run_process_scan
+        from alppy.storage import get_storage
 
-        return run_process_scan(db, job, on_progress=on_progress)  # type: ignore[no-any-return]
+        return run_process_scan(
+            db,
+            get_storage(),
+            scan_id=_uuid_from(job, "scan_id"),
+            on_progress=on_progress,
+        )
 
     await asyncio.to_thread(_run_job, job_id, _call)
 
@@ -149,8 +176,13 @@ async def generate_adaptive(ctx: dict[str, Any], job_id: str) -> None:
     ``docs/architecture.md`` Flow 4."""
 
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
-        from alppy.services.adaptive_service import generate_adaptive as run_generate_adaptive
+        from alppy.sheets.render import render_adaptive_batch
 
-        return run_generate_adaptive(db, job, on_progress=on_progress)  # type: ignore[no-any-return]
+        sheet_id = _uuid_from(job, "sheet_id")
+        # One PDF for the whole class, one .print-page per physical page, every
+        # page carrying its own header and UID.
+        key = render_adaptive_batch(db, sheet_id=sheet_id)
+        on_progress(1.0, "batch rendered")
+        return {"batch_pdf_key": key}
 
     await asyncio.to_thread(_run_job, job_id, _call)

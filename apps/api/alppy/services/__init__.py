@@ -80,11 +80,11 @@ def teacher_out(teacher: Teacher) -> TeacherOut:
         last_name=teacher.last_name,
         school_id=teacher.school_id,
         preferences=TeacherPreferences(
-            locale=str(teacher.locale),  # type: ignore[arg-type]
-            theme=teacher.theme,  # type: ignore[arg-type]
-            contrast=teacher.contrast,  # type: ignore[arg-type]
-            motion=teacher.motion,  # type: ignore[arg-type]
-            calm=teacher.calm,  # type: ignore[arg-type]
+            locale=str(teacher.locale),
+            theme=teacher.theme,
+            contrast=teacher.contrast,
+            motion=teacher.motion,
+            calm=teacher.calm,
         ),
     )
 

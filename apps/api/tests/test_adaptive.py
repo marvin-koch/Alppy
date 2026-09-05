@@ -14,9 +14,10 @@ regresses:
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import pytest
+from test_retrieval import ROSTER, World, build_world, snapshot
 
 from alppy.ai.base import ChatRequest, ChatResponse
 from alppy.ai.client import AiClient
@@ -25,7 +26,6 @@ from alppy.ai.scrub import PiiLeakError, assert_no_pii, to_ref
 from alppy.models import Exercise
 from alppy.models.enums import ExerciseOrigin, MasteryBand
 from alppy.services import adaptive_service, retrieval
-from test_retrieval import ROSTER, World, build_world, snapshot
 
 
 @pytest.fixture
@@ -457,7 +457,7 @@ def test_ensure_printable_accepts_approved_and_textbook_items(world: World) -> N
         language="fr",
         statement="Un item genere puis valide par l'enseignant.",
         difficulty=2,
-        approved_at=datetime.now(timezone.utc),
+        approved_at=datetime.now(UTC),
     )
     adaptive_service.ensure_printable([textbook, approved])
 

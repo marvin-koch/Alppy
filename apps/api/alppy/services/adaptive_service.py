@@ -42,7 +42,7 @@ import math
 import uuid
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
@@ -194,7 +194,7 @@ def approve_exercises(
     """Teacher approval. The only way an AI-generated item becomes printable."""
     if not exercise_ids:
         return 0
-    stamp = at or datetime.now(timezone.utc)
+    stamp = at or datetime.now(UTC)
     rows = list(
         db.scalars(
             select(Exercise).where(
@@ -260,7 +260,7 @@ def target_difficulty(score: float, band: MasteryBand) -> int:
     competency is practised at level, which is where the struggle actually is.
     """
     bounded = max(0.0, min(1.0, score))
-    level = 1 + int(math.floor(3.0 * bounded + 0.5))  # 1..4, half-up
+    level = 1 + math.floor(3.0 * bounded + 0.5)  # 1..4, half-up
     if band is MasteryBand.FADING:
         level -= 1
     return max(1, min(5, level))
@@ -291,7 +291,7 @@ def _plan_for_student(
     difficulty = (
         FALLBACK_DIFFICULTY
         if diagnostic
-        else int(round(sum(g.target_difficulty for g in gaps) / len(gaps)))
+        else round(sum(g.target_difficulty for g in gaps) / len(gaps))
     )
     intent = ", ".join(labels.values()) if labels else None
 
@@ -433,7 +433,7 @@ def _generate(
             temperature=GENERATION_TEMPERATURE,
         )
         payload = parse_json_response(response.text)
-    except Exception as exc:  # noqa: BLE001 - a sheet short of items beats no sheet
+    except Exception as exc:
         log.warning(
             "adaptive.generate.failed",
             student_uid=str(ref),
@@ -589,8 +589,15 @@ def _generated_proposal(
 
 
 def _clamp(value: object, *, default: int) -> int:
+    """Coerce a model-supplied difficulty into 1..5.
+
+    The value arrives from parsed JSON, so it is genuinely `object`: a model can
+    return "3", 3, 3.0 or nonsense, and none of those should crash a sheet.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return max(1, min(5, default))
     try:
-        return max(1, min(5, int(value)))  # type: ignore[arg-type]
+        return max(1, min(5, int(float(value))))
     except (TypeError, ValueError):
         return max(1, min(5, default))
 

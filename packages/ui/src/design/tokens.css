@@ -145,7 +145,10 @@
   --border-w-field: 2px;
 
   /* — Elevation: a solid edge, never a blur alone. — */
-  --shadow-card: 0 2px 0 0 var(--c-line), 0 10px 30px -12px rgb(27 23 53 / 18%);
+  /* The ambient half of the card shadow, split out so a tinted card can keep
+     its own solid edge and still reuse the blur without writing a colour. */
+  --shadow-ambient: 0 10px 30px -12px rgb(27 23 53 / 18%);
+  --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(27 23 53 / 24%);
   --shadow-pop: 0 20px 50px -12px rgb(27 23 53 / 28%);
   --focus-ring: 0 0 0 2px var(--c-primary-500), 0 0 0 6px var(--c-primary-100);
@@ -245,7 +248,8 @@
 
     --c-selection-ink: var(--c-ink-900);
 
-    --shadow-card: 0 2px 0 0 var(--c-line), 0 10px 30px -12px rgb(0 0 0 / 55%);
+    --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+    --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
     --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
     --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
 
@@ -298,7 +302,8 @@
 
   --c-selection-ink: var(--c-ink-900);
 
-  --shadow-card: 0 2px 0 0 var(--c-line), 0 10px 30px -12px rgb(0 0 0 / 55%);
+  --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+  --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
   --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
 
@@ -353,6 +358,7 @@
   --border-w: 2px;
   --border-w-field: 2px;
 
+  --shadow-ambient: none;
   --shadow-card: 0 2px 0 0 var(--c-line);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong);
   --shadow-pop: 0 4px 0 0 var(--c-line);

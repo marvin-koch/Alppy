@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, login, make_tenant
 

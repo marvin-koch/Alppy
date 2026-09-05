@@ -13,7 +13,7 @@ import json
 import math
 import re
 
-from alppy.ai.base import ChatRequest, ChatResponse
+from alppy.ai.base import ChatProvider, ChatRequest, ChatResponse, EmbeddingsProvider
 from alppy.core.config import get_settings
 
 
@@ -41,10 +41,7 @@ def _offline_item(seed: str, i: int, language: str) -> dict[str, object]:
     a = int(seed[i * 2 : i * 2 + 2], 16) % 9 + 2
     b = int(seed[i * 2 + 4 : i * 2 + 6], 16) % 9 + 2
     product = a * b
-    if language == "de":
-        statement = f"Berechne {a} × {b}."
-    else:
-        statement = f"Calcule {a} × {b}."
+    statement = f"Berechne {a} × {b}." if language == "de" else f"Calcule {a} × {b}."
     distractors = [product + a, product - b, product + 1]
     return {
         "type": "mcq",
@@ -122,13 +119,18 @@ class HashEmbeddingsProvider:
         return [v / norm for v in vec]
 
 
-def build_chat_provider():  # type: ignore[no-untyped-def]
+def build_chat_provider() -> ChatProvider:
+    """Anthropic when a key is configured, the deterministic echo otherwise.
+
+    The fallback is not a stub: it is what lets `docker compose up` run the
+    whole product with no account anywhere.
+    """
     s = get_settings()
     if s.ai_chat_provider == "anthropic" and s.anthropic_api_key:
         return AnthropicChatProvider(s.anthropic_api_key, s.ai_chat_model)
     return EchoChatProvider()
 
 
-def build_embeddings_provider():  # type: ignore[no-untyped-def]
+def build_embeddings_provider() -> EmbeddingsProvider:
     s = get_settings()
     return HashEmbeddingsProvider(s.embedding_dim)

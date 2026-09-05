@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import PASSWORD, Tenant, login
 

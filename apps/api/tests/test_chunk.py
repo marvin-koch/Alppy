@@ -31,6 +31,7 @@ from alppy.ingest.extract import (
     extract_pdf,
 )
 
+
 # --------------------------------------------------------------------------
 # A minimal PDF writer, so the extractor is tested against real PDF bytes
 # rather than against a mock of itself.

@@ -15,6 +15,8 @@ from __future__ import annotations
 
 from typing import Any, ClassVar
 
+from arq.connections import RedisSettings
+
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
 from alppy.worker.tasks import (
@@ -23,7 +25,6 @@ from alppy.worker.tasks import (
     process_scan,
     render_sheet,
 )
-from arq.connections import RedisSettings
 
 log = get_logger(__name__)
 

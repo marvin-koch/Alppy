@@ -96,19 +96,13 @@ class ExtractedDocument:
 # decide the outcome on its own.
 STOPWORDS: dict[str, frozenset[str]] = {
     "fr": frozenset(
-        """le la les de des du un une et est sont dans pour que qui sur avec au aux
-        ne pas plus ou par ce cette son sa ses nous vous ils elles a en il elle
-        calcule quelle quel combien exercice réponse fraction nombre""".split()
+        ["le", "la", "les", "de", "des", "du", "un", "une", "et", "est", "sont", "dans", "pour", "que", "qui", "sur", "avec", "au", "aux", "ne", "pas", "plus", "ou", "par", "ce", "cette", "son", "sa", "ses", "nous", "vous", "ils", "elles", "a", "en", "il", "elle", "calcule", "quelle", "quel", "combien", "exercice", "réponse", "fraction", "nombre"]
     ),
     "de": frozenset(
-        """der die das den dem des ein eine einer und ist sind nicht mit für auf
-        zu von im in am als auch oder aber sich wird werden bei nach berechne
-        welche welcher wie viel aufgabe antwort bruch zahl""".split()
+        ["der", "die", "das", "den", "dem", "des", "ein", "eine", "einer", "und", "ist", "sind", "nicht", "mit", "für", "auf", "zu", "von", "im", "in", "am", "als", "auch", "oder", "aber", "sich", "wird", "werden", "bei", "nach", "berechne", "welche", "welcher", "wie", "viel", "aufgabe", "antwort", "bruch", "zahl"]
     ),
     "en": frozenset(
-        """the of and is are to in for with that on this be as by an it from at
-        or not have has which what how many calculate exercise answer
-        fraction number""".split()
+        ["the", "of", "and", "is", "are", "to", "in", "for", "with", "that", "on", "this", "be", "as", "by", "an", "it", "from", "at", "or", "not", "have", "has", "which", "what", "how", "many", "calculate", "exercise", "answer", "fraction", "number"]
     ),
 }
 
@@ -157,7 +151,7 @@ def _extract_with_pdfplumber(data: bytes) -> list[PageText] | None:
                 PageText(page=i + 1, text=_normalise(page.extract_text() or ""))
                 for i, page in enumerate(pdf.pages)
             ]
-    except Exception as exc:  # noqa: BLE001 - fall back to pypdf, don't fail
+    except Exception as exc:
         log.info("ingest.pdfplumber.failed", error=type(exc).__name__)
         return None
 
@@ -176,7 +170,7 @@ def _extract_with_pypdf(data: bytes) -> list[PageText]:
     for i, page in enumerate(pages):
         try:
             raw = page.extract_text() or ""
-        except Exception:  # noqa: BLE001 - one broken page must not lose the rest
+        except Exception:
             raw = ""
         out.append(PageText(page=i + 1, text=_normalise(raw)))
     return out

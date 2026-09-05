@@ -290,7 +290,9 @@ def paginate(
         if bubbles_full or too_tall:
             flush()
 
-        number += 1
+        # Not enumerate(): the counter advances per *placed* item, and a page
+        # flush above can restart the loop body without consuming a number.
+        number += 1  # noqa: SIM113
         current.append(
             PlacedItem(
                 item=item,

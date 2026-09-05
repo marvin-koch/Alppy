@@ -9,8 +9,8 @@ from alppy.sheets import layout as L
 
 def test_frame_derives_from_fiducial_centres() -> None:
     assert L.FRAME_X0_MM == L.MARGIN_MM + L.FIDUCIAL_MM / 2
-    assert L.FRAME_W_MM == pytest.approx(L.PAGE_W_MM - 2 * L.FRAME_X0_MM)
-    assert L.FRAME_H_MM == pytest.approx(L.PAGE_H_MM - 2 * L.FRAME_Y0_MM)
+    assert pytest.approx(L.PAGE_W_MM - 2 * L.FRAME_X0_MM) == L.FRAME_W_MM
+    assert pytest.approx(L.PAGE_H_MM - 2 * L.FRAME_Y0_MM) == L.FRAME_H_MM
 
 
 def test_all_four_fiducials_are_inside_the_page() -> None:

@@ -8,12 +8,12 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from test_api_fixtures import *  # noqa: F403
+from test_api_fixtures import Tenant, login, make_exercise
 
 from alppy.models import Attempt, Competency, MasterySnapshot
 from alppy.models.enums import CurriculumKind
 from alppy.services.mastery_service import recompute_for_students
-from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import Tenant, login, make_exercise
 
 
 def _second_competency(db: Session) -> Competency:

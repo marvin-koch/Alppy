@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
-
-from alppy.sheets.layout import LAYOUT_VERSION
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, login, make_exercise
+
+from alppy.sheets.layout import LAYOUT_VERSION
 
 
 def _sheet_payload(tenant: Tenant, exercise_ids: list[str]) -> dict[str, object]:

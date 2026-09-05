@@ -147,7 +147,7 @@ def find_fiducials(image: Image) -> npt.NDArray[np.float32]:
         approx = cv2.approxPolyDP(c, 0.04 * peri, True)
         if len(approx) != 4 or not cv2.isContourConvex(approx):
             continue
-        x, y, bw, bh = cv2.boundingRect(approx)
+        _x, _y, bw, bh = cv2.boundingRect(approx)
         if bh == 0:
             continue
         aspect = bw / bh

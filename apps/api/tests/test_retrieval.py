@@ -15,7 +15,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta, timezone
+from datetime import UTC, date, datetime, timedelta
 
 import pytest
 from pgvector.sqlalchemy import Vector
@@ -25,8 +25,8 @@ from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session
 
 from alppy.ai.client import AiClient
-from alppy.db.base import Base
 from alppy.core.uid import format_uid
+from alppy.db.base import Base
 from alppy.models import (
     Chapter,
     Class,
@@ -189,11 +189,11 @@ def snapshot(
         school_id=world.school_id,
         student_id=world.student(student_uid),
         competency_id=world.competency(competency_code),
-        computed_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+        computed_at=datetime.now(UTC) - timedelta(days=days_ago),
         score=score,
         band=band,
         attempts_count=attempts,
-        last_attempt_at=datetime.now(timezone.utc) - timedelta(days=days_ago),
+        last_attempt_at=datetime.now(UTC) - timedelta(days=days_ago),
     )
     world.db.add(row)
     world.db.flush()
@@ -331,7 +331,7 @@ def test_unapproved_ai_exercises_are_never_proposed_for_a_sheet(world: World) ->
 
     assert pending.id not in ids()
 
-    pending.approved_at = datetime.now(timezone.utc)
+    pending.approved_at = datetime.now(UTC)
     world.db.commit()
     assert pending.id in ids()
 

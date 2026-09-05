@@ -20,7 +20,7 @@ that installs it. It is a distinct, catchable type precisely so a caller can tel
 from __future__ import annotations
 
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
@@ -139,7 +139,7 @@ def store_pdf(payload: bytes, key: str) -> str:
     same string, which is what goes into ``Sheet.blank_pdf_key`` — so the swap
     never rewrites a stored row."""
     try:
-        from alppy import storage  # type: ignore[attr-defined]
+        from alppy import storage
     except ImportError:
         storage = None  # type: ignore[assignment]
 
@@ -316,7 +316,7 @@ def _stamp(sheet: Any, data: SheetData) -> None:
     """Record what was printed, and with which layout. A scan is always read
     against the layout version its sheet was printed with."""
     sheet.layout_version = L.LAYOUT_VERSION
-    sheet.rendered_at = datetime.now(timezone.utc)
+    sheet.rendered_at = datetime.now(UTC)
 
     per_copy: dict[str, int] = {}
     for physical in physical_pages(data):

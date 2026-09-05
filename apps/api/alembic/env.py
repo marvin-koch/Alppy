@@ -12,10 +12,11 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
+from sqlalchemy import engine_from_config, pool
+
 from alembic import context
 from alppy.core.config import get_settings
 from alppy.models import Base
-from sqlalchemy import engine_from_config, pool
 
 # Alembic Config object, giving access to values in alembic.ini.
 config = context.config

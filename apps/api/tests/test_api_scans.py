@@ -8,11 +8,11 @@ from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
+from test_api_fixtures import *  # noqa: F403
+from test_api_fixtures import PDF_BYTES, PNG_BYTES, Tenant, login, make_exercise
 
 from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance
 from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus
-from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import PDF_BYTES, PNG_BYTES, Tenant, login, make_exercise
 
 CORRECT_INDEX = 1
 
@@ -269,7 +269,7 @@ def test_a_correction_records_who_and_when(
 ) -> None:
     login(client, tenant.teacher.email)
     ctx = _build_scanned_sheet(client, tenant, db)
-    detection_id = list(ctx["detection_ids"])[0]  # type: ignore[arg-type]
+    detection_id = next(iter(ctx["detection_ids"]))  # type: ignore[arg-type]
 
     client.patch(
         f"/api/v1/scans/{ctx['scan_id']}/detections/{detection_id}",

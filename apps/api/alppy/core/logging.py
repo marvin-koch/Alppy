@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 import sys
 import uuid
+from collections.abc import MutableMapping
 from contextvars import ContextVar
 from typing import Any
 
@@ -18,8 +19,9 @@ def new_request_id() -> str:
 
 
 def _add_request_id(
-    _logger: Any, _name: str, event_dict: dict[str, Any]
-) -> dict[str, Any]:
+    _logger: Any, _name: str, event_dict: MutableMapping[str, Any]
+) -> MutableMapping[str, Any]:
+    """Bind the request id onto every line, so one request is greppable."""
     event_dict["request_id"] = request_id_var.get()
     return event_dict
 

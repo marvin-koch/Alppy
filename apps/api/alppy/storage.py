@@ -142,7 +142,7 @@ class S3Storage:
     def get_bytes(self, key: str) -> bytes:
         try:
             obj = self._client.get_object(Bucket=self._bucket, Key=key)
-        except Exception as exc:  # noqa: BLE001 - botocore raises client-specific errors
+        except Exception as exc:
             raise StorageError(f"no such object: {key!r}") from exc
         body: bytes = obj["Body"].read()
         return body
@@ -150,7 +150,7 @@ class S3Storage:
     def exists(self, key: str) -> bool:
         try:
             self._client.head_object(Bucket=self._bucket, Key=key)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         return True
 
@@ -163,7 +163,7 @@ class S3Storage:
     def healthy(self) -> bool:
         try:
             self._client.head_bucket(Bucket=self._bucket)
-        except Exception:  # noqa: BLE001
+        except Exception:
             return False
         return True
 

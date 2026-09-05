@@ -38,7 +38,7 @@ class SyntheticSheet:
 
 
 def _mm(v: float) -> int:
-    return int(round(v * PX_PER_MM))
+    return round(v * PX_PER_MM)
 
 
 def render_page(
@@ -88,7 +88,7 @@ def render_page(
         for oi in range(n_options):
             cx, cy = L.bubble_centre_mm(item_index, oi)
             centre = (_mm(cx), _mm(cy))
-            radius = int(round(L.BUBBLE_D_MM / 2.0 * PX_PER_MM))
+            radius = round(L.BUBBLE_D_MM / 2.0 * PX_PER_MM)
             cv2.circle(img, centre, radius, INK, thickness=1)
             if marked[item_index] == oi:
                 shade = int(PAPER * (1.0 - pencil))

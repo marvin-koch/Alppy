@@ -175,7 +175,7 @@ def _load_subjects(
     out: dict[str, uuid.UUID] = {}
     created = 0
     for key in keys:
-        labels = SUBJECT_LABELS.get(key) or {loc: key for loc in ("fr", "de", "en")}
+        labels = SUBJECT_LABELS.get(key) or dict.fromkeys(("fr", "de", "en"), key)
         row = existing.get(key)
         if row is None:
             row = Subject(id=uuid.uuid4(), school_id=school_id, key=key, labels=labels)

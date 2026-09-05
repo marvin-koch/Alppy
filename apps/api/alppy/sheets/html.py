@@ -368,12 +368,7 @@ def physical_pages(sheet_data: SheetData) -> list[PhysicalPage]:
 def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
     item = placed.item
     options: list[dict[str, str]] = []
-    if item.type is ExerciseType.MCQ:
-        options = [
-            {"letter": letters[i] if i < len(letters) else "", "text": text}
-            for i, text in enumerate(item.options)
-        ]
-    elif item.options:
+    if item.type is ExerciseType.MCQ or item.options:
         options = [
             {"letter": letters[i] if i < len(letters) else "", "text": text}
             for i, text in enumerate(item.options)

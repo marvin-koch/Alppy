@@ -22,10 +22,12 @@ class Settings(BaseSettings):
     session_cookie: str = "alppy_session"
     session_max_age_s: int = 60 * 60 * 12
 
+    # Declared as strings and validated into DSNs by pydantic on load; the
+    # annotations describe the parsed value, not the literal default.
     database_url: PostgresDsn = Field(
-        default="postgresql+psycopg://alppy:alppy@localhost:5432/alppy"  # type: ignore[arg-type]
+        default=PostgresDsn("postgresql+psycopg://alppy:alppy@localhost:5432/alppy")
     )
-    redis_url: RedisDsn = Field(default="redis://localhost:6379/0")  # type: ignore[arg-type]
+    redis_url: RedisDsn = Field(default=RedisDsn("redis://localhost:6379/0"))
 
     # S3-compatible object storage (MinIO locally).
     s3_endpoint_url: str = "http://localhost:9000"

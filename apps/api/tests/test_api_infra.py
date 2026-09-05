@@ -6,14 +6,14 @@ import uuid
 
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
+from test_api_fixtures import *  # noqa: F403
+from test_api_fixtures import PDF_BYTES, Tenant, login
 
 from alppy.api.deps import TokenBucketLimiter, get_ai_limiter
 from alppy.core.config import Settings
 from alppy.models import Competency
 from alppy.models.enums import CurriculumKind
 from alppy.storage import LocalStorage, sanitise_filename, storage_key
-from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import PDF_BYTES, Tenant, login
 
 
 # --------------------------------------------------------------------------

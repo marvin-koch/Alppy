@@ -17,7 +17,7 @@ import time
 import uuid
 from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import Annotated, Any, TypeVar
+from typing import Annotated, Any, Final, TypeVar
 
 from fastapi import Depends, Request, UploadFile
 from sqlalchemy import select

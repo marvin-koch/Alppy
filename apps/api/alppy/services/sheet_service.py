@@ -16,7 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
-from alppy.models import Class, Exercise, Sheet, SheetInstance, SheetItem, Student, Subject
+from alppy.models import Exercise, Sheet, SheetInstance, SheetItem, Student, Subject
 from alppy.models.enums import SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
 from alppy.services.class_service import get_class, list_students

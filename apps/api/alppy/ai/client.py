@@ -187,7 +187,8 @@ class AiClient:
         return response, record
 
     def embed(self, texts: list[str]) -> list[list[float]]:
-        return self._embeddings.embed(texts)
+        vectors: list[list[float]] = self._embeddings.embed(texts)
+        return vectors
 
 
 def parse_json_response(text: str) -> dict[str, Any]:
@@ -199,4 +200,5 @@ def parse_json_response(text: str) -> dict[str, Any]:
     start, end = cleaned.find("{"), cleaned.rfind("}")
     if start == -1 or end == -1:
         raise ValueError("model response contained no JSON object")
-    return json.loads(cleaned[start : end + 1])
+    parsed: dict[str, Any] = json.loads(cleaned[start : end + 1])
+    return parsed

@@ -276,7 +276,7 @@ def _extract_and_persist_exercises(
                 temperature=0.0,
             )
             payload = parse_json_response(response.text)
-        except Exception as exc:  # noqa: BLE001 - one bad chunk must not lose the book
+        except Exception as exc:
             log.info(
                 "ingest.extract.chunk_failed",
                 source_id=str(source.id),
@@ -370,8 +370,15 @@ def _as_text(value: object) -> str | None:
 
 
 def _clamp_difficulty(value: object) -> int:
+    """Coerce an extracted difficulty into 1..5.
+
+    The value comes from parsed model JSON, so it is genuinely `object`: "3", 3,
+    3.0 and nonsense are all possible, and none of them should fail an ingest.
+    """
+    if isinstance(value, bool) or not isinstance(value, (int, float, str)):
+        return 3
     try:
-        return max(1, min(5, int(value)))  # type: ignore[arg-type]
+        return max(1, min(5, int(float(value))))
     except (TypeError, ValueError):
         return 3
 
@@ -426,18 +433,18 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
             .order_by(SourceChunk.position)
         )
     )
-    for old in twin_chunks:
+    for old_chunk in twin_chunks:
         new_id = uuid.uuid4()
-        chunk_map[old.id] = new_id
+        chunk_map[old_chunk.id] = new_id
         db.add(
             SourceChunk(
                 id=new_id,
                 school_id=source.school_id,
                 source_id=source.id,
-                page=old.page,
-                position=old.position,
-                text=old.text,
-                embedding=old.embedding,
+                page=old_chunk.page,
+                position=old_chunk.position,
+                text=old_chunk.text,
+                embedding=old_chunk.embedding,
             )
         )
 
@@ -449,26 +456,26 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
             )
         )
     )
-    for old in twin_exercises:
+    for old_exercise in twin_exercises:
         db.add(
             Exercise(
                 id=uuid.uuid4(),
                 school_id=source.school_id,
                 subject_id=source.subject_id,
-                chapter_id=old.chapter_id,
+                chapter_id=old_exercise.chapter_id,
                 source_id=source.id,
-                source_chunk_id=chunk_map.get(old.source_chunk_id) if old.source_chunk_id else None,
-                source_page=old.source_page,
-                type=old.type,
+                source_chunk_id=chunk_map.get(old_exercise.source_chunk_id) if old_exercise.source_chunk_id else None,
+                source_page=old_exercise.source_page,
+                type=old_exercise.type,
                 origin=ExerciseOrigin.TEXTBOOK,
-                language=old.language,
-                statement=old.statement,
-                options=old.options,
-                answer_index=old.answer_index,
-                answer_bool=old.answer_bool,
-                answer_text=old.answer_text,
-                explanation=old.explanation,
-                difficulty=old.difficulty,
+                language=old_exercise.language,
+                statement=old_exercise.statement,
+                options=old_exercise.options,
+                answer_index=old_exercise.answer_index,
+                answer_bool=old_exercise.answer_bool,
+                answer_text=old_exercise.answer_text,
+                explanation=old_exercise.explanation,
+                difficulty=old_exercise.difficulty,
             )
         )
 

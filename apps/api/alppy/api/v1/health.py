@@ -32,7 +32,7 @@ def _database_ok() -> bool:
         db = next(gen)
         db.execute(text("SELECT 1"))
         return True
-    except Exception:  # noqa: BLE001 - any failure is simply "not healthy"
+    except Exception:
         return False
     finally:
         if gen is not None:
@@ -48,7 +48,7 @@ def _redis_ok(url: str) -> bool:
             return bool(client.ping())
         finally:
             client.close()
-    except Exception:  # noqa: BLE001
+    except Exception:
         return False
 
 
@@ -58,7 +58,7 @@ def health(settings: SettingsDep, storage: StorageDep) -> HealthOut:
     redis_ok = _redis_ok(str(settings.redis_url))
     try:
         storage_ok = storage.healthy()
-    except Exception:  # noqa: BLE001
+    except Exception:
         storage_ok = False
 
     ok = database and redis_ok and storage_ok
