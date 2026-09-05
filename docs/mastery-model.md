@@ -41,11 +41,24 @@ wrong answer on an easy item is worse news.
 
 ```
 idle    = days_since_last_attempt − GRACE
-recency = 1                              if idle ≤ 0
-        = max(FLOOR, 2^(−idle / H))      otherwise
+recency = 1                               if idle ≤ 0
+        = max(FLOOR, 2^(−idle / R))       otherwise
 ```
 
-with `GRACE = 7` days and `FLOOR = 0.55`.
+with `GRACE = 7` days, `FLOOR = 0.55`, and `R = RECENCY_HALF_LIFE_DAYS = 45`.
+
+**`R` is deliberately not `H`.** The two constants measure different things and
+were briefly conflated, which is worth recording because the bug was invisible
+in every unit test and only showed up when the demo seed produced a matrix where
+nobody was ever "solid":
+
+- `H` (21 days) is how fast an attempt loses weight **relative to a newer
+  attempt**. It governs how quickly a turnaround shows.
+- `R` (45 days) is how fast knowledge **fades** when nobody practises.
+
+Sharing one value made a student with a perfect record read as *fragile* three
+weeks after the lesson — and three weeks is a perfectly normal gap between a
+chapter and its revision.
 
 ### Why recency has to exist
 
@@ -64,7 +77,8 @@ makes the scale ordered *in time* as well as in correctness.
 
 | Constant | Value | Reasoning |
 |---|---|---|
-| `HALF_LIFE_DAYS` | 21 | Roughly the span over which a Swiss Sek I class moves through a chapter. Short enough that a turnaround shows within a few lessons; long enough that one bad Monday does not erase a term. |
+| `HALF_LIFE_DAYS` | 21 | Evidence ageing. Roughly the span over which a Swiss Sek I class moves through a chapter. Short enough that a turnaround shows within a few lessons; long enough that one bad Monday does not erase a term. |
+| `RECENCY_HALF_LIFE_DAYS` | 45 | Retention. Chosen so a perfect record walks the bands the way their names promise (below). |
 | `RECENCY_GRACE_DAYS` | 7 | Practising on Monday must not make the matrix look worse on Friday. Without a grace period the dashboard changes under the teacher between two lessons for no pedagogical reason. |
 | `RECENCY_FLOOR` | 0.55 | Stale evidence is stale, not void. A once-mastered competency settles into "fading" and stops there, rather than decaying toward "never seen" — which would be a lie, because we did see it. |
 | `MIN_EVIDENCE` | 1.5 | Below roughly one and a half fresh attempts, the band is marked **provisional**. One lucky guess on one MCQ is not mastery. |
@@ -102,11 +116,28 @@ Produced by the model at `HALF_LIFE_DAYS=21`, `GRACE=7`, `FLOOR=0.55`:
 | 5 correct today | 1.00 | 1.00 | 1.00 | solid | no |
 | 4 of 5 correct today | 0.80 | 1.00 | 0.80 | to review | no |
 | 5 wrong today | 0.00 | 1.00 | 0.00 | fading | no |
-| 2 wrong 40 d ago, 3 correct yesterday | 0.84 | 1.00 | 0.85 | to review | no |
+| 2 wrong 40 d ago, 3 correct yesterday | 0.84 | 1.00 | 0.84 | to review | no |
 | 2 correct 40 d ago, 3 wrong yesterday | 0.16 | 1.00 | 0.16 | fading | no |
-| 5 correct, 60 d ago | 1.00 | 0.55 | 0.55 | fading | yes |
+| 5 correct, 21 d ago | 1.00 | 0.81 | 0.81 | to review | no |
+| 5 correct, 60 d ago | 1.00 | 0.55 | 0.55 | fading | **yes** |
 | 1 correct today | 1.00 | 1.00 | 1.00 | solid | **yes** |
 | nothing | — | — | 0.00 | not yet seen | yes |
+
+### The fade schedule
+
+A perfect record, with no further practice. This is the promise the band names
+make, and `test_a_perfect_record_walks_the_bands_the_way_the_names_describe`
+pins it down:
+
+| Days since the lesson | score | band |
+|---|---|---|
+| 0 – 7 | 1.00 | Solid |
+| 14 | 0.90 | Solid / To review |
+| 21 | 0.81 | To review |
+| 28 | 0.72 | Fragile |
+| 35 | 0.65 | Fragile |
+| 42 | 0.58 | Fading |
+| 56 and beyond | 0.55 | Fading |
 
 The last two rows are the ones worth arguing about. A single correct answer
 produces a full green cell — and the `provisional` flag is what stops the UI

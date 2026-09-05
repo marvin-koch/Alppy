@@ -34,7 +34,25 @@ from alppy.models.enums import MasteryBand
 
 # --- Tunable constants. Every one of these is documented in docs/mastery-model.md.
 HALF_LIFE_DAYS: Final = 21.0
-"""After 21 days an attempt carries half the weight of a fresh one."""
+"""Evidence half-life: after 21 days an attempt carries half the weight of a
+fresh one when computing accuracy. This governs how quickly a *new* result
+overtakes an old one — roughly the span over which a class moves through a
+chapter."""
+
+RECENCY_HALF_LIFE_DAYS: Final = 45.0
+"""Retention half-life: how fast we stop trusting an accuracy the student has
+not refreshed.
+
+This is deliberately NOT the same constant as HALF_LIFE_DAYS, and the two were
+briefly conflated. They measure different things: one is how fast evidence
+*ages* relative to newer evidence, the other is how fast knowledge *fades*.
+Sharing the 21-day value made a student with a perfect record read as 'fragile'
+three weeks after the lesson, which is far too harsh — three weeks is a normal
+gap between a chapter and its revision.
+
+At 45 days a perfect record walks down the bands the way the band names
+describe: solid for about two weeks, to-review by three, fragile by five,
+fading by nine."""
 
 RECENCY_GRACE_DAYS: Final = 7.0
 """No decay at all in the first week. Practising on Monday should not make the
@@ -125,7 +143,7 @@ def compute_recency(last_attempt_at: datetime | None, now: datetime) -> float:
     idle = _age_days(last_attempt_at, now) - RECENCY_GRACE_DAYS
     if idle <= 0:
         return 1.0
-    return max(RECENCY_FLOOR, decay(idle))
+    return max(RECENCY_FLOOR, decay(idle, RECENCY_HALF_LIFE_DAYS))
 
 
 def band_for(score: float, *, has_attempts: bool = True) -> MasteryBand:

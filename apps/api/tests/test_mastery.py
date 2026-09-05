@@ -215,3 +215,38 @@ def test_already_below_threshold_is_due_now(now: datetime) -> None:
 def test_percent_is_a_rounded_whole_number(now: datetime) -> None:
     r = compute_mastery([A(True, 0, now=now), A(False, 0, now=now)], now)
     assert r.percent == 50
+
+
+# --- the two half-lives are different quantities -------------------------
+def test_retention_half_life_is_longer_than_the_evidence_half_life() -> None:
+    """These measure different things and must not be conflated.
+
+    HALF_LIFE_DAYS is how fast an attempt loses weight *relative to a newer
+    attempt*. RECENCY_HALF_LIFE_DAYS is how fast knowledge fades when nobody
+    practises. Sharing one constant made a perfect record read as 'fragile'
+    three weeks after the lesson, which is a normal gap before revision.
+    """
+    from alppy.mastery.model import RECENCY_HALF_LIFE_DAYS
+
+    assert RECENCY_HALF_LIFE_DAYS > HALF_LIFE_DAYS
+
+
+def test_a_perfect_record_walks_the_bands_the_way_the_names_describe(now: datetime) -> None:
+    """Band names are a promise about time, and this pins the schedule down."""
+    def band_after(idle_days: int) -> MasteryBand:
+        attempts = [A(True, idle_days, now=now) for _ in range(5)]
+        return compute_mastery(attempts, now).band
+
+    assert band_after(0) is MasteryBand.SOLID
+    assert band_after(7) is MasteryBand.SOLID       # a week later, still solid
+    assert band_after(21) is MasteryBand.OK         # three weeks: due for review
+    assert band_after(35) is MasteryBand.WEAK       # five weeks: fragile
+    assert band_after(60) is MasteryBand.FADING     # two months: losing it
+
+
+def test_evidence_ageing_is_unaffected_by_the_retention_constant(now: datetime) -> None:
+    """Accuracy weighting uses the shorter half-life: a result from three weeks
+    ago must count about half as much as today's."""
+    old_then_new = [A(False, 21, now=now), A(True, 0, now=now)]
+    accuracy, _ = compute_accuracy(old_then_new, now)
+    assert accuracy == pytest.approx(1 / 1.5, abs=0.02)
