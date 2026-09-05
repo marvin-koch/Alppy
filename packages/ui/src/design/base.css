@@ -1,0 +1,137 @@
+/* Alppy · base — element defaults. ZERO colour literals: everything is var(--c-*). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* body ALWAYS paints its background explicitly — never inherits the host's. */
+  background-color: var(--c-canvas);
+  color: var(--c-ink-900);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-weight: 400;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--c-selection-bg);
+  color: var(--c-selection-ink);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--c-ink-900);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--text-h1); line-height: var(--lh-h1); }
+h2 { font-size: var(--text-h2); line-height: var(--lh-h2); }
+h3 { font-size: var(--text-h3); line-height: var(--lh-h3); }
+h4 { font-size: var(--text-body-l); line-height: var(--lh-body-l); }
+
+p { color: var(--c-ink-700); }
+
+small,
+.text-body-s { font-size: var(--text-body-s); line-height: var(--lh-body-s); }
+
+code,
+kbd,
+pre,
+samp,
+.mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* Extracted / transcribed data must LOOK like data — the teacher audits it. */
+[data-transcription] {
+  font-family: var(--font-mono);
+  color: var(--c-ink-700);
+}
+
+/* Chalk. At most once per page (DESIGN.md §3). */
+.hand {
+  font-family: var(--font-hand);
+  font-weight: 600;
+}
+
+.label,
+.type-label {
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/* Aligned digits everywhere they are compared: matrices, rings, gauges. */
+table,
+.tabular,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: var(--c-primary-700);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--c-primary-500); }
+
+img,
+svg,
+video,
+canvas { display: block; max-width: 100%; }
+
+button,
+input,
+select,
+textarea { font: inherit; color: inherit; }
+
+hr {
+  border: 0;
+  border-top: var(--border-w) solid var(--c-line);
+}
+
+/* A single, visible focus ring everywhere. Never removed, only restyled. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+
+/* Calm mode: reading mode strips decoration. Illustrations are decorative. */
+:root[data-calm='on'] [data-decorative] { display: none !important; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Any text a student reads has a floor of body-l. A product constraint. */
+[data-student-facing] {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}

@@ -1,0 +1,341 @@
+/* ==========================================================================
+   Alppy · the four recipes — .ard-btn, .ard-card, .ard-panel, .ard-input.
+   Everything else composes with utilities. Zero colour literals.
+   ========================================================================== */
+
+/* ---------------------------------------------------------------- *
+ * 1 · BUTTON. The solid edge collapses and the button drops onto it. *
+ * Each variant sets its own --edge, one step darker than its face.   *
+ * Label in Fredoka 600, NEVER Nunito. Min height = touch target.     *
+ * ---------------------------------------------------------------- */
+.ard-btn {
+  --edge: var(--c-line-strong);
+  --face: var(--c-surface);
+  --face-ink: var(--c-ink-900);
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--s-8);
+  min-height: 44px; /* touch target — non-negotiable */
+  padding: var(--s-12) var(--s-20);
+  border: none;
+  border-radius: var(--r-md);
+  background: var(--face);
+  color: var(--face-ink);
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: var(--text-body);
+  line-height: 1.2;
+  text-align: center;
+  text-decoration: none;
+  cursor: pointer;
+  box-shadow: 0 4px 0 0 var(--edge);
+  transition:
+    box-shadow var(--t-fast) var(--ease-out-soft),
+    transform var(--t-fast) var(--ease-out-soft),
+    background-color var(--t-fast) var(--ease-out-soft);
+}
+
+.ard-btn:hover:not(:disabled) {
+  box-shadow: 0 5px 0 0 var(--edge);
+  transform: translateY(-1px);
+}
+
+.ard-btn:active:not(:disabled) {
+  box-shadow: 0 1px 0 0 var(--edge);
+  transform: translateY(3px);
+}
+
+.ard-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 4px 0 0 var(--edge), var(--focus-ring);
+}
+
+.ard-btn:disabled {
+  background: var(--c-surface-2);
+  color: var(--c-ink-300);
+  box-shadow: 0 4px 0 0 var(--c-line);
+  cursor: not-allowed;
+}
+
+.ard-btn[data-variant='primary'] {
+  --face: var(--c-primary-500);
+  --edge: var(--c-primary-600);
+  --face-ink: var(--c-surface);
+}
+
+.ard-btn[data-variant='secondary'] {
+  --face: var(--c-surface);
+  --edge: var(--c-line-strong);
+  --face-ink: var(--c-ink-900);
+  border: var(--border-w) solid var(--c-line);
+}
+
+/* The ONE feature allowed the mandarin: AI-generated exercises (F4). */
+.ard-btn[data-variant='accent'] {
+  --face: var(--c-accent-500);
+  --edge: var(--c-accent-600);
+  --face-ink: var(--c-ink-900);
+}
+
+.ard-btn[data-variant='danger'] {
+  --face: var(--c-danger-500);
+  --edge: var(--c-danger-600);
+  --face-ink: var(--c-surface);
+}
+
+.ard-btn[data-variant='ghost'] {
+  --face: transparent;
+  --edge: transparent;
+  --face-ink: var(--c-primary-700);
+  box-shadow: none;
+}
+
+.ard-btn[data-variant='ghost']:hover:not(:disabled) {
+  background: var(--c-primary-050);
+  box-shadow: none;
+  transform: none;
+}
+
+.ard-btn[data-size='sm'] {
+  min-height: 36px;
+  padding: var(--s-8) var(--s-12);
+  font-size: var(--text-body-s);
+}
+
+.ard-btn[data-size='lg'] {
+  min-height: 56px;
+  padding: var(--s-16) var(--s-32);
+  font-size: var(--text-h3);
+}
+
+.ard-btn[data-block='true'] { display: flex; width: 100%; }
+
+/* ------------------------------------------------------------------ *
+ * 2 · CARD — a SEPARATE object: radius lg + solid edge + shadow.      *
+ * ------------------------------------------------------------------ */
+.ard-card {
+  --tint: var(--c-surface);
+  --tint-edge: var(--c-line);
+
+  border-radius: var(--r-lg);
+  background: var(--tint);
+  padding: var(--s-24);
+  box-shadow: 0 2px 0 0 var(--tint-edge), 0 10px 30px -12px rgb(27 23 53 / 18%);
+}
+
+.ard-card[data-tint='primary'] { --tint: var(--c-primary-100); --tint-edge: var(--c-primary-200); }
+.ard-card[data-tint='warm'] { --tint: var(--c-canvas-warm); --tint-edge: var(--c-line); }
+.ard-card[data-tint='success'] { --tint: var(--c-success-100); --tint-edge: var(--c-success-500); }
+.ard-card[data-tint='warn'] { --tint: var(--c-warn-100); --tint-edge: var(--c-warn-500); }
+.ard-card[data-tint='danger'] { --tint: var(--c-danger-100); --tint-edge: var(--c-danger-500); }
+.ard-card[data-tint='accent'] { --tint: var(--c-accent-100); --tint-edge: var(--c-accent-500); }
+
+/* ------------------------------------------------------------------ *
+ * 3 · PANEL — a SUBDIVISION of the same object: radius md + border,   *
+ * no shadow. Do not put shadows everywhere.                           *
+ * ------------------------------------------------------------------ */
+.ard-panel {
+  border: var(--border-w) solid var(--c-line);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  padding: var(--s-16);
+}
+
+.ard-panel[data-sunken='true'] { background: var(--c-surface-2); }
+
+/* ------------------------------------------------------------------ *
+ * 4 · INPUT — 2px border (not 1): the field must read as sunken.      *
+ * ------------------------------------------------------------------ */
+.ard-input {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--s-12) var(--s-16);
+  border: var(--border-w-field) solid var(--c-line-strong);
+  border-radius: var(--r-md);
+  background: var(--c-surface);
+  color: var(--c-ink-900);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  transition:
+    border-color var(--t-fast) var(--ease-out-soft),
+    box-shadow var(--t-fast) var(--ease-out-soft);
+}
+
+.ard-input::placeholder { color: var(--c-ink-300); }
+
+.ard-input:focus {
+  outline: none;
+  border-color: var(--c-primary-500);
+  box-shadow: 0 0 0 4px var(--c-primary-100);
+}
+
+/* Invalid changes the border AND requires a message. Never colour alone. */
+.ard-input[aria-invalid='true'] {
+  border-color: var(--c-danger-500);
+}
+
+.ard-input[aria-invalid='true']:focus {
+  box-shadow: 0 0 0 4px var(--c-danger-100);
+}
+
+.ard-input:disabled {
+  background: var(--c-surface-2);
+  color: var(--c-ink-300);
+  cursor: not-allowed;
+}
+
+textarea.ard-input { min-height: 96px; resize: vertical; }
+
+/* ------------------------------------------------------------------ *
+ * Chips & badges — -100 background, -600 text, border = colour @ 40%. *
+ * ------------------------------------------------------------------ */
+.ard-chip {
+  --chip-bg: var(--c-surface-2);
+  --chip-ink: var(--c-ink-700);
+  --chip-edge: var(--c-line-strong);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-4) var(--s-12);
+  border: var(--border-w) solid var(--chip-edge);
+  border-radius: var(--r-pill);
+  background: var(--chip-bg);
+  color: var(--chip-ink);
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  white-space: nowrap;
+}
+
+.ard-chip[data-variant='primary'] {
+  --chip-bg: var(--c-primary-100);
+  --chip-ink: var(--c-primary-700);
+  --chip-edge: color-mix(in srgb, var(--c-primary-500) 40%, transparent);
+}
+
+.ard-chip[data-variant='success'] {
+  --chip-bg: var(--c-success-100);
+  --chip-ink: var(--c-success-600);
+  --chip-edge: color-mix(in srgb, var(--c-success-500) 40%, transparent);
+}
+
+.ard-chip[data-variant='warn'] {
+  --chip-bg: var(--c-warn-100);
+  --chip-ink: var(--c-warn-600);
+  --chip-edge: color-mix(in srgb, var(--c-warn-500) 40%, transparent);
+}
+
+.ard-chip[data-variant='danger'] {
+  --chip-bg: var(--c-danger-100);
+  --chip-ink: var(--c-danger-600);
+  --chip-edge: color-mix(in srgb, var(--c-danger-500) 40%, transparent);
+}
+
+.ard-chip[data-variant='info'] {
+  --chip-bg: var(--c-info-100);
+  --chip-ink: var(--c-info-600);
+  --chip-edge: color-mix(in srgb, var(--c-info-500) 40%, transparent);
+}
+
+/* AI-generated content. The one and only home of the mandarin. */
+.ard-chip[data-variant='accent'] {
+  --chip-bg: var(--c-accent-100);
+  --chip-ink: var(--c-accent-600);
+  --chip-edge: color-mix(in srgb, var(--c-accent-500) 40%, transparent);
+}
+
+/* ConceptTag: official curriculum data is NEVER coloured. Outline only. */
+.ard-concept-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-4);
+  padding: var(--s-2) var(--s-8);
+  border: var(--border-w) solid var(--c-line-strong);
+  border-radius: var(--r-pill);
+  background: transparent;
+  color: var(--c-ink-700);
+  font-family: var(--font-mono);
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------ *
+ * Mastery — colour AND label AND tint density. Never one alone.       *
+ * ------------------------------------------------------------------ */
+.ard-mastery {
+  --band: var(--c-mastery-none);
+  --band-tint: var(--c-mastery-none-tint);
+  --band-ink: var(--c-mastery-none-ink);
+
+  display: inline-flex;
+  align-items: center;
+  gap: var(--s-8);
+  padding: var(--s-4) var(--s-12);
+  border: var(--border-w) solid var(--band);
+  border-radius: var(--r-pill);
+  background: var(--band-tint);
+  color: var(--band-ink);
+  font-size: var(--text-body-s);
+  font-weight: 700;
+}
+
+.ard-mastery[data-band='solid'] {
+  --band: var(--c-mastery-solid);
+  --band-tint: var(--c-mastery-solid-tint);
+  --band-ink: var(--c-mastery-solid-ink);
+}
+
+.ard-mastery[data-band='ok'] {
+  --band: var(--c-mastery-ok);
+  --band-tint: var(--c-mastery-ok-tint);
+  --band-ink: var(--c-mastery-ok-ink);
+}
+
+.ard-mastery[data-band='weak'] {
+  --band: var(--c-mastery-weak);
+  --band-tint: var(--c-mastery-weak-tint);
+  --band-ink: var(--c-mastery-weak-ink);
+}
+
+.ard-mastery[data-band='fading'] {
+  --band: var(--c-mastery-fading);
+  --band-tint: var(--c-mastery-fading-tint);
+  --band-ink: var(--c-mastery-fading-ink);
+}
+
+/* The dot is the second channel; the label is the third. */
+.ard-mastery-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--r-pill);
+  background: var(--band);
+  flex: none;
+}
+
+/* Toast — the ONLY place ink becomes the background. */
+.ard-toast {
+  display: flex;
+  align-items: center;
+  gap: var(--s-12);
+  padding: var(--s-16) var(--s-20);
+  border-radius: var(--r-md);
+  background: var(--c-ink-900);
+  color: var(--c-canvas);
+  box-shadow: var(--shadow-pop);
+}
+
+.ard-skeleton {
+  border-radius: var(--r-md);
+  background: linear-gradient(
+    90deg,
+    var(--c-surface-2) 25%,
+    var(--c-line) 37%,
+    var(--c-surface-2) 63%
+  );
+}

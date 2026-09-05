@@ -1,0 +1,98 @@
+/* Alppy · motion — four durations, two curves (DESIGN.md §5). */
+
+@keyframes ard-fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+@keyframes ard-rise-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ard-pop-in {
+  from { opacity: 0; transform: scale(0.94); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes ard-slide-in-right {
+  from { opacity: 0; transform: translateX(16px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes ard-slide-up {
+  from { transform: translateY(100%); }
+  to { transform: translateY(0); }
+}
+
+@keyframes ard-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-6px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(2px); }
+}
+
+@keyframes ard-press-down {
+  from { transform: translateY(0); }
+  to { transform: translateY(3px); }
+}
+
+@keyframes ard-ring-fill { from { stroke-dashoffset: var(--ring-circumference); } }
+
+@keyframes ard-curtain {
+  from { clip-path: inset(0 0 100% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
+@keyframes ard-confetti {
+  from { opacity: 1; transform: translateY(0) rotate(0deg); }
+  to { opacity: 0; transform: translateY(90px) rotate(220deg); }
+}
+
+@keyframes ard-pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+
+@keyframes ard-shimmer {
+  from { background-position: -200% 0; }
+  to { background-position: 200% 0; }
+}
+
+.anim-fade-in { animation: ard-fade-in var(--t) var(--ease-out-soft) both; }
+.anim-rise-in { animation: ard-rise-in var(--t) var(--ease-out-soft) both; }
+.anim-pop-in { animation: ard-pop-in var(--t) var(--ease-spring) both; }
+.anim-slide-in-right { animation: ard-slide-in-right var(--t) var(--ease-out-soft) both; }
+.anim-slide-up { animation: ard-slide-up var(--t) var(--ease-out-soft) both; }
+.anim-shake { animation: ard-shake var(--t-slow) var(--ease-out-soft) both; }
+.anim-press-down { animation: ard-press-down var(--t-fast) var(--ease-out-soft) both; }
+.anim-ring-fill { animation: ard-ring-fill var(--t-slow) var(--ease-out-soft) both; }
+.anim-curtain { animation: ard-curtain var(--t-celebrate) var(--ease-out-soft) both; }
+.anim-confetti { animation: ard-confetti var(--t-celebrate) var(--ease-out-soft) both; }
+.anim-pulse-soft { animation: ard-pulse-soft 1.4s var(--ease-out-soft) infinite; }
+.anim-shimmer {
+  background-size: 200% 100%;
+  animation: ard-shimmer 1.6s linear infinite;
+}
+
+/* Toast is the bounce. Pop-in is the bounce. Nothing else is. */
+.anim-toast { animation: ard-pop-in var(--t) var(--ease-spring) both; }
+
+/* --------------------------------------------------------------------- *
+ * Motion off — two independent triggers, one rule.                       *
+ * EXCEPT [data-timer]: a countdown the user watches carries information. *
+ * Freezing it to 0ms would tell them the window has already closed.      *
+ * --------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *:not([data-timer]):not([data-timer] *) {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+:root[data-motion='off'] *:not([data-timer]):not([data-timer] *) {
+  animation-duration: 0.01ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: 0.01ms !important;
+  scroll-behavior: auto !important;
+}

@@ -1,0 +1,10 @@
+/* Order matters: tokens must exist before base reads them (DESIGN.md §10). */
+@import 'tailwindcss';
+@import './design/tokens.css';
+@import './design/base.css';
+@import './design/motion.css';
+@import './design/print.css';
+
+@layer components {
+  @import './design/recipes.css';
+}

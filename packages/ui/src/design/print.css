@@ -1,0 +1,216 @@
+/* ==========================================================================
+   Alppy · print — paper is not a fallback, it is the deliverable.
+   --------------------------------------------------------------------------
+   LAYOUT VERSION v1.  This file and apps/api/alppy/sheets/layout.py describe
+   the SAME geometry. The scan detector (F2) registers against these marks, so
+   changing any number here is a layout version bump, not a tweak.
+   See docs/sheet-layout.md.
+
+   Together with tokens.css this is the only file allowed colour literals: the
+   print block overwrites the tokens rather than bypassing them, and pure black
+   exists only here and in high contrast.
+   ========================================================================== */
+
+/* ---- Screen-side print preview: show the page as paper on the canvas ---- */
+.print-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-24);
+}
+
+.print-page {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--print-page-w);
+  min-height: var(--print-page-h);
+  padding: var(--print-margin);
+  background: var(--c-surface);
+  color: var(--c-ink-900);
+  font-family: var(--font-sans);
+  /* Student-facing floor. Never below body-l. */
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  box-shadow: var(--shadow-card);
+}
+
+/* -- Corner fiducials --------------------------------------------------- *
+ * REAL BORDERS, not background fills, so they survive the browser's default
+ * "do not print background graphics" setting. The detector locates these four
+ * squares to deskew and register the page.                                  */
+[data-fiducial] {
+  position: absolute;
+  width: var(--print-fiducial);
+  height: var(--print-fiducial);
+  border: calc(var(--print-fiducial) / 2) solid currentcolor;
+  color: var(--c-ink-900);
+}
+
+[data-fiducial='tl'] { top: var(--print-margin); left: var(--print-margin); }
+[data-fiducial='tr'] { top: var(--print-margin); right: var(--print-margin); }
+[data-fiducial='bl'] { bottom: var(--print-margin); left: var(--print-margin); }
+[data-fiducial='br'] { bottom: var(--print-margin); right: var(--print-margin); }
+
+/* The registration frame: distance between opposing fiducial centres. Every
+   answer bubble position is expressed as a fraction of this frame, so the
+   detector needs nothing but the four corners. */
+.print-frame {
+  position: relative;
+  margin-top: calc(var(--print-fiducial) + 6mm);
+}
+
+/* -- Sheet header: every physical page carries its own ------------------- */
+.print-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-16);
+  padding-bottom: 3mm;
+  border-bottom: 1pt solid var(--c-ink-900);
+}
+
+.print-title {
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: var(--lh-h2);
+  font-weight: 700;
+}
+
+.print-meta {
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* -- Student UID: printed as TEXT and as a pre-filled digit grid ---------- *
+ * The grid is what the detector reads; the text is what a human reads. No OCR
+ * is required in the happy path.                                            */
+.print-uid {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+}
+
+.print-uid-text {
+  font-family: var(--font-mono);
+  font-size: 12pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.print-uid-grid {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 1mm;
+}
+
+.print-uid-cell {
+  width: 4mm;
+  height: 4mm;
+  border: 0.5pt solid var(--c-ink-900);
+}
+
+.print-uid-cell[data-filled='true'] { background: var(--c-ink-900); }
+
+/* -- Items and the fixed answer grid ------------------------------------- */
+.print-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  padding: 3mm 0;
+  border-bottom: var(--print-rule) solid var(--c-line);
+}
+
+.print-item-statement {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}
+
+.print-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4mm;
+  margin-top: 2mm;
+}
+
+/* A bubble's geometry is fixed by layout v1 and read by the detector. */
+.print-bubble {
+  display: flex;
+  align-items: center;
+  gap: 1.5mm;
+}
+
+.print-bubble-mark {
+  width: 5mm;
+  height: 5mm;
+  border: 0.6pt solid var(--c-ink-900);
+  border-radius: var(--r-pill);
+}
+
+.print-bubble-letter {
+  font-family: var(--font-mono);
+  font-size: 10pt;
+}
+
+/* Answer key: the filled state exists only on the key sheet. */
+.print-bubble-mark[data-key='true'] {
+  background: var(--c-ink-900);
+}
+
+/* -- Mastery legend on paper --------------------------------------------- *
+ * THE PHOTOCOPIER IS BLACK AND WHITE. Every band carries a colour AND a
+ * distinct underline style, and both appear in the legend.                  */
+.print-band { text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.print-band[data-band='solid'] { color: var(--c-mastery-solid); text-decoration: underline solid; }
+.print-band[data-band='ok'] { color: var(--c-mastery-ok); text-decoration: underline dashed; }
+.print-band[data-band='weak'] { color: var(--c-mastery-weak); text-decoration: underline dotted; }
+.print-band[data-band='fading'] { color: var(--c-mastery-fading); text-decoration: underline double; }
+.print-band[data-band='none'] { color: var(--c-mastery-none); text-decoration: underline wavy; }
+
+.print-footer {
+  margin-top: 4mm;
+  padding-top: 2mm;
+  border-top: var(--print-rule) solid var(--c-ink-900);
+  font-size: var(--text-body-s);
+  color: var(--c-ink-700);
+}
+
+/* ========================================================================== *
+ * THE PRINT BLOCK. Tokens are overwritten, not bypassed.                     *
+ * ========================================================================== */
+@media print {
+  :root {
+    --c-canvas: #fff;
+    --c-surface: #fff;
+    --c-ink-900: #000;
+    --c-ink-700: #222;
+    --c-ink-500: #444;
+    --c-line: #999;
+  }
+
+  [data-no-print],
+  nav,
+  header[data-app-header] { display: none !important; }
+
+  body { background: #fff; }
+
+  .print-page {
+    width: auto;
+    min-height: auto;
+    padding: 0;
+    box-shadow: none !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .print-page:last-child { page-break-after: auto; break-after: auto; }
+
+  .print-item { break-inside: avoid; }
+
+  /* Fiducials are borders, so they print even with background graphics off. */
+  [data-fiducial] { display: block !important; }
+
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}
