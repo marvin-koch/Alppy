@@ -15,7 +15,7 @@ worth challenging. Written to be read by whoever picks this up next.
 | M3 — scan, registration, detection, review, grading | **Done**, verified against synthetic degradation only |
 | M4 — mastery model, matrix, profiles | **Done** |
 | M5 — adaptive per-student sheets, batch export | **Done**, batch PDF unexecuted for the same reason as M2 |
-| M6 — polish, e2e, screenshots | **Partial** — states and demo seed done, Playwright suite not written |
+| M6 — polish, e2e, screenshots | **Done** — 58 Playwright tests pass on both viewports; screenshot baselines are macOS-only (see below) |
 
 **Verified green, on this machine, just now:**
 
@@ -28,6 +28,7 @@ i18n: 239 keys in sync across fr, de, en
 print geometry: Python and generated TypeScript in sync
 no colour literal outside tokens.css and print.css
 demo seed: 18 students, 559 attempts, 90 snapshots, idempotent on re-run
+Playwright: 54 passed, 4 conditionally skipped, across desktop and phone
 ```
 
 ---
@@ -87,8 +88,11 @@ was wrong was the meaning, and only running the thing end to end showed it.
 
 **Not there at all**
 
-- **Playwright e2e and theme/locale screenshot tests.** The CI job is wired and
-  skips cleanly; the specs are not written. This is the largest single gap.
+- **Linux screenshot baselines.** The 58-test Playwright suite exists and passes,
+  but Playwright files baselines per operating system and the committed set is
+  `-darwin`. CI therefore runs the behavioural specs enforcing and the screenshot
+  specs reporting. [`CONTRIBUTING.md`](../CONTRIBUTING.md) has the one-line
+  Docker command to generate the Linux set and the line to flip afterwards.
 - **The PDF path has never been executed.** `render.py` and the templates are
   written and the HTML is tested, but Chromium was never installed here, so
   `render_sheet_pdfs` and `render_adaptive_batch` are **unverified code**. Treat
@@ -100,6 +104,10 @@ was wrong was the meaning, and only running the thing end to end showed it.
 - **Free-text grading**, by design. The seam is `_GRADERS` in `scan/grading.py`.
 - **A real integration test of the whole loop** — print, degrade, scan, grade,
   watch the matrix move — exists only in pieces.
+- **The e2e suite runs against the fixture layer, not the API.** That is what
+  makes it fast and hermetic, and it also means it cannot catch a contract drift
+  between `alppy/schemas` and `apps/web/src/lib/api/types.ts`. Generating those
+  types from the served OpenAPI document would close it.
 
 ---
 
@@ -134,13 +142,13 @@ was wrong was the meaning, and only running the thing end to end showed it.
 ## 6. Recommended next three milestones
 
 ### M7 — Prove the loop on real paper (1–2 weeks)
-Nothing else matters until this is done. Install Chromium, render a sheet, print
-it on an actual printer, have people fill it in with actual pencils, photograph
-it with actual phones, and push it back through. Expect the fiducial detection
-and the fill thresholds to need adjustment against real ink, real paper and real
-lighting; the synthetic suite is a good proxy and not a substitute. Land the
-Playwright e2e and theme/locale screenshot suite in the same milestone so the UI
-stops depending on manual checking.
+Nothing else matters until this is done. Run `docker compose up` for the first
+time, render a sheet, print it on an actual printer, have people fill it in with
+actual pencils, photograph it with actual phones, and push it back through.
+Expect the fiducial detection and the fill thresholds to need adjustment against
+real ink, real paper and real lighting; the synthetic suite is a good proxy and
+not a substitute. Generate the Linux screenshot baselines in the same milestone
+so the UI stops depending on manual checking.
 
 ### M8 — Make retrieval real (2–3 weeks)
 Swap `HashEmbeddingsProvider` for self-hosted `multilingual-e5-large`, then feed
