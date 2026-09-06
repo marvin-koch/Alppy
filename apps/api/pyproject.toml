@@ -10,7 +10,10 @@ dependencies = [
   "alembic>=1.14.0",
   "psycopg[binary]>=3.2.3",
   "pgvector>=0.3.6",
-  "pydantic>=2.10.0",
+  # [email] pulls email-validator, which EmailStr imports lazily at schema
+  # build time — without it the app raises ImportError on startup, but only in
+  # an environment where nothing else happened to install it.
+  "pydantic[email]>=2.10.0",
   "pydantic-settings>=2.6.0",
   "python-multipart>=0.0.18",
   "argon2-cffi>=23.1.0",
