@@ -37,11 +37,22 @@ export default defineConfig({
   },
   projects: [
     {
+      // The live-API journey. One project and one worker: it is the only spec
+      // that writes to a shared database, so running it on two viewports at
+      // once has the two runs stepping on each other's sheets.
+      name: 'live',
+      testMatch: /live-loop\.spec\.ts/,
+      workers: 1,
+      use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...(channel ? { channel } : {}) },
+    },
+    {
       name: 'desktop',
+      testIgnore: /live-loop\.spec\.ts/,
       use: { ...devices['Desktop Chrome'], viewport: { width: 1440, height: 900 }, ...(channel ? { channel } : {}) },
     },
     {
       name: 'phone',
+      testIgnore: /live-loop\.spec\.ts/,
       use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 }, ...(channel ? { channel } : {}) },
     },
   ],

@@ -21,6 +21,9 @@ const WEB = process.env.ALPPY_LIVE_WEB;
 
 test.describe('@live the F1 loop against a real API', () => {
   test.skip(!API || !WEB, 'set ALPPY_LIVE_API and ALPPY_LIVE_WEB to run');
+  // Serial, and one worker for the whole file: this is the only spec that
+  // writes to a shared database, so two browser projects running it at once
+  // upload, build and render against each other's rows.
   test.describe.configure({ mode: 'serial' });
   test.setTimeout(180_000);
 
