@@ -4,6 +4,7 @@ alppy/cli.py
 alppy/main.py
 alppy/storage.py
 alppy/ai/__init__.py
+alppy/ai/audit.py
 alppy/ai/base.py
 alppy/ai/client.py
 alppy/ai/providers.py

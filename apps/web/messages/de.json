@@ -161,6 +161,7 @@
     "page": "Seite",
     "pageOf": "Seite {current} von {total}",
     "preview": "Druckvorschau",
+    "previewUnavailable": "Für dieses Arbeitsblatt ist keine Vorschau verfügbar.",
     "print": "Drucken",
     "proposals": "Vorschläge",
     "propose": "Aufgaben vorschlagen",

@@ -161,6 +161,7 @@
     "page": "Page",
     "pageOf": "Page {current} of {total}",
     "preview": "Print preview",
+    "previewUnavailable": "The preview is not available for this sheet.",
     "print": "Print",
     "proposals": "Proposals",
     "propose": "Propose exercises",

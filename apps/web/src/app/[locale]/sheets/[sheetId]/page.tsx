@@ -151,6 +151,7 @@ function SheetPreview({
   showKey: boolean;
 }) {
   const t = useTranslations('sheets');
+  const [error, setError] = useState<string | null>(null);
 
   // The server renders the document the PDF is made from, using the same
   // print.css and the same millimetre geometry out of layout.py. Showing it
@@ -162,6 +163,34 @@ function SheetPreview({
   // the sheet prints V/F. A teacher checking their sheet before printing 72
   // pages was checking something else.
   const src = `${API_BASE}/sheets/${sheet.id}/preview${showKey ? '?kind=answer_key' : ''}`;
+
+  // A sheet the renderer refuses — a statement taller than the page, a class
+  // with no students — answers 422 with the reason. Read it and show it: an
+  // iframe would otherwise render the raw error JSON at the teacher.
+  useEffect(() => {
+    let cancelled = false;
+    setError(null);
+    void fetch(src, { credentials: 'include' })
+      .then(async (r) => {
+        if (cancelled || r.ok) return;
+        const body = await r.json().catch(() => null);
+        setError(body?.error?.message ?? t('previewUnavailable'));
+      })
+      .catch(() => {
+        if (!cancelled) setError(t('previewUnavailable'));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [src, t]);
+
+  if (error) {
+    return (
+      <p className="p-6 text-body-s text-danger-600" role="alert">
+        {error}
+      </p>
+    );
+  }
 
   return (
     <iframe

@@ -161,6 +161,7 @@
     "page": "Page",
     "pageOf": "Page {current} sur {total}",
     "preview": "Aperçu avant impression",
+    "previewUnavailable": "L'aperçu n'est pas disponible pour cette fiche.",
     "print": "Imprimer",
     "proposals": "Propositions",
     "propose": "Proposer des exercices",

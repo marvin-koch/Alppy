@@ -127,6 +127,20 @@ primary CTA: 6.15 / 4.97 / 10.49 / 11.13 across light, dark, and both high-contr
 e2e/live-loop.spec.ts: 2 passed against docker compose
 ```
 
+## Known, left open
+
+- **API error messages are not localised.** `ItemTooTallError` and the
+  ingestion errors reach the teacher in English on a French page. Fixing it
+  properly needs a message catalogue behind `alppy/i18n/`, which is currently an
+  empty stub — a larger piece of work than this pass, and P3 in the review. The
+  UI now shows the reason legibly rather than raw JSON, which was the actual
+  defect.
+- **Two-column extraction still interleaves the columns** (P2-2). It needs work
+  in `ingest/chunk.py` and a real Lehrmittel to test against.
+- **The mandarin accent on the illustrations' focal dot** (DESIGN.md §7 mandates
+  it, CLAUDE.md forbids any non-AI use). Two documents disagree; that is a
+  decision to make, not a bug to fix silently.
+
 ## Still not verified
 
 - **Real extraction quality.** No API key here, so the v2 tagging prompt has
