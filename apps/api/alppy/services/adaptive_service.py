@@ -47,6 +47,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session, selectinload
 
+from alppy.ai.audit import record_calls
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.ai.scrub import to_ref
 from alppy.core.logging import get_logger
@@ -432,6 +433,9 @@ def _generate(
             student_names=roster_names,
             temperature=GENERATION_TEMPERATURE,
         )
+        # On the record before the response is even parsed: a call that was
+        # made and then failed to parse still cost tokens and still happened.
+        record_calls(db, school_id=school_id, records=[record])
         payload = parse_json_response(response.text)
     except Exception as exc:
         log.warning(

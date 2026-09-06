@@ -21,8 +21,14 @@ FROM base AS build
 WORKDIR /repo
 COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
+COPY --from=deps /repo/packages/ui/node_modules ./packages/ui/node_modules
 COPY . .
 ENV NEXT_TELEMETRY_DISABLED=1 ALPPY_STANDALONE=1
+# @alppy/ui resolves through ./dist, and .dockerignore excludes every dist/ —
+# correctly, since a stale one from the host is worse than none. So it has to
+# be compiled here, before Next can resolve the import. Without this the build
+# fails with "Module not found: Can't resolve '@alppy/ui'".
+RUN pnpm --filter @alppy/ui build
 RUN pnpm --filter @alppy/web build
 
 # --- runtime ----------------------------------------------------------------

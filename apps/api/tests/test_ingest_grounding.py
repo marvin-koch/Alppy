@@ -158,3 +158,47 @@ def test_extracted_exercises_are_tagged_with_a_chapter_and_a_competency(
         assert row.source_page == 7, "provenance must point at the real page"
         assert row.competencies, "an untagged exercise is invisible to the chapter filter"
         assert row.chapter_id == chapter.id
+
+
+# --------------------------------------------------------------------------
+# 3 · The audit trail exists, and carries no content
+# --------------------------------------------------------------------------
+def test_model_calls_are_recorded_without_any_content(
+    db: Session, tenant: Tenant, monkeypatch
+) -> None:
+    """`ModelCall` was declared, exported and never written by anything: after
+    a full ingestion run the table was empty, so the audit trail privacy.md
+    relies on did not exist."""
+    from alppy.models import ModelCall
+
+    source = Source(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        subject_id=tenant.subject.id,
+        filename="audited.pdf",
+        storage_key="audited.pdf",
+        content_type="application/pdf",
+        size_bytes=1,
+        sha256="feed",
+        status=JobStatus.QUEUED,
+    )
+    db.add(source)
+    db.flush()
+
+    text = "1. Calcule le perimetre de ce rectangle de 3 cm sur 4 cm. " * 12
+    monkeypatch.setattr(
+        pipeline, "extract_pdf", lambda _d: document_from_pages([PageText(page=1, text=text)])
+    )
+    client = AiClient()
+    monkeypatch.setattr(client, "_chat", _GroundedProvider(), raising=False)
+    pipeline.run_ingest(db, source_id=source.id, loader=lambda _s: b"%PDF-", ai=client)
+
+    rows = db.query(ModelCall).filter(ModelCall.school_id == tenant.school.id).all()
+    assert rows, "every model call has to leave a row"
+
+    columns = {c.name for c in ModelCall.__table__.columns}
+    assert not (columns & {"prompt", "system", "user", "content", "response", "text"})
+    for row in rows:
+        assert row.purpose == "extract_exercises"
+        assert len(row.prompt_sha256) == 64
+        assert row.prompt_name == "extract_exercises"

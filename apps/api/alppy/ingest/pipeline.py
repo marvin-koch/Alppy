@@ -32,6 +32,7 @@ from pathlib import Path
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from alppy.ai.audit import record_calls
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
@@ -263,6 +264,11 @@ def _ingest_fresh(
     source.status = JobStatus.SUCCEEDED
     source.error = None
     source.notice = notice
+
+    # Every model call this ingest made, on the record. No prompt content and
+    # no student name reaches the row; see alppy.ai.audit.
+    record_calls(db, school_id=source.school_id, records=client.records)
+
     return IngestResult(
         source_id=source.id,
         status=JobStatus.SUCCEEDED,

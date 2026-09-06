@@ -10,7 +10,15 @@
  * true/false item showed A/B on screen and printed V/F on paper. A preview
  * that disagrees with the paper is worse than no preview.
  */
+import { SHEET_LAYOUT } from '@alppy/shared';
+
 export const MCQ_LETTERS = 'ABCD';
+
+/** How many bubbles one item can claim, straight from `layout.py`. */
+export const MAX_OPTIONS = SHEET_LAYOUT.grid.maxOptions;
+
+/** How many items fit the fixed answer grid on one physical page. */
+export const ITEMS_PER_PAGE = SHEET_LAYOUT.itemsPerPage;
 
 const TRUE_FALSE_LETTERS: Record<string, string> = {
   fr: 'VF', // Vrai / Faux
