@@ -1,5 +1,10 @@
 # F1 — Exercise selection and sheet generation · independent review
 
+> **Status: fixed.** Every P0 and P1 below has been addressed and re-verified
+> against `docker compose up`; see [`F1-fixes.md`](F1-fixes.md) for what changed
+> and what was run. This document is kept as the record of what was found, not
+> as the current state of the code.
+
 Reviewer: independent agent (three parallel lanes: API/print, UI-in-browser, static/design).
 Date: 2026-09-06. Commit reviewed: `2a5b531`, tree clean at start.
 Scope: F1 checklist R1–R13 plus the Block 0 cross-cutting checks.

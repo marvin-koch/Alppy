@@ -98,6 +98,35 @@ New test files, one per failure class: `test_jobs_queue.py` (the enqueue seam),
 retrieval cases in `test_retrieval.py` and `e2e/live-loop.spec.ts` for the
 journey against a real API.
 
+## Re-verified against `docker compose up`
+
+The whole R1-R13 trace was re-run against the containerised stack, not a local
+dev server:
+
+| # | Result |
+|---|---|
+| R1 | Upload through the UI; worker ingests; `/sources` polls and shows progress |
+| R2 | No fabrication; tagging verified against a stubbed grounded provider (a real model is still untested) |
+| R3 | image-only → truthful failure; two-column, no-exercises, 300-page → indexed with a notice; re-upload → same source id |
+| R4 | `fractions` returns fraction exercises first; three identical requests byte-identical; provenance shown |
+| R5 | Reorder persists; the edit reaches the paper; the source exercise is untouched |
+| R6 | Both PDFs downloaded as real bytes over the signed URL |
+| R7 | Fiducials 95.8-97.9 % ink at the `layout.py` coordinates with backgrounds off |
+| R8 | Raised, except the bubble letter — geometry, documented above |
+| R9 | Five bands, five underline styles, both channels in the legend |
+| R10 | 1, 18 and 28 students; 40 items → 20 pages, a header on each |
+| R11 | `422 item 1 needs about 311 mm but a page has only 134 mm … shorten or split it` |
+| R12 | `layout_version` on the row, in the footer, in the markup and in the storage key |
+| R13 | Unchanged |
+
+```
+300 backend tests · ruff clean · mypy strict clean (67 files)
+pnpm typecheck 3/3 · pnpm lint 1/1 · lint:css clean · 260 i18n keys in sync
+layout.generated.ts not stale · no colour literal outside tokens.css/print.css
+primary CTA: 6.15 / 4.97 / 10.49 / 11.13 across light, dark, and both high-contrast
+e2e/live-loop.spec.ts: 2 passed against docker compose
+```
+
 ## Still not verified
 
 - **Real extraction quality.** No API key here, so the v2 tagging prompt has
