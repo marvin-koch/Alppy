@@ -30,7 +30,7 @@ interface Destination {
 const DESTINATIONS: Destination[] = [
   { href: '/', labelKey: 'home', icon: <IconHome />, primary: true },
   { href: '/classes', labelKey: 'classes', icon: <IconMatrix />, primary: true },
-  { href: '/sheets/new', labelKey: 'sheets', icon: <IconSheet />, primary: true },
+  { href: '/sheets', labelKey: 'sheets', icon: <IconSheet />, primary: true },
   { href: '/scans/new', labelKey: 'scans', icon: <IconScan />, primary: true },
   { href: '/sources', labelKey: 'sources', icon: <IconBook />, primary: false },
   { href: '/adaptive', labelKey: 'adaptive', icon: <IconAi />, primary: false },

@@ -172,6 +172,14 @@ function route(method: string, path: string, body: unknown): Json {
   /* ------------------------------------------------------- sources --- */
   if (method === 'GET' && path === '/sources') return state.sources;
   if (method === 'POST' && path === '/sources') {
+    // The fixture layer has to reject what the API rejects. It used to accept
+    // an upload with no subject_id, which is exactly the 422 the real client
+    // was sending on every upload — invisible to the whole e2e suite.
+    if (!(body instanceof FormData) || !body.get('subject_id')) {
+      throw new ApiError(422, 'validation_error', 'request body failed validation', {
+        errors: [{ loc: ['body', 'subject_id'], msg: 'Field required', type: 'missing' }],
+      });
+    }
     const created: SourceOut = {
       ...(fx.sources[1] as SourceOut),
       id: fx.id(410 + state.sources.length),

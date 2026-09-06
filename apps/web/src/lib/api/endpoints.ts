@@ -124,6 +124,10 @@ export const updateSheet = (sheetId: Uuid, body: SheetUpdate) =>
 
 export const getSheet = (sheetId: Uuid) => apiRequest<SheetOut>(`/sheets/${sheetId}`);
 
+/** Every sheet the teacher has built. Without this a sheet was reachable only
+ *  by the redirect that follows creating it. */
+export const listSheets = () => apiRequest<SheetOut[]>('/sheets');
+
 export const renderSheet = (sheetId: Uuid) =>
   apiRequest<JobOut>(`/sheets/${sheetId}/render`, { method: 'POST' });
 

@@ -16,11 +16,14 @@ import {
 import { useTranslations } from 'next-intl';
 import { use, useState } from 'react';
 
+import { API_BASE } from '@/lib/api/client';
 import { useJob, useRenderSheet, useSheet } from '@/lib/api/queries';
+import { useFormatters } from '@/lib/format';
 
 export default function SheetPage({ params }: { params: Promise<{ sheetId: string }> }) {
   const { sheetId } = use(params);
   const t = useTranslations('sheets');
+  const fmt = useFormatters();
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
 
@@ -100,7 +103,9 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
         ) : null}
         {job.data?.status === 'running' ? (
           <p className="mt-2 text-body-s text-ink-500" role="status">
-            {t('generating')} — {Math.round((job.data.progress ?? 0) * 100)}%
+            {t('generatingProgress', {
+              percent: fmt.percent(job.data.progress ?? 0),
+            })}
           </p>
         ) : null}
       </Panel>
@@ -137,55 +142,25 @@ function SheetPreview({
   showKey: boolean;
 }) {
   const t = useTranslations('sheets');
+
+  // The server renders the document the PDF is made from, using the same
+  // print.css and the same millimetre geometry out of layout.py. Showing it
+  // directly is the only way the preview cannot drift from the paper.
+  //
+  // This used to be a hand-rolled React approximation: it put the answer
+  // bubbles inline beside each option instead of on the fixed grid the
+  // detector reads, printed no UID grid at all, and hardcoded A/B/C/D where
+  // the sheet prints V/F. A teacher checking their sheet before printing 72
+  // pages was checking something else.
+  const src = `${API_BASE}/sheets/${sheet.id}/preview${showKey ? '?kind=answer_key' : ''}`;
+
   return (
-    <div className="print-sheet">
-      <article className="print-page">
-        <span data-fiducial="tl" />
-        <span data-fiducial="tr" />
-        <span data-fiducial="bl" />
-        <span data-fiducial="br" />
-
-        <header className="print-header">
-          <div>
-            <p className="print-title">{sheet.title}</p>
-            <p className="print-meta">{showKey ? t('answerKey') : t('blank')}</p>
-          </div>
-          <div className="print-uid">
-            <span className="print-uid-text">
-              {sheet.instances[0]?.student_uid ?? '________'}
-            </span>
-          </div>
-        </header>
-
-        <div className="print-frame">
-          <ol className="list-none p-0">
-            {sheet.items.map((item, i) => (
-              <li key={item.id} className="print-item">
-                <p className="print-item-statement">
-                  <span className="mono mr-2">{i + 1}.</span>
-                  {item.statement_override ?? item.exercise.statement}
-                </p>
-                {item.exercise.options ? (
-                  <div className="print-answers">
-                    {item.exercise.options.map((o, oi) => (
-                      <span key={oi} className="print-bubble">
-                        <span
-                          className="print-bubble-mark"
-                          data-key={
-                            showKey && item.exercise.answer_index === oi ? 'true' : undefined
-                          }
-                        />
-                        <span className="print-bubble-letter">{'ABCD'[oi]}</span>
-                        <span>{o}</span>
-                      </span>
-                    ))}
-                  </div>
-                ) : null}
-              </li>
-            ))}
-          </ol>
-        </div>
-      </article>
-    </div>
+    <iframe
+      src={src}
+      title={showKey ? t('answerKey') : t('blank')}
+      className="h-[297mm] w-[210mm] border-0 bg-white"
+      // Same-origin so the print stylesheet resolves; the document is ours.
+      sandbox="allow-same-origin"
+    />
   );
 }

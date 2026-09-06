@@ -25,10 +25,13 @@ from pathlib import Path
 from typing import Any, Final
 from uuid import UUID
 
+from alppy.core.logging import get_logger
 from alppy.models.enums import ExerciseOrigin, ExerciseType, SheetKind
 from alppy.sheets import layout as L
 from alppy.sheets.html import Copy, SheetData, physical_pages, render_sheet_html
 from alppy.sheets.pagination import Item
+
+log = get_logger(__name__)
 
 RENDER_DIR_ENV: Final = "ALPPY_RENDER_DIR"
 DEFAULT_RENDER_DIR: Final = "var/renders"
@@ -134,22 +137,31 @@ def render_dir() -> Path:
 def store_pdf(payload: bytes, key: str) -> str:
     """Persist a rendered PDF and return the storage key.
 
-    Uses ``alppy.storage`` when that module exists; until it does, writes under
-    ``$ALPPY_RENDER_DIR`` (default ``var/renders``). Either way the *key* is the
-    same string, which is what goes into ``Sheet.blank_pdf_key`` — so the swap
-    never rewrites a stored row."""
-    try:
-        from alppy import storage
-    except ImportError:
-        storage = None  # type: ignore[assignment]
+    Writes through ``alppy.storage``, which is what serves the download URL the
+    teacher clicks. The fallback to ``$ALPPY_RENDER_DIR`` exists only for a
+    deployment with no object store configured at all.
 
-    put = getattr(storage, "put_object", None) if storage is not None else None
-    if callable(put):
+    This used to probe for a module-level ``storage.put_object``, which has
+    never existed — the interface is ``get_storage().put_bytes`` — so the probe
+    always failed and every rendered PDF was written to the *worker's* local
+    disk while ``Sheet.blank_pdf_key`` advertised an object-storage key. The
+    job reported success and the download 404'd.
+    """
+    try:
+        from alppy import storage as object_storage
+    except ImportError:  # pragma: no cover - storage is a hard dependency
+        object_storage = None  # type: ignore[assignment]
+
+    if object_storage is not None:
         try:
-            put(key, payload, content_type=PDF_CONTENT_TYPE)
-        except TypeError:
-            put(key, payload)
-        return key
+            object_storage.get_storage().put_bytes(key, payload, PDF_CONTENT_TYPE)
+            return key
+        except Exception as exc:
+            log.warning(
+                "sheets.store_pdf.object_storage_failed",
+                key=key,
+                error=type(exc).__name__,
+            )
 
     destination = render_dir() / key
     destination.parent.mkdir(parents=True, exist_ok=True)
@@ -227,6 +239,16 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
     if not plan:
         return fallback
 
+    # The teacher's printed wording lives on the SheetItem, not in the plan —
+    # the plan carries ids only. Without this lookup an edited statement was
+    # stored, shown in the builder, and then silently dropped from the paper,
+    # because every class sheet binds an item_plan per student.
+    overrides = {
+        str(si.exercise_id): si.statement_override
+        for si in sheet.items
+        if si.statement_override
+    }
+
     items: list[Item] = []
     for entry in sorted(plan, key=lambda e: e.get("position", 0)):
         exercise_id = entry.get("exercise_id")
@@ -242,7 +264,14 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
             if variant is None:
                 raise SheetRenderError(f"item_plan references unknown variant {variant_id}")
         items.append(
-            _item_from_exercise(exercise, language=sheet.language, variant=variant)
+            _item_from_exercise(
+                exercise,
+                language=sheet.language,
+                # A per-student variant is its own wording and wins; otherwise
+                # the teacher's edit applies.
+                statement=None if variant is not None else overrides.get(str(exercise_id)),
+                variant=variant,
+            )
         )
     return items
 

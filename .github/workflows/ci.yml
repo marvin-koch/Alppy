@@ -54,7 +54,11 @@ jobs:
       - name: Ruff
         run: ruff check apps/api
       - name: mypy
-        run: mypy apps/api/alppy
+        # The config lives in apps/api/pyproject.toml and mypy only reads the
+        # working directory, so the bare `mypy apps/api/alppy` from the repo
+        # root silently ran with DEFAULT settings — `strict = true` was not in
+        # force here for the whole life of the project.
+        run: mypy --config-file apps/api/pyproject.toml apps/api/alppy
       - name: Tests
         run: PYTHONPATH=apps/api pytest apps/api/tests -q
 

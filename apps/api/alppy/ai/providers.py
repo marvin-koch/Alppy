@@ -17,7 +17,6 @@ import unicodedata
 from alppy.ai.base import ChatProvider, ChatRequest, ChatResponse, EmbeddingsProvider
 from alppy.core.config import get_settings
 
-
 #: Purposes whose output must come from the prompt. An ungrounded provider
 #: returns nothing for these rather than inventing content that would be stored
 #: with the source document's provenance.

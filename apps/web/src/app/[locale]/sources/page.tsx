@@ -26,7 +26,6 @@ export default function SourcesPage() {
   const t = useTranslations('sources');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
-  const fmt = useFormatters();
   const locale = useLocale();
   const subjects = useSubjects();
   const upload = useUploadSource();
@@ -145,6 +144,7 @@ export default function SourcesPage() {
 
 function SourceRow({ source }: { source: SourceOut }) {
   const t = useTranslations('sources');
+  const tc = useTranslations('common');
   const fmt = useFormatters();
   const [open, setOpen] = useState(false);
   const exercises = useSourceExercises(open ? source.id : null);
@@ -207,7 +207,7 @@ function SourceRow({ source }: { source: SourceOut }) {
           </Button>
           {open ? (
             exercises.isLoading ? (
-              <LoadingState shape="list" rows={3} />
+              <LoadingState shape="list" label={tc('loading')} rows={3} />
             ) : (
               <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5">
                 {(exercises.data ?? []).map((ex) => (

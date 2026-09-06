@@ -36,8 +36,7 @@ from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
 from alppy.ingest.extract import ExtractedDocument, extract_pdf
-from alppy.models import Chapter, Competency, Exercise, Source, SourceChunk
-from alppy.models import chapter_competency
+from alppy.models import Chapter, Competency, Exercise, Source, SourceChunk, chapter_competency
 from alppy.models.enums import ExerciseOrigin, ExerciseType, JobStatus
 
 log = get_logger(__name__)
@@ -116,7 +115,7 @@ def default_loader(source: Source) -> bytes:
     if object_storage is not None:
         try:
             return bytes(object_storage.get_storage().get_bytes(source.storage_key))
-        except Exception as exc:  # noqa: BLE001 - any backend error falls through to disk
+        except Exception as exc:
             log.info(
                 "ingest.storage_miss",
                 source_id=str(source.id),

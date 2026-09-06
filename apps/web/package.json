@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test:e2e": "playwright test",
     "test:e2e:update": "playwright test --update-snapshots",
-    "e2e:server": "next dev -p 3100"
+    "e2e:server": "next dev -p 3100",
+    "lint": "eslint ."
   },
   "dependencies": {
     "@alppy/ui": "workspace:*",
@@ -30,7 +31,10 @@
     "@types/node": "^22.10.2",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "eslint": "^9",
+    "eslint-config-next": "^15",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8"
   }
 }

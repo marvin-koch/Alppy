@@ -14,6 +14,8 @@ stopped mid-sentence with nowhere to write, and nothing told the teacher.
 
 from __future__ import annotations
 
+import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
@@ -131,3 +133,70 @@ def _make_sheet(client: TestClient, tenant: Tenant, db: Session) -> str:
     )
     assert response.status_code == 201, response.text
     return str(response.json()["id"])
+
+
+# --------------------------------------------------------------------------
+# The rendered PDF has to be where the download URL says it is
+# --------------------------------------------------------------------------
+def test_store_pdf_writes_through_object_storage(storage, monkeypatch) -> None:
+    """``store_pdf`` probed for a module-level ``storage.put_object``, which has
+    never existed — the interface is ``get_storage().put_bytes``. The probe
+    always failed, so every rendered PDF went to the worker's local disk while
+    the database advertised an object-storage key: the job reported success and
+    the teacher's download 404'd."""
+    from alppy import storage as storage_mod
+    from alppy.sheets.render import store_pdf
+
+    monkeypatch.setattr(storage_mod, "get_storage", lambda: storage)
+    key = store_pdf(b"%PDF-1.7 fake", "sheets/abc/v1/blank.pdf")
+
+    assert key == "sheets/abc/v1/blank.pdf"
+    assert storage.exists(key), "the bytes must be where the download URL points"
+    assert storage.get_bytes(key) == b"%PDF-1.7 fake"
+
+
+# --------------------------------------------------------------------------
+# The teacher's edit has to survive onto the paper
+# --------------------------------------------------------------------------
+def test_a_statement_override_reaches_the_printed_page(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Every class sheet binds an `item_plan` per student, and the plan carries
+    exercise ids only. The renderer rebuilt each copy from the plan and never
+    looked at `SheetItem.statement_override`, so a teacher's edit was stored,
+    shown in the builder, and silently dropped from the paper."""
+    from alppy.models import Sheet
+    from alppy.sheets.render import build_sheet_data
+
+    login(client, tenant.teacher.email)
+    a = make_exercise(db, tenant, statement="Original du manuel.")
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Override test",
+            "language": "fr",
+            "items": [
+                {
+                    "exercise_id": str(a.id),
+                    "position": 0,
+                    "statement_override": "Réécrit par le prof.",
+                }
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+
+    sheet = db.get(Sheet, uuid.UUID(response.json()["id"]))
+    assert sheet is not None
+    assert sheet.instances and sheet.instances[0].item_plan, "the plan path is the one that broke"
+
+    data = build_sheet_data(db, sheet)
+    for copy in data.copies:
+        assert copy.items[0].statement == "Réécrit par le prof."
+
+    # And the source exercise is untouched — an edit is a printed wording, not
+    # a rewrite of the textbook.
+    db.refresh(a)
+    assert a.statement == "Original du manuel."

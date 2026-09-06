@@ -38,7 +38,7 @@ pnpm test:e2e                      # Playwright
 pnpm i18n:check                    # fails on a key missing from any locale
 
 PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests -q
-.venv/bin/ruff check apps/api && .venv/bin/mypy apps/api/alppy
+.venv/bin/ruff check apps/api && .venv/bin/mypy --config-file apps/api/pyproject.toml apps/api/alppy
 ```
 
 ---

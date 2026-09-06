@@ -128,6 +128,9 @@ export interface SourceOut {
   page_count: number | null;
   status: JobStatus;
   error: string | null;
+  /** A caveat on an otherwise successful ingest: extraction skipped for want
+   *  of a grounded model, or only the first N chunks scanned. */
+  notice: string | null;
   exercise_count: number;
   created_at: IsoDateTime;
 }

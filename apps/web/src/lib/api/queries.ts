@@ -55,6 +55,7 @@ export const queryKeys = {
   sources: ['sources'] as const,
   source: (id: Uuid) => ['sources', id] as const,
   sourceExercises: (id: Uuid) => ['sources', id, 'exercises'] as const,
+  sheets: ['sheets'] as const,
   sheet: (id: Uuid) => ['sheets', id] as const,
   scan: (id: Uuid) => ['scans', id] as const,
   detections: (id: Uuid) => ['scans', id, 'detections'] as const,
@@ -191,6 +192,10 @@ export function useUploadSource(): UseMutationResult<
 }
 
 /* ------------------------------------------------------------- sheets --- */
+export function useSheets(): UseQueryResult<SheetOut[]> {
+  return useQuery({ queryKey: queryKeys.sheets, queryFn: api.listSheets });
+}
+
 export function useSheet(sheetId: Uuid | null): UseQueryResult<SheetOut> {
   return useQuery({
     queryKey: queryKeys.sheet(sheetId ?? ''),

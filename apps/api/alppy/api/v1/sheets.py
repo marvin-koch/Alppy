@@ -8,8 +8,7 @@ over 24 instances is not something a request should hold a connection open for.
 from __future__ import annotations
 
 import uuid
-from typing import Any
-from typing import Annotated
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
 
