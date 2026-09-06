@@ -36,8 +36,13 @@ test.describe('@live the F1 loop against a real API', () => {
     await page.goto(`${WEB}/fr/sources`);
     await expect(page.locator('select')).toHaveCount(1);
 
+    // Wait for the subject list before touching the file input: the drop zone
+    // is disabled until a subject exists to file the book under.
+    await expect(page.locator('select option').first()).toBeAttached();
+
     const upload = page.waitForResponse(
       (r) => r.url().includes('/sources') && r.request().method() === 'POST',
+      { timeout: 60_000 },
     );
     await page.locator('input[type="file"]').setInputFiles({
       name: 'live-test.pdf',
@@ -64,7 +69,7 @@ test.describe('@live the F1 loop against a real API', () => {
 
     // --- the preview is the server's own document ------------------------
     const preview = page.frameLocator('iframe');
-    await expect(preview.locator('.print-uid-grid')).toBeVisible({ timeout: 30_000 });
+    await expect(preview.locator('.print-uid-grid').first()).toBeVisible({ timeout: 30_000 });
     await expect(preview.locator('.sheet-grid-row').first()).toBeVisible();
 
     // --- both PDFs, actually downloadable --------------------------------

@@ -125,12 +125,21 @@ class S3Storage:
         import boto3  # imported lazily: the local backend must not need it
 
         self._bucket = settings.s3_bucket
-        self._client = boto3.client(
-            "s3",
-            endpoint_url=settings.s3_endpoint_url,
-            region_name=settings.s3_region,
-            aws_access_key_id=settings.s3_access_key,
-            aws_secret_access_key=settings.s3_secret_key,
+        creds = {
+            "region_name": settings.s3_region,
+            "aws_access_key_id": settings.s3_access_key,
+            "aws_secret_access_key": settings.s3_secret_key,
+        }
+        # Reads and writes go over the internal endpoint.
+        self._client = boto3.client("s3", endpoint_url=settings.s3_endpoint_url, **creds)
+
+        # Download links are handed to a browser, which cannot resolve the
+        # compose network's hostname. SigV4 signs the Host header, so the origin
+        # cannot be swapped after signing — the URL has to be *signed* against
+        # the public origin by a second client that differs only in endpoint.
+        public = settings.s3_public_endpoint_url
+        self._url_client = (
+            boto3.client("s3", endpoint_url=public, **creds) if public else self._client
         )
 
     def put_bytes(self, key: str, data: bytes, content_type: str) -> str:
@@ -155,7 +164,13 @@ class S3Storage:
         return True
 
     def url_for(self, key: str) -> str:
-        url: str = self._client.generate_presigned_url(
+        """A time-limited download URL the teacher's browser can actually fetch.
+
+        Signed by ``_url_client``, which points at the public origin: SigV4
+        covers the Host header, so rewriting the origin after signing yields a
+        403 rather than a download.
+        """
+        url: str = self._url_client.generate_presigned_url(
             "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=900
         )
         return url

@@ -23,11 +23,27 @@ until alembic -c alembic.ini upgrade head; do
   sleep 2
 done
 
-# Best-effort: seeds the demo dataset the first time (idempotent), but a
-# still-unfinished seed feature or a transient failure must never keep the
-# API from serving traffic. `python -m alppy.cli seed` already exits 0 when
-# alppy.seed.run_seed does not exist yet; `|| true` is the last line of
-# defense if it starts raising for some other reason.
-python -m alppy.cli seed || echo "entrypoint: seed step failed, continuing to serve" >&2
+# `serve` (the api service) or `worker` (the worker service); docker-compose
+# passes one as the container command. This script used to ignore its argument
+# and exec uvicorn unconditionally, so the `worker` container ran a second copy
+# of the API: jobs were enqueued to Redis and nothing ever consumed them.
+ROLE="${1:-serve}"
 
-exec uvicorn alppy.main:app --host 0.0.0.0 --port 8000
+case "$ROLE" in
+  serve)
+    # Best-effort: seeds the demo dataset the first time (idempotent), but a
+    # still-unfinished seed feature or a transient failure must never keep the
+    # API from serving traffic. `python -m alppy.cli seed` already exits 0 when
+    # alppy.seed.run_seed does not exist yet.
+    python -m alppy.cli seed || echo "entrypoint: seed step failed, continuing to serve" >&2
+    exec uvicorn alppy.main:app --host 0.0.0.0 --port 8000
+    ;;
+  worker)
+    # The API owns migrations and the seed; the worker only consumes the queue.
+    exec python -m alppy.worker.main
+    ;;
+  *)
+    echo "entrypoint: unknown role '$ROLE' (expected 'serve' or 'worker')" >&2
+    exit 2
+    ;;
+esac

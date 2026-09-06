@@ -85,6 +85,11 @@ services:
       ALPPY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-alppy}:${POSTGRES_PASSWORD:-alppy}@postgres:5432/${POSTGRES_DB:-alppy}
       ALPPY_REDIS_URL: redis://redis:6379/0
       ALPPY_S3_ENDPOINT_URL: http://minio:9000
+      # The API reaches MinIO on the compose network; the teacher's browser
+      # reaches it on the host. Download URLs are signed against the former and
+      # rewritten to the latter — without this every PDF link pointed at a
+      # hostname only the containers can resolve.
+      ALPPY_S3_PUBLIC_ENDPOINT_URL: ${ALPPY_S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
       ALPPY_S3_BUCKET: ${ALPPY_S3_BUCKET:-alppy}
       ALPPY_S3_ACCESS_KEY: ${ALPPY_S3_ACCESS_KEY:-alppy}
       ALPPY_S3_SECRET_KEY: ${ALPPY_S3_SECRET_KEY:-alppy-secret}
@@ -94,6 +99,12 @@ services:
       ALPPY_ANTHROPIC_API_KEY: ${ALPPY_ANTHROPIC_API_KEY:-}
       ALPPY_AI_EMBEDDINGS_PROVIDER: ${ALPPY_AI_EMBEDDINGS_PROVIDER:-hash}
       ALPPY_CORS_ORIGINS: '["http://localhost:3000"]'
+      # The sheet renderer inlines packages/ui/src/design/{tokens,base,print}.css
+      # at render time so the PDF cannot drift from the design system. The image
+      # copies them to /app/design-css (apps/api/Dockerfile), but nothing told
+      # the app where — so the preview and every PDF render raised
+      # DesignSystemNotFoundError inside the container.
+      ALPPY_DESIGN_CSS_DIR: /app/design-css
     depends_on:
       postgres:
         condition: service_healthy
@@ -132,10 +143,17 @@ services:
     build:
       context: .
       dockerfile: apps/web/Dockerfile
+      args:
+        # Baked into the client bundle; see apps/web/Dockerfile.
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     environment:
       NODE_ENV: production
       # The browser talks to the API directly, so this is the host-visible URL.
-      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:8000}
+      # The name must match what the client reads (lib/api/client.ts): it was
+      # NEXT_PUBLIC_API_URL here and NEXT_PUBLIC_API_BASE_URL there, so every
+      # request fell back to a same-origin /api/v1 that the web container does
+      # not serve, and nothing past the login form worked.
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
     depends_on:
       api:
         condition: service_healthy

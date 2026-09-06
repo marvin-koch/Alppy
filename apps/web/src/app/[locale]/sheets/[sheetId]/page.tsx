@@ -14,7 +14,7 @@ import {
   TabsTrigger,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
-import { use, useState } from 'react';
+import { use, useEffect, useState } from 'react';
 
 import { API_BASE } from '@/lib/api/client';
 import { useJob, useRenderSheet, useSheet } from '@/lib/api/queries';
@@ -31,6 +31,15 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   const render = useRenderSheet();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
+
+  // The PDF keys land on the sheet row, written by the worker — so the sheet
+  // has to be re-read once the job finishes. Without this the render succeeded,
+  // the files existed, and the download buttons never appeared.
+  const jobStatus = job.data?.status;
+  const refetchSheet = sheet.refetch;
+  useEffect(() => {
+    if (jobStatus === 'succeeded') void refetchSheet();
+  }, [jobStatus, refetchSheet]);
 
   if (sheet.isLoading) return <LoadingState shape="sheet" label={tc('loading')} />;
   if (sheet.isError || !sheet.data) {

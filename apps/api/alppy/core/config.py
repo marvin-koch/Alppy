@@ -31,6 +31,15 @@ class Settings(BaseSettings):
 
     # S3-compatible object storage (MinIO locally).
     s3_endpoint_url: str = "http://localhost:9000"
+    s3_public_endpoint_url: str | None = None
+    """Host-visible object-storage origin, when it differs from the internal one.
+
+    In Docker the API reaches MinIO at ``http://minio:9000``, and it signs
+    download URLs against that — a hostname that only exists on the compose
+    network. The teacher's browser resolves nothing and the download fails. Set
+    this to the origin the browser can reach (``http://localhost:9000``) and the
+    host is swapped after signing; SigV4 does not cover the Host header for a
+    presigned GET, so the signature stays valid."""
     s3_region: str = "eu-central-1"
     s3_bucket: str = "alppy"
     s3_access_key: str = "alppy"

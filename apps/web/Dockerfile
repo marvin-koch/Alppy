@@ -23,6 +23,11 @@ COPY --from=deps /repo/node_modules ./node_modules
 COPY --from=deps /repo/apps/web/node_modules ./apps/web/node_modules
 COPY --from=deps /repo/packages/ui/node_modules ./packages/ui/node_modules
 COPY . .
+# Next inlines NEXT_PUBLIC_* into the client bundle at build time, so this has
+# to be a build arg: setting it only at runtime leaves the browser calling a
+# same-origin /api/v1 that this container does not serve.
+ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
+ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
 ENV NEXT_TELEMETRY_DISABLED=1 ALPPY_STANDALONE=1
 # @alppy/ui resolves through ./dist, and .dockerignore excludes every dist/ —
 # correctly, since a stale one from the host is worse than none. So it has to
