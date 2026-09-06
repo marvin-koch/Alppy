@@ -282,3 +282,29 @@ async def read_upload(
     return UploadPayload(
         filename=upload.filename or "upload", content_type=declared, data=data
     )
+
+
+def start_job(db: Session, job: Any) -> None:
+    """Hand a committed ``Job`` row to the worker.
+
+    Call this *after* the row is committed, so the worker cannot pick the job up
+    before it is visible. If Redis will not take it the row is marked ``failed``
+    rather than left at ``queued``: a job the teacher polls forever is worse
+    than one that says it did not start, and this is the exact failure the
+    /sources spinner used to hide.
+    """
+    from alppy.models.enums import JobStatus
+    from alppy.worker.queue import QueueUnavailableError, enqueue
+
+    try:
+        enqueue(job.kind, job.id)
+    except QueueUnavailableError as exc:
+        job.status = JobStatus.FAILED
+        job.message = "could not be queued"
+        job.error = str(exc)[:500]
+        db.commit()
+        raise errors.service_unavailable(
+            "background processing is unavailable; please try again",
+            kind=job.kind.value,
+            job_id=str(job.id),
+        ) from exc

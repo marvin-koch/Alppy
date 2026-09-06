@@ -219,9 +219,13 @@
     --c-canvas: #151229;
     --c-canvas-warm: #2a2033;
 
-    --c-primary-500: #7c63ff;
+    /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
+       lighter than -500, not darker. It was darker, which is why links and chips
+       sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
+       its ink, so it has to clear 4.5:1 against #1f1b3a. */
+    --c-primary-500: #8f79ff;
     --c-primary-600: #4e37c9;
-    --c-primary-700: #6b4ffa;
+    --c-primary-700: #a48dff;
     --c-primary-200: #3d3480;
     --c-primary-100: #2b2358;
     --c-primary-050: #221c46;
@@ -273,9 +277,13 @@
   --c-canvas: #151229;
   --c-canvas-warm: #2a2033;
 
-  --c-primary-500: #7c63ff;
+  /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
+     lighter than -500, not darker. It was darker, which is why links and chips
+     sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
+     its ink, so it has to clear 4.5:1 against #1f1b3a. */
+  --c-primary-500: #8f79ff;
   --c-primary-600: #4e37c9;
-  --c-primary-700: #6b4ffa;
+  --c-primary-700: #a48dff;
   --c-primary-200: #3d3480;
   --c-primary-100: #2b2358;
   --c-primary-050: #221c46;

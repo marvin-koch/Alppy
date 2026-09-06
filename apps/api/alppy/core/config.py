@@ -47,6 +47,13 @@ class Settings(BaseSettings):
     ai_embeddings_model: str = "intfloat/multilingual-e5-large"
     embedding_dim: int = 1024
 
+    # --- Background work ------------------------------------------------
+    # False runs the API with no worker behind it: jobs are written but never
+    # queued. Only the test suite and a deliberate single-process deployment
+    # should turn this off — with it off, nothing a teacher uploads is ever
+    # ingested.
+    job_queue_enabled: bool = True
+
     # Hard cap so a runaway prompt cannot bill the school.
     ai_max_output_tokens: int = 2048
     ai_rate_limit_per_min: int = 20

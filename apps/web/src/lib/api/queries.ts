@@ -178,7 +178,11 @@ export function useSourceExercises(sourceId: Uuid | null): UseQueryResult<Exerci
   });
 }
 
-export function useUploadSource(): UseMutationResult<SourceOut | JobOut, Error, File> {
+export function useUploadSource(): UseMutationResult<
+  SourceOut | JobOut,
+  Error,
+  { file: File; subjectId: Uuid }
+> {
   const client = useQueryClient();
   return useMutation({
     mutationFn: api.uploadSource,

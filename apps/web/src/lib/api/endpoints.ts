@@ -96,10 +96,15 @@ export const getSourceStatus = (sourceId: Uuid) =>
 export const listSourceExercises = (sourceId: Uuid) =>
   apiRequest<ExerciseOut[]>(`/sources/${sourceId}/exercises`);
 
-/** `POST /sources` starts an ingestion job; the API may answer with either shape. */
-export const uploadSource = (file: File) => {
+/** `POST /sources` starts an ingestion job; the API may answer with either shape.
+ *
+ * `subject_id` is required by the API — a source is always filed under a
+ * subject, because that is what scopes retrieval later. Omitting it made every
+ * upload a silent 422. */
+export const uploadSource = ({ file, subjectId }: { file: File; subjectId: Uuid }) => {
   const formData = new FormData();
   formData.append('file', file);
+  formData.append('subject_id', subjectId);
   return apiRequest<SourceOut | JobOut>('/sources', { method: 'POST', formData });
 };
 

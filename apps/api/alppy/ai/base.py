@@ -18,6 +18,10 @@ class ChatRequest:
     max_tokens: int = 2048
     temperature: float = 0.4
     stop: tuple[str, ...] = ()
+    purpose: str = ""
+    """What the call is for, e.g. ``extract_exercises``. A provider that cannot
+    actually read the prompt needs this to refuse the jobs where inventing an
+    answer would be a lie rather than a demo."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -31,6 +35,14 @@ class ChatResponse:
 
 class ChatProvider(Protocol):
     name: str
+
+    grounded: bool
+    """True when the provider's output is derived from the prompt it was given.
+
+    False for the offline stand-in, whose text is a deterministic function of a
+    hash. Anything that *transcribes* a document — extraction — must refuse to
+    run on an ungrounded provider, or it will attribute invented exercises to a
+    real page of a teacher's textbook."""
 
     def complete(self, request: ChatRequest) -> ChatResponse: ...
 

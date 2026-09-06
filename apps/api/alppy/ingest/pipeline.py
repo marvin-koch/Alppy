@@ -36,7 +36,8 @@ from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
 from alppy.ingest.extract import ExtractedDocument, extract_pdf
-from alppy.models import Exercise, Source, SourceChunk
+from alppy.models import Chapter, Competency, Exercise, Source, SourceChunk
+from alppy.models import chapter_competency
 from alppy.models.enums import ExerciseOrigin, ExerciseType, JobStatus
 
 log = get_logger(__name__)
@@ -54,6 +55,24 @@ MAX_EXTRACTION_CHUNKS = 200
 """Ceiling on model calls for one upload. A 400-page book is a background job,
 not a licence to spend an afternoon of tokens; the remaining chunks are still
 indexed and retrievable, they just contribute no structured exercises."""
+
+NO_GROUNDED_MODEL_NOTICE = (
+    "Indexed for search, but no exercises were extracted: this deployment has no "
+    "model configured that can read the document. Set ALPPY_AI_CHAT_PROVIDER and "
+    "an API key, then re-upload to extract exercises."
+)
+"""Shown to the teacher on a *successful* ingest. The offline stand-in does not
+read the prompt, so letting it "extract" would file invented exercises under
+this teacher's filename and page numbers, with nothing marking them as written
+by a model. Indexing still happens; only transcription is refused."""
+
+
+def _chunk_cap_notice(scanned: int, total: int) -> str:
+    return (
+        f"Indexed all {total} sections for search, but only the first {scanned} were "
+        f"scanned for exercises (per-upload limit). Split the file to extract from the rest."
+    )
+
 
 DEFAULT_LANGUAGE = "fr"
 
@@ -76,13 +95,35 @@ class IngestResult:
 
 
 def default_loader(source: Source) -> bytes:
-    """Read the uploaded bytes.
+    """Read the uploaded bytes for a source.
 
-    Object storage is another workstream's module; until it lands (and for the
-    seed/demo path, which writes files to disk), ``storage_key`` is read as a
-    filesystem path. Injecting ``loader`` is the supported way to plug the real
-    store in without touching this module.
+    ``storage_key`` is an object-storage key, because that is what
+    ``POST /sources`` writes (``alppy.storage.storage_key``). Object storage is
+    tried first and the filesystem second, so a key that happens to name a real
+    file — the seed corpus, a fixture, a developer poking at a local path — still
+    resolves.
+
+    Reading the filesystem *first* is what made every ingestion job fail with
+    ``FileNotFoundError`` while the bytes sat in MinIO, so the order here
+    matters. Injecting ``loader`` remains the supported way to substitute a
+    store in tests.
     """
+    try:
+        from alppy import storage as object_storage
+    except ImportError:  # pragma: no cover - storage is a hard dependency
+        object_storage = None  # type: ignore[assignment]
+
+    if object_storage is not None:
+        try:
+            return bytes(object_storage.get_storage().get_bytes(source.storage_key))
+        except Exception as exc:  # noqa: BLE001 - any backend error falls through to disk
+            log.info(
+                "ingest.storage_miss",
+                source_id=str(source.id),
+                key=source.storage_key,
+                error=type(exc).__name__,
+            )
+
     path = Path(source.storage_key)
     if not path.exists():
         raise FileNotFoundError(f"no bytes for source {source.id} at {source.storage_key}")
@@ -214,13 +255,15 @@ def _ingest_fresh(
     rows = _persist_chunks(db, source=source, chunks=chunks, ai=client)
 
     created = 0
+    notice: str | None = None
     if extract_exercises:
-        created = _extract_and_persist_exercises(
+        created, notice = _extract_and_persist_exercises(
             db, source=source, chunk_rows=rows, document=document, ai=client
         )
 
     source.status = JobStatus.SUCCEEDED
     source.error = None
+    source.notice = notice
     return IngestResult(
         source_id=source.id,
         status=JobStatus.SUCCEEDED,
@@ -254,6 +297,89 @@ def _persist_chunks(
     return rows
 
 
+EXTRACT_PROMPT_VERSION = "v2"
+"""v2 asks the model to tag each exercise with competency codes from a closed
+catalogue. v1 is kept on disk: a `Source` ingested under it has untagged rows,
+and knowing which prompt produced them is how you tell that apart from a model
+that simply found no match."""
+
+
+def _resolve_competencies(item: object, by_code: dict[str, Competency]) -> list[Competency]:
+    """Map the model's returned codes onto real rows, dropping anything unknown.
+
+    Silently dropping is right: the prompt supplies a closed list, so a code
+    outside it is a model error, and an exercise tagged with a competency the
+    curriculum does not have would corrupt the mastery matrix.
+    """
+    if not isinstance(item, dict):
+        return []
+    codes = item.get("competency_codes")
+    if not isinstance(codes, list):
+        return []
+    out: list[Competency] = []
+    for code in codes:
+        row = by_code.get(str(code).strip())
+        if row is not None and row not in out:
+            out.append(row)
+    return out
+
+
+def _competency_catalogue(db: Session, source: Source) -> tuple[str, dict[str, Competency]]:
+    """The competencies this subject's chapters actually ask for.
+
+    Offered to the model as a closed list so tagging is a *choice from the
+    curriculum*, not free text we would then have to guess at. Returns the
+    prompt block and a code -> row map for resolving what comes back.
+    """
+    rows = list(
+        db.scalars(
+            select(Competency)
+            .join(chapter_competency, chapter_competency.c.competency_id == Competency.id)
+            .join(Chapter, Chapter.id == chapter_competency.c.chapter_id)
+            .where(Chapter.school_id == source.school_id)
+            .where(Chapter.subject_id == source.subject_id)
+            .distinct()
+        )
+    )
+    by_code = {r.code: r for r in rows}
+    lines = [f"- {r.code} — {_competency_label(r)}" for r in sorted(rows, key=lambda r: r.code)]
+    return ("\n".join(lines) or "- (none configured)"), by_code
+
+
+def _competency_label(row: Competency) -> str:
+    labels = getattr(row, "labels", None) or {}
+    if isinstance(labels, dict) and labels:
+        return str(labels.get("fr") or labels.get("de") or labels.get("en") or row.code)
+    return str(getattr(row, "title", None) or row.code)
+
+
+def _chapter_for(db: Session, source: Source, competencies: list[Competency]) -> uuid.UUID | None:
+    """The chapter that best covers these competencies.
+
+    An exercise belongs to the chapter that asks for most of what it practises.
+    Without this the row is untagged, and an untagged exercise is invisible to
+    the builder's chapter filter — which is the only way a teacher finds it.
+    """
+    if not competencies:
+        return None
+    ids = {c.id for c in competencies}
+    best: tuple[int, int, uuid.UUID] | None = None
+    chapters = db.scalars(
+        select(Chapter)
+        .where(Chapter.school_id == source.school_id)
+        .where(Chapter.subject_id == source.subject_id)
+    )
+    for chapter in chapters:
+        overlap = len({c.id for c in chapter.competencies} & ids)
+        if overlap:
+            # Most overlap wins; ties break on chapter order, so the result is
+            # stable rather than dependent on row order.
+            candidate = (overlap, -chapter.position, chapter.id)
+            if best is None or candidate[:2] > best[:2]:
+                best = candidate
+    return best[2] if best else None
+
+
 def _extract_and_persist_exercises(
     db: Session,
     *,
@@ -261,9 +387,19 @@ def _extract_and_persist_exercises(
     chunk_rows: Sequence[SourceChunk],
     document: ExtractedDocument,
     ai: AiClient,
-) -> int:
-    prompt = load_prompt("extract_exercises")
+) -> tuple[int, str | None]:
+    """Extract exercises from the indexed chunks. Returns ``(created, notice)``.
+
+    Refuses to run at all on an ungrounded provider: transcription that does not
+    read the source is fabrication wearing the source's provenance.
+    """
+    if not ai.chat_is_grounded:
+        log.info("ingest.extract.skipped_ungrounded", source_id=str(source.id))
+        return 0, NO_GROUNDED_MODEL_NOTICE
+
+    prompt = load_prompt("extract_exercises", version=EXTRACT_PROMPT_VERSION)
     language = document.language or DEFAULT_LANGUAGE
+    catalogue, by_code = _competency_catalogue(db, source)
     seen: set[str] = set()
     created = 0
 
@@ -272,7 +408,13 @@ def _extract_and_persist_exercises(
             response, _ = ai.complete(
                 prompt=prompt,
                 purpose="extract_exercises",
-                values={"language": language, "page": row.page, "chunk_text": row.text},
+                values={
+                    "language": language,
+                    "page": row.page,
+                    "chunk_text": row.text,
+                    "competency_catalogue": catalogue,
+                },
+                # Transcription must be reproducible: same page, same rows.
                 temperature=0.0,
             )
             payload = parse_json_response(response.text)
@@ -289,12 +431,18 @@ def _extract_and_persist_exercises(
             exercise = _build_exercise(
                 item, source=source, chunk=row, language=language, seen=seen
             )
-            if exercise is not None:
-                db.add(exercise)
-                created += 1
+            if exercise is None:
+                continue
+            tagged = _resolve_competencies(item, by_code)
+            exercise.competencies = tagged
+            exercise.chapter_id = _chapter_for(db, source, tagged)
+            db.add(exercise)
+            created += 1
 
     db.flush()
-    return created
+    scanned = min(len(chunk_rows), MAX_EXTRACTION_CHUNKS)
+    notice = _chunk_cap_notice(scanned, len(chunk_rows)) if len(chunk_rows) > scanned else None
+    return created, notice
 
 
 def _build_exercise(
@@ -483,6 +631,7 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
     source.language = twin.language
     source.status = JobStatus.SUCCEEDED
     source.error = None
+    source.notice = twin.notice
     db.flush()
     log.info("ingest.reused", source_id=str(source.id), twin_id=str(twin.id))
     return IngestResult(

@@ -245,6 +245,13 @@ class Source(Base, TimestampMixin, SchoolScopedMixin):
         Enum(JobStatus, name="job_status"), default=JobStatus.QUEUED, nullable=False
     )
     error: Mapped[str | None] = mapped_column(Text)
+    notice: Mapped[str | None] = mapped_column(Text)
+    """A truthful caveat on an otherwise *successful* ingest.
+
+    ``error`` explains a failure; this explains a success that is narrower than
+    it looks — extraction skipped because no model is configured, or only the
+    first N chunks scanned on a very long book. Without it the teacher reads a
+    green tick and assumes the whole book was indexed for exercises."""
 
     chunks: Mapped[list[SourceChunk]] = relationship(
         back_populates="source", cascade="all, delete-orphan"

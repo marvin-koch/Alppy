@@ -169,6 +169,7 @@ def source_out(source: Source, *, exercise_count: int = 0) -> SourceOut:
         page_count=source.page_count,
         status=source.status,
         error=source.error,
+        notice=source.notice,
         exercise_count=exercise_count,
         created_at=source.created_at,
     )

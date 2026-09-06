@@ -139,6 +139,7 @@ class SourceOut(ApiModel):
     page_count: int | None
     status: JobStatus
     error: str | None = None
+    notice: str | None = None
     exercise_count: int = 0
     created_at: datetime
 

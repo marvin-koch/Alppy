@@ -20,10 +20,11 @@ from alppy.api.deps import (
     TeacherDep,
     TenantDep,
     load_optional,
+    start_job,
 )
 from alppy.core.config import get_settings
 from alppy.models import Job
-from alppy.models.enums import JobKind, JobStatus
+from alppy.models.enums import JobKind, JobStatus, SheetKind
 from alppy.schemas import (
     JobOut,
     SheetCreate,
@@ -134,16 +135,40 @@ def render_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut
     )
     db.add(job)
     db.commit()
+    start_job(db, job)
     db.refresh(job)
     return job_out(job)
 
 
 @router.get("/sheets/{sheet_id}/preview", response_class=Response)
-def preview_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> Response:
-    """The same markup the PDF renderer prints, served as HTML."""
+def preview_sheet(
+    sheet_id: uuid.UUID,
+    school_id: TenantDep,
+    db: DbDep,
+    kind: SheetKind = SheetKind.BLANK,
+) -> Response:
+    """The same markup the PDF renderer prints, served as HTML.
+
+    Literally the same: the renderer takes a ``SheetData`` assembled from the
+    rows, so the preview cannot drift from the paper. It used to be called as
+    ``render_sheet_html(db, sheet_id=...)``, a signature that does not exist,
+    and answered 500 on every request.
+    """
     sheet = svc.get_sheet(db, school_id, sheet_id)
-    render_html = load_optional(
-        "alppy.sheets.render", "render_sheet_html", feature="sheet preview"
+    build_sheet_data = load_optional(
+        "alppy.sheets.render", "build_sheet_data", feature="sheet preview"
     )
-    html: str = render_html(db, sheet_id=sheet.id)
+    render_html = load_optional(
+        "alppy.sheets.html", "render_sheet_html", feature="sheet preview"
+    )
+    render_error = load_optional(
+        "alppy.sheets.render", "SheetRenderError", feature="sheet preview"
+    )
+    try:
+        data = build_sheet_data(db, sheet)
+        html: str = render_html(data, kind=kind)
+    except (render_error, ValueError) as exc:
+        # "no students", "no items", a malformed UID: the sheet cannot be shown
+        # and the teacher needs to know which, not a 500.
+        raise errors.unprocessable(str(exc)) from exc
     return Response(content=html, media_type="text/html; charset=utf-8")

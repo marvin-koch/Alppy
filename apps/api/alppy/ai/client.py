@@ -112,6 +112,13 @@ class AiClient:
     def embedding_dim(self) -> int:
         return self._embeddings.dimensions
 
+    @property
+    def chat_is_grounded(self) -> bool:
+        """False when the chat provider does not read its prompt (the offline
+        stand-in). Callers that transcribe a document check this before they
+        start; see ``alppy.ingest.pipeline``."""
+        return bool(getattr(self._chat, "grounded", True))
+
     def complete(
         self,
         *,
@@ -137,6 +144,7 @@ class AiClient:
                     user=user,
                     max_tokens=max_tokens or self._settings.ai_max_output_tokens,
                     temperature=temperature,
+                    purpose=purpose,
                 )
             )
         except Exception as exc:

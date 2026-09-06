@@ -1,10 +1,21 @@
-/* Order matters: tokens must exist before base reads them (DESIGN.md §10). */
+/* Order matters: tokens must exist before base reads them (DESIGN.md §10).
+ *
+ * `base.css` is imported into `@layer base` deliberately. Unlayered normal
+ * declarations beat *every* layered one regardless of specificity, so while it
+ * sat outside a layer its element reset — `button { color: inherit }` — won
+ * against `.ard-btn { color: var(--face-ink) }` in `@layer components`. Every
+ * button in the product silently lost its variant ink and the primary call to
+ * action rendered dark-on-violet at 2.8:1. Tailwind already declares the order
+ * `theme, base, components, utilities`, so naming the layer is all that is
+ * needed for the recipes to win and for utilities to still beat both.
+ *
+ * `tokens.css` stays unlayered: it is custom properties plus `@theme inline`,
+ * which must stay at the top level. `print.css` stays unlayered on purpose —
+ * the print block has to overpower everything, and unlayered is how it does.
+ */
 @import 'tailwindcss';
 @import './design/tokens.css';
-@import './design/base.css';
+@import './design/base.css' layer(base);
 @import './design/motion.css';
 @import './design/print.css';
-
-@layer components {
-  @import './design/recipes.css';
-}
+@import './design/recipes.css' layer(components);

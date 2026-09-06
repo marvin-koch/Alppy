@@ -17,13 +17,34 @@ from alppy.ai.base import ChatProvider, ChatRequest, ChatResponse, EmbeddingsPro
 from alppy.core.config import get_settings
 
 
+#: Purposes whose output must come from the prompt. An ungrounded provider
+#: returns nothing for these rather than inventing content that would be stored
+#: with the source document's provenance.
+TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset({"extract_exercises"})
+
+
 class EchoChatProvider:
     """Offline stand-in. Produces structurally valid exercise JSON so the
-    adaptive-generation flow is demonstrable without a key or a network."""
+    adaptive-generation flow is demonstrable without a key or a network.
+
+    It does not read the prompt — the output is a function of its hash — so it
+    is ``grounded = False`` and returns an empty list for any transcription
+    purpose. Inventing exercises there would store them under the teacher's own
+    filename and page number, with no mark saying a model wrote them.
+    """
 
     name = "echo"
+    grounded = False
 
     def complete(self, request: ChatRequest) -> ChatResponse:
+        if request.purpose in TRANSCRIPTION_PURPOSES:
+            text = json.dumps({"exercises": []})
+            return ChatResponse(
+                text=text,
+                input_tokens=len(request.user) // 4,
+                output_tokens=len(text) // 4,
+                model="echo",
+            )
         seed = hashlib.sha256(request.user.encode()).hexdigest()
         n = int(seed[:2], 16) % 3 + 2
         language = "de" if "language: de" in request.user else "fr"
@@ -57,6 +78,7 @@ class AnthropicChatProvider:
     """Default generation provider."""
 
     name = "anthropic"
+    grounded = True
 
     def __init__(self, api_key: str, model: str) -> None:
         self._model = model

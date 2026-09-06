@@ -26,6 +26,7 @@ from alppy.api.deps import (
     TenantDep,
     load_optional,
     read_upload,
+    start_job,
 )
 from alppy.models import Exercise, Job, Source, Subject
 from alppy.models.enums import JobKind, JobStatus
@@ -111,20 +112,21 @@ async def upload_source(
         status=JobStatus.QUEUED,
     )
     db.add(source)
-    db.add(
-        Job(
-            id=uuid.uuid4(),
-            school_id=school_id,
-            kind=JobKind.INGEST_SOURCE,
-            status=JobStatus.QUEUED,
-            progress=0.0,
-            message="queued for ingestion",
-            payload={"source_id": str(source_id)},
-        )
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=school_id,
+        kind=JobKind.INGEST_SOURCE,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="queued for ingestion",
+        payload={"source_id": str(source_id)},
     )
+    db.add(job)
     # Fail loudly here rather than accepting a file nothing will ever read.
     load_optional("alppy.ingest.pipeline", "ingest_source", feature="source ingestion")
     db.commit()
+    # The row is committed, so the worker can see it; now tell the worker.
+    start_job(db, job)
     db.refresh(source)
     return source_out(source, exercise_count=0)
 

@@ -20,6 +20,7 @@ from alppy.api.deps import (
     TeacherDep,
     TenantDep,
     load_optional,
+    start_job,
 )
 from alppy.core.config import get_settings
 from alppy.models import Job
@@ -117,5 +118,6 @@ def render_batch(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut
     )
     db.add(job)
     db.commit()
+    start_job(db, job)
     db.refresh(job)
     return job_out(job)

@@ -19,6 +19,7 @@ from alppy.api.deps import (
     TeacherDep,
     TenantDep,
     read_upload,
+    start_job,
 )
 from alppy.schemas import (
     DetectionCorrection,
@@ -62,8 +63,9 @@ async def upload_scan(
     response is the scan row, whose status the client polls.
     """
     payload = await read_upload(file, settings)
-    scan, _job = svc.create_scan(db, school_id, teacher.id, storage, payload, sheet_id=sheet_id)
+    scan, job = svc.create_scan(db, school_id, teacher.id, storage, payload, sheet_id=sheet_id)
     db.commit()
+    start_job(db, job)
     db.refresh(scan)
     return scan_out(scan, storage=storage)
 
