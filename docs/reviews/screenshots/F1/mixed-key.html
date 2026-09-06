@@ -1,0 +1,1331 @@
+<!doctype html>
+<html lang="fr" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fractions et géométrie — corrigé</title>
+<style>/* packages/ui/src/design/tokens.css */
+/* ==========================================================================
+   Alppy · Encre violette — design tokens
+   --------------------------------------------------------------------------
+   This file and print.css are the ONLY files in the repo allowed to contain
+   colour literals (enforced by stylelint, see .stylelintrc.json). Every other
+   file reads var(--c-*).
+
+   Order matters and is load-bearing (DESIGN.md §8):
+     1. complete LIGHT palette on bare :root  — every variable exists here first
+     2. dark when nothing was chosen          — :root:not([data-theme='light'])
+     3. dark chosen explicitly                — :root[data-theme='dark']
+     4. high contrast                         — an independent LAYER over either
+   ========================================================================== */
+
+/* ------------------------------------------------------------------ *
+ * 1 · COMPLETE LIGHT PALETTE. Nothing below may introduce a new name. *
+ * ------------------------------------------------------------------ */
+:root {
+  /* — Ink. Never pure black: #1B1735 is a violet-black. — */
+  --c-ink-900: #1b1735;
+  --c-ink-700: #3a3560;
+  --c-ink-500: #6b658f;
+  --c-ink-300: #a9a3c7;
+
+  /* — Lines & surfaces. The neutral leans toward the accent. — */
+  --c-line: #e7e3f7;
+  --c-line-strong: #cdc6ea;
+  --c-surface: #ffffff;
+  --c-surface-2: #fbfaff;
+  --c-canvas: #f7f5ff;
+  --c-canvas-warm: #fff8f0;
+
+  /* — Primary. Violet is ink, not a brand colour. It marks action. — */
+  --c-primary-500: #5b3ff0;
+  --c-primary-600: #4a32d9;
+  --c-primary-700: #3a27ae;
+  --c-primary-200: #d6cbff;
+  --c-primary-100: #ece7ff;
+  --c-primary-050: #f5f2ff;
+
+  /* — Accent. ONE feature only: AI-generated exercises (F4). — */
+  --c-accent-500: #ff8a3d;
+  --c-accent-600: #e06a22;
+  --c-accent-100: #ffe8d6; /* derived: -100 tinted background */
+
+  /* — State families. Always three steps: -100 bg, -500 full, -600 edge/text. — */
+  --c-success-500: #00c48c;
+  --c-success-600: #00a074; /* derived */
+  --c-success-100: #d6f7ec; /* derived */
+
+  --c-warn-500: #ffc93c;
+  --c-warn-600: #a37400; /* derived — dark enough for AA text on --c-warn-100 */
+  --c-warn-100: #fff3d2; /* derived */
+
+  --c-danger-500: #ff5a5f;
+  --c-danger-600: #cf3237; /* derived */
+  --c-danger-100: #ffe1e2; /* derived */
+
+  --c-info-500: #3db8ff;
+  --c-info-600: #0f7bb8; /* derived */
+  --c-info-100: #dcf0ff; /* derived */
+
+  /* — The ordered domain scale. The most important colour decision here. —
+     Five mastery bands, taken verbatim from the shipped brand library
+     (docs/design/alppy-brand-assets/brand/alppy-mastery-tokens.css).
+
+     These values are CALIBRATED, not chosen, and must not be re-derived by eye:
+     each background opacity lands the blended luminance on a target so the ramp
+     stays strictly monotonic in greyscale, and every glyph colour is darkened to
+     a constant luminance of 0.46 so all five bands have equal contrast. The
+     sheets get photocopied — greyscale is the test that matters.
+
+     Note --c-mastery-ok is a yellow-green, not the info blue a derivation from
+     the state families would suggest: the scale runs green -> yellow-green ->
+     amber -> red -> grey so that it stays ordered when the colour is removed.
+
+     NEVER colour alone: always band + glyph + written label. */
+  --c-mastery-solid: #00c48c;
+  --c-mastery-ok: #86cf5b;
+  --c-mastery-weak: #ffc93c;
+  --c-mastery-fading: #ff5a5f;
+  --c-mastery-none: #a9a3c7;
+
+  --c-mastery-solid-glyph: #00996d;
+  --c-mastery-ok-glyph: #56853a;
+  --c-mastery-weak-glyph: #947523;
+  --c-mastery-fading-glyph: #ee5459;
+  --c-mastery-none-glyph: #77738c;
+
+  --c-mastery-solid-bg-opacity: 0.536;
+  --c-mastery-ok-bg-opacity: 0.567;
+  --c-mastery-weak-bg-opacity: 0.561;
+  --c-mastery-fading-bg-opacity: 0.154;
+  --c-mastery-none-bg-opacity: 0.116;
+
+  /* Convenience aliases so components can stay declarative. The tint is the
+     band colour at its calibrated opacity over the surface. */
+  --c-mastery-solid-tint: color-mix(in srgb, var(--c-mastery-solid) 53.6%, var(--c-surface));
+  --c-mastery-ok-tint: color-mix(in srgb, var(--c-mastery-ok) 56.7%, var(--c-surface));
+  --c-mastery-weak-tint: color-mix(in srgb, var(--c-mastery-weak) 56.1%, var(--c-surface));
+  --c-mastery-fading-tint: color-mix(in srgb, var(--c-mastery-fading) 15.4%, var(--c-surface));
+  --c-mastery-none-tint: color-mix(in srgb, var(--c-mastery-none) 11.6%, var(--c-surface));
+
+  --c-mastery-solid-ink: var(--c-mastery-solid-glyph);
+  --c-mastery-ok-ink: var(--c-mastery-ok-glyph);
+  --c-mastery-weak-ink: var(--c-mastery-weak-glyph);
+  --c-mastery-fading-ink: var(--c-mastery-fading-glyph);
+  --c-mastery-none-ink: var(--c-mastery-none-glyph);
+
+  /* — Footer. Separate, and does NOT invert between themes: stays slate. — */
+  --c-foot-bg: #1b1735;
+  --c-foot-ink: #f4f2ff;
+  --c-foot-muted: #a9a3c7;
+  --c-foot-hair: #342e5c;
+
+  /* — Focus & selection — */
+  --c-focus: var(--c-primary-500);
+  --c-selection-bg: var(--c-primary-200);
+  --c-selection-ink: var(--c-primary-700);
+
+  /* — Radii. Roles are fixed; do not repurpose. — */
+  --r-sm: 10px;
+  --r-md: 16px;
+  --r-lg: 24px;
+  --r-xl: 32px;
+  --r-pill: 999px;
+
+  /* — Spacing, base 4 — */
+  --s-2: 2px;
+  --s-4: 4px;
+  --s-8: 8px;
+  --s-12: 12px;
+  --s-16: 16px;
+  --s-20: 20px;
+  --s-24: 24px;
+  --s-32: 32px;
+  --s-40: 40px;
+  --s-48: 48px;
+  --s-64: 64px;
+  --s-80: 80px;
+  --s-96: 96px;
+
+  /* — Border width. High contrast thickens strokes by raising this. — */
+  --border-w: 1px;
+  --border-w-field: 2px;
+
+  /* — Elevation: a solid edge, never a blur alone. — */
+  /* The ambient half of the card shadow, split out so a tinted card can keep
+     its own solid edge and still reuse the blur without writing a colour. */
+  --shadow-ambient: 0 10px 30px -12px rgb(27 23 53 / 18%);
+  --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
+  --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(27 23 53 / 24%);
+  --shadow-pop: 0 20px 50px -12px rgb(27 23 53 / 28%);
+  --focus-ring: 0 0 0 2px var(--c-primary-500), 0 0 0 6px var(--c-primary-100);
+
+  /* — Motion: four durations, two curves. — */
+  --t-fast: 120ms;
+  --t: 200ms;
+  --t-slow: 320ms;
+  --t-celebrate: 520ms;
+  --ease-out-soft: cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  /* — Type families. Self-hosted via @fontsource-variable; no CDN. — */
+  --font-display: 'Fredoka Variable', 'Nunito Variable', system-ui, sans-serif;
+  --font-sans: 'Nunito Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', monospace;
+  --font-hand: 'Caveat Variable', 'Nunito Variable', cursive;
+
+  /* — Type scale, base 16px. size / line-height / weight — */
+  --text-display-2xl: 4.25rem;
+  --lh-display-2xl: 0.98;
+  --text-display-xl: 3rem;
+  --lh-display-xl: 1.05;
+  --text-display-l: 2.25rem;
+  --lh-display-l: 1.1;
+  --text-h1: 1.75rem;
+  --lh-h1: 1.2;
+  --text-h2: 1.375rem;
+  --lh-h2: 1.25;
+  --text-h3: 1.125rem;
+  --lh-h3: 1.3;
+  --text-body-l: 1.125rem; /* FLOOR for any text a student sees */
+  --lh-body-l: 1.6;
+  --text-body: 1rem;
+  --lh-body: 1.6;
+  --text-body-s: 0.875rem;
+  --lh-body-s: 1.5;
+  --text-label: 0.8125rem;
+  --lh-label: 1.4;
+  --tracking-label: 0.04em;
+
+  /* — Print geometry. Shared by print.css AND the scan detector (layout v1). — */
+  --print-page-w: 210mm;
+  --print-page-h: 297mm;
+  --print-margin: 14mm;
+  --print-fiducial: 8mm;
+  --print-rule: 0.5pt;
+
+  color-scheme: light;
+}
+
+/* ------------------------------------------------------------------------ *
+ * 2 · DARK when nothing was chosen. :not() lets an explicit "light" win over *
+ *     a dark system preference. Dark is not an inversion: shadows move from  *
+ *     violet to black and the primary rises ~8% in lightness.               *
+ * ------------------------------------------------------------------------ */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --c-ink-900: #f4f2ff;
+    --c-ink-700: #cfc9ec;
+    --c-ink-500: #9c95c4;
+    --c-ink-300: #6e679a;
+
+    --c-line: #342e5c;
+    --c-line-strong: #4a4280;
+    --c-surface: #1f1b3a;
+    --c-surface-2: #272247;
+    --c-canvas: #151229;
+    --c-canvas-warm: #2a2033;
+
+    /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
+       lighter than -500, not darker. It was darker, which is why links and chips
+       sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
+       its ink, so it has to clear 4.5:1 against #1f1b3a. */
+    --c-primary-500: #8f79ff;
+    --c-primary-600: #4e37c9;
+    --c-primary-700: #a48dff;
+    --c-primary-200: #3d3480;
+    --c-primary-100: #2b2358;
+    --c-primary-050: #221c46;
+
+    --c-accent-500: #ff9e5e;
+    --c-accent-600: #c96a28;
+    --c-accent-100: #3d2618;
+
+    --c-success-500: #24dba2;
+    --c-success-600: #4defb9;
+    --c-success-100: #103a2d;
+
+    --c-warn-500: #ffd264;
+    --c-warn-600: #ffe294;
+    --c-warn-100: #3a2e12;
+
+    --c-danger-500: #ff7a7e;
+    --c-danger-600: #ff9fa2;
+    --c-danger-100: #3d1d22;
+
+    --c-info-500: #63c8ff;
+    --c-info-600: #96dcff;
+    --c-info-100: #12293d;
+
+    --c-selection-ink: var(--c-ink-900);
+
+    --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+    --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
+    --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
+    --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
+
+    color-scheme: dark;
+  }
+}
+
+/* ------------------------------------------------------- *
+ * 3 · DARK chosen explicitly — beats a light system pref.  *
+ * ------------------------------------------------------- */
+:root[data-theme='dark'] {
+  --c-ink-900: #f4f2ff;
+  --c-ink-700: #cfc9ec;
+  --c-ink-500: #9c95c4;
+  --c-ink-300: #6e679a;
+
+  --c-line: #342e5c;
+  --c-line-strong: #4a4280;
+  --c-surface: #1f1b3a;
+  --c-surface-2: #272247;
+  --c-canvas: #151229;
+  --c-canvas-warm: #2a2033;
+
+  /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
+     lighter than -500, not darker. It was darker, which is why links and chips
+     sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
+     its ink, so it has to clear 4.5:1 against #1f1b3a. */
+  --c-primary-500: #8f79ff;
+  --c-primary-600: #4e37c9;
+  --c-primary-700: #a48dff;
+  --c-primary-200: #3d3480;
+  --c-primary-100: #2b2358;
+  --c-primary-050: #221c46;
+
+  --c-accent-500: #ff9e5e;
+  --c-accent-600: #c96a28;
+  --c-accent-100: #3d2618;
+
+  --c-success-500: #24dba2;
+  --c-success-600: #4defb9;
+  --c-success-100: #103a2d;
+
+  --c-warn-500: #ffd264;
+  --c-warn-600: #ffe294;
+  --c-warn-100: #3a2e12;
+
+  --c-danger-500: #ff7a7e;
+  --c-danger-600: #ff9fa2;
+  --c-danger-100: #3d1d22;
+
+  --c-info-500: #63c8ff;
+  --c-info-600: #96dcff;
+  --c-info-100: #12293d;
+
+  --c-selection-ink: var(--c-ink-900);
+
+  --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+  --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
+  --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
+  --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
+
+  color-scheme: dark;
+}
+
+/* ---------------------------------------------------------------------- *
+ * 4 · HIGH CONTRAST — a LAYER over either theme, on an independent attr.  *
+ *     Composes with data-theme. Colour alone is never enough, including   *
+ *     here: strokes thicken too.                                          *
+ * ---------------------------------------------------------------------- */
+:root[data-contrast='high'] {
+  --c-ink-900: #000000;
+  --c-ink-700: #000000;
+  --c-ink-500: #1a1a1a;
+  --c-ink-300: #4a4a4a;
+
+  --c-line: #000000;
+  --c-line-strong: #000000;
+  --c-surface: #ffffff;
+  --c-surface-2: #ffffff;
+  --c-canvas: #ffffff;
+  --c-canvas-warm: #ffffff;
+
+  --c-primary-500: #3a1fb0;
+  --c-primary-600: #2a1580;
+  --c-primary-700: #2a1580;
+  --c-primary-200: #b9a8ff;
+  --c-primary-100: #e8e2ff;
+  --c-primary-050: #f2eeff;
+
+  --c-accent-500: #a03c00;
+  --c-accent-600: #7a2d00;
+  --c-accent-100: #ffe0c9;
+
+  --c-success-500: #00674b;
+  --c-success-600: #00674b;
+  --c-success-100: #cdf3e6;
+
+  --c-warn-500: #6b4a00;
+  --c-warn-600: #6b4a00;
+  --c-warn-100: #ffeec2;
+
+  --c-danger-500: #a3000a;
+  --c-danger-600: #a3000a;
+  --c-danger-100: #ffd9db;
+
+  --c-info-500: #00507d;
+  --c-info-600: #00507d;
+  --c-info-100: #d3ecff;
+
+  --border-w: 2px;
+  --border-w-field: 2px;
+
+  --shadow-ambient: none;
+  --shadow-card: 0 2px 0 0 var(--c-line);
+  --shadow-raised: 0 3px 0 0 var(--c-line-strong);
+  --shadow-pop: 0 4px 0 0 var(--c-line);
+  --focus-ring: 0 0 0 3px var(--c-primary-500), 0 0 0 7px var(--c-canvas);
+
+  color-scheme: light;
+}
+
+/* High contrast composed with an explicitly dark theme. Both attributes are
+   independent, so this pairing must be declared — it is a tested state. */
+:root[data-contrast='high'][data-theme='dark'] {
+  --c-ink-900: #ffffff;
+  --c-ink-700: #ffffff;
+  --c-ink-500: #e8e8e8;
+  --c-ink-300: #bdbdbd;
+
+  --c-line: #ffffff;
+  --c-line-strong: #ffffff;
+  --c-surface: #000000;
+  --c-surface-2: #000000;
+  --c-canvas: #000000;
+  --c-canvas-warm: #000000;
+
+  --c-primary-500: #c3b2ff;
+  --c-primary-600: #dcd2ff;
+  --c-primary-700: #dcd2ff;
+  --c-primary-200: #4a3f8f;
+  --c-primary-100: #2a2258;
+  --c-primary-050: #1d1840;
+
+  --c-accent-500: #ffbb85;
+  --c-accent-600: #ffd4b0;
+  --c-accent-100: #4a2c14;
+
+  --c-success-500: #6cf0c2;
+  --c-success-600: #9df7d8;
+  --c-success-100: #0a3227;
+
+  --c-warn-500: #ffdd85;
+  --c-warn-600: #ffeab3;
+  --c-warn-100: #3a2c0a;
+
+  --c-danger-500: #ffa3a6;
+  --c-danger-600: #ffc7c9;
+  --c-danger-100: #400f13;
+
+  --c-info-500: #9adcff;
+  --c-info-600: #c2ebff;
+  --c-info-100: #0a2537;
+
+  --focus-ring: 0 0 0 3px var(--c-primary-500), 0 0 0 7px var(--c-canvas);
+
+  color-scheme: dark;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-contrast='high']:not([data-theme='light']):not([data-theme='dark']) {
+    --c-ink-900: #ffffff;
+    --c-ink-700: #ffffff;
+    --c-ink-500: #e8e8e8;
+    --c-ink-300: #bdbdbd;
+    --c-line: #ffffff;
+    --c-line-strong: #ffffff;
+    --c-surface: #000000;
+    --c-surface-2: #000000;
+    --c-canvas: #000000;
+    --c-canvas-warm: #000000;
+    --c-primary-500: #c3b2ff;
+    --c-primary-600: #dcd2ff;
+    --c-primary-700: #dcd2ff;
+    --c-primary-200: #4a3f8f;
+    --c-primary-100: #2a2258;
+    --c-primary-050: #1d1840;
+    --c-accent-500: #ffbb85;
+    --c-accent-600: #ffd4b0;
+    --c-accent-100: #4a2c14;
+    --c-success-500: #6cf0c2;
+    --c-success-600: #9df7d8;
+    --c-success-100: #0a3227;
+    --c-warn-500: #ffdd85;
+    --c-warn-600: #ffeab3;
+    --c-warn-100: #3a2c0a;
+    --c-danger-500: #ffa3a6;
+    --c-danger-600: #ffc7c9;
+    --c-danger-100: #400f13;
+    --c-info-500: #9adcff;
+    --c-info-600: #c2ebff;
+    --c-info-100: #0a2537;
+    color-scheme: dark;
+  }
+}
+
+/* ---------------------------------------------------------------------- *
+ * TAILWIND v4 BRIDGE.  `inline` is load-bearing: it keeps the token as a  *
+ * var() reference. Without it Tailwind freezes the value at build time    *
+ * and live theme switching repaints nothing.                             *
+ * ---------------------------------------------------------------------- */
+@theme inline {
+  --color-ink-900: var(--c-ink-900);
+  --color-ink-700: var(--c-ink-700);
+  --color-ink-500: var(--c-ink-500);
+  --color-ink-300: var(--c-ink-300);
+  --color-line: var(--c-line);
+  --color-line-strong: var(--c-line-strong);
+  --color-surface: var(--c-surface);
+  --color-surface-2: var(--c-surface-2);
+  --color-canvas: var(--c-canvas);
+  --color-canvas-warm: var(--c-canvas-warm);
+  --color-primary-500: var(--c-primary-500);
+  --color-primary-600: var(--c-primary-600);
+  --color-primary-700: var(--c-primary-700);
+  --color-primary-200: var(--c-primary-200);
+  --color-primary-100: var(--c-primary-100);
+  --color-primary-050: var(--c-primary-050);
+  --color-accent-500: var(--c-accent-500);
+  --color-accent-600: var(--c-accent-600);
+  --color-accent-100: var(--c-accent-100);
+  --color-success-500: var(--c-success-500);
+  --color-success-600: var(--c-success-600);
+  --color-success-100: var(--c-success-100);
+  --color-warn-500: var(--c-warn-500);
+  --color-warn-600: var(--c-warn-600);
+  --color-warn-100: var(--c-warn-100);
+  --color-danger-500: var(--c-danger-500);
+  --color-danger-600: var(--c-danger-600);
+  --color-danger-100: var(--c-danger-100);
+  --color-info-500: var(--c-info-500);
+  --color-info-600: var(--c-info-600);
+  --color-info-100: var(--c-info-100);
+  --color-mastery-solid: var(--c-mastery-solid);
+  --color-mastery-ok: var(--c-mastery-ok);
+  --color-mastery-weak: var(--c-mastery-weak);
+  --color-mastery-fading: var(--c-mastery-fading);
+  --color-mastery-none: var(--c-mastery-none);
+  --color-foot-bg: var(--c-foot-bg);
+  --color-foot-ink: var(--c-foot-ink);
+  --color-foot-muted: var(--c-foot-muted);
+  --color-foot-hair: var(--c-foot-hair);
+
+  --font-display: var(--font-display);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+  --font-hand: var(--font-hand);
+
+  --text-display-2xl: var(--text-display-2xl);
+  --text-display-2xl--line-height: 0.98;
+  --text-display-2xl--font-weight: 700;
+  --text-display-xl: var(--text-display-xl);
+  --text-display-xl--line-height: 1.05;
+  --text-display-xl--font-weight: 700;
+  --text-display-l: var(--text-display-l);
+  --text-display-l--line-height: 1.1;
+  --text-display-l--font-weight: 700;
+  --text-h1: var(--text-h1);
+  --text-h1--line-height: 1.2;
+  --text-h1--font-weight: 700;
+  --text-h2: var(--text-h2);
+  --text-h2--line-height: 1.25;
+  --text-h2--font-weight: 700;
+  --text-h3: var(--text-h3);
+  --text-h3--line-height: 1.3;
+  --text-h3--font-weight: 700;
+  --text-body-l: var(--text-body-l);
+  --text-body-l--line-height: 1.6;
+  --text-body: var(--text-body);
+  --text-body--line-height: 1.6;
+  --text-body-s: var(--text-body-s);
+  --text-body-s--line-height: 1.5;
+  --text-label: var(--text-label);
+  --text-label--line-height: 1.4;
+  --text-label--font-weight: 700;
+  --text-label--letter-spacing: 0.04em;
+
+  --radius-sm: var(--r-sm);
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-xl: var(--r-xl);
+  --radius-pill: var(--r-pill);
+
+  --shadow-card: var(--shadow-card);
+  --shadow-raised: var(--shadow-raised);
+  --shadow-pop: var(--shadow-pop);
+
+  --ease-out-soft: var(--ease-out-soft);
+  --ease-spring: var(--ease-spring);
+}
+
+</style>
+<style>/* packages/ui/src/design/base.css */
+/* Alppy · base — element defaults. ZERO colour literals: everything is var(--c-*). */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+* {
+  margin: 0;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+body {
+  /* body ALWAYS paints its background explicitly — never inherits the host's. */
+  background-color: var(--c-canvas);
+  color: var(--c-ink-900);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  line-height: var(--lh-body);
+  font-weight: 400;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background-color: var(--c-selection-bg);
+  color: var(--c-selection-ink);
+}
+
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  color: var(--c-ink-900);
+  text-wrap: balance;
+}
+
+h1 { font-size: var(--text-h1); line-height: var(--lh-h1); }
+h2 { font-size: var(--text-h2); line-height: var(--lh-h2); }
+h3 { font-size: var(--text-h3); line-height: var(--lh-h3); }
+h4 { font-size: var(--text-body-l); line-height: var(--lh-body-l); }
+
+p { color: var(--c-ink-700); }
+
+small,
+.text-body-s { font-size: var(--text-body-s); line-height: var(--lh-body-s); }
+
+code,
+kbd,
+pre,
+samp,
+.mono { font-family: var(--font-mono); font-size: 0.9em; }
+
+/* Extracted / transcribed data must LOOK like data — the teacher audits it. */
+[data-transcription] {
+  font-family: var(--font-mono);
+  color: var(--c-ink-700);
+}
+
+/* Chalk. At most once per page (DESIGN.md §3). */
+.hand {
+  font-family: var(--font-hand);
+  font-weight: 600;
+}
+
+.label,
+.type-label {
+  font-size: var(--text-label);
+  line-height: var(--lh-label);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+/* Aligned digits everywhere they are compared: matrices, rings, gauges. */
+table,
+.tabular,
+[data-numeric] {
+  font-variant-numeric: tabular-nums;
+}
+
+a {
+  color: var(--c-primary-700);
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+a:hover { color: var(--c-primary-500); }
+
+img,
+svg,
+video,
+canvas { display: block; max-width: 100%; }
+
+button,
+input,
+select,
+textarea { font: inherit; color: inherit; }
+
+hr {
+  border: 0;
+  border-top: var(--border-w) solid var(--c-line);
+}
+
+/* A single, visible focus ring everywhere. Never removed, only restyled. */
+:focus-visible {
+  outline: none;
+  box-shadow: var(--focus-ring);
+  border-radius: var(--r-sm);
+}
+
+/* Calm mode: reading mode strips decoration. Illustrations are decorative. */
+:root[data-calm='on'] [data-decorative] { display: none !important; }
+
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Any text a student reads has a floor of body-l. A product constraint. */
+[data-student-facing] {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}
+
+</style>
+<style>/* packages/ui/src/design/print.css */
+/* ==========================================================================
+   Alppy · print — paper is not a fallback, it is the deliverable.
+   --------------------------------------------------------------------------
+   LAYOUT VERSION v1.  This file and apps/api/alppy/sheets/layout.py describe
+   the SAME geometry. The scan detector (F2) registers against these marks, so
+   changing any number here is a layout version bump, not a tweak.
+   See docs/sheet-layout.md.
+
+   Together with tokens.css this is the only file allowed colour literals: the
+   print block overwrites the tokens rather than bypassing them, and pure black
+   exists only here and in high contrast.
+   ========================================================================== */
+
+/* ---- Screen-side print preview: show the page as paper on the canvas ---- */
+.print-sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--s-24);
+}
+
+.print-page {
+  position: relative;
+  box-sizing: border-box;
+  width: var(--print-page-w);
+  min-height: var(--print-page-h);
+  padding: var(--print-margin);
+  background: var(--c-surface);
+  color: var(--c-ink-900);
+  font-family: var(--font-sans);
+  /* Student-facing floor. Never below body-l. */
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  box-shadow: var(--shadow-card);
+}
+
+/* -- Corner fiducials --------------------------------------------------- *
+ * REAL BORDERS, not background fills, so they survive the browser's default
+ * "do not print background graphics" setting. The detector locates these four
+ * squares to deskew and register the page.                                  */
+[data-fiducial] {
+  position: absolute;
+  width: var(--print-fiducial);
+  height: var(--print-fiducial);
+  border: calc(var(--print-fiducial) / 2) solid currentcolor;
+  color: var(--c-ink-900);
+}
+
+[data-fiducial='tl'] { top: var(--print-margin); left: var(--print-margin); }
+[data-fiducial='tr'] { top: var(--print-margin); right: var(--print-margin); }
+[data-fiducial='bl'] { bottom: var(--print-margin); left: var(--print-margin); }
+[data-fiducial='br'] { bottom: var(--print-margin); right: var(--print-margin); }
+
+/* The registration frame: distance between opposing fiducial centres. Every
+   answer bubble position is expressed as a fraction of this frame, so the
+   detector needs nothing but the four corners. */
+.print-frame {
+  position: relative;
+  margin-top: calc(var(--print-fiducial) + 6mm);
+}
+
+/* -- Sheet header: every physical page carries its own ------------------- */
+.print-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--s-16);
+  padding-bottom: 3mm;
+  border-bottom: 1pt solid var(--c-ink-900);
+}
+
+.print-title {
+  font-family: var(--font-display);
+  font-size: var(--text-h2);
+  line-height: var(--lh-h2);
+  font-weight: 700;
+}
+
+.print-meta {
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* -- Student UID: printed as TEXT and as a pre-filled digit grid ---------- *
+ * The grid is what the detector reads; the text is what a human reads. No OCR
+ * is required in the happy path.                                            */
+.print-uid {
+  display: flex;
+  align-items: center;
+  gap: 3mm;
+}
+
+.print-uid-text {
+  font-family: var(--font-mono);
+  font-size: 12pt;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+}
+
+.print-uid-grid {
+  display: grid;
+  grid-auto-flow: column;
+  gap: 1mm;
+}
+
+.print-uid-cell {
+  width: 4mm;
+  height: 4mm;
+  border: 0.5pt solid var(--c-ink-900);
+}
+
+.print-uid-cell[data-filled='true'] { background: var(--c-ink-900); }
+
+/* -- Items and the fixed answer grid ------------------------------------- */
+.print-item {
+  break-inside: avoid;
+  page-break-inside: avoid;
+  padding: 3mm 0;
+  border-bottom: var(--print-rule) solid var(--c-line);
+}
+
+.print-item-statement {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}
+
+.print-answers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4mm;
+  margin-top: 2mm;
+}
+
+/* A bubble's geometry is fixed by layout v1 and read by the detector. */
+.print-bubble {
+  display: flex;
+  align-items: center;
+  gap: 1.5mm;
+}
+
+.print-bubble-mark {
+  width: 5mm;
+  height: 5mm;
+  border: 0.6pt solid var(--c-ink-900);
+  border-radius: var(--r-pill);
+}
+
+/* The A/B/C/D (or V/F) above each bubble.
+ *
+ * KNOWN GAP, deliberately left: this is student-facing and the floor is
+ * body-l (4.76mm), but the letter lives in the slack between two grid rows —
+ * GRID_ROW_PITCH_MM - BUBBLE_D_MM - 0.3 = 3.20mm in layout v1. A body-l glyph
+ * does not fit, and the overflow would land in the annulus the detector
+ * samples around the bubble above, which reads as a filled mark and scores a
+ * child's answer wrong. Raising it needs a taller row pitch, i.e. a LAYOUT
+ * VERSION BUMP with the detector re-verified — not a CSS change.
+ * The option text itself (`A  11/12`) is at body-l in the statement above, so
+ * what the student reads to decide is at the floor; this is the label they
+ * match against. See docs/sheet-layout.md. */
+.print-bubble-letter {
+  font-family: var(--font-mono);
+  font-size: 10pt;
+}
+
+/* Answer key: the filled state exists only on the key sheet. */
+.print-bubble-mark[data-key='true'] {
+  background: var(--c-ink-900);
+}
+
+/* -- Mastery legend on paper --------------------------------------------- *
+ * THE PHOTOCOPIER IS BLACK AND WHITE. Every band carries a colour AND a
+ * distinct underline style, and both appear in the legend.                  */
+.print-band { text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.print-band[data-band='solid'] { color: var(--c-mastery-solid); text-decoration: underline solid; }
+.print-band[data-band='ok'] { color: var(--c-mastery-ok); text-decoration: underline dashed; }
+.print-band[data-band='weak'] { color: var(--c-mastery-weak); text-decoration: underline dotted; }
+.print-band[data-band='fading'] { color: var(--c-mastery-fading); text-decoration: underline double; }
+.print-band[data-band='none'] { color: var(--c-mastery-none); text-decoration: underline wavy; }
+
+.print-footer {
+  margin-top: 4mm;
+  padding-top: 2mm;
+  border-top: var(--print-rule) solid var(--c-ink-900);
+  font-size: var(--text-body-s);
+  color: var(--c-ink-700);
+}
+
+/* ========================================================================== *
+ * THE PRINT BLOCK. Tokens are overwritten, not bypassed.                     *
+ * ========================================================================== */
+@media print {
+  :root {
+    --c-canvas: #fff;
+    --c-surface: #fff;
+    --c-ink-900: #000;
+    --c-ink-700: #222;
+    --c-ink-500: #444;
+    --c-line: #999;
+  }
+
+  [data-no-print],
+  nav,
+  header[data-app-header] { display: none !important; }
+
+  body { background: #fff; }
+
+  .print-page {
+    width: auto;
+    min-height: auto;
+    padding: 0;
+    box-shadow: none !important;
+    page-break-after: always;
+    break-after: page;
+  }
+
+  .print-page:last-child { page-break-after: auto; break-after: auto; }
+
+  .print-item { break-inside: avoid; }
+
+  /* Fiducials are borders, so they print even with background graphics off. */
+  [data-fiducial] { display: block !important; }
+
+  @page {
+    size: A4;
+    margin: 14mm;
+  }
+}
+
+</style>
+<style>/* generated from alppy.sheets.layout, layout v1 */
+/* ==========================================================================
+   GENERATED — do not edit. Every number below is computed from
+   apps/api/alppy/sheets/layout.py, layout version v1.
+
+   This stylesheet carries no design decisions and no colour literals: tokens.css,
+   base.css and print.css (inlined above, unmodified) own the look. All this file
+   does is pin the machine-readable furniture — fiducials, UID grid, statement
+   region, answer grid — to the exact millimetre coordinates the scan detector
+   samples. It exists because those coordinates live in Python, and a hand-written
+   copy of them in CSS is precisely the drift that would mis-grade a class. The
+   handful of .sheet-* classes below are the sheet-only chrome print.css does not
+   name; they read tokens like everything else.
+   ========================================================================== */
+
+/* -- One .print-page is one physical A4 page, in both media. --------------
+ * On screen .print-page is the paper itself (210x297mm, 14mm padding).
+ * In print, print.css strips the padding and @page supplies the 14mm margin,
+ * so the element covers only the 182x269mm content box. .sheet-geometry
+ * reconciles the two: it always spans the whole sheet of paper, so every child
+ * below can use raw page coordinates straight out of layout.py. */
+.print-page {
+  position: relative;
+  height: var(--print-page-h);
+  overflow: hidden;
+}
+
+.sheet-geometry {
+  position: absolute;
+  inset: 0;
+}
+
+@media print {
+  /* The screen preview stacks pages with a gap; on paper a gap would push a
+     blank page out of the printer. */
+  .print-sheet {
+    display: block;
+    gap: 0;
+  }
+
+  .print-page {
+    height: 269mm;
+    margin: 0;
+  }
+
+  .sheet-geometry {
+    inset: -14mm;
+  }
+}
+
+/* -- Fills that survive "do not print background graphics" ----------------
+ * The fiducials are borders for this reason and print.css says so. The two
+ * other filled things on the page — a set UID cell and a marked bubble on the
+ * answer key — are declared as `background` there, and a background is exactly
+ * what Chromium drops when we render with print_background=False. So they get
+ * the same treatment: a border half the box wide fills the box with ink. The
+ * colour still comes from print.css; only the width is set here. */
+.print-uid-cell[data-filled='true'] {
+  border-width: 2.0mm;
+}
+
+.print-bubble-mark[data-key='true'] {
+  border-width: 2.5mm;
+}
+
+/* -- Header: title and administrative meta, stopping short of the UID grid - */
+.print-header {
+  position: absolute;
+  left: 14mm;
+  top: 26mm;
+  width: 104mm;
+  height: 18mm;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+  gap: 1mm;
+  overflow: hidden;
+}
+
+/* -- The UID, printed twice ----------------------------------------------
+ * The grid is what the detector reads; the text is what a human reads when the
+ * checksum fails and the page has to be assigned by hand. */
+.print-uid-grid {
+  position: absolute;
+  left: 120mm;
+  top: 30mm;
+  grid-template-rows: repeat(4, 4.0mm);
+  grid-auto-columns: 4.0mm;
+  gap: 1mm;
+}
+
+.print-uid {
+  position: absolute;
+  left: 162mm;
+  top: 30mm;
+  width: 34mm;
+  height: 19mm;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0;
+}
+
+.sheet-uid-label {
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* The one mark that tells a teacher at arm's length which of the two documents
+   they are holding. Always two documents: the blank sheet and the answer key. */
+.sheet-key-badge {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-s);
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  border: 1pt solid var(--c-ink-900);
+  border-radius: var(--r-pill);
+  padding: 0 2mm;
+  margin-right: 2mm;
+  vertical-align: middle;
+}
+
+/* -- Statement region ----------------------------------------------------
+ * Fixed height, clipped. pagination.py is what keeps content inside it; the
+ * clip is the last line of defence so an under-estimate can never push the
+ * answer grid off its coordinates. */
+.sheet-items {
+  position: absolute;
+  left: 14mm;
+  top: 48mm;
+  width: 182mm;
+  height: 148mm;
+  overflow: hidden;
+}
+
+.sheet-instructions {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  margin-bottom: 2mm;
+}
+
+.print-item:last-child {
+  border-bottom: 0;
+}
+
+.sheet-item-number {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  margin-right: 2mm;
+}
+
+/* The one place the mandarin accent appears on paper. It carries a word, not
+   just a colour: a photocopier turns the colour into grey. */
+/* Rendered inside the statement a student reads, so it may not drop below the
+   floor the surrounding text sits at. */
+.sheet-ai-mark {
+  font-family: var(--font-mono);
+  font-size: var(--text-body-l);
+  font-weight: 700;
+  color: var(--c-accent-600);
+  border: var(--print-rule) solid var(--c-accent-600);
+  border-radius: var(--r-pill);
+  padding: 0 1.5mm;
+  margin-right: 2mm;
+}
+
+.sheet-options {
+  list-style: none;
+  padding-left: 8mm;
+  margin-top: 1mm;
+}
+
+.sheet-option {
+  display: flex;
+  gap: 2mm;
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+}
+
+.sheet-option-letter {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  min-width: 6mm;
+}
+
+/* Free text: a ruled space, never a bubble. Printed, never auto-graded. */
+.sheet-rules {
+  margin-top: 2mm;
+}
+
+.sheet-rule {
+  display: block;
+  height: 8mm;
+  border-bottom: var(--print-rule) solid var(--c-line);
+}
+
+.sheet-key-answer {
+  margin-top: 1mm;
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+  color: var(--c-ink-700);
+}
+
+/* -- The fixed answer grid ------------------------------------------------
+ * Not inline with the statements. Statement height varies with the text; this
+ * does not, which is what lets the detector find every bubble from the four
+ * corner marks alone without understanding a single word on the page. */
+.sheet-grid {
+  position: absolute;
+  inset: 0;
+}
+
+/* Heading of the section the student fills in. */
+.sheet-grid-caption {
+  position: absolute;
+  left: 14mm;
+  top: 196.5mm;
+  width: 182mm;
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  font-weight: 700;
+}
+
+.sheet-grid-row {
+  position: absolute;
+  width: 46mm;
+  height: 5.0mm;
+}
+
+.sheet-grid-row[data-group='0'] { left: 24mm; }
+.sheet-grid-row[data-group='1'] { left: 112mm; }
+
+.sheet-grid-row[data-row='0'] { top: 206mm; }
+.sheet-grid-row[data-row='1'] { top: 214.5mm; }
+.sheet-grid-row[data-row='2'] { top: 223mm; }
+.sheet-grid-row[data-row='3'] { top: 231.5mm; }
+.sheet-grid-row[data-row='4'] { top: 240mm; }
+.sheet-grid-row[data-row='5'] { top: 248.5mm; }
+.sheet-grid-row[data-row='6'] { top: 257mm; }
+.sheet-grid-row[data-row='7'] { top: 265.5mm; }
+
+/* The running question number, which is what the student matches against the
+   statement — student-facing, so it sits at the body-l floor. */
+.sheet-grid-number {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 11mm;
+  height: 5.0mm;
+  text-align: right;
+  font-family: var(--font-mono);
+  font-size: var(--text-body-l);
+  line-height: 5.0mm;
+}
+
+/* Absolutely positioned, but still the flex box print.css declares: a flex
+   container blockifies its children, and .print-bubble-mark is a <span> whose
+   5mm x 5mm would otherwise be ignored — an inline box cannot be a circle. */
+.print-bubble {
+  position: absolute;
+  top: 0;
+  width: 5.0mm;
+  height: 5.0mm;
+}
+
+.print-bubble[data-option='0'] { left: 14mm; }
+.print-bubble[data-option='1'] { left: 22mm; }
+.print-bubble[data-option='2'] { left: 30mm; }
+.print-bubble[data-option='3'] { left: 38mm; }
+
+/* The letter sits ABOVE its bubble, in the slack between grid rows. Inside the
+   bubble it would be ink the detector counts as a mark; beside it there is no
+   room before the next bubble at 8mm. */
+.print-bubble-letter {
+  position: absolute;
+  bottom: 100%;
+  left: 0;
+  width: 5.0mm;
+  text-align: center;
+  line-height: 3.2mm;
+}
+
+/* "réponse écrite" tells the student this row has no bubble to fill: an
+   instruction to them, not chrome for the teacher. */
+.sheet-grid-open {
+  position: absolute;
+  left: 14mm;
+  top: 0;
+  height: 5.0mm;
+  line-height: 5.0mm;
+  font-size: var(--text-body-l);
+  color: var(--c-ink-700);
+}
+
+/* -- Footer, kept clear of the two bottom fiducials ----------------------- */
+.print-footer {
+  position: absolute;
+  left: 26mm;
+  top: 273mm;
+  width: 158mm;
+  margin-top: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 2mm;
+}
+
+/* THE PHOTOCOPIER IS BLACK AND WHITE. print.css gives every band a colour AND a
+   distinct underline; the legend has to show both, so it never sets a colour
+   itself and never drops the underline. */
+.sheet-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3mm;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  font-size: var(--text-body-s);
+  line-height: var(--lh-body-s);
+}
+
+</style>
+</head>
+<body>
+<div class="print-sheet" data-sheet-kind="answer_key" data-layout-version="v1">
+<section class="print-page" data-page="1" data-copy-uid="7B_15" data-copy-page="1">
+  <div class="sheet-geometry"><span data-fiducial="tl" aria-hidden="true"></span>
+    <span data-fiducial="tr" aria-hidden="true"></span>
+    <span data-fiducial="bl" aria-hidden="true"></span>
+    <span data-fiducial="br" aria-hidden="true"></span>
+
+    <header class="print-header">
+      <h2 class="print-title"><span class="sheet-key-badge" data-key-only="true">CORRIGÉ</span>Fractions et géométrie</h2>
+      <p class="print-meta">7B · Mathématiques</p>
+    </header><div class="print-uid-grid" data-uid="7B_15" aria-hidden="true"><span class="print-uid-cell" data-slot="0" data-row="0" data-filled="false"></span><span class="print-uid-cell" data-slot="0" data-row="1" data-filled="true"></span><span class="print-uid-cell" data-slot="0" data-row="2" data-filled="true"></span><span class="print-uid-cell" data-slot="0" data-row="3" data-filled="true"></span><span class="print-uid-cell" data-slot="1" data-row="0" data-filled="false"></span><span class="print-uid-cell" data-slot="1" data-row="1" data-filled="false"></span><span class="print-uid-cell" data-slot="1" data-row="2" data-filled="false"></span><span class="print-uid-cell" data-slot="1" data-row="3" data-filled="false"></span><span class="print-uid-cell" data-slot="2" data-row="0" data-filled="true"></span><span class="print-uid-cell" data-slot="2" data-row="1" data-filled="true"></span><span class="print-uid-cell" data-slot="2" data-row="2" data-filled="true"></span><span class="print-uid-cell" data-slot="2" data-row="3" data-filled="false"></span><span class="print-uid-cell" data-slot="3" data-row="0" data-filled="true"></span><span class="print-uid-cell" data-slot="3" data-row="1" data-filled="false"></span><span class="print-uid-cell" data-slot="3" data-row="2" data-filled="false"></span><span class="print-uid-cell" data-slot="3" data-row="3" data-filled="false"></span><span class="print-uid-cell" data-slot="4" data-row="0" data-filled="false"></span><span class="print-uid-cell" data-slot="4" data-row="1" data-filled="true"></span><span class="print-uid-cell" data-slot="4" data-row="2" data-filled="true"></span><span class="print-uid-cell" data-slot="4" data-row="3" data-filled="true"></span><span class="print-uid-cell" data-slot="5" data-row="0" data-filled="true"></span><span class="print-uid-cell" data-slot="5" data-row="1" data-filled="false"></span><span class="print-uid-cell" data-slot="5" data-row="2" data-filled="false"></span><span class="print-uid-cell" data-slot="5" data-row="3" data-filled="false"></span><span class="print-uid-cell" data-slot="6" data-row="0" data-filled="true"></span><span class="print-uid-cell" data-slot="6" data-row="1" data-filled="true"></span><span class="print-uid-cell" data-slot="6" data-row="2" data-filled="true"></span><span class="print-uid-cell" data-slot="6" data-row="3" data-filled="false"></span><span class="print-uid-cell" data-slot="7" data-row="0" data-filled="false"></span><span class="print-uid-cell" data-slot="7" data-row="1" data-filled="false"></span><span class="print-uid-cell" data-slot="7" data-row="2" data-filled="true"></span><span class="print-uid-cell" data-slot="7" data-row="3" data-filled="true"></span></div>
+    <div class="print-uid">
+      <span class="sheet-uid-label">Code élève</span>
+      <span class="print-uid-text">7B_15</span>
+    </div>
+
+    <section class="sheet-items" data-student-facing="true">
+      <p class="sheet-instructions">Remplis une seule bulle par ligne dans la grille de réponses en bas de page.</p>
+      <article class="print-item" data-item-index="0" data-number="1" data-type="mcq">
+  <p class="print-item-statement" data-student-facing="true"><span class="sheet-item-number">1.</span>Calcule 3/4 + 1/6 et donne le résultat sous forme irréductible.</p>
+  <ul class="sheet-options" data-student-facing="true">
+    <li class="sheet-option"><span class="sheet-option-letter">A</span><span class="sheet-option-text">11/12</span></li>
+    <li class="sheet-option"><span class="sheet-option-letter">B</span><span class="sheet-option-text">4/10</span></li>
+    <li class="sheet-option"><span class="sheet-option-letter">C</span><span class="sheet-option-text">13/12</span></li>
+    <li class="sheet-option"><span class="sheet-option-letter">D</span><span class="sheet-option-text">2/5</span></li>
+  </ul>
+</article>
+<article class="print-item" data-item-index="1" data-number="2" data-type="true_false">
+  <p class="print-item-statement" data-student-facing="true"><span class="sheet-item-number">2.</span>Un triangle rectangle peut avoir deux angles droits.</p>
+</article>
+<article class="print-item" data-item-index="2" data-number="3" data-type="open">
+  <p class="print-item-statement" data-student-facing="true"><span class="sheet-item-number">3.</span>Explique pourquoi la somme des angles d&#39;un triangle vaut 180°.</p>
+  <div class="sheet-rules" aria-hidden="true"><span class="sheet-rule"></span><span class="sheet-rule"></span><span class="sheet-rule"></span><span class="sheet-rule"></span>
+  </div>
+  <p class="sheet-key-answer" data-key-only="true">Réponse attendue : Par la parallèle à un côté passant par le sommet opposé.</p>
+</article>
+
+    </section>
+
+    <section class="sheet-grid" aria-label="Grille de réponses">
+  <p class="sheet-grid-caption">Grille de réponses</p>
+  <div class="sheet-grid-row" data-group="0" data-row="0" data-item-index="0" data-options="4">
+    <span class="sheet-grid-number">1.</span>
+    <span class="print-bubble" data-option="0"><span class="print-bubble-letter">A</span><span class="print-bubble-mark" data-key="true"></span></span>
+    <span class="print-bubble" data-option="1"><span class="print-bubble-letter">B</span><span class="print-bubble-mark"></span></span>
+    <span class="print-bubble" data-option="2"><span class="print-bubble-letter">C</span><span class="print-bubble-mark"></span></span>
+    <span class="print-bubble" data-option="3"><span class="print-bubble-letter">D</span><span class="print-bubble-mark"></span></span>
+  </div>
+  <div class="sheet-grid-row" data-group="0" data-row="1" data-item-index="1" data-options="2">
+    <span class="sheet-grid-number">2.</span>
+    <span class="print-bubble" data-option="0"><span class="print-bubble-letter">V</span><span class="print-bubble-mark"></span></span>
+    <span class="print-bubble" data-option="1"><span class="print-bubble-letter">F</span><span class="print-bubble-mark" data-key="true"></span></span>
+  </div>
+  <div class="sheet-grid-row" data-group="0" data-row="2" data-item-index="2" data-options="0">
+    <span class="sheet-grid-number">3.</span>
+    <span class="sheet-grid-open">réponse écrite</span>
+  </div>
+</section>
+
+
+    <footer class="print-footer">
+      <span class="print-meta">Page 1/1 &middot; 7B_15 &middot; mise en page v1</span>
+      
+    </footer>
+  </div>
+</section>
+
+</div>
+</body>
+</html>

@@ -253,16 +253,45 @@ class Page:
         return len(self.items) == 1 and self.used_height_mm > USABLE_H_MM
 
 
+class ItemTooTallError(ValueError):
+    """One item cannot fit on any page, whatever we do with the others.
+
+    Raised rather than placed-and-clipped. The statement region has
+    ``overflow: hidden`` so the answer grid can never be pushed off its
+    coordinates, which meant an over-long statement was silently cut
+    mid-sentence and printed that way — the student got a question with no
+    ending and no ruled space, and nothing told the teacher. Failing here gives
+    them a message naming the item instead.
+    """
+
+    def __init__(self, *, number: int, height_mm: float, limit_mm: float, statement: str) -> None:
+        self.number = number
+        self.height_mm = height_mm
+        self.limit_mm = limit_mm
+        excerpt = " ".join(statement.split())[:60]
+        super().__init__(
+            f"item {number} needs about {height_mm:.0f} mm but a page has only "
+            f"{limit_mm:.0f} mm for statements: shorten or split it "
+            f"(\u201c{excerpt}\u2026\u201d)"
+        )
+
+
 def paginate(
     items: list[Item] | tuple[Item, ...],
     *,
     items_per_page: int = L.ITEMS_PER_PAGE,
     usable_height_mm: float = USABLE_H_MM,
+    allow_overflow: bool = False,
 ) -> list[Page]:
     """Split an ordered item list into physical pages.
 
     A copy always occupies at least one page: an empty item list still needs a
     sheet carrying a header and a UID, or the student has nothing to hand in.
+
+    An item taller than the whole statement region raises
+    :class:`ItemTooTallError`. ``allow_overflow=True`` restores the old
+    place-it-anyway behaviour for callers that would rather show a clipped
+    preview than nothing; ``Page.overflowing`` then marks the page.
     """
     if items_per_page < 1:
         raise ValueError("items_per_page must be at least 1")
@@ -285,6 +314,13 @@ def paginate(
 
     for item in items:
         height = estimate_item_height_mm(item)
+        if height > usable_height_mm and not allow_overflow:
+            raise ItemTooTallError(
+                number=number + 1,
+                height_mm=height,
+                limit_mm=usable_height_mm,
+                statement=item.statement,
+            )
         bubbles_full = len(current) >= items_per_page
         too_tall = bool(current) and used + height > usable_height_mm
         if bubbles_full or too_tall:

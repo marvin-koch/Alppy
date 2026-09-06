@@ -9,6 +9,10 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 os.environ.setdefault("ALPPY_ENV", "ci")
+# The suite must not need a live Redis, and must never push work onto a real
+# queue. Tests that care about enqueueing assert on the call instead — see
+# test_jobs_queue.py.
+os.environ.setdefault("ALPPY_JOB_QUEUE_ENABLED", "false")
 
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
 

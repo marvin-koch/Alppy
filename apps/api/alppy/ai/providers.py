@@ -12,6 +12,7 @@ import hashlib
 import json
 import math
 import re
+import unicodedata
 
 from alppy.ai.base import ChatProvider, ChatRequest, ChatResponse, EmbeddingsProvider
 from alppy.core.config import get_settings
@@ -109,6 +110,52 @@ class AnthropicChatProvider:
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)
 
 
+def _fold_accents(token: str) -> str:
+    return "".join(
+        c for c in unicodedata.normalize("NFD", token) if unicodedata.category(c) != "Mn"
+    )
+
+
+_STEM_MIN = 4
+"""Below this a token is left alone: short maths words are already roots, and
+stemming them only creates collisions."""
+
+_PLURAL_SUFFIXES = ("s",)
+"""Just the plural "s", and deliberately nothing else.
+
+The stem has to be a fixed point — `stem(stem(w)) == stem(w)` — or the singular
+and the plural land in different buckets and the whole exercise is pointless.
+Every richer rule tried here broke that on the words teachers actually type:
+stripping "n" turns "fraction" into "fractio" while "fractions" becomes
+"fraction"; stripping "es" turns "angles" into "angl" while "angle" stays
+"angle". A bare "s" converges for fr and en plurals, which is what the default
+locale needs. German plurals are not covered — ADR 0001's real embedder is what
+fixes that, not a bigger suffix table."""
+
+
+def _token_forms(token: str) -> tuple[str, ...]:
+    """The forms a token is hashed under: itself, accent-folded, and a stem.
+
+    A pure bag-of-words hash gives *no* credit for "fractions" against
+    "fraction" — different strings, different buckets, cosine 0.0 — which made
+    the single most obvious teacher query rank a symmetry exercise first.
+    Hashing a crude stem alongside the token buys plural and accent robustness
+    without pretending to be a lemmatiser; ADR 0001's real embedder is what
+    actually fixes retrieval. Duplicates are dropped so a token that is already
+    its own stem is not counted twice.
+    """
+    folded = _fold_accents(token)
+    forms = [token, folded]
+    if len(folded) >= _STEM_MIN:
+        stem = folded
+        for suffix in _PLURAL_SUFFIXES:
+            if stem.endswith(suffix) and len(stem) - len(suffix) >= _STEM_MIN:
+                stem = stem[: -len(suffix)]
+                break
+        forms.append(f"stem:{stem}")
+    return tuple(dict.fromkeys(forms))
+
+
 class HashEmbeddingsProvider:
     """Deterministic hashed bag-of-words embedding.
 
@@ -129,12 +176,12 @@ class HashEmbeddingsProvider:
 
     def _one(self, text: str) -> list[float]:
         vec = [0.0] * self.dimensions
-        tokens = _TOKEN_RE.findall(text.lower())
-        for token in tokens:
-            digest = hashlib.blake2b(token.encode("utf-8"), digest_size=8).digest()
-            index = int.from_bytes(digest[:4], "big") % self.dimensions
-            sign = 1.0 if digest[4] & 1 else -1.0
-            vec[index] += sign
+        for token in _TOKEN_RE.findall(text.lower()):
+            for form in _token_forms(token):
+                digest = hashlib.blake2b(form.encode("utf-8"), digest_size=8).digest()
+                index = int.from_bytes(digest[:4], "big") % self.dimensions
+                sign = 1.0 if digest[4] & 1 else -1.0
+                vec[index] += sign
         norm = math.sqrt(sum(v * v for v in vec))
         if norm == 0.0:
             return vec

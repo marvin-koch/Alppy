@@ -151,9 +151,11 @@
 
 /* The one place the mandarin accent appears on paper. It carries a word, not
    just a colour: a photocopier turns the colour into grey. */
+/* Rendered inside the statement a student reads, so it may not drop below the
+   floor the surrounding text sits at. */
 .sheet-ai-mark {
   font-family: var(--font-mono);
-  font-size: var(--text-body-s);
+  font-size: var(--text-body-l);
   font-weight: 700;
   color: var(--c-accent-600);
   border: var(--print-rule) solid var(--c-accent-600);
@@ -208,13 +210,14 @@
   inset: 0;
 }
 
+/* Heading of the section the student fills in. */
 .sheet-grid-caption {
   position: absolute;
   left: {{ g.margin }}mm;
   top: {{ g.caption_top }}mm;
   width: {{ g.col_w }}mm;
-  font-size: var(--text-body-s);
-  line-height: var(--lh-body-s);
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
   font-weight: 700;
 }
 
@@ -230,6 +233,8 @@
 .sheet-grid-row[data-row='{{ loop.index0 }}'] { top: {{ top }}mm; }
 {%- endfor %}
 
+/* The running question number, which is what the student matches against the
+   statement — student-facing, so it sits at the body-l floor. */
 .sheet-grid-number {
   position: absolute;
   left: 0;
@@ -238,7 +243,7 @@
   height: {{ g.bubble_d }}mm;
   text-align: right;
   font-family: var(--font-mono);
-  font-size: 10pt;
+  font-size: var(--text-body-l);
   line-height: {{ g.bubble_d }}mm;
 }
 
@@ -267,13 +272,15 @@
   line-height: {{ g.letter_line }}mm;
 }
 
+/* "réponse écrite" tells the student this row has no bubble to fill: an
+   instruction to them, not chrome for the teacher. */
 .sheet-grid-open {
   position: absolute;
   left: {{ g.number_w }}mm;
   top: 0;
   height: {{ g.bubble_d }}mm;
   line-height: {{ g.bubble_d }}mm;
-  font-size: var(--text-body-s);
+  font-size: var(--text-body-l);
   color: var(--c-ink-700);
 }
 

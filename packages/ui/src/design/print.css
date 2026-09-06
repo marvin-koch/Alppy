@@ -146,6 +146,18 @@
   border-radius: var(--r-pill);
 }
 
+/* The A/B/C/D (or V/F) above each bubble.
+ *
+ * KNOWN GAP, deliberately left: this is student-facing and the floor is
+ * body-l (4.76mm), but the letter lives in the slack between two grid rows —
+ * GRID_ROW_PITCH_MM - BUBBLE_D_MM - 0.3 = 3.20mm in layout v1. A body-l glyph
+ * does not fit, and the overflow would land in the annulus the detector
+ * samples around the bubble above, which reads as a filled mark and scores a
+ * child's answer wrong. Raising it needs a taller row pitch, i.e. a LAYOUT
+ * VERSION BUMP with the detector re-verified — not a CSS change.
+ * The option text itself (`A  11/12`) is at body-l in the statement above, so
+ * what the student reads to decide is at the floor; this is the label they
+ * match against. See docs/sheet-layout.md. */
 .print-bubble-letter {
   font-family: var(--font-mono);
   font-size: 10pt;

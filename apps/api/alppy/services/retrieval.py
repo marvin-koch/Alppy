@@ -79,6 +79,18 @@ NEUTRAL_SIMILARITY = 0.5
 """Used for every candidate when there is no intent to embed, so the term is
 constant and therefore cannot reorder anything."""
 
+SIMILARITY_SIGNAL_FLOOR = 0.02
+"""Spread of cosine across the candidate set below which the intent is treated
+as having said nothing.
+
+Raw cosine is not comparable to :data:`NEUTRAL_SIMILARITY`. A six-word intent
+against a short exercise scores ~0.05 even when it is exactly on topic, so
+feeding the raw value in subtracted ~0.22 from *every* candidate the moment a
+teacher typed anything — the same nine exercises, all scored lower, which is
+why an intent looked like it made the results worse. What matters is how much
+better one candidate is than another, so the term is normalised across the
+candidate set instead, and a set with no spread falls back to neutral."""
+
 DUPLICATE_JACCARD = 0.6
 """Token overlap above which two statements are 'the same exercise again'."""
 
@@ -110,6 +122,9 @@ class Candidate:
     competency_fit: float
     language_fit: float
     base_score: float
+    similarity_term: float = NEUTRAL_SIMILARITY
+    """The normalised similarity actually used in ``base_score``. Kept so the
+    provenance panel can say whether the intent contributed anything."""
     tokens: frozenset[str] = field(default_factory=frozenset)
     competency_codes: list[str] = field(default_factory=list)
 
@@ -160,10 +175,22 @@ def propose_exercises(
         selected=len(selected),
         has_intent=bool(intent and intent.strip()),
     )
-    return [
-        build_proposal(c, language=language, target_difficulty=difficulty, intent=intent)
-        for c in selected
-    ]
+    # `taken` grows as we go: the diversity penalty that decided this order is
+    # the penalty against everything picked *before* each item, so scoring with
+    # the full set — or with none of it — prints numbers that contradict the
+    # order they are printed in.
+    proposals = []
+    for i, candidate in enumerate(selected):
+        proposals.append(
+            build_proposal(
+                candidate,
+                language=language,
+                target_difficulty=difficulty,
+                intent=intent,
+                taken=selected[:i],
+            )
+        )
+    return proposals
 
 
 def gather_candidates(
@@ -236,7 +263,6 @@ def gather_candidates(
         similarity = (
             distances.get(chunk.id) if (intent_vector is not None and chunk is not None) else None
         )
-        sim_term = NEUTRAL_SIMILARITY if similarity is None else similarity
         difficulty_fit = _difficulty_fit(exercise.difficulty, difficulty)
         competency_fit = _competency_fit(own, matched)
         language_fit = 1.0 if exercise.language == language else 0.0
@@ -253,9 +279,10 @@ def gather_candidates(
                 difficulty_fit=difficulty_fit,
                 competency_fit=competency_fit,
                 language_fit=language_fit,
+                # Filled in by _apply_similarity below, once the whole
+                # candidate set is known and the term can be normalised.
                 base_score=(
-                    W_SIMILARITY * sim_term
-                    + W_DIFFICULTY * difficulty_fit
+                    W_DIFFICULTY * difficulty_fit
                     + W_COMPETENCY * competency_fit
                     + W_LANGUAGE * language_fit
                 ),
@@ -264,8 +291,39 @@ def gather_candidates(
         )
 
     _attach_competency_codes(db, candidates)
+    _apply_similarity(candidates)
     candidates.sort(key=lambda c: (-c.base_score, str(c.exercise.id)))
     return candidates
+
+
+def similarity_terms(similarities: Sequence[float | None]) -> list[float]:
+    """Map raw cosines onto the 0..1 the weight expects.
+
+    Min-max across the candidate set, so the term says "how much closer to the
+    intent than the rest of this set", which is the only thing a six-word query
+    can honestly claim. A set whose spread is below
+    :data:`SIMILARITY_SIGNAL_FLOOR` — no intent, or an intent that matched
+    nothing — is neutral throughout, so it cannot reorder and cannot drag every
+    score down.
+    """
+    known = [v for v in similarities if v is not None]
+    if not known:
+        return [NEUTRAL_SIMILARITY] * len(similarities)
+    low, high = min(known), max(known)
+    if high - low < SIMILARITY_SIGNAL_FLOOR:
+        return [NEUTRAL_SIMILARITY] * len(similarities)
+    span = high - low
+    return [
+        NEUTRAL_SIMILARITY if v is None else (v - low) / span for v in similarities
+    ]
+
+
+def _apply_similarity(candidates: list[Candidate]) -> None:
+    """Add the normalised similarity term to every candidate's base score."""
+    terms = similarity_terms([c.similarity for c in candidates])
+    for candidate, term in zip(candidates, terms, strict=True):
+        candidate.similarity_term = term
+        candidate.base_score += W_SIMILARITY * term
 
 
 def _attach_competency_codes(db: Session, candidates: Sequence[Candidate]) -> None:
@@ -411,6 +469,10 @@ _PHRASES: dict[str, dict[str, str]] = {
         "difficulty_target": "difficulté {difficulty} (visée {target})",
         "intent": "proche de votre intention « {intent} » (similarité {similarity})",
         "no_intent": "aucune intention saisie : classé par chapitre et difficulté",
+        "intent_no_signal": (
+            "votre intention n'a pas départagé les exercices : classé par chapitre "
+            "et difficulté"
+        ),
         "page": "p. {page} de {filename}",
         "language": "rédigé en {language}, la langue de la source",
         "language_mismatch": "en {language}, différente de la langue de la fiche",
@@ -423,6 +485,10 @@ _PHRASES: dict[str, dict[str, str]] = {
         "difficulty_target": "Schwierigkeit {difficulty} (Ziel {target})",
         "intent": "nahe an Ihrer Absicht „{intent}“ (Ähnlichkeit {similarity})",
         "no_intent": "keine Absicht eingegeben: nach Kapitel und Schwierigkeit geordnet",
+        "intent_no_signal": (
+            "Ihre Absicht hat die Aufgaben nicht unterschieden: nach Kapitel und "
+            "Schwierigkeit geordnet"
+        ),
         "page": "S. {page} aus {filename}",
         "language": "auf {language} verfasst, der Sprache der Quelle",
         "language_mismatch": "auf {language}, nicht die Sprache des Blattes",
@@ -435,6 +501,10 @@ _PHRASES: dict[str, dict[str, str]] = {
         "difficulty_target": "difficulty {difficulty} (target {target})",
         "intent": "similar to your intent “{intent}” (similarity {similarity})",
         "no_intent": "no intent given: ordered by chapter and difficulty",
+        "intent_no_signal": (
+            "your intent did not separate these exercises: ordered by chapter "
+            "and difficulty"
+        ),
         "page": "p. {page} of {filename}",
         "language": "written in {language}, the language of the source",
         "language_mismatch": "in {language}, not the language of this sheet",
@@ -472,12 +542,21 @@ def _reason(
             )
         )
     if intent and intent.strip():
-        if candidate.similarity is not None:
+        # Only claim a match when this exercise actually matched something.
+        # Printing "close to your intent (similarity 0.00)" asserts a relevance
+        # that is precisely absent, and it appeared on every row.
+        if (
+            candidate.similarity is not None
+            and candidate.similarity > 0.0
+            and candidate.similarity_term != NEUTRAL_SIMILARITY
+        ):
             parts.append(
                 p["intent"].format(
                     intent=_shorten(intent), similarity=f"{candidate.similarity:.2f}"
                 )
             )
+        else:
+            parts.append(p["intent_no_signal"])
     else:
         parts.append(p["no_intent"])
     if candidate.language_fit >= 1.0:

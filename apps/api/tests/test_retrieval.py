@@ -663,3 +663,83 @@ def test_competency_and_chapter_lookups_are_school_scoped(world: World) -> None:
     assert world.db.query(Competency).count() == 34
     assert world.db.query(Chapter).count() == 7
     assert world.db.query(Subject).count() == 1
+
+
+# --------------------------------------------------------------------------
+# The intent must help, and the number shown must be the number used
+# --------------------------------------------------------------------------
+def _propose(world: World, intent: str | None, count: int = 6):
+    return retrieval.propose_exercises(
+        world.db,
+        school_id=world.school_id,
+        class_id=world.class_id,
+        subject_id=world.subject_id,
+        chapter_ids=[],
+        intent=intent,
+        count=count,
+        language="fr",
+        difficulty=None,
+    )
+
+
+def test_a_plural_intent_finds_the_singular_subject(world: World) -> None:
+    """"fractions" used to score 0.0 against every chunk — the offline embedder
+    hashes whole tokens, so the plural landed in a different bucket from
+    "fraction" and the top result was a symmetry exercise."""
+    proposals = _propose(world, "fractions")
+    top = " ".join(p.exercise.statement.lower() for p in proposals[:3])
+    assert "fraction" in top
+
+
+def test_the_displayed_score_matches_the_order_it_is_displayed_in(world: World) -> None:
+    """The list is ordered greedily with a diversity penalty; the score shown
+    beside each item was computed without it, so item 5 could out-score item 2."""
+    scores = [p.score for p in _propose(world, "géométrie triangle angles")]
+    assert scores == sorted(scores, reverse=True), scores
+
+
+def test_an_intent_never_penalises_the_whole_candidate_set(world: World) -> None:
+    """Raw cosine is not comparable to NEUTRAL_SIMILARITY. Feeding it in
+    subtracted ~0.22 from *every* candidate the moment a teacher typed
+    anything, so an intent made the list look uniformly worse and a teacher
+    was better off leaving the box empty.
+
+    The invariant after normalising: either the intent gave no usable signal
+    and every term is neutral, or it did and at least one candidate sits at the
+    top of the range. Never a set that is uniformly below neutral.
+    """
+    from alppy.services.retrieval import NEUTRAL_SIMILARITY
+
+    for intent in ("fractions", "géométrie triangle angles", "zzz qqq xxx"):
+        candidates = retrieval.gather_candidates(
+            world.db,
+            school_id=world.school_id,
+            subject_id=world.subject_id,
+            chapter_ids=[],
+            competency_ids=None,
+            intent=intent,
+            language="fr",
+            difficulty=None,
+        )
+        terms = [c.similarity_term for c in candidates]
+        assert max(terms) >= NEUTRAL_SIMILARITY, (intent, max(terms))
+
+
+def test_similarity_terms_are_neutral_without_signal_and_spread_with_it() -> None:
+    from alppy.services.retrieval import NEUTRAL_SIMILARITY, similarity_terms
+
+    assert similarity_terms([None, None]) == [NEUTRAL_SIMILARITY] * 2
+    assert similarity_terms([0.0, 0.0, 0.0]) == [NEUTRAL_SIMILARITY] * 3
+    assert similarity_terms([0.3, 0.3]) == [NEUTRAL_SIMILARITY] * 2
+    spread = similarity_terms([0.4, 0.2, 0.0])
+    assert spread[0] == 1.0 and spread[-1] == 0.0
+
+
+def test_the_reason_never_claims_a_match_at_zero_similarity(world: World) -> None:
+    """It used to print "close to your intent (similarity 0.00)" on rows whose
+    similarity was exactly zero — asserting the one thing that was not true."""
+    for intent in ("fractions", "zzz qqq xxx"):
+        for proposal in _propose(world, intent, count=12):
+            reason = proposal.provenance.reason
+            if proposal.provenance.similarity in (None, 0.0):
+                assert "0.00" not in reason, reason

@@ -8,6 +8,7 @@ over 24 instances is not something a request should hold a connection open for.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 from typing import Annotated
 
 from fastapi import APIRouter, Query, Response, status
@@ -124,6 +125,11 @@ def render_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut
         raise errors.unprocessable("a sheet with no items cannot be rendered")
     load_optional("alppy.sheets.render", "render_sheet_pdfs", feature="PDF rendering")
 
+    # Lay the sheet out before queueing it. Pagination is pure and fast, and it
+    # is where "this statement cannot fit on a page" is discovered — the teacher
+    # should be told that now, not by a job that fails two seconds later.
+    _assert_printable(db, sheet)
+
     job = Job(
         id=uuid.uuid4(),
         school_id=school_id,
@@ -138,6 +144,23 @@ def render_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut
     start_job(db, job)
     db.refresh(job)
     return job_out(job)
+
+
+def _assert_printable(db: DbDep, sheet: Any) -> None:
+    """422 if this sheet cannot be laid out, with the reason."""
+    build_sheet_data = load_optional(
+        "alppy.sheets.render", "build_sheet_data", feature="PDF rendering"
+    )
+    physical_pages = load_optional(
+        "alppy.sheets.html", "physical_pages", feature="PDF rendering"
+    )
+    render_error = load_optional(
+        "alppy.sheets.render", "SheetRenderError", feature="PDF rendering"
+    )
+    try:
+        physical_pages(build_sheet_data(db, sheet))
+    except (render_error, ValueError) as exc:
+        raise errors.unprocessable(str(exc)) from exc
 
 
 @router.get("/sheets/{sheet_id}/preview", response_class=Response)
