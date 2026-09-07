@@ -5,7 +5,10 @@
  */
 import { ApiError } from '../client';
 import type {
+  AdaptiveApproveRequest,
   AdaptiveBatchRequest,
+  AdaptiveDiscardRequest,
+  AdaptiveRegenerateRequest,
   DetectionCorrection,
   ExerciseUpdate,
   JobOut,
@@ -25,6 +28,7 @@ interface MockState {
   scans: Record<string, ScanOut>;
   jobs: Record<string, JobOut & { ticks: number }>;
   approvals: Set<string>;
+  discards: Set<string>;
 }
 
 const state: MockState = {
@@ -37,9 +41,11 @@ const state: MockState = {
   scans: { [fx.scan.id]: structuredClone(fx.scan) },
   jobs: {},
   approvals: new Set<string>(),
+  discards: new Set<string>(),
 };
 
 let jobCounter = 0;
+let regenerateCounter = 0;
 
 function startJob(kind: JobOut['kind'], result: Record<string, unknown>): JobOut {
   jobCounter += 1;
@@ -102,20 +108,47 @@ export function resetMockState(): void {
   state.scans = { [fx.scan.id]: structuredClone(fx.scan) };
   state.jobs = {};
   state.approvals = new Set<string>();
+  state.discards = new Set<string>();
+  globalThis.__alppyMockCalls = [];
   jobCounter = 0;
+  regenerateCounter = 0;
 }
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 type Json = any;
 
+/**
+ * Every call this mock served, newest last, as `"POST /adaptive/approve"`.
+ *
+ * The mock answers in-process, so a Playwright test cannot watch the network to
+ * find out whether a button actually called the API — which is exactly how a
+ * button that only set React state passed for working. This is the seam that
+ * lets a test tell the difference. Test-only: nothing in the app reads it.
+ */
+declare global {
+  // eslint-disable-next-line no-var
+  var __alppyMockCalls: string[] | undefined;
+}
+
+function record(method: string, path: string): void {
+  if (typeof globalThis === 'undefined') return;
+  globalThis.__alppyMockCalls ??= [];
+  globalThis.__alppyMockCalls.push(`${method} ${path}`);
+}
+
 export async function handleMock<T>(method: string, url: string, body: unknown): Promise<T> {
-  const [rawPath] = url.split('?');
+  const [rawPath, rawQuery] = url.split('?');
   const path = rawPath ?? '';
-  const result = route(method, path, body);
+  record(method, path);
+  // The query string used to be dropped on the floor, so a filtered or sorted
+  // request was indistinguishable from an unfiltered one and no e2e test could
+  // tell whether the controls did anything.
+  const query = new URLSearchParams(rawQuery ?? '');
+  const result = route(method, path, body, query);
   return result as T;
 }
 
-function route(method: string, path: string, body: unknown): Json {
+function route(method: string, path: string, body: unknown, query: URLSearchParams): Json {
   /* ---------------------------------------------------------- auth --- */
   if (method === 'POST' && path === '/auth/login') {
     state.authenticated = true;
@@ -151,9 +184,10 @@ function route(method: string, path: string, body: unknown): Json {
 
   m = match(path, /^\/classes\/([^/]+)\/mastery$/);
   if (m && method === 'GET') {
-    return m[1] === fx.classes[1]?.id
-      ? { ...fx.masteryMatrix, class_id: m[1], cells: [] }
-      : fx.masteryMatrix;
+    if (m[1] === fx.classes[1]?.id) {
+      return { ...fx.masteryMatrix, class_id: m[1], cells: [], competencies: [] };
+    }
+    return fx.classMastery(m[1] ?? '', query);
   }
 
   m = match(path, /^\/classes\/([^/]+)$/);
@@ -165,6 +199,9 @@ function route(method: string, path: string, body: unknown): Json {
 
   m = match(path, /^\/curricula\/([^/]+)\/competencies$/);
   if (m && method === 'GET') return fx.competencies;
+
+  m = match(path, /^\/students\/([^/]+)\/competencies\/([^/]+)\/attempts$/);
+  if (m && method === 'GET') return fx.competencyAttempts(m[1] ?? '', m[2] ?? '');
 
   m = match(path, /^\/students\/([^/]+)\/mastery$/);
   if (m && method === 'GET') return fx.studentProfile(m[1] ?? '');
@@ -212,6 +249,18 @@ function route(method: string, path: string, body: unknown): Json {
   }
 
   /* -------------------------------------------------------- sheets --- */
+  if (method === 'GET' && path === '/sheets') {
+    // The list is scoped to a class now, so the fixture layer has to honour
+    // `class_id` or the screen would look unscoped in the screenshot suite.
+    const classId = query.get('class_id');
+    const all = Object.values(state.sheets);
+    return classId ? all.filter((sheet) => sheet.class_id === classId) : all;
+  }
+  if (method === 'GET' && path === '/scans') {
+    const sheetId = query.get('sheet_id');
+    const all = Object.values(state.scans);
+    return sheetId ? all.filter((scan) => scan.sheet_id === sheetId) : all;
+  }
   if (method === 'POST' && path === '/sheets/propose') {
     return { proposals: fx.proposals, language: 'fr' };
   }
@@ -301,21 +350,96 @@ function route(method: string, path: string, body: unknown): Json {
       ...fx.adaptive,
       plans: fx.adaptive.plans.map((plan) => ({
         ...plan,
-        generated: plan.generated.map((proposal) => ({
-          ...proposal,
-          exercise: {
-            ...proposal.exercise,
-            approved_at: state.approvals.has(proposal.exercise.id) ? fx.NOW : null,
-          },
-        })),
+        // A discarded item is never proposed again.
+        generated: plan.generated
+          .filter((proposal) => !state.discards.has(proposal.exercise.id))
+          .map((proposal) => ({
+            ...proposal,
+            exercise: {
+              ...proposal.exercise,
+              approved_at: state.approvals.has(proposal.exercise.id) ? fx.NOW : null,
+            },
+          })),
       })),
     };
   }
+  if (method === 'POST' && path === '/adaptive/approve') {
+    const ids = (body as AdaptiveApproveRequest).exercise_ids;
+    ids.forEach((id) => state.approvals.add(id));
+    return { approved: ids.length, exercise_ids: ids };
+  }
+  if (method === 'POST' && path === '/adaptive/discard') {
+    const ids = (body as AdaptiveDiscardRequest).exercise_ids;
+    ids.forEach((id) => {
+      state.approvals.delete(id);
+      state.discards.add(id);
+    });
+    return { discarded: ids.length, exercise_ids: ids };
+  }
+  if (method === 'POST' && path === '/adaptive/regenerate') {
+    const { exercise_id: replaced } = body as AdaptiveRegenerateRequest;
+    state.discards.add(replaced);
+    state.approvals.delete(replaced);
+    // A replacement, not an addition: a fresh id, unapproved like any other
+    // generated item, so the approval step has to happen again.
+    regenerateCounter += 1;
+    const source = fx.adaptive.plans
+      .flatMap((plan) => plan.generated)
+      .find((proposal) => proposal.exercise.id === replaced);
+    const base = source ?? fx.adaptive.plans[0]?.generated[0];
+    if (!base) throw new ApiError(404, 'not_found', 'exercise not found');
+    return {
+      replaced_exercise_id: replaced,
+      proposal: {
+        ...base,
+        exercise: {
+          ...base.exercise,
+          id: fx.id(700 + regenerateCounter),
+          statement: `${base.exercise.statement} (v${regenerateCounter + 1})`,
+          approved_at: null,
+        },
+      },
+    };
+  }
+  // Creating the batch returns the SHEET. Rendering it is a second call that
+  // returns the job — the mock mirrors the real contract, because a mock that
+  // agrees with a wrong client hides the bug instead of catching it.
   if (method === 'POST' && path === '/adaptive/batch') {
     const payload = body as AdaptiveBatchRequest;
+    const created: SheetOut = {
+      ...structuredClone(fx.sheet),
+      id: fx.id(602),
+      title: payload.title,
+      target: 'student',
+      class_id: payload.class_id,
+      subject_id: payload.subject_id,
+      language: payload.language,
+      blank_pdf_url: null,
+      answer_key_pdf_url: null,
+      rendered_at: null,
+      instances: payload.plans.map((plan, index) => ({
+        id: fx.id(650 + index),
+        student_id: plan.student_id,
+        student_uid: plan.student_uid,
+        page_count: 1,
+      })),
+    };
+    state.sheets[created.id] = created;
+    return created;
+  }
+  m = match(path, /^\/adaptive\/batch\/([^/]+)\/render$/);
+  if (m && method === 'POST') {
+    const sheetId = m[1] ?? '';
+    const target = state.sheets[sheetId];
+    if (!target) throw new ApiError(404, 'not_found', 'sheet not found');
+    // The worker writes both keys onto the sheet; the download links come from
+    // re-reading it. Always two documents (DESIGN.md §9).
+    target.blank_pdf_url = `/mock/${sheetId}-adaptive-batch.pdf`;
+    target.answer_key_pdf_url = `/mock/${sheetId}-adaptive-batch-answer-key.pdf`;
+    target.rendered_at = fx.NOW;
     return startJob('generate_adaptive', {
-      pdf_url: '/mock/adaptive-batch.pdf',
-      student_count: payload.plans.length,
+      batch_pdf_key: `sheets/${sheetId}/v1/adaptive-batch.pdf`,
+      answer_key_pdf_key: `sheets/${sheetId}/v1/adaptive-batch-answer-key.pdf`,
     });
   }
 

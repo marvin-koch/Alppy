@@ -257,7 +257,11 @@ export interface SheetOut {
 export interface DetectionOut {
   id: Uuid;
   item_index: number;
+  /** The number printed beside the question on the paper. `item_index` restarts
+   *  at 0 on every physical page, so it is not what the student sees. */
+  number: number | null;
   sheet_item_id: Uuid | null;
+  exercise_id: Uuid | null;
   detected_index: number | null;
   detected_bool: boolean | null;
   confidence: number;
@@ -269,6 +273,19 @@ export interface DetectionOut {
    */
   bubble_boxes: Array<Record<string, number>> | null;
   corrected_at: IsoDateTime | null;
+  /** What the machine read, kept beside the override rather than under it. */
+  machine_index: number | null;
+  machine_outcome: DetectionOutcome | null;
+  machine_confidence: number | null;
+  /** The question this reading is a reading of. */
+  statement: string | null;
+  options: string[] | null;
+  /** The glyphs printed beside the bubbles: ABCD, or V/F, R/F, T/F. */
+  option_letters: string | null;
+  exercise_type: ExerciseType | null;
+  ai_generated: boolean;
+  /** The correct option, as an index into `option_letters`. */
+  answer_index: number | null;
 }
 
 export interface DetectionCorrection {
@@ -284,7 +301,17 @@ export interface ScanPageOut {
   uid_confidence: number | null;
   student_id: Uuid | null;
   sheet_instance_id: Uuid | null;
+  /** Belongs to a student who is not in this sheet's class. */
+  wrong_class: boolean;
+  /** Taken out of the pile by the teacher: a cover sheet, a bad photo. */
+  discarded: boolean;
+  page_in_copy: number | null;
+  registration_error: string | null;
   detections: DetectionOut[];
+}
+
+export interface ScanPageDiscard {
+  discarded: boolean;
 }
 
 export interface ScanPageAssign {
@@ -297,6 +324,8 @@ export interface ScanOut {
   original_filename: string;
   status: ScanStatus;
   error: string | null;
+  /** Set on upload only: the job to poll for per-page progress. */
+  job_id: Uuid | null;
   pages: ScanPageOut[];
   created_at: IsoDateTime;
 }
@@ -305,6 +334,10 @@ export interface ScanConfirmResponse {
   attempts_created: number;
   students_affected: number;
   competencies_updated: number;
+  /** A re-scan of the same pile corrects the record rather than doubling it. */
+  attempts_superseded: number;
+  /** Items that produced no attempt: two bubbles filled, or free text. */
+  items_skipped: number;
 }
 
 /* ------------------------------------------------------------ mastery -- */
@@ -343,6 +376,15 @@ export interface CompetencyMastery {
   history: MasteryPointOut[];
 }
 
+export interface SheetTakenOut {
+  sheet_id: Uuid;
+  title: string;
+  answered_at: IsoDateTime;
+  attempts_count: number;
+  correct_count: number;
+  scan_id: Uuid | null;
+}
+
 export interface StudentProfileOut {
   student: StudentOut;
   overall_score: number;
@@ -350,7 +392,36 @@ export interface StudentProfileOut {
   gaps: CompetencyMastery[];
   all_competencies: CompetencyMastery[];
   sheets_taken: number;
+  sheets: SheetTakenOut[];
 }
+
+export interface AttemptOut {
+  id: Uuid;
+  exercise_id: Uuid;
+  statement: string;
+  origin: ExerciseOrigin;
+  correct: boolean;
+  difficulty: number;
+  answered_at: IsoDateTime;
+  sheet_id: Uuid | null;
+  sheet_title: string | null;
+  scan_id: Uuid | null;
+  corrected: boolean;
+}
+
+/** The drill-down behind one matrix cell. */
+export interface CompetencyAttemptsOut {
+  student: StudentOut;
+  competency: CompetencyOut;
+  score: number;
+  band: MasteryBandKey;
+  provisional: boolean;
+  days_until_review: number | null;
+  attempts: AttemptOut[];
+}
+
+/** How the roster is ordered in the matrix. */
+export type MatrixSort = 'roster' | 'weakest';
 
 /* ----------------------------------------------------------- adaptive -- */
 export interface AdaptiveProposeRequest {
@@ -359,7 +430,14 @@ export interface AdaptiveProposeRequest {
   student_ids: Uuid[];
   items_per_student: number;
   allow_generation: boolean;
+  /**
+   * An explicit teacher override, normally omitted. The language of a sheet
+   * follows the SOURCE MATERIAL, and the server reads it off the corpus — it is
+   * never the UI locale, so this must not be wired to `useLocale()`.
+   */
   language?: ApiLocale | null;
+  /** One shared sheet for the selection, targeting the union of their gaps. */
+  group?: boolean;
 }
 
 export interface AdaptiveStudentPlan {
@@ -375,11 +453,70 @@ export function planItemCount(plan: AdaptiveStudentPlan): number {
   return plan.retrieved.length + plan.generated.length;
 }
 
+/** Which students in a group a shared item is actually for. */
+export interface AdaptiveGroupItem {
+  exercise_id: Uuid;
+  for_student_uids: string[];
+}
+
+export interface AdaptiveGroupPlan {
+  student_ids: Uuid[];
+  student_uids: string[];
+  targeted_competency_ids: Uuid[];
+  retrieved: ExerciseProposal[];
+  generated: ExerciseProposal[];
+  items: AdaptiveGroupItem[];
+}
+
+export type AdaptiveFailureReason =
+  | 'provider_error'
+  | 'unparsable_response'
+  | 'pii_gate'
+  | 'incomplete';
+
+export interface AdaptiveGenerationFailure {
+  student_id: Uuid;
+  student_uid: string;
+  reason: AdaptiveFailureReason | string;
+  requested: number;
+  produced: number;
+  detail: string | null;
+}
+
 export interface AdaptiveProposeResponse {
   plans: AdaptiveStudentPlan[];
   language: string;
   generated_count: number;
   needs_approval: boolean;
+  group: AdaptiveGroupPlan | null;
+  failures: AdaptiveGenerationFailure[];
+}
+
+export interface AdaptiveApproveRequest {
+  exercise_ids: Uuid[];
+}
+
+export interface AdaptiveApproveResponse {
+  approved: number;
+  exercise_ids: Uuid[];
+}
+
+export interface AdaptiveDiscardRequest {
+  exercise_ids: Uuid[];
+}
+
+export interface AdaptiveDiscardResponse {
+  discarded: number;
+  exercise_ids: Uuid[];
+}
+
+export interface AdaptiveRegenerateRequest {
+  exercise_id: Uuid;
+}
+
+export interface AdaptiveRegenerateResponse {
+  replaced_exercise_id: Uuid;
+  proposal: ExerciseProposal;
 }
 
 export interface AdaptiveBatchRequest {

@@ -4,6 +4,7 @@ import {
   Badge,
   Button,
   Card,
+  Chip,
   EmptyState,
   ErrorState,
   IlloSlate,
@@ -11,7 +12,7 @@ import {
   MasteryMeter,
   type MasteryBand,
 } from '@alppy/ui';
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { useHome } from '@/lib/api/queries';
@@ -21,11 +22,11 @@ import { useBandLabels } from '@/lib/bands';
 export default function HomePage() {
   const t = useTranslations('home');
   const tc = useTranslations('common');
-  const tm = useTranslations('mastery');
   const te = useTranslations('errors.generic');
+  const locale = useLocale();
   const bandLabels = useBandLabels();
   const fmt = useFormatters();
-  const { data, isLoading, isError, error, refetch } = useHome();
+  const { data, isLoading, isError, refetch } = useHome();
 
   if (isLoading) {
     return <LoadingState shape="cards" label={tc('loading')} rows={4} />;
@@ -36,13 +37,13 @@ export default function HomePage() {
       <ErrorState
         title={te('title')}
         description={te('body')}
-        details={error instanceof Error ? error.message : undefined}
         action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
       />
     );
   }
 
   const classes = data?.classes ?? [];
+  const subjects = data?.subjects ?? [];
 
   return (
     <div className="mx-auto max-w-5xl">
@@ -53,6 +54,18 @@ export default function HomePage() {
             {t('greeting', { name: data.teacher.first_name })}
           </p>
         ) : null}
+
+        {/* The subjects the teacher teaches. The API has always returned these
+            and the screen never rendered them, so "classes and subjects" was
+            only ever half true. Outline chips: official data is not coloured. */}
+        {subjects.length > 0 ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <span className="text-label text-ink-500">{t('subjects')}</span>
+            {subjects.map((s) => (
+              <Chip key={s.id}>{s.labels?.[locale] ?? s.labels?.fr ?? s.key}</Chip>
+            ))}
+          </div>
+        ) : null}
       </header>
 
       {classes.length === 0 ? (
@@ -61,8 +74,8 @@ export default function HomePage() {
           title={t('empty.title')}
           description={t('empty.body')}
           action={
-            <Link href="/classes">
-              <Button variant="primary">{t('empty.action')}</Button>
+            <Link href="/classes/new" className="ard-btn" data-variant="primary">
+              {t('empty.action')}
             </Link>
           }
         />
@@ -96,7 +109,14 @@ export default function HomePage() {
                     <div>
                       <dt className="text-ink-500">{t('lastSheet')}</dt>
                       <dd className="font-bold">
-                        {c.last_sheet_title ?? t('noSheetYet')}
+                        {c.last_sheet_title ? (
+                          // The overview names the teacher's most recent work;
+                          // it has to be a way in, not a label. Reaching it used
+                          // to mean remembering the URL.
+                          <Link href={`/sheets?class=${c.class_id}`}>{c.last_sheet_title}</Link>
+                        ) : (
+                          t('noSheetYet')
+                        )}
                         {c.last_sheet_at ? (
                           <span className="ml-2 font-normal text-ink-500">
                             {fmt.date(c.last_sheet_at)}
@@ -105,9 +125,19 @@ export default function HomePage() {
                       </dd>
                     </div>
                     <div>
-                      <dt className="text-ink-500">{t('pendingCorrections', { count: 0 })}</dt>
+                      {/* The term is the name of the stat. It used to be the
+                          value string rendered with a hard-coded count of 0, so
+                          a class with three pending scans read
+                          "No corrections pending / 3 corrections pending". */}
+                      <dt className="text-ink-500">{t('pendingCorrectionsLabel')}</dt>
                       <dd className="font-bold" data-numeric>
-                        {t('pendingCorrections', { count: c.pending_scans })}
+                        {c.pending_scans > 0 ? (
+                          <Link href={`/scans?class=${c.class_id}`}>
+                            {t('pendingCorrectionsValue', { count: c.pending_scans })}
+                          </Link>
+                        ) : (
+                          t('pendingCorrectionsValue', { count: c.pending_scans })
+                        )}
                       </dd>
                     </div>
                   </dl>
@@ -122,7 +152,11 @@ export default function HomePage() {
                         band={worst}
                         score={null}
                         bandLabel={bandLabels[worst]}
-                        caption={tm('attempts', { count: c.band_counts?.[worst] ?? 0 })}
+                        // `band_counts` counts (student x competency) CELLS in
+                        // this band, not answers. Captioning it "23 answers"
+                        // was off by a factor of 24 on the demo class and named
+                        // the wrong quantity entirely.
+                        caption={t('bandCells', { count: c.band_counts?.[worst] ?? 0 })}
                       />
                     </div>
                   ) : null}

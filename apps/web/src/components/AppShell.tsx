@@ -19,6 +19,7 @@ import { useState, type ReactNode } from 'react';
 // next-intl's usePathname already has the locale prefix stripped, so route
 // matching below never has to know which locale it is in.
 import { Link, usePathname } from '@/i18n/navigation';
+import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 
 interface Destination {
   href: string;
@@ -59,7 +60,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   }
 
   const nav = (onNavigate?: () => void) => (
-    <nav className="flex flex-col gap-1" aria-label={t('home')}>
+    <nav className="flex flex-col gap-1" aria-label={t('primary')}>
       {DESTINATIONS.map((d) => (
         <Link
           key={d.href}
@@ -107,9 +108,12 @@ export function AppShell({ children }: { children: ReactNode }) {
       <Sheet
         open={drawerOpen}
         onOpenChange={setDrawerOpen}
-        title={t('openMenu')}
+        title={t('menu')}
         closeLabel={t('closeMenu')}
       >
+        <div className="mb-4">
+          <ScopeSwitcher onNavigate={() => setDrawerOpen(false)} />
+        </div>
         {nav(() => setDrawerOpen(false))}
       </Sheet>
 
@@ -119,10 +123,13 @@ export function AppShell({ children }: { children: ReactNode }) {
           <Link href="/" className="mb-6 flex min-h-11 items-center no-underline">
             <AlppyLogo size="md" />
           </Link>
+          <div className="mb-4">
+            <ScopeSwitcher />
+          </div>
           {nav()}
         </aside>
 
-        <main id="main" className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-12 md:pt-8">
+        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-12 md:pt-8">
           {children}
         </main>
       </div>
@@ -130,7 +137,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       {/* Bottom tabs, phone only. Four primary destinations, 44px targets. */}
       <nav
         className="fixed inset-x-0 bottom-0 z-30 flex border-t border-line bg-surface md:hidden"
-        aria-label={t('home')}
+        aria-label={t('primary')}
       >
         {DESTINATIONS.filter((d) => d.primary).map((d) => (
           <Link

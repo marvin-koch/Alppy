@@ -8,6 +8,7 @@ import type {
   AdaptiveProposeResponse,
   ChapterOut,
   ClassOut,
+  CompetencyAttemptsOut,
   CompetencyOut,
   DetectionOut,
   ExerciseOut,
@@ -113,25 +114,80 @@ export const masteryMatrix: MasteryMatrixOut = {
   competencies,
   cells: students.flatMap((student, si) =>
     competencies.flatMap((competency, ci) => {
-      // Two students × one competency were never assessed: `none` is a real band.
-      if ((si + ci) % 17 === 0) return [];
-      const score = pseudoScore(si, ci);
+      // Some pairs were never assessed: `none` is a real band, and the fixture
+      // has to send it exactly as the API does — a row with band 'none',
+      // attempts_count 0 and score 0. Omitting the cell instead let the UI fall
+      // back to a null score, which hid the fact that the real payload made a
+      // never-assessed cell render a bold "0".
+      const seen = (si + ci) % 17 !== 0;
+      const score = seen ? pseudoScore(si, ci) : 0;
       return [
         {
           student_id: student.id,
           competency_id: competency.id,
           score,
-          band: bandOf(score),
-          attempts_count: ((si + ci) % 6) + 1,
-          provisional: ((si + ci) % 6) + 1 < 3,
-          days_until_review: score >= 0.75 ? ((si * ci) % 9) + 1 : 0,
-          last_attempt_at: '2026-03-09T10:15:00+01:00',
+          band: seen ? bandOf(score) : ('none' as const),
+          attempts_count: seen ? ((si + ci) % 6) + 1 : 0,
+          provisional: seen ? ((si + ci) % 6) + 1 < 3 : true,
+          days_until_review: seen ? (score >= 0.75 ? ((si * ci) % 9) + 1 : 0) : null,
+          last_attempt_at: seen ? '2026-03-09T10:15:00+01:00' : null,
         },
       ];
     }),
   ),
   computed_at: NOW,
 };
+
+/**
+ * The matrix as the endpoint serves it, honouring `chapter_id` and `sort`.
+ *
+ * The mock has to narrow and re-order for real, or an e2e test cannot tell a
+ * working filter from a control that renders and does nothing.
+ */
+export function classMastery(classId: string, query: URLSearchParams): MasteryMatrixOut {
+  const chapterId = query.get('chapter_id');
+  const sort = query.get('sort');
+
+  let shown = competencies;
+  if (chapterId) {
+    const chapter = chapters.find((c) => c.id === chapterId);
+    const allowed = new Set(chapter?.competency_ids ?? []);
+    shown = competencies.filter((c) => allowed.has(c.id));
+  }
+  const shownIds = new Set(shown.map((c) => c.id));
+  const cells = masteryMatrix.cells.filter((c) => shownIds.has(c.competency_id));
+
+  let roster = students;
+  if (sort === 'weakest') {
+    // Worst assessed cell first; a student with nothing assessed sorts last,
+    // because "never taught" is not a weakness.
+    const worst = new Map<string, number>();
+    for (const cell of cells) {
+      if (cell.band === 'none') continue;
+      const current = worst.get(cell.student_id);
+      if (current === undefined || cell.score < current) worst.set(cell.student_id, cell.score);
+    }
+    roster = [...students].sort((a, b) => {
+      const wa = worst.get(a.id);
+      const wb = worst.get(b.id);
+      if (wa === undefined && wb === undefined) return a.number - b.number;
+      if (wa === undefined) return 1;
+      if (wb === undefined) return -1;
+      return wa - wb || a.number - b.number;
+    });
+  }
+
+  const order = new Map(roster.map((s, i) => [s.id, i]));
+  return {
+    ...masteryMatrix,
+    class_id: classId,
+    students: roster,
+    competencies: shown,
+    cells: [...cells].sort(
+      (a, b) => (order.get(a.student_id) ?? 0) - (order.get(b.student_id) ?? 0),
+    ),
+  };
+}
 
 export const home: HomeOut = {
   teacher,
@@ -299,18 +355,20 @@ export const sheet: SheetOut = {
 };
 
 const detections: DetectionOut[] = [
-  { index: 0, detected: 0, confidence: 0.97, outcome: 'detected' as const },
-  { index: 1, detected: 2, confidence: 0.41, outcome: 'low_confidence' as const },
-  { index: 2, detected: null, confidence: 0.12, outcome: 'blank' as const },
-  { index: 3, detected: 3, confidence: 0.93, outcome: 'detected' as const },
-  { index: 4, detected: 1, confidence: 0.55, outcome: 'multiple' as const },
-  { index: 5, detected: null, confidence: 0, outcome: 'not_gradeable' as const },
+  { index: 0, detected: 0, confidence: 0.97, outcome: 'detected' as const, tf: false },
+  { index: 1, detected: 2, confidence: 0.41, outcome: 'low_confidence' as const, tf: false },
+  { index: 2, detected: null, confidence: 0.12, outcome: 'blank' as const, tf: false },
+  { index: 3, detected: 3, confidence: 0.93, outcome: 'detected' as const, tf: false },
+  { index: 4, detected: 1, confidence: 0.55, outcome: 'multiple' as const, tf: true },
+  { index: 5, detected: null, confidence: 0, outcome: 'not_gradeable' as const, tf: false },
 ].map((raw) => ({
   id: id(700 + raw.index),
   item_index: raw.index,
+  number: raw.index + 1,
   sheet_item_id: id(610 + raw.index),
+  exercise_id: id(500 + raw.index),
   detected_index: raw.detected,
-  detected_bool: null,
+  detected_bool: raw.tf && raw.detected !== null ? raw.detected === 0 : null,
   confidence: raw.confidence,
   outcome: raw.outcome,
   fill_ratios: [0.08, 0.72, 0.11, 0.05],
@@ -321,7 +379,24 @@ const detections: DetectionOut[] = [
     { u: 0.355, v: 0.18 + raw.index * 0.107, w: 0.05, h: 0.028 },
   ],
   corrected_at: null,
+  machine_index: raw.detected,
+  machine_outcome: raw.outcome,
+  machine_confidence: raw.confidence,
+  statement: `Question ${raw.index + 1} — une fraction a simplifier`,
+  options: raw.tf ? null : ['1/2', '2/4', '3/6', '4/8'],
+  option_letters: raw.tf ? 'VF' : 'ABCD',
+  exercise_type: raw.tf ? ('true_false' as const) : ('mcq' as const),
+  ai_generated: false,
+  answer_index: raw.tf ? 0 : 1,
 }));
+
+/** Every page the mock scan carries, minus the bits each one overrides. */
+const pageDefaults = {
+  wrong_class: false,
+  discarded: false,
+  page_in_copy: 0,
+  registration_error: null,
+} as const;
 
 export const scan: ScanOut = {
   id: id(800),
@@ -329,6 +404,7 @@ export const scan: ScanOut = {
   original_filename: 'copies-7b-fractions.pdf',
   status: 'needs_review',
   error: null,
+  job_id: null,
   created_at: '2026-03-16T07:40:00+01:00',
   pages: [
     {
@@ -340,6 +416,7 @@ export const scan: ScanOut = {
       uid_confidence: 0.99,
       student_id: id(103),
       sheet_instance_id: id(630),
+      ...pageDefaults,
       detections,
     },
     {
@@ -351,7 +428,25 @@ export const scan: ScanOut = {
       uid_confidence: 0.22,
       student_id: null,
       sheet_instance_id: null,
+      ...pageDefaults,
+      page_in_copy: null,
       detections: detections.map((d, i) => ({ ...d, id: id(750 + i) })),
+    },
+    {
+      // A cover sheet the teacher photographed by accident: it belongs to
+      // nobody, and it must not hold the other copies hostage.
+      id: id(812),
+      page_index: 2,
+      image_url: '/mock/scan-page.svg',
+      registered: false,
+      detected_uid: null,
+      uid_confidence: 0,
+      student_id: null,
+      sheet_instance_id: null,
+      ...pageDefaults,
+      page_in_copy: null,
+      registration_error: 'found 0 fiducial candidates, need 4',
+      detections: [],
     },
   ],
 };
@@ -383,7 +478,66 @@ export function studentProfile(studentId: string): StudentProfileOut {
     strengths: sorted.slice(0, 3),
     gaps: sorted.slice(-3).reverse(),
     all_competencies: entries,
-    sheets_taken: 4,
+    sheets_taken: sheetsTaken.length,
+    sheets: sheetsTaken,
+  };
+}
+
+/** The sheets behind the profile's history list. */
+const sheetsTaken = [
+  {
+    sheet_id: id(600),
+    title: 'Fractions — controle 1',
+    answered_at: '2026-03-16T09:10:00+01:00',
+    attempts_count: 8,
+    correct_count: 6,
+    scan_id: id(800),
+  },
+  {
+    sheet_id: id(601),
+    title: 'Proportionnalite — exercices',
+    answered_at: '2026-03-02T09:10:00+01:00',
+    attempts_count: 10,
+    correct_count: 5,
+    scan_id: null,
+  },
+];
+
+/** The drill-down behind one matrix cell. */
+export function competencyAttempts(
+  studentId: string,
+  competencyId: string,
+): CompetencyAttemptsOut {
+  const student = students.find((s) => s.id === studentId) ?? (students[0] as StudentOut);
+  const competency =
+    competencies.find((c) => c.id === competencyId) ?? (competencies[0] as CompetencyOut);
+  const score = pseudoScore(students.indexOf(student), competencies.indexOf(competency));
+  const attempts = [0, 6, 13, 20].map((offset, index) => ({
+    id: id(900 + index),
+    exercise_id: id(500 + index),
+    statement:
+      index === 0
+        ? 'Simplifie la fraction 12/18.'
+        : `Calcule ${index + 1}/4 + 1/8 et donne le resultat simplifie.`,
+    origin: index === 3 ? ('ai_generated' as const) : ('textbook' as const),
+    correct: index !== 1,
+    difficulty: (index % 5) + 1,
+    answered_at: new Date(
+      Date.parse('2026-03-16T09:10:00Z') - offset * 86_400_000,
+    ).toISOString(),
+    sheet_id: id(600),
+    sheet_title: 'Fractions — controle 1',
+    scan_id: index < 2 ? id(800) : null,
+    corrected: index === 1,
+  }));
+  return {
+    student,
+    competency,
+    score,
+    band: bandOf(score),
+    provisional: false,
+    days_until_review: score >= 0.75 ? 5 : 0,
+    attempts,
   };
 }
 
@@ -391,6 +545,19 @@ export const adaptive: AdaptiveProposeResponse = {
   language: 'fr',
   generated_count: 2,
   needs_approval: true,
+  group: null,
+  // One student's generation came back short. The screen has to show this, so
+  // the fixture has to carry it.
+  failures: [
+    {
+      student_id: (students[3] as { id: string }).id,
+      student_uid: (students[3] as { uid: string }).uid,
+      reason: 'incomplete',
+      requested: 2,
+      produced: 0,
+      detail: 'the model returned fewer exercises than were asked for',
+    },
+  ],
   plans: students.slice(0, 4).map((student, index) => ({
     student_id: student.id,
     student_uid: student.uid,

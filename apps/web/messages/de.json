@@ -17,7 +17,9 @@
     "currentClass": "Aktuelle Klasse",
     "currentSubject": "Aktuelles Fach",
     "switchClass": "Klasse wechseln",
-    "switchSubject": "Fach wechseln"
+    "switchSubject": "Fach wechseln",
+    "primary": "Hauptnavigation",
+    "menu": "Menü"
   },
   "auth": {
     "signIn": "Anmelden",
@@ -40,7 +42,15 @@
       "title": "Noch keine Klasse",
       "body": "Legen Sie eine Klasse an, um Arbeitsblätter zu erstellen.",
       "action": "Klasse anlegen"
-    }
+    },
+    "pendingCorrectionsLabel": "Offene Korrekturen",
+    "needAttentionLabel": "Im Blick behalten",
+    "subjects": "Fächer",
+    "bandCells": "{count, plural, =0 {keine Kompetenz} one {# Kompetenz} other {# Kompetenzen}}",
+    "reviewScans": "Kopien prüfen",
+    "openSheet": "Arbeitsblatt öffnen",
+    "createClass": "Klasse anlegen",
+    "pendingCorrectionsValue": "{count, plural, =0 {Keine} other {#}}"
   },
   "classes": {
     "title": "Klasse {code}",
@@ -61,7 +71,15 @@
       "title": "Keine Lernenden",
       "body": "Fügen Sie Ihre Klassenliste hinzu, um den Lernstand zu verfolgen.",
       "action": "Lernende hinzufügen"
-    }
+    },
+    "allClasses": "Ihre Klassen",
+    "createHeading": "Neue Klasse",
+    "createHelp": "Der Code bildet die Kennungen der Lernenden (7B_01).",
+    "labelField": "Bezeichnung (optional)",
+    "cancel": "Abbrechen",
+    "created": "Klasse angelegt",
+    "rosterAdded": "{count, plural, one {# Lernende:r hinzugefügt} other {# Lernende hinzugefügt}}",
+    "save": "Speichern"
   },
   "mastery": {
     "title": "Lernstand",
@@ -85,14 +103,24 @@
     "reviewDue": "Wiederholung in {days, plural, =0 {heute} one {# Tag} other {# Tagen}}",
     "reviewOverdue": "jetzt zu wiederholen",
     "attempts": "{count, plural, =0 {keine Antwort} one {# Antwort} other {# Antworten}}",
-    "score": "Wert",
     "cellLabel": "{student}, {competency}: {band}, {percent} %",
-    "notAssessed": "Nicht geprüft",
     "empty": {
       "title": "Noch keine Lernstandsdaten",
       "body": "Korrigieren Sie ein erstes Arbeitsblatt, um die Matrix zu füllen.",
       "action": "Arbeitsblatt erstellen"
-    }
+    },
+    "filterChapter": "Kapitel",
+    "allChapters": "Alle Kapitel",
+    "sortBy": "Sortieren",
+    "sortRoster": "Klassenliste",
+    "sortWeakest": "Schwächste zuerst",
+    "aiBadge": "KI-generiert",
+    "emptyChapter": {
+      "title": "Nichts in diesem Kapitel",
+      "body": "In dieser Klasse wurde noch keine Kompetenz aus diesem Kapitel beurteilt.",
+      "action": "Alle Kapitel anzeigen"
+    },
+    "cellLabelNotAssessed": "{student}, {competency}: {band}"
   },
   "student": {
     "profile": "Profil",
@@ -102,7 +130,16 @@
     "history": "Verlauf der Arbeitsblätter",
     "overall": "Gesamtwert",
     "noGaps": "Keine Lücken erkannt.",
-    "noStrengths": "Noch keine gefestigte Stärke."
+    "noStrengths": "Noch keine gefestigte Stärke.",
+    "backToClass": "← Zurück zur Klasse",
+    "noSheets": "Noch keine korrigierte Serie.",
+    "sheetScore": "{correct} / {total}",
+    "openScan": "Korrektur ansehen",
+    "trendDescription": "{competency}: von {from} auf {to} seit dem {since}.",
+    "notAssessed": {
+      "title": "Noch nicht beurteilt",
+      "body": "Von dieser Schülerin oder diesem Schüler liegt noch keine korrigierte Antwort vor. Das ist keine Null: es wurde schlicht noch nichts beurteilt."
+    }
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {keine Aufgabe extrahiert} one {# Aufgabe extrahiert} other {# Aufgaben extrahiert}}",
@@ -211,41 +248,123 @@
     "confirm": "Ergebnisse bestätigen",
     "confirming": "Wird gespeichert…",
     "confirmed": "Ergebnisse gespeichert",
-    "registrationFailed": "Seite unlesbar: die vier Eckmarken wurden nicht gefunden.",
+    "registrationFailed": "Unlesbar",
     "registrationHelp": "Fotografieren Sie erneut und achten Sie darauf, alle vier Ecken zu erfassen.",
     "empty": {
       "title": "Keine Kopien",
       "body": "Laden Sie die eingescannten Kopien hoch, um sie automatisch zu korrigieren.",
       "action": "Kopien hochladen"
+    },
+    "sheet": "Korrigiertes Blatt",
+    "sheetHelp": "Zu welchem Blatt gehören diese Kopien? Ohne Blatt werden die Markierungen gelesen, aber nichts korrigiert.",
+    "chooseSheet": "Blatt wählen",
+    "chooseSheetFirst": "Wählen Sie zuerst das Blatt, zu dem diese Kopien gehören.",
+    "uploading": "Kopien werden hochgeladen…",
+    "noSheets": {
+      "title": "Kein gedrucktes Blatt",
+      "body": "Erstellen und drucken Sie ein Blatt: eingescannte Kopien gehören immer zu dem Blatt, von dem sie stammen.",
+      "action": "Blatt erstellen"
+    },
+    "nextToCheck": "Nächste zu prüfende Antwort",
+    "pageAlt": "Seite {page} der eingescannten Kopie",
+    "marksRegion": "Erkannte Markierungen auf der Seite",
+    "assignHelp": "Vorgeschlagen werden nur Lernende aus der Klasse dieses Blattes.",
+    "wrongClass": "Andere Klasse",
+    "wrongClassHelp": "Diese Kopie gehört zu einer anderen Klasse und wird mit diesem Blatt nicht korrigiert.",
+    "discard": "Seite aussortieren",
+    "discarded": "Aussortiert",
+    "restore": "Zurück in den Stapel",
+    "machineRead": "Maschinelle Lesung: {answer} · {outcome}",
+    "aiGenerated": "KI",
+    "confirmedCount": "{attempts, plural, one {# Antwort gespeichert} other {# Antworten gespeichert}} für {students, plural, one {# Lernende:n} other {# Lernende}}.",
+    "itemsSkipped": "{count, plural, one {# Antwort konnte nicht automatisch korrigiert werden} other {# Antworten konnten nicht automatisch korrigiert werden}}: bitte von Hand nachtragen.",
+    "confirmFailed": "Das Speichern ist fehlgeschlagen.",
+    "failed": {
+      "title": "Kopien unlesbar",
+      "body": "Die Datei konnte nicht geöffnet werden. Versuchen Sie es mit einem PDF oder Fotos."
+    },
+    "registrationWhy": "Die vier Eckmarken wurden auf dieser Seite nicht gefunden.",
+    "isTheAnswer": "· richtige Antwort",
+    "answerIs": "Richtige Antwort: {answer}",
+    "allScans": "Alle Korrekturen",
+    "newScan": "Kopien hochladen",
+    "noScans": "Noch keine Kopien hochgeladen.",
+    "emptyTitle": "Keine Korrekturen",
+    "pagesCount": "{count, plural, one {# Seite} other {# Seiten}}",
+    "status": {
+      "uploaded": "Hochgeladen",
+      "processing": "Wird analysiert",
+      "needs_review": "Zu prüfen",
+      "confirmed": "Bestätigt",
+      "failed": "Fehlgeschlagen"
     }
   },
   "adaptive": {
-    "title": "Angepasste Blätter",
-    "subtitle": "Ein Arbeitsblatt pro Person, auf ihre Lücken zugeschnitten",
-    "targeting": "Anvisierte Kompetenzen",
-    "itemsPerStudent": "Aufgaben pro Person",
+    "aiBadge": "KI",
+    "aiNotice": "Von KI erzeugte Aufgaben tragen die KI-Markierung. Lesen Sie jede vor der Freigabe — nichts Erzeugtes wird vorher gedruckt.",
     "allowGeneration": "KI-Generierung erlauben",
     "allowGenerationHelp": "Generierte Aufgaben ergänzen die aus Ihren Lehrmitteln gefundenen.",
-    "propose": "Blätter vorbereiten",
-    "preparing": "Wird vorbereitet…",
-    "retrieved": "Aus Ihren Lehrmitteln",
-    "generated": "Von KI erzeugt",
-    "aiBadge": "KI",
-    "aiGenerated": "Von KI erzeugte Aufgabe",
-    "aiNotice": "Von KI erzeugte Aufgaben sind orange markiert. Bitte vor dem Druck prüfen.",
-    "approve": "Freigeben",
-    "approveAll": "Alle freigeben",
-    "approved": "Freigegeben",
-    "needsApproval": "{count, plural, one {# Aufgabe freizugeben} other {# Aufgaben freizugeben}}",
-    "notApprovedWarning": "Generierte Aufgaben müssen vor dem Druck freigegeben werden.",
-    "exportBatch": "PDF-Stapel exportieren",
-    "exporting": "Export läuft…",
-    "batchReady": "Stapel bereit: ein Arbeitsblatt pro Person, ein einziges PDF.",
+    "approveAll": "Alle {count} freigeben",
+    "approved": "Freigegeben — diese Aufgaben können jetzt gedruckt werden.",
+    "approving": "Freigabe läuft…",
+    "batchReady": "Stapel bereit: ein Blatt pro Person, dazu das Lösungsblatt.",
+    "cancel": "Abbrechen",
+    "correctAnswer": "Richtige Antwort",
+    "difficulty": "Schwierigkeit {level} von 5",
+    "discard": "Verwerfen",
+    "downloadAnswerKey": "Lösungsblatt herunterladen",
+    "downloadBlank": "Blätter herunterladen",
+    "edit": "Bearbeiten",
     "empty": {
       "title": "Noch keine Lücken erkannt",
-      "body": "Korrigieren Sie mindestens ein Arbeitsblatt, damit Alppy gezielt arbeiten kann.",
-      "action": "Korrekturen ansehen"
-    }
+      "body": "Korrigieren Sie mindestens ein Arbeitsblatt, damit Alppy gezielt arbeiten kann."
+    },
+    "exportBatch": "PDF-Stapel exportieren",
+    "exportError": {
+      "title": "Der Stapel konnte nicht exportiert werden",
+      "body": "Es wurde nichts gedruckt. Sie können es erneut versuchen — der Plan unten bleibt unverändert."
+    },
+    "exporting": "Export läuft…",
+    "failureHint": "Diese Lernenden erhalten ein kürzeres Blatt. Alles Übrige wurde normal exportiert.",
+    "failureIncomplete": "{uid}: {produced} von {requested} erzeugten Aufgaben wurden geliefert.",
+    "failurePiiGate": "{uid}: Die Anfrage wurde vor dem Verlassen von Alppy blockiert, es wurde nichts erzeugt.",
+    "failureProvider": "{uid}: Der KI-Anbieter war nicht erreichbar.",
+    "failureUnparsable": "{uid}: Der KI-Anbieter lieferte eine unbrauchbare Antwort.",
+    "failuresTitle": "{count, plural, one {# Blatt konnte nicht gefüllt werden} other {# Blätter konnten nicht gefüllt werden}}",
+    "falseLabel": "Falsch",
+    "forStudents": "Für: {uids}",
+    "groupFor": "Für {count} von {total} Lernenden",
+    "groupTitle": "Gemeinsames Blatt",
+    "hideItems": "Aufgaben ausblenden",
+    "itemsPerStudent": "Aufgaben pro Person",
+    "loadError": {
+      "title": "Dieser Bildschirm konnte nicht geladen werden",
+      "body": "Alppy konnte Ihre Klassen und Fächer nicht lesen."
+    },
+    "mode": "Blattart",
+    "modeGroup": "Ein gemeinsames Blatt",
+    "modeGroupHelp": "Zielt auf die Vereinigung der Lücken der gewählten Lernenden.",
+    "modePerStudent": "Eines pro Person",
+    "needsApproval": "{count, plural, one {# Aufgabe freizugeben} other {# Aufgaben freizugeben}}",
+    "notApprovedWarning": "Generierte Aufgaben müssen vor dem Druck freigegeben werden.",
+    "preparing": "Wird vorbereitet…",
+    "propose": "Blätter vorbereiten",
+    "proposeError": {
+      "title": "Die Blätter konnten nicht vorbereitet werden",
+      "body": "Alppy konnte die Planung nicht erreichen. Ihre Korrekturen sind sicher; versuchen Sie es gleich noch einmal."
+    },
+    "regenerate": "Neu erzeugen",
+    "regenerating": "Wird neu erzeugt…",
+    "retrieved": "Aus Ihren Lehrmitteln",
+    "retry": "Erneut versuchen",
+    "reviewFirst": "Prüfen Sie jede erzeugte Aufgabe unten",
+    "save": "Speichern",
+    "showItems": "Die {count} Aufgaben anzeigen",
+    "statement": "Aufgabenstellung",
+    "subtitle": "Ein Arbeitsblatt pro Person, auf ihre Lücken zugeschnitten",
+    "targeting": "Anvisierte Kompetenzen",
+    "title": "Angepasste Blätter",
+    "trueLabel": "Wahr"
   },
   "settings": {
     "title": "Einstellungen",
@@ -295,7 +414,8 @@
     "retry": "Erneut versuchen",
     "save": "Speichern",
     "search": "Suchen",
-    "yes": "Ja"
+    "yes": "Ja",
+    "required": "Pflichtfeld"
   },
   "errors": {
     "generic": {
@@ -309,7 +429,21 @@
       "action": "Zurück zum Start"
     },
     "offline": "Sie scheinen offline zu sein.",
-    "unauthorized": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an."
+    "unauthorized": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
+    "code": {
+      "unsupported_media_type": "Dieses Format wird nicht akzeptiert. Nutzen Sie PDF, JPEG oder PNG.",
+      "payload_too_large": "Die Datei ist zu gross. Scannen Sie in mehreren Teilen.",
+      "unprocessable": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob sie leer oder beschädigt ist.",
+      "validation_error": "Die Anfrage ist unvollständig. Prüfen Sie die Felder und versuchen Sie es erneut.",
+      "conflict": "Diese Aktion ist im aktuellen Zustand nicht mehr möglich.",
+      "not_found": "Dieses Element existiert nicht oder ist nicht mehr zugänglich.",
+      "network_error": "Die Anwendung konnte den Server nicht erreichen.",
+      "fallback": "Das Hochladen ist fehlgeschlagen. Versuchen Sie es erneut.",
+      "scan_pages_unassigned": "Einige Seiten sind niemandem zugeordnet. Ordnen Sie sie zu oder sortieren Sie sie aus, dann bestätigen Sie.",
+      "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
+      "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert."
+    },
+    "unavailableTitle": "Daten nicht verfügbar"
   },
   "a11y": {
     "loading": "Wird geladen",
@@ -317,5 +451,16 @@
     "sortDescending": "Absteigend sortieren",
     "decorative": "Dekorative Illustration",
     "progressRing": "Fortschritt: {percent} %"
+  },
+  "attempts": {
+    "title": "Antworten",
+    "correct": "Richtig",
+    "incorrect": "Falsch",
+    "corrected": "Von Hand korrigiert",
+    "difficulty": "Schwierigkeit",
+    "empty": "Für diese Kompetenz ist keine Antwort erfasst.",
+    "fromSheet": "Serie: {title}",
+    "fromScan": "Gescannte Kopie ansehen",
+    "openProfile": "Profil öffnen"
   }
 }

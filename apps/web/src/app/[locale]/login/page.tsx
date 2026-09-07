@@ -2,15 +2,27 @@
 
 import { AlppyLogo, Button, Card, Field, Input } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
+import { useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
 import { useLogin } from '@/lib/api/queries';
+import { locales, type AppLocale } from '@/i18n/routing';
+
+/** `next-intl`'s router adds the locale itself, so strip any prefix first. */
+function stripLocale(path: string): string {
+  const match = path.match(/^\/([a-z]{2})(?=\/|$)/);
+  if (match && (locales as readonly string[]).includes(match[1])) {
+    return path.slice(match[0].length) || '/';
+  }
+  return path;
+}
 
 export default function LoginPage() {
   const t = useTranslations('auth');
   const router = useRouter();
   const login = useLogin();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
 
@@ -18,7 +30,17 @@ export default function LoginPage() {
     event.preventDefault();
     login.mutate(
       { email, password },
-      { onSuccess: () => router.push('/') },
+      {
+        onSuccess: (teacher) => {
+          // The teacher's saved language, and wherever the session guard
+          // interrupted them. Both were ignored: login always pushed `/` in
+          // whatever locale the URL happened to carry.
+          const locale = teacher.preferences?.locale as AppLocale | undefined;
+          const from = searchParams.get('from');
+          const target = from && from.startsWith('/') ? stripLocale(from) : '/';
+          router.replace(target, locale ? { locale } : undefined);
+        },
+      },
     );
   }
 

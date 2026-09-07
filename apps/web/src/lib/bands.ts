@@ -18,4 +18,20 @@ export function useBandLabels(): BandLabels {
   };
 }
 
+/**
+ * The threshold behind each band, for the legend. These strings shipped in all
+ * three catalogues and were referenced by nothing, so the legend named five
+ * bands without ever saying what they mean.
+ */
+export function useBandHelp(): Record<MasteryBand, string> {
+  const t = useTranslations('mastery.bandHelp');
+  return {
+    solid: t('solid'),
+    ok: t('ok'),
+    weak: t('weak'),
+    fading: t('fading'),
+    none: t('none'),
+  };
+}
+
 export const BAND_KEYS: MasteryBand[] = ['solid', 'ok', 'weak', 'fading', 'none'];

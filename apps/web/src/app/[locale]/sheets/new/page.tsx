@@ -25,6 +25,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
+import { useScope } from '@/lib/scope';
 import {
   useChapters,
   useClasses,
@@ -55,8 +56,13 @@ export default function SheetBuilderPage() {
   // first subject, so a teacher with two classes could only build for one.
   const [classId, setClassId] = useState('');
   const [subjectId, setSubjectId] = useState('');
-  const activeClass = classId || classes.data?.[0]?.id || '';
-  const activeSubject = subjectId || subjects.data?.[0]?.id || '';
+  // Default to what the shell is scoped to rather than to whichever class
+  // sorts first: arriving here from a class you were just looking at and being
+  // silently switched to another one is how a sheet gets built for the wrong
+  // pupils. An explicit choice on this screen still wins.
+  const scope = useScope();
+  const activeClass = classId || scope.classId || classes.data?.[0]?.id || '';
+  const activeSubject = subjectId || scope.subjectId || subjects.data?.[0]?.id || '';
   const chapters = useChapters(activeSubject || undefined);
 
   const [title, setTitle] = useState('');

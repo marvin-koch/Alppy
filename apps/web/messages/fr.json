@@ -17,7 +17,9 @@
     "currentClass": "Classe courante",
     "currentSubject": "Discipline courante",
     "switchClass": "Changer de classe",
-    "switchSubject": "Changer de discipline"
+    "switchSubject": "Changer de discipline",
+    "primary": "Navigation principale",
+    "menu": "Menu"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -40,7 +42,15 @@
       "title": "Aucune classe pour l'instant",
       "body": "Créez une classe pour commencer à construire des fiches.",
       "action": "Créer une classe"
-    }
+    },
+    "pendingCorrectionsLabel": "Corrections en attente",
+    "needAttentionLabel": "À surveiller",
+    "subjects": "Disciplines",
+    "bandCells": "{count, plural, =0 {aucune compétence} one {# compétence} other {# compétences}}",
+    "reviewScans": "Vérifier les copies",
+    "openSheet": "Ouvrir la fiche",
+    "createClass": "Créer une classe",
+    "pendingCorrectionsValue": "{count, plural, =0 {Aucune} other {#}}"
   },
   "classes": {
     "title": "Classe {code}",
@@ -61,7 +71,15 @@
       "title": "Aucun élève",
       "body": "Ajoutez votre effectif pour commencer à suivre les progrès.",
       "action": "Ajouter des élèves"
-    }
+    },
+    "allClasses": "Vos classes",
+    "createHeading": "Nouvelle classe",
+    "createHelp": "Le code sert à fabriquer les identifiants des élèves (7B_01).",
+    "labelField": "Intitulé (facultatif)",
+    "cancel": "Annuler",
+    "created": "Classe créée",
+    "rosterAdded": "{count, plural, one {# élève ajouté} other {# élèves ajoutés}}",
+    "save": "Enregistrer"
   },
   "mastery": {
     "title": "Maîtrise",
@@ -85,14 +103,24 @@
     "reviewDue": "révision dans {days, plural, =0 {aujourd'hui} one {# jour} other {# jours}}",
     "reviewOverdue": "à revoir maintenant",
     "attempts": "{count, plural, =0 {aucune réponse} one {# réponse} other {# réponses}}",
-    "score": "Score",
     "cellLabel": "{student}, {competency} : {band}, {percent} %",
-    "notAssessed": "Non évalué",
     "empty": {
       "title": "Aucune donnée de maîtrise",
       "body": "Corrigez une première fiche pour remplir la matrice.",
       "action": "Créer une fiche"
-    }
+    },
+    "filterChapter": "Chapitre",
+    "allChapters": "Tous les chapitres",
+    "sortBy": "Trier",
+    "sortRoster": "Ordre de l'effectif",
+    "sortWeakest": "Les plus fragiles d'abord",
+    "aiBadge": "Généré par IA",
+    "emptyChapter": {
+      "title": "Rien dans ce chapitre",
+      "body": "Aucune compétence de ce chapitre n'a encore été évaluée dans cette classe.",
+      "action": "Voir tous les chapitres"
+    },
+    "cellLabelNotAssessed": "{student}, {competency} : {band}"
   },
   "student": {
     "profile": "Profil de l'élève",
@@ -102,7 +130,16 @@
     "history": "Historique",
     "overall": "Score global",
     "noGaps": "Aucune lacune détectée.",
-    "noStrengths": "Pas encore de point fort établi."
+    "noStrengths": "Pas encore de point fort établi.",
+    "backToClass": "← Retour à la classe",
+    "noSheets": "Aucune fiche corrigée pour l'instant.",
+    "sheetScore": "{correct} / {total}",
+    "openScan": "Voir la correction",
+    "trendDescription": "{competency} : de {from} à {to} depuis le {since}.",
+    "notAssessed": {
+      "title": "Pas encore évalué",
+      "body": "Cet élève n'a encore aucune réponse corrigée. Ce n'est pas un zéro : rien n'a encore été évalué."
+    }
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {aucun exercice extrait} one {# exercice extrait} other {# exercices extraits}}",
@@ -211,41 +248,123 @@
     "confirm": "Valider les résultats",
     "confirming": "Enregistrement…",
     "confirmed": "Résultats enregistrés",
-    "registrationFailed": "Page illisible : les repères d'angle n'ont pas été trouvés.",
+    "registrationFailed": "Illisible",
     "registrationHelp": "Reprenez la photo en cadrant les quatre coins de la feuille.",
     "empty": {
       "title": "Aucune copie",
       "body": "Téléversez les copies scannées pour les corriger automatiquement.",
       "action": "Téléverser les copies"
+    },
+    "sheet": "Fiche corrigée",
+    "sheetHelp": "De quelle fiche ces copies proviennent-elles ? Sans elle, les marques sont lues mais rien n'est corrigé.",
+    "chooseSheet": "Choisir une fiche",
+    "chooseSheetFirst": "Choisissez d'abord la fiche dont ces copies proviennent.",
+    "uploading": "Envoi des copies…",
+    "noSheets": {
+      "title": "Aucune fiche imprimée",
+      "body": "Créez et imprimez une fiche : les copies scannées se rattachent toujours à la fiche dont elles proviennent.",
+      "action": "Créer une fiche"
+    },
+    "nextToCheck": "Réponse suivante à vérifier",
+    "pageAlt": "Page {page} de la copie scannée",
+    "marksRegion": "Marques détectées sur la page",
+    "assignHelp": "Seuls les élèves de la classe de cette fiche sont proposés.",
+    "wrongClass": "Autre classe",
+    "wrongClassHelp": "Cette copie appartient à un élève d'une autre classe : elle n'est pas corrigée avec cette fiche.",
+    "discard": "Écarter la page",
+    "discarded": "Écartée",
+    "restore": "Remettre dans le lot",
+    "machineRead": "Lecture de la machine : {answer} · {outcome}",
+    "aiGenerated": "IA",
+    "confirmedCount": "{attempts, plural, one {# réponse enregistrée} other {# réponses enregistrées}} pour {students, plural, one {# élève} other {# élèves}}.",
+    "itemsSkipped": "{count, plural, one {# réponse n'a pas pu être corrigée automatiquement} other {# réponses n'ont pas pu être corrigées automatiquement}} : à reprendre à la main.",
+    "confirmFailed": "L'enregistrement a échoué.",
+    "failed": {
+      "title": "Copies illisibles",
+      "body": "Le fichier n'a pas pu être ouvert. Réessayez avec un PDF ou des photos."
+    },
+    "registrationWhy": "Les repères d'angle n'ont pas été trouvés sur cette page.",
+    "isTheAnswer": "· bonne réponse",
+    "answerIs": "Bonne réponse : {answer}",
+    "allScans": "Toutes les corrections",
+    "newScan": "Téléverser des copies",
+    "noScans": "Aucune copie téléversée pour l'instant.",
+    "emptyTitle": "Aucune correction",
+    "pagesCount": "{count, plural, one {# page} other {# pages}}",
+    "status": {
+      "uploaded": "Téléversé",
+      "processing": "Analyse en cours",
+      "needs_review": "À vérifier",
+      "confirmed": "Validé",
+      "failed": "Échec"
     }
   },
   "adaptive": {
-    "title": "Fiches adaptées",
-    "subtitle": "Une fiche par élève, ciblée sur ses lacunes",
-    "targeting": "Compétences ciblées",
-    "itemsPerStudent": "Exercices par élève",
+    "aiBadge": "IA",
+    "aiNotice": "Les exercices générés portent la marque IA. Relisez chacun avant de l'approuver — rien de généré n'est imprimé tant que vous ne l'avez pas fait.",
     "allowGeneration": "Autoriser la génération par IA",
     "allowGenerationHelp": "Les exercices générés complètent ceux trouvés dans vos manuels.",
-    "propose": "Préparer les fiches",
-    "preparing": "Préparation…",
-    "retrieved": "Depuis vos manuels",
-    "generated": "Généré par IA",
-    "aiBadge": "IA",
-    "aiGenerated": "Exercice généré par IA",
-    "aiNotice": "Les exercices générés par IA sont signalés en orange. Relisez-les avant impression.",
-    "approve": "Approuver",
-    "approveAll": "Tout approuver",
-    "approved": "Approuvé",
-    "needsApproval": "{count, plural, one {# exercice à approuver} other {# exercices à approuver}}",
-    "notApprovedWarning": "Les exercices générés doivent être approuvés avant d'être imprimés.",
-    "exportBatch": "Exporter le lot PDF",
-    "exporting": "Export…",
-    "batchReady": "Lot prêt : une fiche par élève, un seul PDF.",
+    "approveAll": "Tout approuver ({count})",
+    "approved": "Approuvé — ces exercices peuvent maintenant être imprimés.",
+    "approving": "Approbation…",
+    "batchReady": "Lot prêt : une fiche par élève, avec le corrigé.",
+    "cancel": "Annuler",
+    "correctAnswer": "Bonne réponse",
+    "difficulty": "Difficulté {level} sur 5",
+    "discard": "Écarter",
+    "downloadAnswerKey": "Télécharger le corrigé",
+    "downloadBlank": "Télécharger les fiches",
+    "edit": "Modifier",
     "empty": {
       "title": "Pas encore de lacunes identifiées",
-      "body": "Corrigez au moins une fiche pour qu'Alppy puisse cibler les besoins de chaque élève.",
-      "action": "Voir les corrections"
-    }
+      "body": "Corrigez au moins une fiche pour qu'Alppy puisse cibler les besoins de chaque élève."
+    },
+    "exportBatch": "Exporter le lot PDF",
+    "exportError": {
+      "title": "Le lot n'a pas pu être exporté",
+      "body": "Rien n'a été imprimé. Vous pouvez réessayer — le plan ci-dessous est inchangé."
+    },
+    "exporting": "Export…",
+    "failureHint": "Ces élèves ont une fiche plus courte. Tout le reste a été exporté normalement.",
+    "failureIncomplete": "{uid} : {produced} exercices générés sur {requested} demandés.",
+    "failurePiiGate": "{uid} : la requête a été bloquée avant de quitter Alppy, rien n'a été généré.",
+    "failureProvider": "{uid} : le fournisseur d'IA est injoignable.",
+    "failureUnparsable": "{uid} : le fournisseur d'IA a renvoyé une réponse inexploitable.",
+    "failuresTitle": "{count, plural, one {# fiche n'a pas pu être complétée} other {# fiches n'ont pas pu être complétées}}",
+    "falseLabel": "Faux",
+    "forStudents": "Pour : {uids}",
+    "groupFor": "Pour {count} élèves sur {total}",
+    "groupTitle": "Fiche commune",
+    "hideItems": "Masquer les exercices",
+    "itemsPerStudent": "Exercices par élève",
+    "loadError": {
+      "title": "Cet écran n'a pas pu se charger",
+      "body": "Alppy n'a pas pu lire vos classes et vos disciplines."
+    },
+    "mode": "Type de fiche",
+    "modeGroup": "Une fiche commune",
+    "modeGroupHelp": "Cible l'union des lacunes des élèves sélectionnés.",
+    "modePerStudent": "Une par élève",
+    "needsApproval": "{count, plural, one {# exercice à approuver} other {# exercices à approuver}}",
+    "notApprovedWarning": "Les exercices générés doivent être approuvés avant d'être imprimés.",
+    "preparing": "Préparation…",
+    "propose": "Préparer les fiches",
+    "proposeError": {
+      "title": "Les fiches n'ont pas pu être préparées",
+      "body": "Alppy n'a pas pu joindre le planificateur. Vos corrections sont intactes ; réessayez dans un instant."
+    },
+    "regenerate": "Régénérer",
+    "regenerating": "Régénération…",
+    "retrieved": "Depuis vos manuels",
+    "retry": "Réessayer",
+    "reviewFirst": "Relisez chaque exercice généré ci-dessous",
+    "save": "Enregistrer",
+    "showItems": "Afficher les {count} exercices",
+    "statement": "Énoncé",
+    "subtitle": "Une fiche par élève, ciblée sur ses lacunes",
+    "targeting": "Compétences ciblées",
+    "title": "Fiches adaptées",
+    "trueLabel": "Vrai"
   },
   "settings": {
     "title": "Réglages",
@@ -295,7 +414,8 @@
     "retry": "Réessayer",
     "save": "Enregistrer",
     "search": "Rechercher",
-    "yes": "Oui"
+    "yes": "Oui",
+    "required": "obligatoire"
   },
   "errors": {
     "generic": {
@@ -309,7 +429,21 @@
       "action": "Retour à l'accueil"
     },
     "offline": "Vous semblez hors ligne.",
-    "unauthorized": "Votre session a expiré. Reconnectez-vous."
+    "unauthorized": "Votre session a expiré. Reconnectez-vous.",
+    "code": {
+      "unsupported_media_type": "Ce format n'est pas accepté. Utilisez un PDF, un JPEG ou un PNG.",
+      "payload_too_large": "Le fichier est trop volumineux. Scannez en plusieurs fois.",
+      "unprocessable": "Le fichier n'a pas pu être lu. Vérifiez qu'il n'est pas vide ni abîmé.",
+      "validation_error": "La demande est incomplète. Vérifiez les champs et réessayez.",
+      "conflict": "Cette action n'est plus possible dans l'état actuel.",
+      "not_found": "Cet élément n'existe pas ou n'est plus accessible.",
+      "network_error": "L'application n'a pas pu joindre le serveur.",
+      "fallback": "L'envoi a échoué. Réessayez.",
+      "scan_pages_unassigned": "Certaines pages ne sont attribuées à personne. Attribuez-les ou écartez-les, puis validez.",
+      "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
+      "scan_already_confirmed": "Ces résultats ont déjà été enregistrés."
+    },
+    "unavailableTitle": "Données indisponibles"
   },
   "a11y": {
     "loading": "Chargement en cours",
@@ -317,5 +451,16 @@
     "sortDescending": "Trier par ordre décroissant",
     "decorative": "Illustration décorative",
     "progressRing": "Progression : {percent} %"
+  },
+  "attempts": {
+    "title": "Réponses",
+    "correct": "Juste",
+    "incorrect": "Faux",
+    "corrected": "Corrigé à la main",
+    "difficulty": "Difficulté",
+    "empty": "Aucune réponse enregistrée pour cette compétence.",
+    "fromSheet": "Fiche : {title}",
+    "fromScan": "Voir la copie scannée",
+    "openProfile": "Ouvrir le profil"
   }
 }

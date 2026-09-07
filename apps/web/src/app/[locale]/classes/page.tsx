@@ -7,6 +7,7 @@ import { Link } from '@/i18n/navigation';
 import { useClasses } from '@/lib/api/queries';
 
 export default function ClassesPage() {
+  const t = useTranslations('classes');
   const th = useTranslations('home');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
@@ -27,12 +28,27 @@ export default function ClassesPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <h1 className="mb-6">{th('title')}</h1>
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        {/* Its own string. This screen and the home screen both rendered
+            `home.title`, so `/fr` and `/fr/classes` shared one <h1>. */}
+        <h1>{t('allClasses')}</h1>
+        <Link href="/classes/new" className="ard-btn" data-variant="primary">
+          {t('create')}
+        </Link>
+      </div>
       {classes.length === 0 ? (
         <EmptyState
           illustration={<IlloSlate />}
           title={th('empty.title')}
           description={th('empty.body')}
+          // This screen is where the home screen's "create a class" sends a
+          // brand-new teacher. It had no action at all, so the onboarding path
+          // terminated here.
+          action={
+            <Link href="/classes/new" className="ard-btn" data-variant="primary">
+              {t('create')}
+            </Link>
+          }
         />
       ) : (
         <ul className="grid list-none grid-cols-1 gap-3 p-0 sm:grid-cols-2">

@@ -43,7 +43,15 @@ export default function SettingsPage() {
         <Field label={t('language')} help={t('languageHelp')} hideLabel>
           <SegmentedControl
             value={locale}
-            onValueChange={(next) => router.replace(pathname, { locale: next as AppLocale })}
+            onValueChange={(next) => {
+              const chosen = next as AppLocale;
+              // Persist the LANGUAGE too. This handler only did the route
+              // replace, so `TeacherPreferences.locale` was written solely as a
+              // side effect of later touching a display toggle, and a teacher's
+              // language never followed them to another machine.
+              updatePrefs.mutate({ locale: chosen, ...(prefs ?? readDisplay()) });
+              router.replace(pathname, { locale: chosen });
+            }}
             options={locales.map((l) => ({
               value: l,
               label: l.toUpperCase(),

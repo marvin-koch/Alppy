@@ -17,7 +17,9 @@
     "currentClass": "Current class",
     "currentSubject": "Current subject",
     "switchClass": "Switch class",
-    "switchSubject": "Switch subject"
+    "switchSubject": "Switch subject",
+    "primary": "Main navigation",
+    "menu": "Menu"
   },
   "auth": {
     "signIn": "Sign in",
@@ -40,7 +42,15 @@
       "title": "No classes yet",
       "body": "Create a class to start building sheets.",
       "action": "Create a class"
-    }
+    },
+    "pendingCorrectionsLabel": "Pending corrections",
+    "needAttentionLabel": "Needs attention",
+    "subjects": "Subjects",
+    "bandCells": "{count, plural, =0 {no competencies} one {# competency} other {# competencies}}",
+    "reviewScans": "Review copies",
+    "openSheet": "Open the sheet",
+    "createClass": "Create a class",
+    "pendingCorrectionsValue": "{count, plural, =0 {None} other {#}}"
   },
   "classes": {
     "title": "Class {code}",
@@ -61,7 +71,15 @@
       "title": "No students",
       "body": "Add your roster to start tracking progress.",
       "action": "Add students"
-    }
+    },
+    "allClasses": "Your classes",
+    "createHeading": "New class",
+    "createHelp": "The code builds each student's identifier (7B_01).",
+    "labelField": "Label (optional)",
+    "cancel": "Cancel",
+    "created": "Class created",
+    "rosterAdded": "{count, plural, one {# student added} other {# students added}}",
+    "save": "Save"
   },
   "mastery": {
     "title": "Mastery",
@@ -85,14 +103,24 @@
     "reviewDue": "review in {days, plural, =0 {today} one {# day} other {# days}}",
     "reviewOverdue": "due for review now",
     "attempts": "{count, plural, =0 {no answers} one {# answer} other {# answers}}",
-    "score": "Score",
-    "cellLabel": "{student}, {competency}: {band}, {percent} %",
-    "notAssessed": "Not assessed",
+    "cellLabel": "{student}, {competency}: {band}, {percent}%",
     "empty": {
       "title": "No mastery data",
       "body": "Correct a first sheet to fill the matrix.",
       "action": "Create a sheet"
-    }
+    },
+    "filterChapter": "Chapter",
+    "allChapters": "All chapters",
+    "sortBy": "Sort",
+    "sortRoster": "Roster order",
+    "sortWeakest": "Weakest first",
+    "aiBadge": "AI-generated",
+    "emptyChapter": {
+      "title": "Nothing in this chapter",
+      "body": "No competency from this chapter has been assessed in this class yet.",
+      "action": "Show all chapters"
+    },
+    "cellLabelNotAssessed": "{student}, {competency}: {band}"
   },
   "student": {
     "profile": "Student profile",
@@ -102,7 +130,16 @@
     "history": "History",
     "overall": "Overall score",
     "noGaps": "No gaps detected.",
-    "noStrengths": "No established strength yet."
+    "noStrengths": "No established strength yet.",
+    "backToClass": "← Back to the class",
+    "noSheets": "No marked sheet yet.",
+    "sheetScore": "{correct} / {total}",
+    "openScan": "View the marking",
+    "trendDescription": "{competency}: from {from} to {to} since {since}.",
+    "notAssessed": {
+      "title": "Not assessed yet",
+      "body": "This student has no marked answers yet. That is not a zero: nothing has been assessed."
+    }
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {no exercises extracted} one {# exercise extracted} other {# exercises extracted}}",
@@ -211,41 +248,123 @@
     "confirm": "Confirm results",
     "confirming": "Saving…",
     "confirmed": "Results saved",
-    "registrationFailed": "Page unreadable: the four corner marks were not found.",
+    "registrationFailed": "Unreadable",
     "registrationHelp": "Take the photo again, making sure all four corners of the sheet are in frame.",
     "empty": {
       "title": "No copies",
       "body": "Upload the scanned copies to grade them automatically.",
       "action": "Upload copies"
+    },
+    "sheet": "Sheet being marked",
+    "sheetHelp": "Which sheet are these copies of? Without it the marks are read and nothing is graded.",
+    "chooseSheet": "Choose a sheet",
+    "chooseSheetFirst": "Choose the sheet these copies came from first.",
+    "uploading": "Uploading copies…",
+    "noSheets": {
+      "title": "No printed sheet yet",
+      "body": "Create and print a sheet: scanned copies always belong to the sheet they came from.",
+      "action": "Create a sheet"
+    },
+    "nextToCheck": "Next answer to check",
+    "pageAlt": "Page {page} of the scanned copy",
+    "marksRegion": "Marks detected on the page",
+    "assignHelp": "Only students in this sheet's class are offered.",
+    "wrongClass": "Another class",
+    "wrongClassHelp": "This copy belongs to a student in another class, so it is not graded with this sheet.",
+    "discard": "Set page aside",
+    "discarded": "Set aside",
+    "restore": "Put back in the pile",
+    "machineRead": "The scanner read: {answer} · {outcome}",
+    "aiGenerated": "AI",
+    "confirmedCount": "{attempts, plural, one {# answer saved} other {# answers saved}} for {students, plural, one {# student} other {# students}}.",
+    "itemsSkipped": "{count, plural, one {# answer could not be graded automatically} other {# answers could not be graded automatically}}: mark those by hand.",
+    "confirmFailed": "Saving failed.",
+    "failed": {
+      "title": "Copies unreadable",
+      "body": "The file could not be opened. Try again with a PDF or photos."
+    },
+    "registrationWhy": "The four corner marks were not found on this page.",
+    "isTheAnswer": "· correct answer",
+    "answerIs": "Correct answer: {answer}",
+    "allScans": "All corrections",
+    "newScan": "Upload copies",
+    "noScans": "No copies uploaded yet.",
+    "emptyTitle": "No corrections",
+    "pagesCount": "{count, plural, one {# page} other {# pages}}",
+    "status": {
+      "uploaded": "Uploaded",
+      "processing": "Processing",
+      "needs_review": "Needs review",
+      "confirmed": "Confirmed",
+      "failed": "Failed"
     }
   },
   "adaptive": {
-    "title": "Adaptive sheets",
-    "subtitle": "One sheet per student, targeted at their gaps",
-    "targeting": "Targeted competencies",
-    "itemsPerStudent": "Exercises per student",
+    "aiBadge": "AI",
+    "aiNotice": "AI-generated exercises carry the AI mark. Read each one before approving it — nothing generated is printed until you do.",
     "allowGeneration": "Allow AI generation",
     "allowGenerationHelp": "Generated exercises top up the ones found in your textbooks.",
-    "propose": "Prepare sheets",
-    "preparing": "Preparing…",
-    "retrieved": "From your textbooks",
-    "generated": "AI-generated",
-    "aiBadge": "AI",
-    "aiGenerated": "AI-generated exercise",
-    "aiNotice": "AI-generated exercises are marked in orange. Review them before printing.",
-    "approve": "Approve",
-    "approveAll": "Approve all",
-    "approved": "Approved",
-    "needsApproval": "{count, plural, one {# exercise to approve} other {# exercises to approve}}",
-    "notApprovedWarning": "Generated exercises must be approved before they can be printed.",
-    "exportBatch": "Export PDF batch",
-    "exporting": "Exporting…",
-    "batchReady": "Batch ready: one sheet per student, a single PDF.",
+    "approveAll": "Approve all {count}",
+    "approved": "Approved — these can now be printed.",
+    "approving": "Approving…",
+    "batchReady": "Batch ready: one sheet per student, plus the answer key.",
+    "cancel": "Cancel",
+    "correctAnswer": "Correct answer",
+    "difficulty": "Difficulty {level} of 5",
+    "discard": "Discard",
+    "downloadAnswerKey": "Download the answer key",
+    "downloadBlank": "Download the sheets",
+    "edit": "Edit",
     "empty": {
       "title": "No gaps identified yet",
-      "body": "Correct at least one sheet so Alppy can target each student's needs.",
-      "action": "View corrections"
-    }
+      "body": "Correct at least one sheet so Alppy can target each student's needs."
+    },
+    "exportBatch": "Export PDF batch",
+    "exportError": {
+      "title": "The batch could not be exported",
+      "body": "Nothing was printed. You can try again — the plan below is unchanged."
+    },
+    "exporting": "Exporting…",
+    "failureHint": "These students have shorter sheets. Everything else was exported normally.",
+    "failureIncomplete": "{uid}: {produced} of {requested} generated exercises were produced.",
+    "failurePiiGate": "{uid}: the prompt was blocked before leaving Alppy, so nothing was generated.",
+    "failureProvider": "{uid}: the AI provider could not be reached.",
+    "failureUnparsable": "{uid}: the AI provider returned an unusable answer.",
+    "failuresTitle": "{count, plural, one {# sheet could not be filled} other {# sheets could not be filled}}",
+    "falseLabel": "False",
+    "forStudents": "For: {uids}",
+    "groupFor": "For {count} of {total} students",
+    "groupTitle": "Shared sheet",
+    "hideItems": "Hide the exercises",
+    "itemsPerStudent": "Exercises per student",
+    "loadError": {
+      "title": "This screen could not load",
+      "body": "Alppy could not read your classes and subjects."
+    },
+    "mode": "Sheet mode",
+    "modeGroup": "One shared sheet",
+    "modeGroupHelp": "Targets the union of the selected students' gaps.",
+    "modePerStudent": "One per student",
+    "needsApproval": "{count, plural, one {# exercise to approve} other {# exercises to approve}}",
+    "notApprovedWarning": "Generated exercises must be approved before they can be printed.",
+    "preparing": "Preparing…",
+    "propose": "Prepare sheets",
+    "proposeError": {
+      "title": "The sheets could not be prepared",
+      "body": "Alppy could not reach the planner. Your corrections are safe; try again in a moment."
+    },
+    "regenerate": "Regenerate",
+    "regenerating": "Regenerating…",
+    "retrieved": "From your textbooks",
+    "retry": "Try again",
+    "reviewFirst": "Review each generated exercise below",
+    "save": "Save",
+    "showItems": "Show the {count} exercises",
+    "statement": "Statement",
+    "subtitle": "One sheet per student, targeted at their gaps",
+    "targeting": "Targeted competencies",
+    "title": "Adaptive sheets",
+    "trueLabel": "True"
   },
   "settings": {
     "title": "Settings",
@@ -295,7 +414,8 @@
     "retry": "Try again",
     "save": "Save",
     "search": "Search",
-    "yes": "Yes"
+    "yes": "Yes",
+    "required": "required"
   },
   "errors": {
     "generic": {
@@ -309,7 +429,21 @@
       "action": "Back to home"
     },
     "offline": "You appear to be offline.",
-    "unauthorized": "Your session has expired. Please sign in again."
+    "unauthorized": "Your session has expired. Please sign in again.",
+    "code": {
+      "unsupported_media_type": "That format is not accepted. Use a PDF, a JPEG or a PNG.",
+      "payload_too_large": "The file is too large. Scan it in more than one batch.",
+      "unprocessable": "The file could not be read. Check that it is not empty or damaged.",
+      "validation_error": "The request is incomplete. Check the fields and try again.",
+      "conflict": "That is no longer possible in the current state.",
+      "not_found": "That item does not exist, or is no longer available.",
+      "network_error": "The app could not reach the server.",
+      "fallback": "The upload failed. Try again.",
+      "scan_pages_unassigned": "Some pages belong to nobody. Assign them or set them aside, then confirm.",
+      "scan_matches_no_sheet": "None of these pages belong to the sheet you chose. Check that it is the right one.",
+      "scan_already_confirmed": "These results have already been saved."
+    },
+    "unavailableTitle": "Data unavailable"
   },
   "a11y": {
     "loading": "Loading",
@@ -317,5 +451,16 @@
     "sortDescending": "Sort descending",
     "decorative": "Decorative illustration",
     "progressRing": "Progress: {percent} %"
+  },
+  "attempts": {
+    "title": "Answers",
+    "correct": "Correct",
+    "incorrect": "Wrong",
+    "corrected": "Corrected by hand",
+    "difficulty": "Difficulty",
+    "empty": "No answer recorded for this competency.",
+    "fromSheet": "Sheet: {title}",
+    "fromScan": "View the scanned copy",
+    "openProfile": "Open the profile"
   }
 }

@@ -3,7 +3,9 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ToastProvider, TooltipProvider } from '@alppy/ui';
-import { useState, type ReactNode } from 'react';
+import { Suspense, useState, type ReactNode } from 'react';
+
+import { ScopeProvider } from '@/lib/scope';
 
 export function Providers({ children }: { children: ReactNode }) {
   const t = useTranslations('common');
@@ -31,7 +33,11 @@ export function Providers({ children }: { children: ReactNode }) {
     <QueryClientProvider client={client}>
       <TooltipProvider>
         <ToastProvider regionLabel={a11y('loading')} dismissLabel={t('close')}>
-          {children}
+          {/* ScopeProvider reads the query string, so it needs a Suspense
+              boundary or the statically-rendered locale routes fail to build. */}
+          <Suspense fallback={null}>
+            <ScopeProvider>{children}</ScopeProvider>
+          </Suspense>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>

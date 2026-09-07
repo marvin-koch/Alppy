@@ -1,11 +1,18 @@
 import { apiRequest } from './client';
 import type {
+  AdaptiveApproveRequest,
+  AdaptiveApproveResponse,
   AdaptiveBatchRequest,
+  AdaptiveDiscardRequest,
+  AdaptiveDiscardResponse,
   AdaptiveProposeRequest,
   AdaptiveProposeResponse,
+  AdaptiveRegenerateRequest,
+  AdaptiveRegenerateResponse,
   ChapterOut,
   ClassCreate,
   ClassOut,
+  CompetencyAttemptsOut,
   CompetencyOut,
   CurriculumKind,
   DetectionCorrection,
@@ -16,10 +23,12 @@ import type {
   JobOut,
   LoginRequest,
   MasteryMatrixOut,
+  MatrixSort,
   RosterCreate,
   ScanConfirmResponse,
   ScanOut,
   ScanPageAssign,
+  ScanPageDiscard,
   ScanPageOut,
   SheetCreate,
   SheetOut,
@@ -44,7 +53,11 @@ import type {
  *   · `GET /home`            -> HomeOut        (screen 2 needs the summary)
  *   · `GET /sources`         -> SourceOut[]    (screen 5 lists them)
  *   · `PATCH /exercises/{id}`-> ExerciseOut    (ExerciseUpdate has no route)
- *   · `POST /scans/{id}/pages/{pageId}/assign` (ScanPageAssign has no route)
+ *
+ * Every path below is checked against the served OpenAPI document by
+ * `apps/web/src/lib/api/__tests__/contract.test.ts`. Guessing at "the obvious
+ * path" is how `POST /scans/{id}/pages/{id}/assign` came to be called for two
+ * milestones against an API that only ever exposed `PATCH …/pages/{id}`.
  */
 
 /* --------------------------------------------------------------- auth --- */
@@ -68,6 +81,9 @@ export const createClass = (body: ClassCreate) =>
   apiRequest<ClassOut>('/classes', { method: 'POST', body });
 
 export const getClass = (classId: Uuid) => apiRequest<ClassOut>(`/classes/${classId}`);
+
+export const addStudents = (classId: Uuid, body: RosterCreate) =>
+  apiRequest<StudentOut[]>(`/classes/${classId}/students`, { method: 'POST', body });
 
 export const listStudents = (classId: Uuid) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students`);
@@ -126,17 +142,27 @@ export const getSheet = (sheetId: Uuid) => apiRequest<SheetOut>(`/sheets/${sheet
 
 /** Every sheet the teacher has built. Without this a sheet was reachable only
  *  by the redirect that follows creating it. */
-export const listSheets = () => apiRequest<SheetOut[]>('/sheets');
+export const listSheets = (classId?: Uuid) =>
+  apiRequest<SheetOut[]>('/sheets', { query: { class_id: classId } });
+
+export const listScans = (sheetId?: Uuid) =>
+  apiRequest<ScanOut[]>('/scans', { query: { sheet_id: sheetId } });
 
 export const renderSheet = (sheetId: Uuid) =>
   apiRequest<JobOut>(`/sheets/${sheetId}/render`, { method: 'POST' });
 
 /* -------------------------------------------------------------- scans --- */
-export const uploadScan = (files: File[], sheetId?: Uuid) => {
+/**
+ * One pile, however many files the teacher selected.
+ *
+ * `sheetId` is required, not optional: without it the pipeline has no answer
+ * key and no per-copy pagination, so it reads every mark and grades nothing.
+ */
+export const uploadScan = (files: File[], sheetId: Uuid) => {
   const formData = new FormData();
   for (const file of files) formData.append('files', file);
-  if (sheetId) formData.append('sheet_id', sheetId);
-  return apiRequest<ScanOut | JobOut>('/scans', { method: 'POST', formData });
+  formData.append('sheet_id', sheetId);
+  return apiRequest<ScanOut>('/scans', { method: 'POST', formData });
 };
 
 export const getScan = (scanId: Uuid) => apiRequest<ScanOut>(`/scans/${scanId}`);
@@ -151,26 +177,69 @@ export const correctDetection = (scanId: Uuid, detectionId: Uuid, body: Detectio
   });
 
 export const assignScanPage = (scanId: Uuid, pageId: Uuid, body: ScanPageAssign) =>
-  apiRequest<ScanPageOut>(`/scans/${scanId}/pages/${pageId}/assign`, { method: 'POST', body });
+  apiRequest<ScanPageOut>(`/scans/${scanId}/pages/${pageId}`, { method: 'PATCH', body });
+
+/** Who this scan's pages may be assigned to: the sheet's own class, nobody else. */
+export const listScanStudents = (scanId: Uuid) =>
+  apiRequest<StudentOut[]>(`/scans/${scanId}/students`);
+
+/** Take a page out of the pile, or put it back. */
+export const discardScanPage = (scanId: Uuid, pageId: Uuid, body: ScanPageDiscard) =>
+  apiRequest<ScanPageOut>(`/scans/${scanId}/pages/${pageId}/discard`, {
+    method: 'POST',
+    body,
+  });
 
 export const confirmScan = (scanId: Uuid) =>
   apiRequest<ScanConfirmResponse>(`/scans/${scanId}/confirm`, { method: 'POST' });
 
 /* ------------------------------------------------------------ mastery --- */
-export const getClassMastery = (classId: Uuid, subjectId?: Uuid) =>
+export const getClassMastery = (
+  classId: Uuid,
+  options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {},
+) =>
   apiRequest<MasteryMatrixOut>(`/classes/${classId}/mastery`, {
-    query: { subject_id: subjectId },
+    query: {
+      subject_id: options.subjectId,
+      chapter_id: options.chapterId,
+      // 'roster' is the server default; omitting it keeps the URL (and the
+      // react-query key) stable for the unfiltered case.
+      sort: options.sort === 'weakest' ? 'weakest' : undefined,
+    },
   });
 
 export const getStudentMastery = (studentId: Uuid) =>
   apiRequest<StudentProfileOut>(`/students/${studentId}/mastery`);
 
+export const getCompetencyAttempts = (studentId: Uuid, competencyId: Uuid) =>
+  apiRequest<CompetencyAttemptsOut>(
+    `/students/${studentId}/competencies/${competencyId}/attempts`,
+  );
+
 /* ----------------------------------------------------------- adaptive --- */
 export const proposeAdaptive = (body: AdaptiveProposeRequest) =>
   apiRequest<AdaptiveProposeResponse>('/adaptive/propose', { method: 'POST', body });
 
+/**
+ * Creating the batch is NOT rendering it. This returns the `SheetOut` it just
+ * built (201); `renderAdaptiveBatch` is what starts the job to poll. Typing
+ * this as a `JobOut` is what made the export button poll `/jobs/<sheet-id>`
+ * forever — `apiRequest<T>` is an unchecked assertion, so nothing caught it.
+ */
 export const batchAdaptive = (body: AdaptiveBatchRequest) =>
-  apiRequest<JobOut>('/adaptive/batch', { method: 'POST', body });
+  apiRequest<SheetOut>('/adaptive/batch', { method: 'POST', body });
+
+export const renderAdaptiveBatch = (sheetId: Uuid) =>
+  apiRequest<JobOut>(`/adaptive/batch/${sheetId}/render`, { method: 'POST' });
+
+export const approveAdaptive = (body: AdaptiveApproveRequest) =>
+  apiRequest<AdaptiveApproveResponse>('/adaptive/approve', { method: 'POST', body });
+
+export const discardAdaptive = (body: AdaptiveDiscardRequest) =>
+  apiRequest<AdaptiveDiscardResponse>('/adaptive/discard', { method: 'POST', body });
+
+export const regenerateAdaptive = (body: AdaptiveRegenerateRequest) =>
+  apiRequest<AdaptiveRegenerateResponse>('/adaptive/regenerate', { method: 'POST', body });
 
 /* --------------------------------------------------------------- jobs --- */
 export const getJob = (jobId: Uuid) => apiRequest<JobOut>(`/jobs/${jobId}`);
