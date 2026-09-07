@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Alppy design system — Encre violette. Components, icons, illustrations, brand.",
+  "description": "Alppy design system \u2014 Encre violette. Components, icons, illustrations, brand.",
   "sideEffects": [
     "*.css"
   ],
@@ -24,6 +24,7 @@
   ],
   "scripts": {
     "build": "tsc",
+    "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
@@ -41,8 +42,10 @@
   "devDependencies": {
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "eslint": "^9",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "typescript": "^5.7.2"
+    "typescript": "^5.7.2",
+    "typescript-eslint": "^8"
   }
 }

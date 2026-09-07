@@ -2,6 +2,7 @@ import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import { cx } from '../../lib/cx';
 import { toPercent } from '../../lib/geometry';
 import type { MasteryBand } from '../../lib/mastery';
+import { BandGlyph } from './MasteryCell';
 
 export interface MasteryMeterProps extends Omit<HTMLAttributes<HTMLDivElement>, 'title'> {
   band: MasteryBand;
@@ -19,9 +20,14 @@ export interface MasteryMeterProps extends Omit<HTMLAttributes<HTMLDivElement>, 
 }
 
 /**
- * The band gauge (DESIGN.md §6): a pill carrying a dot, the band label and a
- * caption. Three channels — colour, tint density, and words — so it survives
- * the photocopier and colour-blind readers alike.
+ * The band gauge (DESIGN.md §6): a pill carrying the band glyph, the band label
+ * and a caption. Three channels — colour, tint density, and words — so it
+ * survives the photocopier and colour-blind readers alike.
+ *
+ * The second channel is the SAME glyph the matrix draws (disc 4/4 · 3/4 · 2/4 ·
+ * 1/4 · dashed ring). It used to be `.ard-mastery-dot`, a plain filled circle
+ * identical in shape for all five bands — which taught a second, weaker
+ * vocabulary for the same scale and carried no information without colour.
  */
 export const MasteryMeter = forwardRef<HTMLDivElement, MasteryMeterProps>(function MasteryMeter(
   { band, score, bandLabel, caption, showScore = true, className, ...rest },
@@ -30,7 +36,7 @@ export const MasteryMeter = forwardRef<HTMLDivElement, MasteryMeterProps>(functi
   return (
     <div ref={ref} className={cx('flex flex-wrap items-center gap-2', className)} {...rest}>
       <span className="ard-mastery" data-band={band}>
-        <span aria-hidden="true" className="ard-mastery-dot" />
+        <BandGlyph band={band} size={13} />
         {bandLabel}
         {showScore && score !== null ? (
           <span data-numeric="" className="tabular-nums opacity-80">

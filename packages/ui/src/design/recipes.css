@@ -13,6 +13,15 @@
   --face: var(--c-surface);
   --face-ink: var(--c-ink-900);
 
+  /* The resting elevation, as a VALUE rather than a declaration. Every state
+     below re-points --lift; `box-shadow` itself is written exactly twice (here
+     and on :focus-visible) so no variant can accidentally shadow the focus
+     ring by declaring `box-shadow: none` later in the cascade. A flat variant
+     sets --lift to a zero-offset transparent shadow, not to `none`, because
+     `none` cannot be composed into a shadow list. */
+  --lift: 0 4px 0 0 var(--edge);
+  --lift-flat: 0 0 0 0 transparent;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -30,7 +39,7 @@
   text-align: center;
   text-decoration: none;
   cursor: pointer;
-  box-shadow: 0 4px 0 0 var(--edge);
+  box-shadow: var(--lift);
   transition:
     box-shadow var(--t-fast) var(--ease-out-soft),
     transform var(--t-fast) var(--ease-out-soft),
@@ -38,24 +47,29 @@
 }
 
 .ard-btn:hover:not(:disabled) {
-  box-shadow: 0 5px 0 0 var(--edge);
+  --lift: 0 5px 0 0 var(--edge);
+
   transform: translateY(-1px);
 }
 
 .ard-btn:active:not(:disabled) {
-  box-shadow: 0 1px 0 0 var(--edge);
+  --lift: 0 1px 0 0 var(--edge);
+
   transform: translateY(3px);
 }
 
+/* Every variant, ghost included: the ring rides on top of whatever --lift the
+   current state resolved to. */
 .ard-btn:focus-visible {
   outline: none;
-  box-shadow: 0 4px 0 0 var(--edge), var(--focus-ring);
+  box-shadow: var(--lift), var(--focus-ring);
 }
 
 .ard-btn:disabled {
+  --lift: 0 4px 0 0 var(--c-line);
+
   background: var(--c-surface-2);
   color: var(--c-ink-300);
-  box-shadow: 0 4px 0 0 var(--c-line);
   cursor: not-allowed;
 }
 
@@ -72,11 +86,13 @@
   border: var(--border-w) solid var(--c-line);
 }
 
-/* The ONE feature allowed the mandarin: AI-generated exercises (F4). */
+/* The ONE feature allowed the mandarin: AI-generated exercises (F4).
+   Its ink is its own token, not --c-ink-900: the accent face does not invert
+   with the theme, so an ink that does would wash out. See tokens.css. */
 .ard-btn[data-variant='accent'] {
   --face: var(--c-accent-500);
   --edge: var(--c-accent-600);
-  --face-ink: var(--c-ink-900);
+  --face-ink: var(--c-accent-ink);
 }
 
 .ard-btn[data-variant='danger'] {
@@ -85,16 +101,19 @@
   --face-ink: var(--c-surface);
 }
 
+/* Ghost is edge-less: no drop, no lift on hover. It still focuses like every
+   other button — the flat --lift keeps the ring composable. */
 .ard-btn[data-variant='ghost'] {
   --face: transparent;
   --edge: transparent;
   --face-ink: var(--c-primary-700);
-  box-shadow: none;
+  --lift: var(--lift-flat);
 }
 
 .ard-btn[data-variant='ghost']:hover:not(:disabled) {
+  --lift: var(--lift-flat);
+
   background: var(--c-primary-050);
-  box-shadow: none;
   transform: none;
 }
 
@@ -309,14 +328,10 @@ textarea.ard-input { min-height: 96px; resize: vertical; }
   --band-ink: var(--c-mastery-fading-ink);
 }
 
-/* The dot is the second channel; the label is the third. */
-.ard-mastery-dot {
-  width: 10px;
-  height: 10px;
-  border-radius: var(--r-pill);
-  background: var(--band);
-  flex: none;
-}
+/* The second channel is the band glyph (drawn by BandGlyph, inheriting
+   `color`); the label is the third. `.ard-mastery-dot` used to live here as a
+   plain 10px circle — the same shape for all five bands, so it said nothing a
+   reader without colour could use. */
 
 /* Toast — the ONLY place ink becomes the background. */
 .ard-toast {

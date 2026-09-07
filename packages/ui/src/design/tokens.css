@@ -42,6 +42,12 @@
   --c-accent-500: #ff8a3d;
   --c-accent-600: #e06a22;
   --c-accent-100: #ffe8d6; /* derived: -100 tinted background */
+  /* Label colour for a filled accent surface. It has to be declared per theme
+     rather than inherited from --c-ink-900: the accent face stays LIGHT in dark
+     mode (dark is not an inversion, §4), so ink that flips with the theme would
+     put near-white on light orange — 1.8:1, the one button F4 exists for. Each
+     value below is picked against its own face and clears AA. */
+  --c-accent-ink: #1b1735; /* on #ff8a3d — 7.3:1 */
 
   /* — State families. Always three steps: -100 bg, -500 full, -600 edge/text. — */
   --c-success-500: #00c48c;
@@ -101,11 +107,21 @@
   --c-mastery-fading-tint: color-mix(in srgb, var(--c-mastery-fading) 15.4%, var(--c-surface));
   --c-mastery-none-tint: color-mix(in srgb, var(--c-mastery-none) 11.6%, var(--c-surface));
 
-  --c-mastery-solid-ink: var(--c-mastery-solid-glyph);
-  --c-mastery-ok-ink: var(--c-mastery-ok-glyph);
-  --c-mastery-weak-ink: var(--c-mastery-weak-glyph);
-  --c-mastery-fading-ink: var(--c-mastery-fading-glyph);
-  --c-mastery-none-ink: var(--c-mastery-none-glyph);
+  /* -ink is the TEXT on a band tint (the score in a matrix cell). It is not a
+     shipped token: the brand library ships --c-mastery-* , the -glyph colours
+     and the background opacities, and -tint/-ink are this file's derivations.
+     -ink used to alias -glyph, which put the numeral at 2.27:1 on the `solid`
+     tint — the glyph calibration targets *equal contrast across bands* at a
+     constant luminance, not legibility of text on the blend. So the glyph keeps
+     the shipped colour (it is drawn with -glyph) and the numeral gets its own
+     darker value, derived per band as the shipped glyph colour pushed toward
+     black until it clears 4.5:1 on its own tint. The hue is unchanged, so the
+     band still reads as green / yellow-green / amber / red / grey. */
+  --c-mastery-solid-ink: #006347;
+  --c-mastery-ok-ink: #44682e;
+  --c-mastery-weak-ink: #7c621d;
+  --c-mastery-fading-ink: #b94145;
+  --c-mastery-none-ink: #716d85;
 
   /* — Footer. Separate, and does NOT invert between themes: stays slate. — */
   --c-foot-bg: #1b1735;
@@ -219,6 +235,28 @@
     --c-canvas: #151229;
     --c-canvas-warm: #2a2033;
 
+    /* The band scale, re-derived for this surface — NOT inherited. The base
+       tints are color-mix(hue, --c-surface) at a calibrated opacity, so on a
+       dark surface they re-blend into something the calibration never checked:
+       the ramp stopped being monotonic (fading and none landed 0.0001 apart in
+       greyscale) and the fixed dark inks fell to 1.03:1 on the `ok` tint, which
+       made the score in a green cell invisible. Derived, not eyeballed: each
+       tint is the shipped hue mixed toward this surface until it hits a target
+       luminance, and each ink is that hue pushed to the pole that clears 4.5:1.
+       On dark the ramp runs the other way from light — `none` sinks toward the
+       surface so a never-assessed cell still recedes. */
+    --c-mastery-solid-tint: #0c836d;
+    --c-mastery-ok-tint: #4f6e49;
+    --c-mastery-weak-tint: #6a563b;
+    --c-mastery-fading-tint: #783449;
+    --c-mastery-none-tint: #3a3655;
+
+    --c-mastery-solid-ink: #f4fdfa;
+    --c-mastery-ok-ink: #d0edc0;
+    --c-mastery-weak-ink: #ffc93c;
+    --c-mastery-fading-ink: #ffa0a3;
+    --c-mastery-none-ink: #a9a3c7;
+
     /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
        lighter than -500, not darker. It was darker, which is why links and chips
        sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
@@ -233,6 +271,7 @@
     --c-accent-500: #ff9e5e;
     --c-accent-600: #c96a28;
     --c-accent-100: #3d2618;
+    --c-accent-ink: #1b1735; /* stays dark: the face is lighter here — 8.4:1 */
 
     --c-success-500: #24dba2;
     --c-success-600: #4defb9;
@@ -277,10 +316,32 @@
   --c-canvas: #151229;
   --c-canvas-warm: #2a2033;
 
+  /* The band scale, re-derived for this surface — NOT inherited. The base
+     tints are color-mix(hue, --c-surface) at a calibrated opacity, so on a
+     dark surface they re-blend into something the calibration never checked:
+     the ramp stopped being monotonic (fading and none landed 0.0001 apart in
+     greyscale) and the fixed dark inks fell to 1.03:1 on the `ok` tint, which
+     made the score in a green cell invisible. Derived, not eyeballed: each
+     tint is the shipped hue mixed toward this surface until it hits a target
+     luminance, and each ink is that hue pushed to the pole that clears 4.5:1.
+     On dark the ramp runs the other way from light — `none` sinks toward the
+     surface so a never-assessed cell still recedes. */
+  --c-mastery-solid-tint: #0c836d;
+  --c-mastery-ok-tint: #4f6e49;
+  --c-mastery-weak-tint: #6a563b;
+  --c-mastery-fading-tint: #783449;
+  --c-mastery-none-tint: #3a3655;
+
+  --c-mastery-solid-ink: #f4fdfa;
+  --c-mastery-ok-ink: #d0edc0;
+  --c-mastery-weak-ink: #ffc93c;
+  --c-mastery-fading-ink: #ffa0a3;
+  --c-mastery-none-ink: #a9a3c7;
+
   /* On a dark canvas the ramp inverts: -700 is the *text* violet and must be
-     lighter than -500, not darker. It was darker, which is why links and chips
-     sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
-     its ink, so it has to clear 4.5:1 against #1f1b3a. */
+   lighter than -500, not darker. It was darker, which is why links and chips
+   sat at 2.8-3.2:1. -500 is the primary button's face and carries -surface as
+   its ink, so it has to clear 4.5:1 against #1f1b3a. */
   --c-primary-500: #8f79ff;
   --c-primary-600: #4e37c9;
   --c-primary-700: #a48dff;
@@ -291,6 +352,7 @@
   --c-accent-500: #ff9e5e;
   --c-accent-600: #c96a28;
   --c-accent-100: #3d2618;
+  --c-accent-ink: #1b1735; /* stays dark: the face is lighter here — 8.4:1 */
 
   --c-success-500: #24dba2;
   --c-success-600: #4defb9;
@@ -336,6 +398,23 @@
   --c-canvas: #ffffff;
   --c-canvas-warm: #ffffff;
 
+  /* The band scale at the high-contrast floor. The base tints only reach
+     2.3-4.2:1 ink-on-tint, so without this block the one switch a low-vision
+     teacher reaches for restyled the page chrome and left every data cell
+     exactly as it was. Every pair below clears 7:1 and the greyscale ramp is
+     strictly monotonic with a 0.072 minimum step. */
+  --c-mastery-solid-tint: #7be1c4;
+  --c-mastery-ok-tint: #bfe5a8;
+  --c-mastery-weak-tint: #ffe298;
+  --c-mastery-fading-tint: #ffeaea;
+  --c-mastery-none-tint: #f7f7fa;
+
+  --c-mastery-solid-ink: #004532;
+  --c-mastery-ok-ink: #304a21;
+  --c-mastery-weak-ink: #5b4715;
+  --c-mastery-fading-ink: #8b3134;
+  --c-mastery-none-ink: #565265;
+
   --c-primary-500: #3a1fb0;
   --c-primary-600: #2a1580;
   --c-primary-700: #2a1580;
@@ -346,6 +425,7 @@
   --c-accent-500: #a03c00;
   --c-accent-600: #7a2d00;
   --c-accent-100: #ffe0c9;
+  --c-accent-ink: #ffffff; /* the face is dark here — 6.7:1 */
 
   --c-success-500: #00674b;
   --c-success-600: #00674b;
@@ -366,7 +446,13 @@
   --border-w: 2px;
   --border-w-field: 2px;
 
-  --shadow-ambient: none;
+  /* NOT `none`. This token is composed into a comma-separated box-shadow list
+     (`recipes.css` .ard-card), and `none` is only legal as the sole value — so
+     `0 2px 0 0 <edge>, none` is invalid and the browser drops the WHOLE
+     declaration, taking the card's solid edge with it. High contrast is the one
+     mode that must not lose an edge. A fully transparent shadow paints nothing
+     and stays a valid <shadow>. */
+  --shadow-ambient: 0 0 0 0 transparent;
   --shadow-card: 0 2px 0 0 var(--c-line);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong);
   --shadow-pop: 0 4px 0 0 var(--c-line);
@@ -390,6 +476,23 @@
   --c-canvas: #000000;
   --c-canvas-warm: #000000;
 
+  /* High contrast on black. Holding 7:1 caps every tint at luminance 0.10, so
+     the greyscale ramp is necessarily tighter here (0.016 minimum step) than
+     in the other three states — the trade is deliberate: legibility of the
+     number first, with hue, the band glyph and the vivid --c-mastery-* border
+     carrying the identity of the band. */
+  --c-mastery-solid-tint: #006649;
+  --c-mastery-ok-tint: #375526;
+  --c-mastery-weak-tint: #503f13;
+  --c-mastery-fading-tint: #5c2022;
+  --c-mastery-none-tint: #25242b;
+
+  --c-mastery-solid-ink: #ffffff;
+  --c-mastery-ok-ink: #daf1cd;
+  --c-mastery-weak-ink: #ffd157;
+  --c-mastery-fading-ink: #ffadaf;
+  --c-mastery-none-ink: #b1abcc;
+
   --c-primary-500: #c3b2ff;
   --c-primary-600: #dcd2ff;
   --c-primary-700: #dcd2ff;
@@ -400,6 +503,7 @@
   --c-accent-500: #ffbb85;
   --c-accent-600: #ffd4b0;
   --c-accent-100: #4a2c14;
+  --c-accent-ink: #000000; /* pure black is allowed in high contrast — 13.7:1 */
 
   --c-success-500: #6cf0c2;
   --c-success-600: #9df7d8;
@@ -434,6 +538,23 @@
     --c-surface-2: #000000;
     --c-canvas: #000000;
     --c-canvas-warm: #000000;
+
+    /* High contrast on black. Holding 7:1 caps every tint at luminance 0.10, so
+       the greyscale ramp is necessarily tighter here (0.016 minimum step) than
+       in the other three states — the trade is deliberate: legibility of the
+       number first, with hue, the band glyph and the vivid --c-mastery-* border
+       carrying the identity of the band. */
+    --c-mastery-solid-tint: #006649;
+    --c-mastery-ok-tint: #375526;
+    --c-mastery-weak-tint: #503f13;
+    --c-mastery-fading-tint: #5c2022;
+    --c-mastery-none-tint: #25242b;
+
+    --c-mastery-solid-ink: #ffffff;
+    --c-mastery-ok-ink: #daf1cd;
+    --c-mastery-weak-ink: #ffd157;
+    --c-mastery-fading-ink: #ffadaf;
+    --c-mastery-none-ink: #b1abcc;
     --c-primary-500: #c3b2ff;
     --c-primary-600: #dcd2ff;
     --c-primary-700: #dcd2ff;
@@ -443,6 +564,7 @@
     --c-accent-500: #ffbb85;
     --c-accent-600: #ffd4b0;
     --c-accent-100: #4a2c14;
+    --c-accent-ink: #000000; /* pure black is allowed in high contrast — 13.7:1 */
     --c-success-500: #6cf0c2;
     --c-success-600: #9df7d8;
     --c-success-100: #0a3227;

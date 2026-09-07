@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ReactElement, ReactNode } from 'react';
 import { cx } from '../lib/cx';
+import { useReturnFocus } from '../lib/useReturnFocus';
 import { IconClose } from '../icons/set';
 
 export interface SheetProps {
@@ -8,7 +9,13 @@ export interface SheetProps {
   defaultOpen?: boolean;
   onOpenChange?: (open: boolean) => void;
   trigger?: ReactElement;
-  /** Required: the slide-over needs an accessible name. */
+  /**
+   * Required: this IS the dialog's accessible name (Radix wires it through
+   * `aria-labelledby`). Name the REGION the sheet contains — "Menu",
+   * "Élève 7B_15" — never the control that opened it. "Open menu" describes
+   * the trigger, and a screen-reader user landing inside hears an instruction
+   * instead of a place.
+   */
   title: ReactNode;
   description?: ReactNode;
   /** Accessible name of the close control — the app supplies the string. */
@@ -41,6 +48,8 @@ export function Sheet({
   children,
   className,
 }: SheetProps) {
+  const returnFocus = useReturnFocus();
+
   return (
     <Dialog.Root open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
       {trigger ? <Dialog.Trigger asChild>{trigger}</Dialog.Trigger> : null}
@@ -48,6 +57,9 @@ export function Sheet({
         <Dialog.Overlay className="anim-fade-in fixed inset-0 z-40 bg-ink-900/50" />
         <Dialog.Content
           data-side={side}
+          /* Truthful: Radix traps focus and marks the rest of the page inert. */
+          aria-modal="true"
+          {...returnFocus}
           {...(description ? {} : { 'aria-describedby': undefined })}
           className={cx(
             /* phone: bottom sheet */

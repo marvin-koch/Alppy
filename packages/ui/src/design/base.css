@@ -13,6 +13,26 @@
 html {
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
+
+  /* The page body never scrolls sideways (DESIGN.md §9 / plan.md §9). Wide
+     content — the mastery matrix above all — scrolls inside its own
+     `overflow-x:auto` box, and that box already works: the matrix reports
+     `clientWidth 358 / scrollWidth 646` at 390px. The document could still be
+     panned 233px in a non-touch window, dragging the header and the filter
+     card off the left edge while the fixed bottom tabs stayed put.
+
+     `hidden`, not `clip`: the root's overflow is propagated to the viewport,
+     and Chromium does not honour `clip` through that propagation — with
+     `clip` the document still panned 233px and `documentElement.scrollLeft`
+     still reached 233. `hidden` does stop it.
+
+     The usual objection to `hidden` — that it makes the root a scroll
+     container and breaks `position: sticky` — does not apply: the root is
+     already the scrolling element, the matrix's sticky name column sticks
+     inside `[data-matrix-scroll]` (its own scroll container, not the
+     viewport), and the mobile header's `sticky top-0` is measured against
+     this same box. All three are asserted in `e2e/responsive.spec.ts`. */
+  overflow-x: hidden;
 }
 
 body {
@@ -25,6 +45,13 @@ body {
   font-weight: 400;
   min-height: 100vh;
   -webkit-font-smoothing: antialiased;
+
+  /* See the note on `html` above. The root's overflow is propagated to the
+     viewport, and Chromium does not honour `clip` through that propagation —
+     the document still panned 233px with `html { overflow-x: clip }` alone.
+     Because `html` is non-visible, `body`'s own value stops propagating and
+     clips here instead — belt and braces, and it costs nothing. */
+  overflow-x: clip;
 }
 
 ::selection {

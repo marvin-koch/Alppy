@@ -1,9 +1,17 @@
-import { forwardRef, type HTMLAttributes } from 'react';
+import {
+  forwardRef,
+  useCallback,
+  useRef,
+  useState,
+  type HTMLAttributes,
+  type KeyboardEvent,
+  type ReactNode,
+} from 'react';
 import { cx } from '../../lib/cx';
 import type { BandLabels } from '../../lib/mastery';
 import type { MasteryValue } from '../../lib/types';
 import { ConceptTag } from './ConceptTag';
-import { MasteryCell } from './MasteryCell';
+import { MasteryCell, type MasteryCellLabelParts } from './MasteryCell';
 
 export interface MatrixStudent {
   id: string;
@@ -34,6 +42,19 @@ export interface MasteryMatrixProps extends Omit<HTMLAttributes<HTMLDivElement>,
   selectedCellId?: string;
   /** `${firstName} ${lastName}` by default; name order is a locale decision. */
   formatStudentName?: (student: MatrixStudent) => string;
+  /**
+   * Builds each cell's accessible name. Forwarded straight to `MasteryCell`.
+   * Without this the app cannot supply a translated sentence, and every cell
+   * falls back to the library's punctuation-joined default — which hard-codes
+   * a French-spaced " %".
+   */
+  formatLabel?: (parts: MasteryCellLabelParts) => string;
+  /**
+   * Wraps the student's name in the roster column. A matrix whose only route to
+   * a profile is a coloured cell strands every student in a class that has not
+   * been assessed yet — and the name is the affordance a teacher reaches for.
+   */
+  renderStudentName?: (student: MatrixStudent, name: string) => ReactNode;
   showScores?: boolean;
   /** Show the caption above the table instead of only to assistive tech. */
   showCaption?: boolean;
@@ -55,6 +76,16 @@ const EMPTY: MasteryValue = { band: 'none', score: null };
  * sticky student-name column, so the page body never scrolls sideways. The
  * sticky column paints its own background — a transparent sticky cell would
  * let the scrolled cells slide under the names.
+ *
+ * The scroller carries `data-matrix-scroll` because the responsive spec asserts
+ * against it; the attribute existed only in the test, so that test silently
+ * skipped and the overflow it guards went unnoticed. `max-w-full` plus
+ * `min-w-0` keep the intrinsic width of `min-w-max` from propagating out to the
+ * document, which is what pushed the page sideways on a phone.
+ *
+ * Keyboard: the grid is ONE tab stop. Arrows move between cells, Home/End jump
+ * to the ends of a row, and Enter/Space drill down. 750 tab stops on a class of
+ * 30 is not navigation.
  */
 export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(function MasteryMatrix(
   {
@@ -67,6 +98,8 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
     onCellSelect,
     selectedCellId,
     formatStudentName = (student) => `${student.firstName} ${student.lastName}`.trim(),
+    formatLabel,
+    renderStudentName,
     showScores = true,
     showCaption = false,
     bleed = true,
@@ -77,12 +110,69 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
   ref,
 ) {
   const stickyBackground = surface === 'canvas' ? 'bg-canvas' : 'bg-surface';
+  const gridRef = useRef<HTMLTableSectionElement>(null);
+  // Which cell owns the single tab stop. Clamped on render rather than stored
+  // as an id, so a filter or a re-sort cannot strand focus on a vanished cell.
+  const [cursor, setCursor] = useState<[number, number]>([0, 0]);
+  const activeRow = Math.min(cursor[0], Math.max(0, students.length - 1));
+  const activeCol = Math.min(cursor[1], Math.max(0, competencies.length - 1));
+
+  const focusCell = useCallback((row: number, col: number) => {
+    const cell = gridRef.current?.querySelector<HTMLButtonElement>(
+      `[data-row="${row}"][data-col="${col}"]`,
+    );
+    cell?.focus();
+  }, []);
+
+  const onGridKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLTableSectionElement>) => {
+      const target = event.target as HTMLElement;
+      const row = Number(target.dataset?.['row']);
+      const col = Number(target.dataset?.['col']);
+      if (Number.isNaN(row) || Number.isNaN(col)) return;
+
+      const lastRow = students.length - 1;
+      const lastCol = competencies.length - 1;
+      let next: [number, number] | null = null;
+      switch (event.key) {
+        case 'ArrowRight':
+          next = [row, Math.min(lastCol, col + 1)];
+          break;
+        case 'ArrowLeft':
+          next = [row, Math.max(0, col - 1)];
+          break;
+        case 'ArrowDown':
+          next = [Math.min(lastRow, row + 1), col];
+          break;
+        case 'ArrowUp':
+          next = [Math.max(0, row - 1), col];
+          break;
+        case 'Home':
+          next = event.ctrlKey ? [0, 0] : [row, 0];
+          break;
+        case 'End':
+          next = event.ctrlKey ? [lastRow, lastCol] : [row, lastCol];
+          break;
+        default:
+          return;
+      }
+      if (next[0] === row && next[1] === col) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+      setCursor(next);
+      focusCell(next[0], next[1]);
+    },
+    [competencies.length, focusCell, students.length],
+  );
 
   return (
     <div
       ref={ref}
+      data-matrix-scroll=""
       className={cx(
-        'w-full max-w-full overflow-x-auto overscroll-x-contain',
+        'w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain',
         bleed && '-mx-4 px-4 md:mx-0 md:px-0',
         className,
       )}
@@ -116,8 +206,8 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
             ))}
           </tr>
         </thead>
-        <tbody>
-          {students.map((student) => {
+        <tbody ref={gridRef} onKeyDown={onGridKeyDown}>
+          {students.map((student, rowIndex) => {
             const name = formatStudentName(student);
             return (
               <tr key={student.id}>
@@ -130,9 +220,9 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
                     stickyBackground,
                   )}
                 >
-                  {name}
+                  {renderStudentName ? renderStudentName(student, name) : name}
                 </th>
-                {competencies.map((competency) => {
+                {competencies.map((competency, colIndex) => {
                   const value = valueFor(student.id, competency.id) ?? EMPTY;
                   const cellId = `${student.id}:${competency.id}`;
                   return (
@@ -143,8 +233,13 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
                         studentName={name}
                         competencyLabel={competency.label}
                         bandLabel={bandLabels[value.band]}
+                        {...(formatLabel ? { formatLabel } : {})}
                         showScore={showScores}
                         selected={selectedCellId === cellId}
+                        data-row={rowIndex}
+                        data-col={colIndex}
+                        tabIndex={rowIndex === activeRow && colIndex === activeCol ? 0 : -1}
+                        onFocus={() => setCursor([rowIndex, colIndex])}
                         onClick={() =>
                           onCellSelect?.({ studentId: student.id, competencyId: competency.id, value })
                         }

@@ -1,6 +1,7 @@
 import * as Dialog from '@radix-ui/react-dialog';
 import type { ReactElement, ReactNode } from 'react';
 import { cx } from '../lib/cx';
+import { useReturnFocus } from '../lib/useReturnFocus';
 import { IconClose } from '../icons/set';
 
 export type ModalSize = 'sm' | 'md' | 'lg';
@@ -11,7 +12,11 @@ export interface ModalProps {
   onOpenChange?: (open: boolean) => void;
   /** Optional trigger; omit when the app drives `open` itself. */
   trigger?: ReactElement;
-  /** Required: a dialog without a title has no accessible name. */
+  /**
+   * Required: this IS the dialog's accessible name (Radix wires it through
+   * `aria-labelledby`). Name what the dialog IS — never the control that
+   * opened it.
+   */
   title: ReactNode;
   description?: ReactNode;
   /** Accessible name of the close control — the app supplies the string. */
@@ -30,8 +35,9 @@ const SIZE: Record<ModalSize, string> = {
 };
 
 /**
- * A modal dialog. Focus trap, Escape, scroll lock and `aria-modal` come from
- * Radix; the shell is ours. Radius xl (DESIGN.md §4).
+ * A modal dialog. Focus trap, Escape and scroll lock come from Radix; the
+ * shell, `aria-modal` and the return-focus behaviour are ours. Radius xl
+ * (DESIGN.md §4).
  */
 export function Modal({
   open,
@@ -46,12 +52,17 @@ export function Modal({
   size = 'md',
   className,
 }: ModalProps) {
+  const returnFocus = useReturnFocus();
+
   return (
     <Dialog.Root open={open} defaultOpen={defaultOpen} onOpenChange={onOpenChange}>
       {trigger ? <Dialog.Trigger asChild>{trigger}</Dialog.Trigger> : null}
       <Dialog.Portal>
         <Dialog.Overlay className="anim-fade-in fixed inset-0 z-40 bg-ink-900/50" />
         <Dialog.Content
+          /* Truthful: Radix traps focus and marks the rest of the page inert. */
+          aria-modal="true"
+          {...returnFocus}
           {...(description ? {} : { 'aria-describedby': undefined })}
           className={cx(
             'anim-pop-in fixed left-1/2 top-1/2 z-50 flex max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)]',

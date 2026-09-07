@@ -32,8 +32,11 @@ const PAD_Y = 8;
  * between attempts, redrawn upward by each new one. Inline SVG — no chart
  * library, no runtime dependency, and it prints.
  *
- * `preserveAspectRatio` is left at its default so the stroke never distorts;
- * the box scales with its container.
+ * The aspect ratio is preserved so the stroke and the point markers never
+ * distort. It is anchored `xMin`, not the default `xMid`: with a fixed height
+ * and a container wider than 320:H, centring floats the plot in the middle of
+ * the box with dead space to its left, which reads as a broken chart. Time runs
+ * left to right, so the curve starts at the left edge.
  */
 export const MasteryCurve = forwardRef<HTMLDivElement, MasteryCurveProps>(function MasteryCurve(
   { points, label, description, height = 120, showThresholds = true, className, ...rest },
@@ -72,7 +75,14 @@ export const MasteryCurve = forwardRef<HTMLDivElement, MasteryCurveProps>(functi
       className={cx('w-full', className)}
       {...rest}
     >
-      <svg viewBox={`0 0 ${W} ${H}`} width="100%" height={H} aria-hidden="true" className="overflow-visible">
+      <svg
+        viewBox={`0 0 ${W} ${H}`}
+        width="100%"
+        height={H}
+        preserveAspectRatio="xMinYMid meet"
+        aria-hidden="true"
+        className="overflow-visible"
+      >
         {showThresholds
           ? [BAND_THRESHOLDS.solid, BAND_THRESHOLDS.ok, BAND_THRESHOLDS.weak].map((threshold) => (
               <line
