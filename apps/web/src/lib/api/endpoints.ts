@@ -22,11 +22,17 @@ import type {
   ExerciseOut,
   ExerciseQuery,
   ExerciseUpdate,
+  FeedbackApproveRequest,
+  FeedbackApproveResponse,
+  FeedbackDiscardRequest,
+  FeedbackDiscardResponse,
+  FeedbackGenerateRequest,
   HomeOut,
   JobOut,
   LoginRequest,
   MasteryMatrixOut,
   MatrixSort,
+  MisconceptionNoteOut,
   RosterCreate,
   ScanConfirmResponse,
   ScanOut,
@@ -46,6 +52,8 @@ import type {
   SubjectOut,
   TeacherOut,
   TeacherPreferences,
+  TimelineOut,
+  TimelineQuery,
   Uuid,
 } from './types';
 
@@ -272,6 +280,43 @@ export const discardAdaptive = (body: AdaptiveDiscardRequest) =>
 
 export const regenerateAdaptive = (body: AdaptiveRegenerateRequest) =>
   apiRequest<AdaptiveRegenerateResponse>('/adaptive/regenerate', { method: 'POST', body });
+
+/* ------------------------------------------------ misconception notes --- */
+/**
+ * Queued, not synchronous: one model call per student, which a request handler
+ * may not block on. Poll the returned job, then re-read `listFeedback`.
+ */
+export const generateFeedback = (body: FeedbackGenerateRequest) =>
+  apiRequest<JobOut>('/adaptive/feedback/generate', { method: 'POST', body });
+
+export const listFeedback = (sourceSheetId: Uuid) =>
+  apiRequest<MisconceptionNoteOut[]>('/adaptive/feedback', {
+    query: { source_sheet_id: sourceSheetId },
+  });
+
+export const approveFeedback = (body: FeedbackApproveRequest) =>
+  apiRequest<FeedbackApproveResponse>('/adaptive/feedback/approve', { method: 'POST', body });
+
+export const discardFeedback = (body: FeedbackDiscardRequest) =>
+  apiRequest<FeedbackDiscardResponse>('/adaptive/feedback/discard', { method: 'POST', body });
+
+/** Records that the blank sheet was actually taken to the photocopier. */
+export const markSheetPrinted = (sheetId: Uuid) =>
+  apiRequest<SheetOut>(`/sheets/${sheetId}/printed`, { method: 'POST' });
+
+/* ----------------------------------------------------------- timeline --- */
+export const getTimeline = (query: TimelineQuery = {}) =>
+  apiRequest<TimelineOut>('/timeline', {
+    query: {
+      kind: query.kind,
+      subject_id: query.subject_id,
+      since: query.since,
+      until: query.until,
+      q: query.q,
+      offset: query.offset,
+      limit: query.limit,
+    },
+  });
 
 /* --------------------------------------------------------------- jobs --- */
 export const getJob = (jobId: Uuid) => apiRequest<JobOut>(`/jobs/${jobId}`);

@@ -55,7 +55,10 @@ export interface RequestOptions {
   /** Multipart upload; `body` is ignored when this is set. */
   formData?: FormData;
   signal?: AbortSignal;
-  query?: Record<string, string | number | boolean | undefined | null>;
+  /** An array value is appended once per element, which is what FastAPI reads
+   *  as a repeated query parameter (`?kind=a&kind=b`). Joining it into one
+   *  comma-separated value would arrive as a single unparseable string. */
+  query?: Record<string, string | number | boolean | undefined | null | readonly string[]>;
 }
 
 function withQuery(path: string, query: RequestOptions['query']): string {
@@ -63,6 +66,10 @@ function withQuery(path: string, query: RequestOptions['query']): string {
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(query)) {
     if (value === undefined || value === null || value === '') continue;
+    if (Array.isArray(value)) {
+      for (const entry of value) if (entry !== '') params.append(key, String(entry));
+      continue;
+    }
     params.append(key, String(value));
   }
   const qs = params.toString();

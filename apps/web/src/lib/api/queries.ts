@@ -32,6 +32,12 @@ import type {
   ExerciseQuery,
   ExerciseUpdate,
   HomeOut,
+  FeedbackApproveRequest,
+  FeedbackApproveResponse,
+  FeedbackDiscardRequest,
+  FeedbackDiscardResponse,
+  FeedbackGenerateRequest,
+  MisconceptionNoteOut,
   JobOut,
   MasteryMatrixOut,
   MatrixSort,
@@ -50,6 +56,8 @@ import type {
   SubjectOut,
   TeacherOut,
   TeacherPreferences,
+  TimelineOut,
+  TimelineQuery,
   Uuid,
 } from './types';
 import { isTerminal } from './types';
@@ -64,6 +72,20 @@ export const DEFAULT_PAGE_SIZE = 20;
 /** One place where every cache key is spelled, so invalidation is never guessed. */
 export const queryKeys = {
   me: ['me'] as const,
+  feedback: (sourceSheetId: Uuid) => ['feedback', sourceSheetId] as const,
+  // Every filter variant is spelled into the key, so invalidation never has to
+  // guess which page a change affects.
+  timeline: (q: TimelineQuery) =>
+    [
+      'timeline',
+      (q.kind ?? []).join(','),
+      q.subject_id ?? '',
+      q.since ?? '',
+      q.until ?? '',
+      q.q ?? '',
+      q.offset ?? 0,
+      q.limit ?? DEFAULT_PAGE_SIZE,
+    ] as const,
   home: ['home'] as const,
   classes: ['classes'] as const,
   klass: (id: Uuid) => ['classes', id] as const,
@@ -534,6 +556,88 @@ export function useRegenerateAdaptive(): UseMutationResult<
   AdaptiveRegenerateRequest
 > {
   return useMutation({ mutationFn: api.regenerateAdaptive });
+}
+
+/* ------------------------------------------------ misconception notes --- */
+/**
+ * Every live note written from one common sheet.
+ *
+ * `writing` is true while the generation job is running, and it turns this into
+ * a poll. Without it the notes never appear: generation happens in a worker, so
+ * nothing about *this* query changes when the job finishes, and the app's
+ * default `staleTime` of 30s with no refetch-on-focus leaves the teacher
+ * looking at the empty list the page fetched before they pressed the button.
+ */
+export function useFeedback(
+  sourceSheetId: Uuid | null,
+  writing = false,
+): UseQueryResult<MisconceptionNoteOut[]> {
+  return useQuery({
+    queryKey: queryKeys.feedback(sourceSheetId ?? ('none' as Uuid)),
+    queryFn: () => api.listFeedback(sourceSheetId as Uuid),
+    enabled: sourceSheetId != null,
+    refetchInterval: writing ? 1500 : false,
+    staleTime: writing ? 0 : undefined,
+  });
+}
+
+/**
+ * Starts the job. One model call per student, so this returns a `JobOut` to
+ * poll rather than the notes — the notes are re-read once it succeeds.
+ */
+export function useGenerateFeedback(): UseMutationResult<JobOut, Error, FeedbackGenerateRequest> {
+  return useMutation({ mutationFn: api.generateFeedback });
+}
+
+export function useApproveFeedback(): UseMutationResult<
+  FeedbackApproveResponse,
+  Error,
+  FeedbackApproveRequest
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.approveFeedback,
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['feedback'] }),
+  });
+}
+
+export function useDiscardFeedback(): UseMutationResult<
+  FeedbackDiscardResponse,
+  Error,
+  FeedbackDiscardRequest
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.discardFeedback,
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['feedback'] }),
+  });
+}
+
+/**
+ * Records the print. Deliberately not awaited by the caller and deliberately
+ * not blocking the download: a failed bookkeeping call must never stop a
+ * teacher getting their paper.
+ */
+export function useMarkPrinted(): UseMutationResult<SheetOut, Error, Uuid> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.markSheetPrinted,
+    onSuccess: () => void client.invalidateQueries({ queryKey: ['timeline'] }),
+  });
+}
+
+/* ----------------------------------------------------------- timeline --- */
+/**
+ * The agenda. `keepPreviousData` so paging or changing a filter does not blank
+ * the list under the teacher's cursor — the same choice the exercise listing
+ * makes for the same reason.
+ */
+export function useTimeline(query: TimelineQuery = {}): UseQueryResult<TimelineOut> {
+  return useQuery({
+    queryKey: queryKeys.timeline(query),
+    queryFn: () => api.getTimeline(query),
+    placeholderData: (previous) => previous,
+  });
 }
 
 /* --------------------------------------------------------------- jobs --- */

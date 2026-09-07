@@ -217,6 +217,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   if (method === 'GET' && path === '/classes') return fx.classes;
   if (method === 'GET' && path === '/subjects') return fx.subjects;
   if (method === 'GET' && path === '/chapters') return fx.chapters;
+  if (method === 'GET' && path === '/timeline') return fx.timeline;
 
   let m = match(path, /^\/classes\/([^/]+)\/students$/);
   if (m) return method === 'POST' ? fx.students : fx.students;
@@ -419,6 +420,13 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
       answer_key_pdf_url: `/mock/${sheetId}-answer-key.pdf`,
     });
   }
+  m = match(path, /^\/sheets\/([^/]+)\/printed$/);
+  if (m && method === 'POST') {
+    const sheetId = m[1] ?? '';
+    // Bookkeeping only: it records the print, it changes nothing about the
+    // sheet, so the mock returns the sheet unchanged.
+    return state.sheets[sheetId] ?? fx.sheet;
+  }
   m = match(path, /^\/sheets\/([^/]+)$/);
   if (m) {
     const sheetId = m[1] ?? '';
@@ -549,12 +557,16 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
       language: payload.language,
       blank_pdf_url: null,
       answer_key_pdf_url: null,
+      feedback_pdf_url: null,
+      derived_from_id: payload.source_sheet_id ?? null,
       rendered_at: null,
       instances: payload.plans.map((plan, index) => ({
         id: fx.id(650 + index),
         student_id: plan.student_id,
         student_uid: plan.student_uid,
         page_count: 1,
+        group_label: plan.group_label ?? null,
+        has_feedback: plan.feedback_id != null,
       })),
     };
     state.sheets[created.id] = created;

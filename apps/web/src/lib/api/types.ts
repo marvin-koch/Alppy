@@ -21,7 +21,7 @@ export type ExerciseType = 'mcq' | 'true_false' | 'open';
  *  the mandarin accent means "a model wrote this" — see DESIGN.md §1. */
 export type ExerciseOrigin = 'textbook' | 'ai_generated' | 'teacher';
 export type SheetTarget = 'class' | 'student' | 'group';
-export type SheetKind = 'blank' | 'answer_key';
+export type SheetKind = 'blank' | 'answer_key' | 'feedback';
 export type MasteryBandKey = 'solid' | 'ok' | 'weak' | 'fading' | 'none';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
 export type JobKind =
@@ -322,6 +322,10 @@ export interface SheetInstanceOut {
   student_id: Uuid;
   student_uid: string;
   page_count: number | null;
+  /** "Groupe 2 · Fractions équivalentes", printed on this copy. */
+  group_label: string | null;
+  /** Whether this copy has an approved feedback page in the third document. */
+  has_feedback: boolean;
 }
 
 export interface SheetOut {
@@ -337,6 +341,11 @@ export interface SheetOut {
   instances: SheetInstanceOut[];
   blank_pdf_url: string | null;
   answer_key_pdf_url: string | null;
+  /** The per-student feedback pages, as their OWN document — never extra pages
+   *  inside a copy, which would desynchronise the scan detector's page count. */
+  feedback_pdf_url: string | null;
+  /** The common sheet whose corrected results produced this one. */
+  derived_from_id: Uuid | null;
   rendered_at: IsoDateTime | null;
   created_at: IsoDateTime;
 }
@@ -526,6 +535,11 @@ export interface AdaptiveProposeRequest {
   language?: ApiLocale | null;
   /** One shared sheet for the selection, targeting the union of their gaps. */
   group?: boolean;
+  /** How many personalised group sheets to build. 1 is one shared sheet for the
+   *  whole class; a value at or above the class size is one sheet per student. */
+  n_groups?: number | null;
+  /** The COMMON sheet whose corrected results justify this batch. */
+  source_sheet_id?: Uuid | null;
 }
 
 export interface AdaptiveStudentPlan {
@@ -534,6 +548,12 @@ export interface AdaptiveStudentPlan {
   targeted_competency_ids: Uuid[];
   retrieved: ExerciseProposal[];
   generated: ExerciseProposal[];
+  /** Which personalised group this copy belongs to. Absent on the per-student
+   *  path. The teacher may change it before exporting, which is why the batch
+   *  request carries the plans rather than re-deriving the partition. */
+  group_label?: string | null;
+  group_index?: number | null;
+  feedback_id?: Uuid | null;
 }
 
 /** Mirrors `AdaptiveStudentPlan.total_items`, a property and not serialised. */
@@ -548,6 +568,9 @@ export interface AdaptiveGroupItem {
 }
 
 export interface AdaptiveGroupPlan {
+  /** "Groupe 2 · Fractions équivalentes". */
+  label: string;
+  index: number;
   student_ids: Uuid[];
   student_uids: string[];
   targeted_competency_ids: Uuid[];
@@ -576,7 +599,10 @@ export interface AdaptiveProposeResponse {
   language: string;
   generated_count: number;
   needs_approval: boolean;
+  /** The single-group path. */
   group: AdaptiveGroupPlan | null;
+  /** The N-group path: one entry per personalised group, neediest first. */
+  groups: AdaptiveGroupPlan[];
   failures: AdaptiveGenerationFailure[];
 }
 
@@ -613,6 +639,106 @@ export interface AdaptiveBatchRequest {
   title: string;
   language: ApiLocale;
   plans: AdaptiveStudentPlan[];
+  /** Stored as `Sheet.derived_from_id` — the lineage that makes a common sheet
+   *  and its differentiated children one teaching unit rather than two rows. */
+  source_sheet_id?: Uuid | null;
+  /** >1 marks the sheet `SheetTarget.GROUP`. */
+  group_count?: number | null;
+}
+
+/* ------------------------------------------------ misconception notes -- */
+/** One student's feedback, as the teacher reviews it before it prints. */
+export interface MisconceptionNoteOut {
+  id: Uuid;
+  student_id: Uuid;
+  student_uid: string;
+  subject_id: Uuid;
+  based_on_sheet_id: Uuid | null;
+  language: string;
+  notes: string[];
+  competency_ids: Uuid[];
+  approved_at: IsoDateTime | null;
+  created_at: IsoDateTime;
+}
+
+export interface FeedbackApproveRequest {
+  feedback_ids: Uuid[];
+}
+
+export interface FeedbackApproveResponse {
+  approved: number;
+  feedback_ids: Uuid[];
+}
+
+export interface FeedbackDiscardRequest {
+  feedback_ids: Uuid[];
+}
+
+export interface FeedbackDiscardResponse {
+  discarded: number;
+  feedback_ids: Uuid[];
+}
+
+export interface FeedbackGenerateRequest {
+  class_id: Uuid;
+  subject_id: Uuid;
+  source_sheet_id: Uuid;
+  language?: ApiLocale | null;
+}
+
+/* ----------------------------------------------------------- timeline -- */
+/** What happened. The names are a teacher's verbs, not the schema's. */
+export type EventKind =
+  | 'source_imported'
+  | 'chapter_read'
+  | 'sheet_created'
+  | 'sheet_rendered'
+  | 'sheet_printed'
+  | 'scan_uploaded'
+  | 'scan_confirmed'
+  | 'adaptive_proposed'
+  | 'adaptive_exported'
+  | 'feedback_written'
+  | 'feedback_approved';
+
+export type EventSubject = 'source' | 'sheet' | 'scan' | 'class';
+
+export interface TimelineEventOut {
+  id: Uuid;
+  kind: EventKind;
+  occurred_at: IsoDateTime;
+  subject_type: EventSubject;
+  subject_id: Uuid;
+  title: string;
+  class_id: Uuid | null;
+  class_code: string | null;
+  subject_area_id: Uuid | null;
+  detail: Record<string, number | string>;
+  /** False once the row the event describes has been deleted. The line still
+   *  shows — deleting a sheet does not un-print it — but must not be a link. */
+  resolved: boolean;
+}
+
+export interface TimelineFacets {
+  by_kind: Partial<Record<EventKind, number>>;
+}
+
+export interface TimelineOut {
+  items: TimelineEventOut[];
+  total: number;
+  offset: number;
+  limit: number;
+  facets: TimelineFacets;
+}
+
+export interface TimelineQuery {
+  kind?: EventKind[];
+  subject_id?: Uuid;
+  since?: string;
+  until?: string;
+  q?: string;
+  offset?: number;
+  limit?: number;
 }
 
 /* --------------------------------------------------------------- jobs -- */

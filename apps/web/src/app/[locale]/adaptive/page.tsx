@@ -15,6 +15,7 @@ import {
   LoadingState,
   Panel,
   SegmentedControl,
+  Select,
   Slider,
   Toggle,
 } from '@alppy/ui';
@@ -25,11 +26,18 @@ import { useScope } from '@/lib/scope';
 import { apiErrorMessage } from '@/lib/api/error-message';
 
 import { AdaptiveItem } from '@/components/AdaptiveItem';
+import { FeedbackNoteCard } from '@/components/FeedbackNoteCard';
 import {
   useApproveAdaptive,
+  useApproveFeedback,
   useBatchAdaptive,
+  useDiscardFeedback,
+  useFeedback,
+  useGenerateFeedback,
   useClasses,
   useDiscardAdaptive,
+  useSheets,
+  useStudents,
   useJob,
   useProposeAdaptive,
   useRegenerateAdaptive,
@@ -40,19 +48,37 @@ import {
 } from '@/lib/api/queries';
 import type {
   AdaptiveGenerationFailure,
+  AdaptiveGroupPlan,
   AdaptiveProposeResponse,
+  AdaptiveStudentPlan,
   ExerciseProposal,
   Uuid,
 } from '@/lib/api/types';
 
 type Mode = 'per_student' | 'group';
 
+/** The class roster size is the ceiling: more groups than students is one each. */
+const MIN_GROUPS = 1;
+
 /** Every generated exercise in a plan, in the order the teacher sees them. */
 function generatedIds(plan: AdaptiveProposeResponse | null): Uuid[] {
   if (!plan) return [];
-  const source = plan.group ? [plan.group] : plan.plans;
+  // A group's items are shared, so counting the per-student plans would count
+  // the same generated row once per child in the group.
+  const source: { generated: ExerciseProposal[] }[] = plan.groups.length
+    ? plan.groups
+    : plan.group
+      ? [plan.group]
+      : plan.plans;
   const ids = source.flatMap((p) => p.generated.map((g) => g.exercise.id));
   return [...new Set(ids)];
+}
+
+/** The groups to render, whichever path produced them. */
+function groupsOf(plan: AdaptiveProposeResponse | null): AdaptiveGroupPlan[] {
+  if (!plan) return [];
+  if (plan.groups.length) return plan.groups;
+  return plan.group ? [plan.group] : [];
 }
 
 export default function AdaptivePage() {
@@ -64,6 +90,16 @@ export default function AdaptivePage() {
   const [itemsPerStudent, setItemsPerStudent] = useState(8);
   const [allowGeneration, setAllowGeneration] = useState(true);
   const [mode, setMode] = useState<Mode>('per_student');
+  const [nGroups, setNGroups] = useState(4);
+  // Which common sheet's results this batch answers. Recorded as the sheet's
+  // lineage, and the sheet the feedback notes are read from.
+  const [sourceSheetId, setSourceSheetId] = useState<Uuid | ''>('');
+  // A student the teacher has picked up, waiting for a group to drop into.
+  const [carrying, setCarrying] = useState<string | null>(null);
+  // Teacher overrides: student uid -> group index. The model does not know
+  // everything about a class, and the partition is a proposal, not a verdict.
+  const [moves, setMoves] = useState<Record<string, number>>({});
+  const [feedbackJobId, setFeedbackJobId] = useState<Uuid | null>(null);
   const [plan, setPlan] = useState<AdaptiveProposeResponse | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busyExercise, setBusyExercise] = useState<Uuid | null>(null);
@@ -74,6 +110,19 @@ export default function AdaptivePage() {
   const [approvedIds, setApprovedIds] = useState<ReadonlySet<Uuid>>(new Set());
 
   const propose = useProposeAdaptive();
+  const writeFeedback = useGenerateFeedback();
+  const approveNotes = useApproveFeedback();
+  const discardNote = useDiscardFeedback();
+  const feedbackJob = useJob(feedbackJobId);
+  // The notes are written by a worker, so nothing about the notes query itself
+  // changes when the job lands: it has to poll while the job is in flight, or
+  // the teacher keeps looking at the list as it was before they asked.
+  const writing =
+    writeFeedback.isPending ||
+    (feedbackJobId != null &&
+      feedbackJob.data?.status !== 'succeeded' &&
+      feedbackJob.data?.status !== 'failed');
+  const feedback = useFeedback(sourceSheetId || null, writing);
   const approve = useApproveAdaptive();
   const discard = useDiscardAdaptive();
   const regenerate = useRegenerateAdaptive();
@@ -92,10 +141,79 @@ export default function AdaptivePage() {
   const tcode = useTranslations('errors.code');
   const scope = useScope();
   const classId = scope.classId ?? '';
+  // The corrected common sheets this batch could answer.
+  const sheets = useSheets(classId || undefined);
+  const students = useStudents(classId || null);
+  const rosterSize = Math.max(2, students.data?.length ?? 2);
   const subjectId = scope.subjectId ?? '';
 
   const pending = generatedIds(plan);
   const approved = pending.length > 0 && pending.every((id) => approvedIds.has(id));
+  const groups = groupsOf(plan);
+
+  /**
+   * The membership of one group, after the teacher's moves.
+   *
+   * A move is stored as uid -> group index, and applied here rather than
+   * mutating the plan: the proposal stays the server's answer, and what the
+   * teacher changed is visible as a separate fact until it is exported.
+   */
+  const membersOf = (group: AdaptiveGroupPlan, index: number): string[] => {
+    const movedOut = group.student_uids.filter(
+      (uid) => moves[uid] === undefined || moves[uid] === index,
+    );
+    const movedIn = Object.entries(moves)
+      .filter(([uid, target]) => target === index && !group.student_uids.includes(uid))
+      .map(([uid]) => uid);
+    return [...movedOut, ...movedIn].sort();
+  };
+
+  // The notes as they stand now, by student, so the batch can carry them.
+  const notes = feedback.data ?? [];
+  const noteByStudent = new Map(notes.map((n) => [n.student_id, n]));
+  const pendingNotes = notes.filter((n) => n.approved_at == null);
+
+  /**
+   * The plans to export, carrying each student's group label after any move
+   * and whichever feedback note now exists for them.
+   *
+   * The note has to be re-attached here rather than trusted from the propose
+   * response: `propose` runs BEFORE the teacher asks for feedback (the panel
+   * only appears once a plan exists), so the `feedback_id` it returned is
+   * always the state of the world one step ago. Exporting that would bind no
+   * note at all, `build_feedback_data` would find none, and the approved
+   * feedback would be dropped from the batch with nothing said about it.
+   */
+  const plansForExport = (): AdaptiveStudentPlan[] => {
+    if (!plan) return [];
+    const withNote = (p: AdaptiveStudentPlan): AdaptiveStudentPlan => ({
+      ...p,
+      feedback_id: noteByStudent.get(p.student_id)?.id ?? p.feedback_id ?? null,
+    });
+    if (!groups.length) return plan.plans.map(withNote);
+    const labelByUid = new Map<string, { label: string; index: number }>();
+    groups.forEach((group, index) => {
+      for (const uid of membersOf(group, index)) {
+        labelByUid.set(uid, { label: group.label, index: index + 1 });
+      }
+    });
+    // A moved student takes the receiving group's ITEMS as well as its label:
+    // a sheet headed "Groupe 3" holding group 1's exercises is the one outcome
+    // a teacher would never expect from a move.
+    const itemsByIndex = groups.map((g) => ({ retrieved: g.retrieved, generated: g.generated }));
+    return plan.plans.map((p) => {
+      const placed = labelByUid.get(p.student_uid);
+      if (!placed) return withNote(p);
+      const items = itemsByIndex[placed.index - 1];
+      return {
+        ...withNote(p),
+        group_label: placed.label,
+        group_index: placed.index,
+        retrieved: items.retrieved,
+        generated: items.generated,
+      };
+    });
+  };
 
   const forget = (exerciseId: Uuid) =>
     setApprovedIds((current) => {
@@ -210,7 +328,9 @@ export default function AdaptivePage() {
         subject_id: subjectId,
         title: t('title'),
         language: (plan.language ?? 'fr') as 'fr' | 'de' | 'en',
-        plans: plan.plans,
+        plans: plansForExport(),
+        source_sheet_id: sourceSheetId || null,
+        group_count: groups.length || null,
       },
       {
         // Creating the sheet is not rendering it. The render call is what
@@ -259,6 +379,58 @@ export default function AdaptivePage() {
           ) : null}
         </div>
 
+        {/* How many personalised groups. The two ends of the range are the two
+            modes that already existed: 1 is one shared sheet, roster-size is
+            one sheet per student. */}
+        {mode === 'group' ? (
+          <div className="mt-4">
+            <Field label={t('groupCount')} help={t('groupCountHelp')}>
+              <Slider
+                min={MIN_GROUPS}
+                max={Math.max(MIN_GROUPS + 1, rosterSize)}
+                value={nGroups}
+                onValueChange={(value) => {
+                  setNGroups(value);
+                  // The partition is rebuilt from scratch, so a move recorded
+                  // against the old one no longer means anything. Dropping it
+                  // is honest; silently re-applying it would put a student in
+                  // a group the teacher never looked at.
+                  setMoves({});
+                  setCarrying(null);
+                }}
+              />
+            </Field>
+            <p className="mt-1 text-body-s text-ink-500" role="status">
+              {nGroups <= 1
+                ? t('groupCountOne')
+                : nGroups >= rosterSize
+                  ? t('groupCountPerStudent')
+                  : t('groupCountMany', { count: nGroups })}
+            </p>
+          </div>
+        ) : null}
+
+        {/* The common sheet this batch answers. Optional: without it the plans
+            still target each student's gaps, there is simply no feedback to
+            write and no lineage to record. */}
+        <div className="mt-4">
+          <Field label={t('sourceSheet')}>
+            <Select
+              value={sourceSheetId}
+              onChange={(event) => setSourceSheetId(event.target.value as Uuid | '')}
+            >
+              <option value="">{tc('none')}</option>
+              {(sheets.data ?? [])
+                .filter((s) => s.id !== sheetId)
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+            </Select>
+          </Field>
+        </div>
+
         <div className="mt-4">
           <Toggle
             label={t('allowGeneration')}
@@ -281,7 +453,9 @@ export default function AdaptivePage() {
                   student_ids: [],
                   items_per_student: itemsPerStudent,
                   allow_generation: allowGeneration,
-                  group: mode === 'group',
+                  group: mode === 'group' && nGroups <= 1,
+                  n_groups: mode === 'group' ? nGroups : null,
+                  source_sheet_id: sourceSheetId || null,
                   // No `language`: the sheet follows the source material, and
                   // the server reads that off the corpus. Sending the UI locale
                   // here is exactly the bug this comment exists to prevent.
@@ -293,6 +467,8 @@ export default function AdaptivePage() {
                     setSheetId(null);
                     setJobId(null);
                     setExpanded(new Set());
+                    setMoves({});
+                    setCarrying(null);
                   },
                 },
               )
@@ -385,6 +561,82 @@ export default function AdaptivePage() {
             </Panel>
           ) : null}
 
+          {/* Per-student feedback. Queued rather than inline: it is one model
+              call per student, which a request handler may not block on. */}
+          {sourceSheetId ? (
+            <Card tint="warm" className="mb-4">
+              <div className="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <h2 className="text-h3">{t('feedbackTitle')}</h2>
+                  <p className="mt-2 max-w-prose text-body-s text-ink-700">{t('feedbackBody')}</p>
+                </div>
+                <AiBadge label={t('aiBadge')} />
+              </div>
+
+              <div className="mt-4 flex flex-wrap items-center gap-2">
+                <Button
+                  loading={writing}
+                  busyLabel={t('feedbackGenerating')}
+                  onClick={() =>
+                    writeFeedback.mutate(
+                      {
+                        class_id: classId,
+                        subject_id: subjectId,
+                        source_sheet_id: sourceSheetId,
+                      },
+                      { onSuccess: (queued) => setFeedbackJobId(queued.id) },
+                    )
+                  }
+                >
+                  {t('feedbackGenerate')}
+                </Button>
+                {pendingNotes.length > 0 ? (
+                  <Button
+                    variant="primary"
+                    loading={approveNotes.isPending}
+                    busyLabel={t('approving')}
+                    onClick={() =>
+                      approveNotes.mutate({ feedback_ids: pendingNotes.map((n) => n.id) })
+                    }
+                  >
+                    {t('feedbackApproveAll', { count: pendingNotes.length })}
+                  </Button>
+                ) : null}
+              </div>
+
+              {writeFeedback.isError || feedbackJob.data?.status === 'failed' ? (
+                <p className="mt-3 text-body-s" role="status">
+                  {t('feedbackError')}
+                </p>
+              ) : null}
+
+              {pendingNotes.length > 0 ? (
+                <p className="mt-3 text-body-s font-bold" role="status">
+                  {t('feedbackPending', { count: pendingNotes.length })}
+                </p>
+              ) : null}
+
+              {feedback.isLoading ? (
+                <LoadingState className="mt-4" shape="list" label={tc('loading')} rows={3} />
+              ) : notes.length === 0 ? (
+                <p className="mt-4 text-body-s text-ink-500">{t('feedbackEmpty')}</p>
+              ) : (
+                <ul className="mt-4 flex list-none flex-col gap-3 p-0">
+                  {notes.map((note) => (
+                    <li key={note.id}>
+                      <FeedbackNoteCard
+                        note={note}
+                        busy={approveNotes.isPending || discardNote.isPending}
+                        onApprove={(id) => approveNotes.mutate({ feedback_ids: [id] })}
+                        onDiscard={(id) => discardNote.mutate({ feedback_ids: [id] })}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </Card>
+          ) : null}
+
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-h3">{t('targeting')}</h2>
             <Button
@@ -394,7 +646,7 @@ export default function AdaptivePage() {
               busyLabel={t('exporting')}
               // Generated items must be approved before anything is printed.
               // The server refuses too; this only saves a round trip.
-              disabled={generatedCount > 0 && !approved}
+              disabled={(generatedCount > 0 && !approved) || pendingNotes.length > 0}
               onClick={startExport}
             >
               {t('exportBatch')}
@@ -437,42 +689,94 @@ export default function AdaptivePage() {
                     </Button>
                   </a>
                 ) : null}
+                {/* The third document. Separate from the blank and the key
+                    because a feedback page must never enter the graded
+                    pagination the scan detector counts. */}
+                {sheet.data?.feedback_pdf_url ? (
+                  <a href={sheet.data.feedback_pdf_url} className="no-underline">
+                    <Button variant="secondary" leadingIcon={<IconDownload />}>
+                      {t('downloadFeedback')}
+                    </Button>
+                  </a>
+                ) : null}
               </div>
             </Panel>
           ) : null}
 
-          {plan.group ? (
-            <Panel className="mb-4">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <h3 className="text-h3">{t('groupTitle')}</h3>
-                <Badge variant="info">
-                  {t('groupFor', {
-                    count: plan.group.student_uids.length,
-                    total: plan.plans.length,
-                  })}
-                </Badge>
-              </div>
-              <p className="mt-1 text-body-s text-ink-500" data-numeric>
-                {plan.group.student_uids.join(' · ')}
+          {groups.length > 0 ? (
+            <>
+              {/* Moving a student is a teacher override of a computed
+                  partition. The rule is a proposal; the person who knows the
+                  child gets the last word. */}
+              <p className="mb-2 min-h-11 text-body-s text-ink-500" role="status">
+                {carrying ? t('moveSelected', { uid: carrying }) : t('moveHint')}
               </p>
-              <ul className="mt-3 flex list-none flex-col gap-3 p-0">
-                {[...plan.group.retrieved, ...plan.group.generated].map((proposal, index) => (
-                  <AdaptiveItem
-                    key={proposal.exercise.id}
-                    proposal={proposal}
-                    number={index + 1}
-                    forStudentUids={
-                      plan.group?.items.find((i) => i.exercise_id === proposal.exercise.id)
-                        ?.for_student_uids
-                    }
-                    busy={busyExercise === proposal.exercise.id}
-                    onEdit={handleEdit}
-                    onRegenerate={handleRegenerate}
-                    onDiscard={handleDiscard}
-                  />
-                ))}
+
+              <ul className="mb-4 flex list-none flex-col gap-3 p-0">
+                {groups.map((group, groupIndex) => {
+                  const members = membersOf(group, groupIndex);
+                  return (
+                    <li key={group.label || groupIndex}>
+                      <Panel>
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <h3 className="text-h3">{group.label || t('groupTitle')}</h3>
+                          <Badge variant="info">
+                            {t('groupMembers', { count: members.length })}
+                          </Badge>
+                        </div>
+
+                        <ul className="mt-3 flex list-none flex-wrap gap-2 p-0">
+                          {members.map((uid) => (
+                            <li key={uid}>
+                              <Button
+                                size="sm"
+                                variant={carrying === uid ? 'primary' : 'secondary'}
+                                aria-pressed={carrying === uid}
+                                onClick={() => setCarrying(carrying === uid ? null : uid)}
+                              >
+                                <span data-numeric>{uid}</span>
+                              </Button>
+                            </li>
+                          ))}
+                        </ul>
+
+                        {carrying && !members.includes(carrying) ? (
+                          <div className="mt-3">
+                            <Button
+                              size="sm"
+                              onClick={() => {
+                                setMoves((current) => ({ ...current, [carrying]: groupIndex }));
+                                setCarrying(null);
+                              }}
+                            >
+                              {t('moveHere', { uid: carrying })}
+                            </Button>
+                          </div>
+                        ) : null}
+
+                        <ul className="mt-3 flex list-none flex-col gap-3 p-0">
+                          {[...group.retrieved, ...group.generated].map((proposal, index) => (
+                            <AdaptiveItem
+                              key={proposal.exercise.id}
+                              proposal={proposal}
+                              number={index + 1}
+                              forStudentUids={
+                                group.items.find((i) => i.exercise_id === proposal.exercise.id)
+                                  ?.for_student_uids
+                              }
+                              busy={busyExercise === proposal.exercise.id}
+                              onEdit={handleEdit}
+                              onRegenerate={handleRegenerate}
+                              onDiscard={handleDiscard}
+                            />
+                          ))}
+                        </ul>
+                      </Panel>
+                    </li>
+                  );
+                })}
               </ul>
-            </Panel>
+            </>
           ) : (
             <ul className="flex list-none flex-col gap-3 p-0">
               {plan.plans.map((p) => {

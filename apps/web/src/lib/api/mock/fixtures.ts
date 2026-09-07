@@ -23,6 +23,7 @@ import type {
   StudentOut,
   StudentProfileOut,
   SubjectOut,
+  TimelineOut,
   TeacherOut,
 } from '../types';
 
@@ -442,9 +443,13 @@ export const sheet: SheetOut = {
     student_id: student.id,
     student_uid: student.uid,
     page_count: 1,
+    group_label: null,
+    has_feedback: false,
   })),
   blank_pdf_url: null,
   answer_key_pdf_url: null,
+  feedback_pdf_url: null,
+  derived_from_id: null,
   rendered_at: null,
   created_at: '2026-03-12T14:30:00+01:00',
 };
@@ -636,11 +641,110 @@ export function competencyAttempts(
   };
 }
 
+/** A fortnight of a real teaching cycle, newest first. */
+export const timeline: TimelineOut = {
+  total: 6,
+  offset: 0,
+  limit: 20,
+  facets: {
+    by_kind: {
+      source_imported: 1,
+      sheet_created: 1,
+      sheet_printed: 1,
+      scan_confirmed: 1,
+      adaptive_exported: 1,
+      feedback_approved: 1,
+    },
+  },
+  items: [
+    {
+      id: id(900),
+      kind: 'feedback_approved',
+      occurred_at: '2026-09-05T16:20:00Z',
+      subject_type: 'sheet',
+      subject_id: sheet.id,
+      title: sheet.title,
+      class_id: classes[0].id,
+      class_code: classes[0].code,
+      subject_area_id: subjects[0].id,
+      detail: { notes: 3 },
+      resolved: true,
+    },
+    {
+      id: id(901),
+      kind: 'adaptive_exported',
+      occurred_at: '2026-09-05T16:05:00Z',
+      subject_type: 'sheet',
+      subject_id: sheet.id,
+      title: 'Fractions — fiches adaptées',
+      class_id: classes[0].id,
+      class_code: classes[0].code,
+      subject_area_id: subjects[0].id,
+      detail: { groups: 4, copies: 18 },
+      resolved: true,
+    },
+    {
+      id: id(902),
+      kind: 'scan_confirmed',
+      occurred_at: '2026-09-04T19:40:00Z',
+      subject_type: 'scan',
+      subject_id: id(500),
+      title: sheet.title,
+      class_id: classes[0].id,
+      class_code: classes[0].code,
+      subject_area_id: subjects[0].id,
+      detail: { attempts: 90, students: 18 },
+      resolved: true,
+    },
+    {
+      id: id(903),
+      kind: 'sheet_printed',
+      occurred_at: '2026-09-02T07:15:00Z',
+      subject_type: 'sheet',
+      subject_id: sheet.id,
+      title: sheet.title,
+      class_id: classes[0].id,
+      class_code: classes[0].code,
+      subject_area_id: subjects[0].id,
+      detail: { copies: 18 },
+      resolved: true,
+    },
+    {
+      id: id(904),
+      kind: 'sheet_created',
+      occurred_at: '2026-09-01T14:00:00Z',
+      subject_type: 'sheet',
+      subject_id: sheet.id,
+      title: sheet.title,
+      class_id: classes[0].id,
+      class_code: classes[0].code,
+      subject_area_id: subjects[0].id,
+      detail: { items: 5, copies: 18 },
+      resolved: true,
+    },
+    {
+      id: id(905),
+      kind: 'source_imported',
+      occurred_at: '2026-08-28T09:30:00Z',
+      subject_type: 'source',
+      subject_id: id(700),
+      // Staffroom work: it belongs to no class, so every teacher sees it.
+      title: 'mathematiques-9e.pdf',
+      class_id: null,
+      class_code: null,
+      subject_area_id: subjects[0].id,
+      detail: { bytes: 4200000 },
+      resolved: true,
+    },
+  ],
+};
+
 export const adaptive: AdaptiveProposeResponse = {
   language: 'fr',
   generated_count: 2,
   needs_approval: true,
   group: null,
+  groups: [],
   // One student's generation came back short. The screen has to show this, so
   // the fixture has to carry it.
   failures: [
