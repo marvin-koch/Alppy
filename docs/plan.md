@@ -22,6 +22,8 @@ sheet is the focal deliverable; everything else exists to make it possible and t
 | M4 | Mastery | mastery model, five-band matrix, student profiles, curve (F3) | Matrix updates from confirmed grades |
 | M5 | Adaptive | per-student gap targeting, retrieval + accent-marked AI generation, batch class export (F4) | One differentiated PDF for a whole class |
 | M6 | Polish | empty/loading/error states, e2e + theme/locale screenshots, demo seed (1 class, 1 subject, 3 weeks), README, handover | Definition of done (§9 of brief) |
+| M7 | Groups & feedback | ZPD stretch targeting, N personalised groups from one common sheet, per-student misconception notes as their own printed document (F9) | Correct a common sheet, get four group sheets and a feedback page each |
+| M8 | Agenda | append-only `event` log, `/timeline` with facets and search, sheet lineage (`derived_from_id`) (F10) | See a term in order, and click back to any of it |
 
 ## 3. Domain model as implemented
 
@@ -42,9 +44,13 @@ Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
           source_section_id, page)
         ──>< Competency                            (exercise_competency)
         ──< ExerciseVariant (per-student generated)
-Sheet (target class|student|group, layout_version, subject, chapter set)
+Sheet (target class|student|group, layout_version, subject, chapter set,
+       derived_from_id -> the COMMON sheet this one answers)
      ──< SheetItem (ordered exercise ref, position)
-     ──< SheetInstance (bound to a student uid, its own item order/variants)
+     ──< SheetInstance (bound to a student uid, its own item order/variants,
+                        group_label, feedback_id)
+MisconceptionNote (student × common sheet, notes[], approved_at — the gate)
+Event (append-only: kind, occurred_at, actor, subject_type/subject_id, summary)
 Scan (uploaded page images) ──< ScanPage ──< Detection (item, detected answer, confidence)
 Attempt (student × exercise × sheet_instance, correct, score, answered_at)
 MasterySnapshot (student × competency × computed_at, score [0,1], band)
@@ -108,6 +114,8 @@ assumptions.
 8. `/scans/new` + `/scans/[id]` — upload, then review overlay with confidence bars
 9. `/adaptive` — gap targeting, accent-marked AI items, batch export
 10. `/settings` — locale, theme, contrast, motion, calm
+11. `/timeline` — the agenda: every event in order, grouped by day, filterable
+    by kind and searchable by title
 
 ## 6. Mastery model (documented fully in `docs/mastery-model.md`)
 
@@ -124,6 +132,12 @@ score    = accuracy × recency                  ∈ [0,1]
 `HALF_LIFE_DAYS = 21`, `RECENCY_HALF_LIFE_DAYS = 45`, `GRACE = 7`, `FLOOR = 0.55`.
 Bands: ≥0.90 solid · 0.75–0.90 ok · 0.60–0.75 weak · <0.60 fading · no attempts →
 none. Explainable, cheap to recompute, no BKT.
+
+Targeting reads the bands weakest-first and treats `solid` as a **stretch**
+target at lowest priority — one per sheet, and the whole sheet for a student who
+has nothing else. Skipping it, as the first version did, sent a child who had
+mastered everything to the difficulty-2 diagnostic: easier work than they could
+already do (decisions-log D32).
 
 The second factor is not optional: `accuracy` is scale-invariant under uniform
 time decay, so without `recency` a perfect record would read as mastered forever

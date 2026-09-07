@@ -271,3 +271,223 @@ The integration point when this is taken on is `extract.document_from_pages()`,
 which already accepts pre-extracted text: an OCR pass ahead of `extract_pdf` in
 `pipeline._ingest_fresh` feeds it without touching anything downstream —
 `detect_sections` reads `PageText` and does not care where the text came from.
+
+### D32 · `SOLID` is a stretch target, because skipping it inverted the ZPD
+
+`TARGET_BANDS` excluded `MasteryBand.SOLID` on a defensible argument —
+re-drilling a mastered competency spends a student's attention on what they
+already have. The argument is right about re-drilling and wrong about the
+student it actually described. With no gap in any band, `pick_gaps` returned
+empty, `_plan_for_student` took its `diagnostic` branch, and a child who had
+mastered everything assessed was handed `FALLBACK_DIFFICULTY = 2`: *easier*
+work than they could already do, which is the precise opposite of the zone of
+proximal development.
+
+So `SOLID` is targeted at lowest priority and `target_difficulty` pushes it one
+level **above** the working level rather than at it — the only direction in
+which the clamp at 5 was ever reachable. `MAX_STRETCH_COMPETENCIES = 1` keeps
+stretch from crowding out real gap work, with one deliberate exception: a
+student whose competencies are *all* solid has no gap work to protect, so the
+cap lifts and their whole sheet is stretch.
+
+Two existing tests failed on this change and both were right to: they pinned
+the old contract. They were re-encoded rather than loosened.
+
+The change also nearly shipped a crash. `_BAND_WORDS` had no `SOLID` entry, so
+`_gap_reason` would have raised `KeyError` the first time a stretch item was
+retrieved. Rather than adding a word, stretch got its own phrase: "cible une
+compétence acquise" reads as a mistake, and French `OK` already holds
+"acquise", so the two would have collided.
+
+**Revisit if** a teacher reports sheets that feel too easy for a strong class —
+the next lever is an item quota rather than a competency cap.
+
+### D33 · N groups is a partition above a function that already worked
+
+`_plan_for_group` was always parameterised over an arbitrary `Sequence[Student]`
+— it ranks the union of a group's gaps by how many of them need each competency
+— and nothing in it assumed "the whole class". So N groups is `cluster_students`
+placed *above* it and called once per cluster, not a second planner to keep in
+step with the first.
+
+The rule is stated the way a teacher has to be able to defend it: **students
+with the same principal gap go together; if that gives more groups than you
+asked for, the smallest merge, and if fewer, the largest splits by severity.**
+Both existing modes fall out of it unchanged — `n_groups == 1` is today's single
+shared sheet, and `n_groups >= class size` is today's per-student path — which
+is why neither needed a different call site.
+
+No group **entity** is persisted. The partition is recomputed from mastery every
+time the teacher asks, so a stored group would be stale the moment the next scan
+lands, and nothing downstream — mastery, attempts, scans — needs to know a copy
+belonged to one. What survives is `SheetInstance.group_label`, a printed string,
+and `Sheet.target = SheetTarget.GROUP`, which had sat in the enum unused since
+0001.
+
+The teacher can move a student between groups before exporting. That override
+lives in the review screen's state and travels with the batch; a move takes the
+receiving group's *items* as well as its label, because a sheet headed
+"Groupe 3" holding group 1's exercises is the one outcome a move must never
+produce.
+
+**Revisit if** teachers want to name groups or carry them across a unit — that
+is the point at which a `StudentGroup` row starts paying for itself.
+
+### D34 · Feedback is its own document, because a page inside the copy misgrades the class
+
+Per-student feedback had to reach paper. The obvious shape — one more page at
+the end of each copy, which `html.physical_pages` already supports — is a silent
+misgrading bug.
+
+`scan_processing._copies_by_uid` recomputes each copy's pagination
+independently, from the copy's **items**, and `process_scan` then maps a
+photographed page with `page_in_copy = seen[uid] % len(printed_pages)`. A page
+the renderer emits that this count does not know about rotates every later page
+of that copy onto the wrong item list — with confident detections, and with
+every unit test still green. `_stamp` would have written a wrong
+`SheetInstance.page_count` for the same reason.
+
+Making the two paginators agree (a shared "append a blank trailing page" helper)
+would work, and was rejected: it makes the detector's page count depend on
+*mutable* feedback state. Print a copy with feedback, discard the note
+afterwards — `feedback_id` is `ON DELETE SET NULL` — and scan-time pagination
+computes one page fewer than was printed. The same bug, reintroduced through the
+back door.
+
+So `SheetKind.FEEDBACK` is a third document beside the blank and the answer key,
+built from its own `FeedbackData`, never passing through `paginate`. It carries
+no fiducials, no UID grid and no answer grid: a page that is never scanned must
+not *look* like one that is, and a stack of feedback pages fed into the scanner
+by accident is rejected rather than read as blank answers for the child whose
+UID is printed on it. `layout.py` is untouched, so this is **not** a layout
+version bump.
+
+### D35 · Generated feedback is grounded-only, and gated like an exercise
+
+`adaptive_feedback` joined `providers.TRANSCRIPTION_PURPOSES`, so an ungrounded
+provider returns an empty payload rather than inventing content. The reason is
+stronger than the one that put `extract_exercises` there. An invented exercise
+is a bad question a teacher can reject on sight; an invented misconception is a
+claim about how one named child thinks, printed and handed to that child. The
+offline `EchoChatProvider` cannot read its prompt, so anything it said about a
+student's mistakes would be fiction with a real UID attached.
+
+That required the echo provider to answer in the **caller's** empty shape —
+`{"notes": []}`, not `{"exercises": []}` — because a feedback caller handed the
+other envelope reports "the model did not return usable JSON", which blames the
+provider for a refusal that is correct.
+
+`MisconceptionNote.approved_at` mirrors `Exercise.approved_at` and is enforced
+by the same module at the same two doors, batch creation and render. A note is
+also only ever written from an answer we can actually read: an attempt whose
+detection is missing, `LOW_CONFIDENCE`, `MULTIPLE` or `BLANK` is skipped rather
+than guessed at, because explaining a distractor we did not read is exactly the
+fabrication the grounding rule exists to prevent. A student with a clean paper
+gets no note and costs no model call.
+
+Generation runs as `JobKind.GENERATE_FEEDBACK` in the worker, not inside
+`POST /adaptive/propose`: it is one model call per student, and a class of
+twenty inside a request handler is a timeout with a half-written batch behind it
+(CLAUDE.md — nothing blocks a request handler on a model call).
+
+### D36 · The agenda is an append-only log, not a column per lifecycle moment
+
+Every row already carried `created_at` and `updated_at`, and neither could
+answer what a teacher asks of a term. `updated_at` is overwritten by whatever
+edit came last, so it can never say when a pile was *confirmed*; and the two
+moments that matter most to a chronology left no trace anywhere — **a sheet
+going to the photocopier** (`rendered_at` is when the PDF was built, often days
+earlier) and **a scan being confirmed** (a status enum flip, nothing more).
+
+A column per moment would mean a migration every time the product learns a new
+verb, and would still not give one ordered query across all of them. So `event`
+is an append-only log with its own `occurred_at`, separate from `created_at`
+because a pile corrected on Sunday carries Friday's lesson date.
+
+`Event.subject_id` is deliberately **not** a foreign key: the log has to outlive
+what it describes — deleting a sheet does not un-print it — and one column
+cannot point at four tables. Titles are resolved at read time and fall back to
+the stored `summary`, which is why `summary` is NOT NULL and may never hold a
+student name.
+
+`event_service.record` never raises and never commits. An agenda line is worth
+less than the work it describes: a confirmed scan must not be lost because its
+log row would not write.
+
+`Sheet.derived_from_id` was added in the same pass. It is what makes a common
+sheet and the differentiated sheets its results justify one teaching unit rather
+than two rows with adjacent dates, and it is the edge a future unit view walks.
+
+### D37 · The print→scan loop is a test now, not an argument
+
+`layout.py` is the single source of truth for three consumers — the print CSS,
+the PDF renderer and the scan detector — and nothing ever checked that they
+agreed. `test_layout` proves the geometry is self-consistent, `test_sheet_output`
+proves the HTML carries the right marks, and `test_scan_pipeline` drives the
+detector from pages `scan/synthetic.py` draws. None of them put the real
+renderer and the real detector in the same sentence, so the property the whole
+product rests on — *a page Chromium prints is a page the detector can read* —
+was argued rather than demonstrated, and the handover recorded it as unverified.
+
+`tests/test_print_scan_roundtrip.py` closes it: render through Chromium,
+rasterise the PDF at 200 dpi (roughly a phone photograph, deliberately not the
+300 dpi a flatbed gives), and run `process_page` over the result. The page
+registers, the pre-filled UID grid round-trips to `7B_01` with its CRC intact,
+and every filled bubble on the answer key comes back on the right item.
+
+It also asserts the negative that matters: the feedback document **must not**
+register. A stack of feedback pages fed into the scanner by mistake would
+otherwise be read as blank answers filed under the UID printed on each one —
+which is the "never silently score a child zero" rule, arrived at from the
+other direction (D34).
+
+The test skips rather than fails when Chromium is absent, because a red test on
+a machine with no browser says the code is broken when what is missing is a
+binary. CI installs the browser so it actually runs there.
+
+**The claim that Chromium was unavailable here was simply stale.** It was
+installed; nobody re-checked. Worth remembering the next time a handover says
+something cannot be verified.
+
+### D38 · The agenda is backfilled from evidence, and only from evidence
+
+`/timeline` on an existing database would have opened on an empty screen saying
+nothing happened before the day the log shipped, which is untrue and is the
+impression that stops a teacher opening it again.
+
+`python -m alppy.cli backfill-events` reconstructs what real timestamps already
+recorded: sources imported, chapters read, sheets created and rendered, scans
+uploaded, and confirmation dated from the attempts' own `answered_at` — the same
+stamp `confirm_scan` writes, so a pile corrected on Sunday still lands on
+Friday's lesson. Idempotent by construction (the `(kind, subject_id)` pair is
+the check), so it is safe in an entrypoint that runs on every container start.
+
+It does **not** manufacture `SHEET_PRINTED`. Nothing ever observed a print —
+that absence is half the reason the log exists — and `rendered_at` is a
+different fact, often days earlier. An agenda that quietly infers is worse than
+one with a gap: the teacher cannot tell which lines are evidence and which are
+guesses, so every line loses its weight.
+
+### D39 · Schema drift is a CI gate, because the unit tests structurally cannot see it
+
+Five index drifts accumulated silently across migrations 0003–0005: `_fk()`
+declares `index=True` on every foreign key, and four of those indexes were never
+created, while `ix_exercise_discarded` existed in the database and in no model.
+
+The reason none of it was caught is worth stating plainly: **the test suite
+builds its schema with `create_all()` from the models**, which is precisely the
+thing the migrations are supposed to reproduce. A test that constructs the
+schema from the models can never tell you the migrations construct a different
+one. The damage was not a slow query either — it was that
+`alembic revision --autogenerate` proposed the same five every run, so a real
+change arrived buried in noise nobody read any more.
+
+Migration `0008` creates the four missing indexes.
+`ix_exercise_discarded` is kept and declared in the model instead: it is a
+partial index (`subject_id` where `discarded_at IS NOT NULL`) added deliberately
+in 0004 for the "what has this teacher already rejected" query, and dropping a
+working index to satisfy a diff would be the wrong direction.
+
+`scripts/check-schema-drift.py` migrates a disposable Postgres from nothing and
+diffs the result against `Base.metadata`; it runs as its own CI job. It needs a
+real Postgres — SQLite cannot show this class of difference at all.

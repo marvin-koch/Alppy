@@ -39,6 +39,13 @@ pnpm i18n:check                    # fails on a key missing from any locale
 
 PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests -q
 .venv/bin/ruff check apps/api && .venv/bin/mypy --config-file apps/api/pyproject.toml apps/api/alppy
+
+# Migrations reproduce the models. Needs a DISPOSABLE Postgres: it drops the
+# public schema. The unit tests build their schema with create_all() from the
+# models, so they structurally cannot catch this.
+ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
+
+python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
 ```
 
 ---
