@@ -30,7 +30,14 @@ from alppy.api.deps import (
     start_job,
 )
 from alppy.models import Chapter, Competency, Exercise, Job, Source, SourceSection, Subject
-from alppy.models.enums import ExerciseOrigin, ExerciseType, JobKind, JobStatus
+from alppy.models.enums import (
+    EventKind,
+    EventSubject,
+    ExerciseOrigin,
+    ExerciseType,
+    JobKind,
+    JobStatus,
+)
 from alppy.schemas import (
     ExerciseCreate,
     ExerciseFacets,
@@ -41,7 +48,7 @@ from alppy.schemas import (
     SourceOut,
     SourceSectionOut,
 )
-from alppy.services import exercise_out, job_out, source_out, source_section_out
+from alppy.services import event_service, exercise_out, job_out, source_out, source_section_out
 from alppy.storage import storage_key
 
 router = APIRouter(tags=["sources"])
@@ -151,6 +158,17 @@ async def upload_source(
     db.add(job)
     # Fail loudly here rather than accepting a file nothing will ever read.
     load_optional("alppy.ingest.pipeline", "ingest_source", feature="source ingestion")
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.SOURCE_IMPORTED,
+        subject_type=EventSubject.SOURCE,
+        subject_id=source.id,
+        summary=source.filename,
+        actor_id=teacher.id,
+        subject_area_id=source.subject_id,
+        detail={"bytes": payload.size},
+    )
     db.commit()
     # The row is committed, so the worker can see it; now tell the worker.
     start_job(db, job)

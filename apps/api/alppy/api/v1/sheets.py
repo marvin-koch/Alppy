@@ -24,7 +24,7 @@ from alppy.api.deps import (
 )
 from alppy.core.config import get_settings
 from alppy.models import Job
-from alppy.models.enums import JobKind, JobStatus, SheetKind
+from alppy.models.enums import EventKind, EventSubject, JobKind, JobStatus, SheetKind
 from alppy.schemas import (
     JobOut,
     SheetCreate,
@@ -34,7 +34,7 @@ from alppy.schemas import (
     SheetProposeResponse,
     SheetUpdate,
 )
-from alppy.services import job_out, sheet_out
+from alppy.services import event_service, job_out, sheet_out
 from alppy.services import sheet_service as svc
 from alppy.services.class_service import get_class
 
@@ -138,6 +138,18 @@ def render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
         progress=0.0,
         message="queued for rendering",
         payload={"sheet_id": str(sheet.id)},
+    )
+    event_service.record(
+        db,
+        school_id=scope.school_id,
+        kind=EventKind.SHEET_RENDERED,
+        subject_type=EventSubject.SHEET,
+        subject_id=sheet.id,
+        summary=sheet.title,
+        actor_id=scope.teacher_id,
+        class_id=sheet.class_id,
+        subject_area_id=sheet.subject_id,
+        detail={"items": len(sheet.items), "copies": len(sheet.instances)},
     )
     db.add(job)
     db.commit()
@@ -243,3 +255,33 @@ def preview_sheet(
         # and the teacher needs to know which, not a 500.
         raise errors.unprocessable(str(exc)) from exc
     return Response(content=html, media_type="text/html; charset=utf-8")
+
+
+@router.post("/sheets/{sheet_id}/printed", response_model=SheetOut)
+def mark_printed(
+    sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
+) -> SheetOut:
+    """Record that this sheet went to the photocopier.
+
+    The one lifecycle moment nothing in the schema could observe. `rendered_at`
+    is when the PDF was built, which is not the same thing and is often days
+    earlier — a teacher renders on Sunday and prints on Tuesday morning. The
+    client calls this when the download is actually taken, so the agenda can
+    answer "when did 7B actually sit this".
+    """
+    sheet = svc.get_sheet(db, scope, sheet_id)
+    event_service.record(
+        db,
+        school_id=scope.school_id,
+        kind=EventKind.SHEET_PRINTED,
+        subject_type=EventSubject.SHEET,
+        subject_id=sheet.id,
+        summary=sheet.title,
+        actor_id=scope.teacher_id,
+        class_id=sheet.class_id,
+        subject_area_id=sheet.subject_id,
+        detail={"copies": len(sheet.instances)},
+    )
+    db.commit()
+    db.refresh(sheet)
+    return sheet_out(sheet, storage=storage)

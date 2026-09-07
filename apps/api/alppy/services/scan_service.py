@@ -39,6 +39,8 @@ from alppy.models import (
 )
 from alppy.models.enums import (
     DetectionOutcome,
+    EventKind,
+    EventSubject,
     ExerciseType,
     JobKind,
     JobStatus,
@@ -46,6 +48,7 @@ from alppy.models.enums import (
 )
 from alppy.scan.grading import AnswerKey, DetectedAnswer, grade_item
 from alppy.schemas import DetectionCorrection, ScanConfirmResponse
+from alppy.services import event_service
 from alppy.services.class_service import owned_class_ids
 from alppy.services.mastery_service import recompute_for_students
 from alppy.storage import Storage, storage_key
@@ -154,6 +157,20 @@ def create_scan(
     )
     db.add(job)
     db.flush()
+
+    sheet = db.get(Sheet, sheet_id) if sheet_id else None
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.SCAN_UPLOADED,
+        subject_type=EventSubject.SCAN,
+        subject_id=scan.id,
+        summary=(sheet.title if sheet else scan.original_filename or ""),
+        actor_id=teacher_id,
+        class_id=sheet.class_id if sheet else None,
+        subject_area_id=sheet.subject_id if sheet else None,
+        detail={"pages": len(payloads)},
+    )
     return scan, job
 
 
@@ -408,6 +425,31 @@ def confirm_scan(
     db.flush()
 
     competencies_updated = recompute_for_students(db, school_id, sorted(students), now=at)
+
+    # The moment the agenda most needs and the schema never recorded: a status
+    # enum flipped and `updated_at` moved, and `updated_at` is overwritten by
+    # the next edit to the row, whatever it is. `occurred_at` is `at`, the same
+    # stamp the attempts carry, so a pile corrected on Sunday for Friday's
+    # lesson lands on the day the class actually sat it.
+    sheet = db.get(Sheet, scan.sheet_id) if scan.sheet_id else None
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.SCAN_CONFIRMED,
+        subject_type=EventSubject.SCAN,
+        subject_id=scan.id,
+        summary=(sheet.title if sheet else scan.original_filename or ""),
+        actor_id=scope.teacher_id,
+        class_id=sheet.class_id if sheet else None,
+        subject_area_id=sheet.subject_id if sheet else None,
+        occurred_at=at,
+        detail={
+            "attempts": attempts_created,
+            "superseded": attempts_superseded,
+            "students": len(students),
+            "competencies": competencies_updated,
+        },
+    )
 
     return ScanConfirmResponse(
         attempts_created=attempts_created,

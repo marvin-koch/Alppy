@@ -19,6 +19,7 @@ from alppy.api.v1 import (
     scans,
     sheets,
     sources,
+    timeline,
 )
 
 api_router = APIRouter(prefix="/api/v1")
@@ -33,6 +34,7 @@ for module in (
     scans,
     mastery,
     adaptive,
+    timeline,
     jobs,
 ):
     api_router.include_router(module.router)
