@@ -271,6 +271,18 @@ def extract_source_section(
         payload={"section_id": str(section.id), "source_id": str(source.id)},
     )
     db.add(job)
+    # Recorded on the SECTION, not the document: a source has many chapters, and
+    # keying these on the source id would collapse them into one line in the
+    # agenda — and one row under the log's (kind, subject) identity.
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.CHAPTER_READ,
+        subject_type=EventSubject.SOURCE,
+        subject_id=section.id,
+        summary=section.title,
+        subject_area_id=source.subject_id,
+    )
     db.commit()
     start_job(db, job)
     db.refresh(job)

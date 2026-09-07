@@ -21,7 +21,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import select
 
 from alppy.api.deps import DbDep, ScopeDep
-from alppy.models import Class, Event, Scan, Sheet, Source
+from alppy.models import Class, Event, Scan, Sheet, Source, SourceSection
 from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import TimelineEventOut, TimelineFacets, TimelineOut
 from alppy.services.class_service import owned_class_ids
@@ -53,6 +53,15 @@ def _titles(db: DbDep, events: list[Event]) -> dict[tuple[EventSubject, uuid.UUI
             EventSubject.SOURCE,
             db.scalars(select(Source).where(Source.id.in_(list(ids)))),
             "filename",
+        )
+        # A chapter-read event points at the SECTION, not the document: one
+        # source has many chapters, and keying those events on the source id
+        # would collapse them all into one under the log's (kind, subject)
+        # identity. So the same subject type resolves against both tables.
+        resolve(
+            EventSubject.SOURCE,
+            db.scalars(select(SourceSection).where(SourceSection.id.in_(list(ids)))),
+            "title",
         )
     if ids := wanted.get(EventSubject.SCAN):
         resolve(

@@ -21,7 +21,7 @@ from test_api_fixtures import (
 )
 
 from alppy.models import Event
-from alppy.models.enums import EventKind, EventSubject
+from alppy.models.enums import EventKind, EventSubject, JobStatus
 from alppy.services import event_service
 
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
@@ -242,3 +242,57 @@ def test_creating_a_sheet_through_the_api_lands_in_the_agenda(
     assert entry["resolved"] is True, "the sheet still exists, so it is linkable"
     assert entry["class_code"] == tenant.school_class.code
     assert entry["detail"]["items"] == 1
+
+
+def test_a_chapter_event_resolves_against_the_section_it_names(
+    client, db: Session, tenant: Tenant, signed_in
+) -> None:
+    """A chapter-read event points at the SECTION, not the document.
+
+    One source has many chapters, so keying these on the source id would
+    collapse all of them into a single line — and a single row, under the log's
+    (kind, subject) identity. The cost is that the reader has to resolve the
+    same subject type against two tables; without that the events came back
+    `resolved: false` and the agenda refused to link them.
+    """
+    from alppy.models import Source, SourceSection
+
+    source = Source(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        subject_id=tenant.subject.id,
+        filename="manuel.pdf",
+        storage_key="manuel.pdf",
+        content_type="application/pdf",
+        size_bytes=1,
+        sha256="beef",
+        status=JobStatus.SUCCEEDED,
+    )
+    db.add(source)
+    db.flush()
+    section = SourceSection(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        source_id=source.id,
+        title="Pourcentages",
+        page_from=1,
+        page_to=9,
+        position=0,
+    )
+    db.add(section)
+    db.flush()
+
+    event_service.record(
+        db,
+        school_id=tenant.school.id,
+        kind=EventKind.CHAPTER_READ,
+        subject_type=EventSubject.SOURCE,
+        subject_id=section.id,
+        summary=section.title,
+        occurred_at=NOW,
+    )
+    db.commit()
+
+    entry = client.get("/api/v1/timeline", params={"kind": "chapter_read"}).json()["items"][0]
+    assert entry["title"] == "Pourcentages"
+    assert entry["resolved"] is True, "the section exists, so the line must be linkable"
