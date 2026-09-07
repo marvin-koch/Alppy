@@ -10,12 +10,16 @@ import type {
   AdaptiveDiscardRequest,
   AdaptiveRegenerateRequest,
   DetectionCorrection,
+  ExerciseCreate,
+  ExerciseOut,
   ExerciseUpdate,
   JobOut,
   ScanOut,
   SheetCreate,
+  SheetDraftPreview,
   SheetOut,
   SourceOut,
+  SourceSectionOut,
   TeacherPreferences,
 } from '../types';
 import * as fx from './fixtures';
@@ -24,6 +28,13 @@ interface MockState {
   authenticated: boolean;
   teacher: typeof fx.teacher;
   sources: SourceOut[];
+  sections: SourceSectionOut[];
+  /** Exercises live in state, not in the fixture module, because the builder
+   *  can add one and must then see it in the list. */
+  exercises: ExerciseOut[];
+  /** Sections whose extraction job is running. Flipped to extracted when the
+   *  job completes, so the builder's "reading the chapter" state is reachable. */
+  pendingExtractions: Set<string>;
   sheets: Record<string, SheetOut>;
   scans: Record<string, ScanOut>;
   jobs: Record<string, JobOut & { ticks: number }>;
@@ -37,6 +48,9 @@ const state: MockState = {
   authenticated: true,
   teacher: structuredClone(fx.teacher),
   sources: structuredClone(fx.sources),
+  sections: structuredClone(fx.sourceSections),
+  exercises: structuredClone(fx.exercises),
+  pendingExtractions: new Set<string>(),
   sheets: { [fx.sheet.id]: structuredClone(fx.sheet) },
   scans: { [fx.scan.id]: structuredClone(fx.scan) },
   jobs: {},
@@ -69,6 +83,17 @@ function startJob(kind: JobOut['kind'], result: Record<string, unknown>): JobOut
 
 const pendingResults: Record<string, Record<string, unknown>> = {};
 
+/** Flip a section to extracted and give it exercises to show. */
+function completeExtraction(sectionId: string): void {
+  if (!sectionId || !state.pendingExtractions.has(sectionId)) return;
+  state.pendingExtractions.delete(sectionId);
+  const section = state.sections.find((sec) => sec.id === sectionId);
+  if (!section) return;
+  const made = fx.exercisesForSection(section, state.exercises.length);
+  state.exercises = [...state.exercises, ...made];
+  section.extracted_at = fx.NOW;
+}
+
 function stripTicks(job: JobOut & { ticks: number }): JobOut {
   const { ticks: _ticks, ...rest } = job;
   return rest;
@@ -84,6 +109,13 @@ function pollJob(jobId: string): JobOut {
     job.progress = 1;
     job.result = pendingResults[jobId] ?? {};
     job.finished_at = fx.NOW;
+    // A finished extraction is what turns a chapter from "never read" into one
+    // the picker can list, so the fixture has to make that transition happen —
+    // otherwise the builder's on-demand path has no reachable end state.
+    if (job.kind === 'extract_section') {
+      const sectionId = String(pendingResults[jobId]?.section_id ?? '');
+      completeExtraction(sectionId);
+    }
   } else {
     job.status = 'running';
     job.progress = Math.round((job.ticks / 4) * 100) / 100;
@@ -104,6 +136,9 @@ export function resetMockState(): void {
   state.authenticated = true;
   state.teacher = structuredClone(fx.teacher);
   state.sources = structuredClone(fx.sources);
+  state.sections = structuredClone(fx.sourceSections);
+  state.exercises = structuredClone(fx.exercises);
+  state.pendingExtractions = new Set<string>();
   state.sheets = { [fx.sheet.id]: structuredClone(fx.sheet) };
   state.scans = { [fx.scan.id]: structuredClone(fx.scan) };
   state.jobs = {};
@@ -130,16 +165,20 @@ declare global {
   var __alppyMockCalls: string[] | undefined;
 }
 
-function record(method: string, path: string): void {
+function record(method: string, url: string): void {
   if (typeof globalThis === 'undefined') return;
   globalThis.__alppyMockCalls ??= [];
-  globalThis.__alppyMockCalls.push(`${method} ${path}`);
+  // The full URL, query string included. Recording only the path made a
+  // filtered request indistinguishable from an unfiltered one in the log — the
+  // exact confusion this seam exists to remove, one layer further in. Paths
+  // with no query are unchanged, so assertions anchored on them still hold.
+  globalThis.__alppyMockCalls.push(`${method} ${url}`);
 }
 
 export async function handleMock<T>(method: string, url: string, body: unknown): Promise<T> {
   const [rawPath, rawQuery] = url.split('?');
   const path = rawPath ?? '';
-  record(method, path);
+  record(method, url);
   // The query string used to be dropped on the floor, so a filtered or sorted
   // request was indistinguishable from an unfiltered one and no e2e test could
   // tell whether the controls did anything.
@@ -227,8 +266,69 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     state.sources = [created, ...state.sources];
     return startJob('ingest_source', { source_id: created.id });
   }
+  m = match(path, /^\/sources\/([^/]+)\/sections$/);
+  if (m && method === 'GET') {
+    const sourceId = m[1] ?? '';
+    if (sourceId !== fx.sources[0]?.id) return [];
+    // Counted from the rows rather than stored on the fixture: a hardcoded
+    // count that disagreed with the list underneath it read as a broken filter.
+    return state.sections.map((section) => ({
+      ...section,
+      exercise_count: state.exercises.filter((e) => e.source_section_id === section.id).length,
+    }));
+  }
+  m = match(path, /^\/sources\/([^/]+)\/sections\/([^/]+)\/extract$/);
+  if (m && method === 'POST') {
+    const sectionId = m[2] ?? '';
+    const section = state.sections.find((sec) => sec.id === sectionId);
+    if (!section) throw new ApiError(404, 'not_found', 'source section not found');
+    // The job the real API returns. The rows only appear once it succeeds, so
+    // the fixture flips the section when the job is polled to completion.
+    state.pendingExtractions.add(sectionId);
+    return startJob('extract_section', { section_id: sectionId });
+  }
   m = match(path, /^\/sources\/([^/]+)\/exercises$/);
-  if (m && method === 'GET') return fx.exercises;
+  if (m && method === 'GET') {
+    // Filter and page exactly as Postgres does, or the builder's counters and
+    // its "1–20 of 186" line would be testing something the API never returns.
+    const sectionId = query.get('section_id');
+    const chapterId = query.get('chapter_id');
+    const kind = query.get('type');
+    const difficulty = query.get('difficulty');
+    const q = (query.get('q') ?? '').trim().toLowerCase();
+    const offset = Number(query.get('offset') ?? 0);
+    const limit = Number(query.get('limit') ?? 20);
+
+    const matched = state.exercises
+      .filter((e) => {
+        if (sectionId && e.source_section_id !== sectionId) return false;
+        if (chapterId && e.chapter_id !== chapterId) return false;
+        if (difficulty && e.difficulty !== Number(difficulty)) return false;
+        if (q && !e.statement.toLowerCase().includes(q)) return false;
+        return true;
+      })
+      // The API orders by the book's own page (`ORDER BY source_page`). Serving
+      // insertion order here made the picker's page-group headers read 84, 85,
+      // 86, 78, 79 — a bug in the fixture that looks exactly like a bug in the
+      // grouping.
+      .sort((a, b) => (a.source_page ?? 0) - (b.source_page ?? 0));
+    // Facets ignore the type filter on purpose: a chip reports what selecting
+    // it would give, not what it gives once selected.
+    const facets = {
+      total: matched.length,
+      mcq: matched.filter((e) => e.type === 'mcq').length,
+      true_false: matched.filter((e) => e.type === 'true_false').length,
+      open: matched.filter((e) => e.type === 'open').length,
+    };
+    const filtered = kind ? matched.filter((e) => e.type === kind) : matched;
+    return {
+      items: filtered.slice(offset, offset + limit),
+      total: filtered.length,
+      offset,
+      limit,
+      facets,
+    };
+  }
   m = match(path, /^\/sources\/([^/]+)(?:\/status)?$/);
   if (m && method === 'GET') {
     const found = state.sources.find((s) => s.id === m?.[1]);
@@ -237,6 +337,32 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   }
 
   /* ----------------------------------------------------- exercises --- */
+  if (method === 'POST' && path === '/exercises') {
+    const payload = body as ExerciseCreate;
+    const created: ExerciseOut = {
+      id: fx.id(700 + state.exercises.length),
+      type: payload.type,
+      // Written by a teacher: neither a transcription nor a model's proposal,
+      // so no source page, no accent, and approved by construction.
+      origin: 'teacher',
+      language: payload.language,
+      statement: payload.statement,
+      options: payload.options ?? null,
+      answer_index: payload.answer_index ?? null,
+      answer_bool: payload.answer_bool ?? null,
+      answer_text: payload.answer_text ?? null,
+      explanation: payload.explanation ?? null,
+      difficulty: payload.difficulty ?? 3,
+      chapter_id: payload.chapter_id ?? null,
+      competency_ids: payload.competency_ids ?? [],
+      source_id: null,
+      source_section_id: null,
+      source_page: null,
+      approved_at: fx.NOW,
+    };
+    state.exercises = [...state.exercises, created];
+    return created;
+  }
   m = match(path, /^\/exercises\/([^/]+)$/);
   if (m && method === 'PATCH') {
     const update = body as ExerciseUpdate;
@@ -249,6 +375,13 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   }
 
   /* -------------------------------------------------------- sheets --- */
+  if (method === 'POST' && path === '/sheets/preview') {
+    const draft = body as SheetDraftPreview;
+    if (!draft.items?.length) {
+      throw new ApiError(422, 'unprocessable', 'a sheet with no items cannot be previewed');
+    }
+    return fx.draftPreviewHtml(draft);
+  }
   if (method === 'GET' && path === '/sheets') {
     // The list is scoped to a class now, so the fixture layer has to honour
     // `class_id` or the screen would look unscoped in the screenshot suite.

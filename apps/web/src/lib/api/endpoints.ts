@@ -1,4 +1,4 @@
-import { apiRequest } from './client';
+import { apiRequest, apiRequestText } from './client';
 import type {
   AdaptiveApproveRequest,
   AdaptiveApproveResponse,
@@ -17,7 +17,10 @@ import type {
   CurriculumKind,
   DetectionCorrection,
   DetectionOut,
+  ExerciseCreate,
+  ExerciseListOut,
   ExerciseOut,
+  ExerciseQuery,
   ExerciseUpdate,
   HomeOut,
   JobOut,
@@ -31,11 +34,13 @@ import type {
   ScanPageDiscard,
   ScanPageOut,
   SheetCreate,
+  SheetDraftPreview,
   SheetOut,
   SheetProposeRequest,
   SheetProposeResponse,
   SheetUpdate,
   SourceOut,
+  SourceSectionOut,
   StudentOut,
   StudentProfileOut,
   SubjectOut,
@@ -109,8 +114,26 @@ export const getSource = (sourceId: Uuid) => apiRequest<SourceOut>(`/sources/${s
 export const getSourceStatus = (sourceId: Uuid) =>
   apiRequest<SourceOut>(`/sources/${sourceId}/status`);
 
-export const listSourceExercises = (sourceId: Uuid) =>
-  apiRequest<ExerciseOut[]>(`/sources/${sourceId}/exercises`);
+export const listSourceSections = (sourceId: Uuid) =>
+  apiRequest<SourceSectionOut[]>(`/sources/${sourceId}/sections`);
+
+/** Read one chapter for exercises. Returns the job to poll — a chapter is
+ *  dozens of model calls, which is not something a request holds open. */
+export const extractSourceSection = ({
+  sourceId,
+  sectionId,
+}: {
+  sourceId: Uuid;
+  sectionId: Uuid;
+}) =>
+  apiRequest<JobOut>(`/sources/${sourceId}/sections/${sectionId}/extract`, { method: 'POST' });
+
+/** Filtered and paginated in Postgres. A textbook is a thousand exercises and
+ *  the client is behind a Worker proxy, so the whole document never travels. */
+export const listSourceExercises = (sourceId: Uuid, query: ExerciseQuery = {}) =>
+  apiRequest<ExerciseListOut>(`/sources/${sourceId}/exercises`, {
+    query: { ...query },
+  });
 
 /** `POST /sources` starts an ingestion job; the API may answer with either shape.
  *
@@ -128,9 +151,18 @@ export const uploadSource = ({ file, subjectId }: { file: File; subjectId: Uuid 
 export const updateExercise = (exerciseId: Uuid, body: ExerciseUpdate) =>
   apiRequest<ExerciseOut>(`/exercises/${exerciseId}`, { method: 'PATCH', body });
 
+/** An exercise the teacher wrote. Lands in the corpus as `origin: 'teacher'`,
+ *  so it is reusable next term and wears no accent. */
+export const createExercise = (body: ExerciseCreate) =>
+  apiRequest<ExerciseOut>('/exercises', { method: 'POST', body });
+
 /* ------------------------------------------------------------- sheets --- */
 export const proposeSheet = (body: SheetProposeRequest) =>
   apiRequest<SheetProposeResponse>('/sheets/propose', { method: 'POST', body });
+
+/** The print document for an unsaved sheet, as HTML. Nothing is persisted. */
+export const previewSheetDraft = (body: SheetDraftPreview) =>
+  apiRequestText('/sheets/preview', { method: 'POST', body });
 
 export const createSheet = (body: SheetCreate) =>
   apiRequest<SheetOut>('/sheets', { method: 'POST', body });

@@ -16,12 +16,20 @@ export type LocalisedText = Record<string, string>;
 
 export type CurriculumKind = 'LP21' | 'PER';
 export type ExerciseType = 'mcq' | 'true_false' | 'open';
-export type ExerciseOrigin = 'textbook' | 'ai_generated';
+/** `teacher` is an exercise written in the sheet builder. It is deliberately
+ *  neither of the other two: it has no source page to audit against a book, and
+ *  the mandarin accent means "a model wrote this" — see DESIGN.md §1. */
+export type ExerciseOrigin = 'textbook' | 'ai_generated' | 'teacher';
 export type SheetTarget = 'class' | 'student' | 'group';
 export type SheetKind = 'blank' | 'answer_key';
 export type MasteryBandKey = 'solid' | 'ok' | 'weak' | 'fading' | 'none';
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
-export type JobKind = 'ingest_source' | 'render_sheet' | 'process_scan' | 'generate_adaptive';
+export type JobKind =
+  | 'ingest_source'
+  | 'extract_section'
+  | 'render_sheet'
+  | 'process_scan'
+  | 'generate_adaptive';
 export type ScanStatus = 'uploaded' | 'processing' | 'needs_review' | 'confirmed' | 'failed';
 export type DetectionOutcome =
   | 'detected'
@@ -132,7 +140,28 @@ export interface SourceOut {
    *  of a grounded model, or only the first N chunks scanned. */
   notice: string | null;
   exercise_count: number;
+  section_count: number;
   created_at: IsoDateTime;
+}
+
+/** One chapter of the document, as the document itself declares it.
+ *
+ *  Distinct from `ChapterOut`, which is the teacher's curriculum grouping and
+ *  which an exercise reaches only by competency inference — so it is allowed to
+ *  be null. This one is a fact about the file and always set, which is why the
+ *  builder navigates by it first. */
+export interface SourceSectionOut {
+  id: Uuid;
+  title: string;
+  label: string | null;
+  page_from: number;
+  page_to: number;
+  position: number;
+  exercise_count: number;
+  /** Null means indexed and searchable but never read by a model — the state
+   *  the builder offers an "extract" button for. */
+  extracted_at: IsoDateTime | null;
+  extraction_notice: string | null;
 }
 
 /* ---------------------------------------------------------- exercises -- */
@@ -151,6 +180,7 @@ export interface ExerciseOut {
   chapter_id: Uuid | null;
   competency_ids: Uuid[];
   source_id: Uuid | null;
+  source_section_id: Uuid | null;
   source_page: number | null;
   approved_at: IsoDateTime | null;
 }
@@ -165,9 +195,55 @@ export interface ExerciseUpdate {
   options?: string[];
   answer_index?: number;
   answer_bool?: boolean;
+  answer_text?: string;
   explanation?: string;
   difficulty?: number;
   approved?: boolean;
+}
+
+/** An exercise the teacher wrote. `type` and the answer fields must agree; the
+ *  API refuses the pair rather than coercing it, because a silently dropped
+ *  answer is a sheet whose key is blank for that item. */
+export interface ExerciseCreate {
+  subject_id: Uuid;
+  type: ExerciseType;
+  language: ApiLocale;
+  statement: string;
+  options?: string[] | null;
+  answer_index?: number | null;
+  answer_bool?: boolean | null;
+  answer_text?: string | null;
+  explanation?: string | null;
+  difficulty?: number;
+  chapter_id?: Uuid | null;
+  competency_ids?: Uuid[];
+}
+
+/** Counts for the filter chips, computed with every filter applied EXCEPT the
+ *  type — a chip has to report what selecting it would give. */
+export interface ExerciseFacets {
+  total: number;
+  mcq: number;
+  true_false: number;
+  open: number;
+}
+
+export interface ExerciseListOut {
+  items: ExerciseOut[];
+  total: number;
+  offset: number;
+  limit: number;
+  facets: ExerciseFacets;
+}
+
+export interface ExerciseQuery {
+  section_id?: Uuid;
+  chapter_id?: Uuid;
+  type?: ExerciseType;
+  difficulty?: number;
+  q?: string;
+  offset?: number;
+  limit?: number;
 }
 
 export interface Provenance {
@@ -220,6 +296,18 @@ export interface SheetCreate {
 export interface SheetUpdate {
   title?: string;
   items?: SheetItemIn[];
+}
+
+/** A sheet that has not been saved, rendered so the teacher can see the paper
+ *  while still reordering. Nothing is persisted: the alternative was creating a
+ *  real draft and PATCHing it on every edit, which rewrites one SheetInstance
+ *  per student per keystroke and leaves a junk row behind. */
+export interface SheetDraftPreview {
+  class_id: Uuid;
+  subject_id: Uuid;
+  title: string;
+  language: ApiLocale;
+  items: SheetItemIn[];
 }
 
 export interface SheetItemOut {

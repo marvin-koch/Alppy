@@ -1,6 +1,7 @@
 'use client';
 
 import {
+  keepPreviousData,
   useMutation,
   useQuery,
   useQueryClient,
@@ -25,7 +26,10 @@ import type {
   CurriculumKind,
   DetectionCorrection,
   DetectionOut,
+  ExerciseCreate,
+  ExerciseListOut,
   ExerciseOut,
+  ExerciseQuery,
   ExerciseUpdate,
   HomeOut,
   JobOut,
@@ -40,6 +44,7 @@ import type {
   SheetProposeResponse,
   RosterCreate,
   SourceOut,
+  SourceSectionOut,
   StudentOut,
   StudentProfileOut,
   SubjectOut,
@@ -48,6 +53,13 @@ import type {
   Uuid,
 } from './types';
 import { isTerminal } from './types';
+
+/** How many exercises one page of the picker asks for.
+ *
+ *  Small on purpose. A textbook chapter holds a couple of hundred, the teacher
+ *  is choosing perhaps a dozen, and every row carries a full statement plus its
+ *  options. */
+export const DEFAULT_PAGE_SIZE = 20;
 
 /** One place where every cache key is spelled, so invalidation is never guessed. */
 export const queryKeys = {
@@ -76,7 +88,22 @@ export const queryKeys = {
     ['competencies', kind, subjectKey ?? null] as const,
   sources: ['sources'] as const,
   source: (id: Uuid) => ['sources', id] as const,
-  sourceExercises: (id: Uuid) => ['sources', id, 'exercises'] as const,
+  sourceSections: (id: Uuid) => ['sources', id, 'sections'] as const,
+  // Every filter variant hangs off the ['sources', id, 'exercises'] prefix, so
+  // extracting a chapter can invalidate all of them with one call.
+  sourceExercises: (id: Uuid, query: ExerciseQuery = {}) =>
+    [
+      'sources',
+      id,
+      'exercises',
+      query.section_id ?? null,
+      query.chapter_id ?? null,
+      query.type ?? null,
+      query.difficulty ?? null,
+      query.q ?? '',
+      query.offset ?? 0,
+      query.limit ?? DEFAULT_PAGE_SIZE,
+    ] as const,
   sheets: (classId?: Uuid) => ['sheets', classId ?? null] as const,
   scans: (sheetId?: Uuid) => ['scans', sheetId ?? null] as const,
   sheet: (id: Uuid) => ['sheets', id] as const,
@@ -242,11 +269,53 @@ export function useSources(): UseQueryResult<SourceOut[]> {
   return useQuery({ queryKey: queryKeys.sources, queryFn: api.listSources });
 }
 
-export function useSourceExercises(sourceId: Uuid | null): UseQueryResult<ExerciseOut[]> {
+export function useSourceSections(sourceId: Uuid | null): UseQueryResult<SourceSectionOut[]> {
   return useQuery({
-    queryKey: queryKeys.sourceExercises(sourceId ?? ''),
-    queryFn: () => api.listSourceExercises(sourceId as Uuid),
+    queryKey: queryKeys.sourceSections(sourceId ?? ''),
+    queryFn: () => api.listSourceSections(sourceId as Uuid),
     enabled: Boolean(sourceId),
+  });
+}
+
+/**
+ * One page of a document's exercises.
+ *
+ * `placeholderData: keepPreviousData` matters here rather than being a nicety:
+ * without it, paging or changing a filter empties the list to a skeleton and
+ * the checkboxes the teacher just ticked flash away. The selection itself lives
+ * in the builder's own state, but the list flickering under it reads as loss.
+ */
+export function useSourceExercises(
+  sourceId: Uuid | null,
+  query: ExerciseQuery = {},
+): UseQueryResult<ExerciseListOut> {
+  return useQuery({
+    queryKey: queryKeys.sourceExercises(sourceId ?? '', query),
+    queryFn: () => api.listSourceExercises(sourceId as Uuid, query),
+    enabled: Boolean(sourceId),
+    placeholderData: keepPreviousData,
+  });
+}
+
+/**
+ * Read one chapter on demand.
+ *
+ * On success both the outline (its `extracted_at` and count change) and every
+ * exercise page for the document are stale.
+ */
+export function useExtractSection(): UseMutationResult<
+  JobOut,
+  Error,
+  { sourceId: Uuid; sectionId: Uuid }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.extractSourceSection,
+    onSuccess: (_job, { sourceId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.sourceSections(sourceId) });
+      void client.invalidateQueries({ queryKey: ['sources', sourceId, 'exercises'] });
+      void client.invalidateQueries({ queryKey: queryKeys.sources });
+    },
   });
 }
 
@@ -300,6 +369,24 @@ export function useCreateSheet(): UseMutationResult<SheetOut, Error, SheetCreate
 
 export function useRenderSheet(): UseMutationResult<JobOut, Error, Uuid> {
   return useMutation({ mutationFn: api.renderSheet });
+}
+
+/**
+ * An exercise the teacher wrote.
+ *
+ * It is a corpus row, so the document's listing is stale afterwards even though
+ * the new exercise carries no `source_id` — the teacher's own items are offered
+ * beside the book's, and a list that does not show what you just added reads as
+ * a failed save.
+ */
+export function useCreateExercise(): UseMutationResult<ExerciseOut, Error, ExerciseCreate> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.createExercise,
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.sources });
+    },
+  });
 }
 
 export function useUpdateExercise(): UseMutationResult<

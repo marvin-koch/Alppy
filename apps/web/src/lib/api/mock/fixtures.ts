@@ -12,12 +12,14 @@ import type {
   CompetencyOut,
   DetectionOut,
   ExerciseOut,
+  ExerciseType,
   ExerciseProposal,
   HomeOut,
   MasteryMatrixOut,
   ScanOut,
   SheetOut,
   SourceOut,
+  SourceSectionOut,
   StudentOut,
   StudentProfileOut,
   SubjectOut,
@@ -230,6 +232,7 @@ export const sources: SourceOut[] = [
     error: null,
     notice: null,
     exercise_count: 312,
+    section_count: 9,
     created_at: '2026-02-28T09:12:00+01:00',
   },
   {
@@ -243,7 +246,70 @@ export const sources: SourceOut[] = [
     error: null,
     notice: null,
     exercise_count: 0,
+    section_count: 0,
     created_at: '2026-03-16T07:55:00+01:00',
+  },
+];
+
+/** The book's own table of contents.
+ *
+ *  Three states are represented deliberately: read, never read (the on-demand
+ *  door), and the un-headed tail that must never be hidden. */
+export const sourceSections: SourceSectionOut[] = [
+  {
+    id: id(600),
+    title: 'Les fractions',
+    label: '4',
+    page_from: 78,
+    page_to: 112,
+    position: 0,
+    exercise_count: 186,
+    extracted_at: '2026-02-28T09:14:00+01:00',
+    extraction_notice: null,
+  },
+  {
+    id: id(601),
+    title: 'Proportionnalité',
+    label: '5',
+    page_from: 113,
+    page_to: 140,
+    position: 1,
+    exercise_count: 126,
+    extracted_at: '2026-02-28T09:15:00+01:00',
+    extraction_notice: null,
+  },
+  {
+    id: id(602),
+    title: 'Géométrie plane',
+    label: '6',
+    page_from: 141,
+    page_to: 178,
+    position: 2,
+    exercise_count: 0,
+    extracted_at: null,
+    extraction_notice: null,
+  },
+  {
+    id: id(603),
+    title: 'Théorème de Pythagore',
+    label: '7',
+    page_from: 179,
+    page_to: 210,
+    position: 3,
+    exercise_count: 0,
+    extracted_at: null,
+    extraction_notice: null,
+  },
+  {
+    id: id(604),
+    title: 'p. 211–244',
+    label: null,
+    page_from: 211,
+    page_to: 244,
+    position: 4,
+    exercise_count: 0,
+    extracted_at: null,
+    extraction_notice: null,
   },
 ];
 
@@ -263,6 +329,7 @@ function exercise(index: number, overrides: Partial<ExerciseOut> = {}): Exercise
     chapter_id: id(300),
     competency_ids: [id(200)],
     source_id: id(400),
+    source_section_id: id(600),
     source_page: 84 + index,
     approved_at: null,
     ...overrides,
@@ -288,6 +355,34 @@ export const exercises: ExerciseOut[] = [
   }),
   exercise(4, { statement: 'Convertis 3/8 en écriture décimale.', options: ['0,375', '0,38', '0,83', '2,67'] }),
   exercise(5, { statement: 'Range dans l’ordre croissant : 2/3 ; 0,6 ; 5/8.', options: ['0,6 < 5/8 < 2/3', '2/3 < 0,6 < 5/8', '5/8 < 0,6 < 2/3', '0,6 < 2/3 < 5/8'] }),
+  // A second populated chapter, so the outline shows more than one state that
+  // matters and switching chapters visibly changes the list.
+  ...Array.from({ length: 9 }, (_, i) =>
+    exercise(60 + i, {
+      id: id(640 + i),
+      type: i % 2 === 0 ? 'mcq' : 'true_false',
+      statement: `Proportionnalité — exercice ${i + 1} du chapitre.`,
+      options: i % 2 === 0 ? ['A', 'B', 'C', 'D'] : null,
+      answer_index: i % 2 === 0 ? i % 4 : null,
+      answer_bool: i % 2 === 1 ? i % 3 === 0 : null,
+      source_section_id: id(601),
+      source_page: 113 + i,
+    }),
+  ),
+  // Enough to make the picker's paginator do real work. A chapter of six would
+  // let a broken "next page" pass: the control would simply never appear.
+  ...Array.from({ length: 26 }, (_, i) =>
+    exercise(10 + i, {
+      id: id(560 + i),
+      type: i % 3 === 0 ? 'mcq' : i % 3 === 1 ? 'true_false' : 'open',
+      statement: `Fractions — exercice ${i + 7} du chapitre.`,
+      options: i % 3 === 0 ? ['A', 'B', 'C', 'D'] : null,
+      answer_index: i % 3 === 0 ? i % 4 : null,
+      answer_bool: i % 3 === 1 ? i % 2 === 0 : null,
+      answer_text: i % 3 === 2 ? 'Réponse libre.' : null,
+      source_page: 78 + (i % 12),
+    }),
+  ),
 ];
 
 const aiExercise: ExerciseOut = exercise(20, {
@@ -580,3 +675,89 @@ export const adaptive: AdaptiveProposeResponse = {
 };
 
 export { NOW, id };
+
+/**
+ * A stand-in for the print document `POST /sheets/preview` returns.
+ *
+ * The real endpoint renders the same Jinja templates and the same millimetre
+ * geometry out of `alppy/sheets/layout.py` that the PDF is made from — none of
+ * which exists in the browser. So this draws a recognisable A4 page carrying the
+ * one thing the builder actually reads back from the preview: how many pages the
+ * chosen exercises occupy, and in what order they print.
+ *
+ * It is deliberately NOT a faithful copy of the sheet. Making it one would put a
+ * second implementation of the layout in the repo, which is the exact drift
+ * `layout.py` exists to prevent — the mock is for screenshot and e2e runs with no
+ * backend, and the real preview is what a teacher checks before printing.
+ */
+export function draftPreviewHtml(draft: {
+  title: string;
+  items: { exercise_id: string; position: number; statement_override?: string | null }[];
+}): string {
+  const byId = new Map(exercises.map((e) => [e.id, e]));
+  const ordered = [...draft.items].sort((a, b) => a.position - b.position);
+  const rows = ordered
+    .map((item, index) => {
+      const found = byId.get(item.exercise_id);
+      const text = item.statement_override ?? found?.statement ?? '—';
+      return `<li><b>${index + 1}.</b> ${escapeHtml(text)}</li>`;
+    })
+    .join('');
+  return `<!doctype html><html lang="fr"><head><meta charset="utf-8">
+<title>${escapeHtml(draft.title || 'Feuille')}</title>
+<style>
+  body { margin:0; font-family: system-ui, sans-serif; background:#fff; color:#000; }
+  .print-page { width:210mm; min-height:297mm; padding:14mm; box-sizing:border-box; position:relative; }
+  [data-fiducial] { position:absolute; width:8mm; height:8mm; border:2px solid #000; }
+  ol { padding-left:1.2em; font-size:11pt; line-height:1.6; }
+  h1 { font-size:14pt; margin:0 0 2mm; }
+  .meta { font-size:9pt; color:#333; margin:0 0 6mm; }
+</style></head><body>
+<div class="print-page" data-mock-preview="true">
+  <span data-fiducial style="left:14mm;top:14mm"></span>
+  <span data-fiducial style="right:14mm;top:14mm"></span>
+  <span data-fiducial style="left:14mm;bottom:14mm"></span>
+  <span data-fiducial style="right:14mm;bottom:14mm"></span>
+  <h1>${escapeHtml(draft.title || 'Feuille')}</h1>
+  <p class="meta">7B · Mathématiques · aperçu</p>
+  <ol>${rows}</ol>
+</div>
+</body></html>`;
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
+/**
+ * Exercises for a chapter the teacher just asked Alppy to read.
+ *
+ * Enough of them that the picker's paging, facet counts and page-group headers
+ * have something to do — a chapter that came back with three rows would let a
+ * broken paginator pass.
+ */
+export function exercisesForSection(
+  section: SourceSectionOut,
+  offset: number,
+): ExerciseOut[] {
+  const span = Math.max(1, section.page_to - section.page_from);
+  return Array.from({ length: 24 }, (_, i) => {
+    const kind: ExerciseType = i % 3 === 0 ? 'mcq' : i % 3 === 1 ? 'true_false' : 'open';
+    return {
+      ...exercise(offset + i),
+      id: id(1200 + offset + i),
+      type: kind,
+      statement: `${section.title} — exercice ${i + 1}.`,
+      options: kind === 'mcq' ? ['A', 'B', 'C', 'D'] : null,
+      answer_index: kind === 'mcq' ? i % 4 : null,
+      answer_bool: kind === 'true_false' ? i % 2 === 0 : null,
+      answer_text: kind === 'open' ? 'Réponse libre.' : null,
+      source_section_id: section.id,
+      source_page: section.page_from + (i % span),
+    };
+  });
+}

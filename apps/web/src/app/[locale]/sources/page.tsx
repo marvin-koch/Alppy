@@ -209,16 +209,29 @@ function SourceRow({ source }: { source: SourceOut }) {
             exercises.isLoading ? (
               <LoadingState shape="list" label={tc('loading')} rows={3} />
             ) : (
-              <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5">
-                {(exercises.data ?? []).map((ex) => (
-                  <li key={ex.id} className="text-body-s">
-                    {ex.statement}
-                    {ex.source_page ? (
-                      <span className="text-ink-500"> · p. {ex.source_page}</span>
-                    ) : null}
-                  </li>
-                ))}
-              </ol>
+              <>
+                <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5">
+                  {(exercises.data?.items ?? []).map((ex) => (
+                    <li key={ex.id} className="text-body-s">
+                      {ex.statement}
+                      {ex.source_page ? (
+                        <span className="text-ink-500"> · p. {ex.source_page}</span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ol>
+                {/* The listing is paged now, so this preview shows the first
+                    page and says so rather than implying it is the whole book.
+                    Choosing from a document happens in the sheet builder. */}
+                {(exercises.data?.total ?? 0) > (exercises.data?.items.length ?? 0) ? (
+                  <p className="mt-2 text-body-s text-ink-500">
+                    {t('showingFirst', {
+                      shown: exercises.data?.items.length ?? 0,
+                      total: exercises.data?.total ?? 0,
+                    })}
+                  </p>
+                ) : null}
+              </>
             )
           ) : null}
         </div>

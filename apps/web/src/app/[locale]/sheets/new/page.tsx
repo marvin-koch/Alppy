@@ -1,148 +1,199 @@
 'use client';
 
 import {
-  AiBadge,
-  Badge,
   Button,
   Card,
-  Chip,
-  EmptyState,
+  ErrorState,
   Field,
-  IconChevronDown,
-  IconChevronUp,
-  IconClose,
-  IconEdit,
-  IconButton,
-  IlloCompass,
-  Input,
   LoadingState,
-  Panel,
-  ProvenancePanel,
+  IconPrint,
+  IconSheet,
+  Input,
   Select,
-  Textarea,
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
 } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
+import { AddExerciseModal } from '@/components/sheet-builder/AddExerciseModal';
+import { DraftPreview } from '@/components/sheet-builder/DraftPreview';
+import { ExercisePicker } from '@/components/sheet-builder/ExercisePicker';
+import { ProposeTab } from '@/components/sheet-builder/ProposeTab';
+import { SectionPicker } from '@/components/sheet-builder/SectionPicker';
+import { SheetComposer } from '@/components/sheet-builder/SheetComposer';
+import {
+  draftHasMixedLanguages,
+  draftLanguage,
+  useDraftSheet,
+} from '@/components/sheet-builder/useDraftSheet';
 import { useRouter } from '@/i18n/navigation';
-import { useScope } from '@/lib/scope';
+import { apiErrorMessage } from '@/lib/api/error-message';
 import {
   useChapters,
   useClasses,
   useCreateSheet,
-  useProposeSheet,
+  useSourceSections,
+  useSources,
   useSubjects,
 } from '@/lib/api/queries';
-import type { ExerciseProposal } from '@/lib/api/types';
-import { optionLetters } from '@/lib/optionLetters';
+import type { SourceSectionOut, Uuid } from '@/lib/api/types';
+import { useScope } from '@/lib/scope';
 
 export default function SheetBuilderPage() {
-  const t = useTranslations('sheets');
+  const t = useTranslations('builder');
+  const ts = useTranslations('sheets');
   const tc = useTranslations('common');
-  const tx = useTranslations('exercise');
-  const ta = useTranslations('adaptive');
+  const te = useTranslations('errors');
   const locale = useLocale();
-  const provenanceLabels = {
-    source: t('source'),
-    page: t('page'),
-    excerpt: t('provenance'),
-    similarity: t('similarity'),
-  };
   const router = useRouter();
+  const scope = useScope();
 
   const classes = useClasses();
   const subjects = useSubjects();
-  // These had no setters: the builder always used the first class and the
-  // first subject, so a teacher with two classes could only build for one.
+  const sources = useSources();
+
   const [classId, setClassId] = useState('');
   const [subjectId, setSubjectId] = useState('');
-  // Default to what the shell is scoped to rather than to whichever class
-  // sorts first: arriving here from a class you were just looking at and being
-  // silently switched to another one is how a sheet gets built for the wrong
-  // pupils. An explicit choice on this screen still wins.
-  const scope = useScope();
+  // Default to what the shell is scoped to rather than to whichever class sorts
+  // first: arriving from a class you were looking at and being silently
+  // switched to another one is how a sheet gets built for the wrong pupils.
   const activeClass = classId || scope.classId || classes.data?.[0]?.id || '';
   const activeSubject = subjectId || scope.subjectId || subjects.data?.[0]?.id || '';
+
   const chapters = useChapters(activeSubject || undefined);
 
   const [title, setTitle] = useState('');
-  const [intent, setIntent] = useState('');
-  const [chapterIds, setChapterIds] = useState<string[]>([]);
-  const [kept, setKept] = useState<ExerciseProposal[]>([]);
-  /** Teacher's printed wording, keyed by exercise id. Never written back to
-   *  the exercise: it rides along as the sheet item's `statement_override`, so
-   *  the source keeps its own text and its provenance. */
-  const [overrides, setOverrides] = useState<Record<string, string>>({});
-  const [editing, setEditing] = useState<string | null>(null);
+  const [sourceId, setSourceId] = useState<Uuid | ''>('');
+  const [section, setSection] = useState<SourceSectionOut | null>(null);
+  const [adding, setAdding] = useState(false);
+  // Closed by default: the two working columns get the room, and the page count
+  // the teacher actually needs while choosing lives in the composer instead.
+  const [previewOpen, setPreviewOpen] = useState(false);
 
-  const propose = useProposeSheet();
+  const draft = useDraftSheet();
   const create = useCreateSheet();
+  const composer = useRef<HTMLDivElement | null>(null);
 
-  // The sheet's language is the one the exercises are written in, not the one
-  // the teacher's interface happens to be in. Taking kept[0] meant reordering
-  // flipped a French sheet to German.
-  const sheetLanguage = ((): 'fr' | 'de' | 'en' => {
-    const counts = new Map<string, number>();
-    for (const p of kept) {
-      const l = p.exercise.language;
-      if (l) counts.set(l, (counts.get(l) ?? 0) + 1);
+  // A source belongs to exactly one subject, so a document chosen under
+  // "Mathematics" must not stay selected when the teacher switches to German.
+  const subjectSources = useMemo(
+    () => (sources.data ?? []).filter((source) => source.status === 'succeeded'),
+    [sources.data],
+  );
+
+  const sections = useSourceSections(sourceId || null);
+
+  // Land on the first chapter that has been read, so the picker has something
+  // in it. Falling back to the first chapter overall keeps the outline
+  // reachable when none has been extracted yet.
+  useEffect(() => {
+    if (!sections.data?.length) {
+      setSection(null);
+      return;
     }
-    let best: string | null = null;
-    for (const [l, n] of counts) if (best === null || n > (counts.get(best) ?? 0)) best = l;
-    return (best ?? locale) as 'fr' | 'de' | 'en';
-  })();
-  const mixedLanguages = new Set(kept.map((p) => p.exercise.language).filter(Boolean)).size > 1;
-
-  function onPropose() {
-    propose.mutate(
-      {
-        class_id: activeClass,
-        subject_id: activeSubject,
-        chapter_ids: chapterIds,
-        intent: intent || null,
-        count: 12,
-      },
-      { onSuccess: (r) => setKept(r.proposals) },
-    );
-  }
-
-  function move(index: number, delta: number) {
-    setKept((current) => {
-      const next = [...current];
-      const target = index + delta;
-      if (target < 0 || target >= next.length) return current;
-      const [item] = next.splice(index, 1);
-      if (item) next.splice(target, 0, item);
-      return next;
+    setSection((current) => {
+      if (current && sections.data.some((row) => row.id === current.id)) {
+        return sections.data.find((row) => row.id === current.id) ?? current;
+      }
+      return sections.data.find((row) => row.extracted_at !== null) ?? sections.data[0] ?? null;
     });
-  }
+  }, [sections.data]);
+
+  const selectedSource = subjectSources.find((source) => source.id === sourceId) ?? null;
+  const sheetLanguage = draftLanguage(draft.items, locale);
+  const mixedLanguages = draftHasMixedLanguages(draft.items);
 
   function onCreate() {
     create.mutate(
       {
         class_id: activeClass,
         subject_id: activeSubject,
-        title: title || t('new'),
+        title: title || ts('new'),
         language: sheetLanguage,
         target: 'class',
-        intent: intent || null,
-        items: kept.map((p, i) => ({
-          exercise_id: p.exercise.id,
-          position: i,
-          ...(overrides[p.exercise.id] ? { statement_override: overrides[p.exercise.id] } : {}),
+        intent: null,
+        items: draft.items.map((item, index) => ({
+          exercise_id: item.exercise.id,
+          position: index,
+          ...(item.override ? { statement_override: item.override } : {}),
         })),
       },
       { onSuccess: (sheet) => router.push(`/sheets/${sheet.id}`) },
     );
   }
 
-  return (
-    <div className="mx-auto max-w-5xl">
-      <h1 className="mb-6">{t('builder')}</h1>
+  const generate = (
+    <div className="flex flex-col gap-2">
+      {mixedLanguages ? (
+        <p className="text-body-s text-warn-600" role="status">
+          {ts('mixedLanguages', { language: sheetLanguage.toUpperCase() })}
+        </p>
+      ) : null}
+      {create.isError ? (
+        <p className="text-body-s text-danger-600" role="alert">
+          {apiErrorMessage(create.error, te) || ts('createFailed')}
+        </p>
+      ) : null}
+      <Button
+        variant="primary"
+        block
+        leadingIcon={<IconPrint />}
+        onClick={onCreate}
+        loading={create.isPending}
+        busyLabel={ts('generating')}
+        disabled={draft.count === 0}
+      >
+        {t('generate')}
+      </Button>
+      <p className="text-center text-body-s text-ink-500">{ts('bothSheets')}</p>
+    </div>
+  );
 
-      <Card className="mb-6">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-          <Field label={t('classLabel')}>
+  // Every screen ships loading and error states (CLAUDE.md). `sources` belongs
+  // in both: a failed document list would otherwise render as an empty picker,
+  // which reads as "you have no textbooks" rather than "this did not load".
+  if (classes.isError || subjects.isError || sources.isError) {
+    return (
+      <ErrorState
+        title={te('generic')}
+        description={apiErrorMessage(classes.error ?? subjects.error ?? sources.error, te)}
+      />
+    );
+  }
+
+  if (classes.isPending || subjects.isPending || sources.isPending) {
+    return (
+      <div className="mx-auto max-w-[1400px]">
+        <h1 className="mb-6">{ts('builder')}</h1>
+        <LoadingState shape="cards" label={tc('loading')} rows={2} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto max-w-[1400px] pb-20 lg:pb-0">
+      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1>{ts('builder')}</h1>
+          <p className="mt-1 text-body-s text-ink-500">{ts('bothSheets')}</p>
+        </div>
+        <Button
+          variant="secondary"
+          size="sm"
+          leadingIcon={<IconSheet />}
+          aria-pressed={previewOpen}
+          onClick={() => setPreviewOpen((open) => !open)}
+        >
+          {previewOpen ? t('hidePreview') : t('showPreview')}
+        </Button>
+      </div>
+
+      <Card className="mb-4">
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
+          <Field label={ts('classLabel')}>
             <Select value={activeClass} onChange={(e) => setClassId(e.currentTarget.value)}>
               {(classes.data ?? []).map((c) => (
                 <option key={c.id} value={c.id}>
@@ -152,14 +203,15 @@ export default function SheetBuilderPage() {
               ))}
             </Select>
           </Field>
-          <Field label={t('subjectLabel')}>
+          <Field label={ts('subjectLabel')}>
             <Select
               value={activeSubject}
               onChange={(e) => {
                 setSubjectId(e.currentTarget.value);
-                // Chapters belong to a subject; keeping the old selection
-                // would silently filter on chapters of another subject.
-                setChapterIds([]);
+                // A source and a chapter both belong to a subject; keeping
+                // either would filter on another subject's material.
+                setSourceId('');
+                setSection(null);
               }}
             >
               {(subjects.data ?? []).map((sub) => (
@@ -169,249 +221,180 @@ export default function SheetBuilderPage() {
               ))}
             </Select>
           </Field>
-          <Field label={t('sheetTitle')}>
+          <Field label={ts('sheetTitle')}>
             <Input value={title} onChange={(e) => setTitle(e.target.value)} />
           </Field>
-          <Field label={t('intent')} help={t('intentHelp')}>
-            <Textarea
-              value={intent}
-              onChange={(e) => setIntent(e.target.value)}
-              placeholder={t('intentPlaceholder')}
-              rows={2}
-            />
+          <Field label={t('document')}>
+            <Select
+              value={sourceId}
+              onChange={(e) => {
+                setSourceId(e.currentTarget.value as Uuid | '');
+                setSection(null);
+              }}
+            >
+              <option value="">{t('documentPlaceholder')}</option>
+              {subjectSources.map((source) => (
+                <option key={source.id} value={source.id}>
+                  {source.filename} · {source.exercise_count}
+                </option>
+              ))}
+            </Select>
           </Field>
         </div>
 
-        {chapters.data && chapters.data.length > 0 ? (
-          <fieldset className="mt-4 border-0 p-0">
-            <legend className="mb-2 text-label text-ink-500">{t('chapters')}</legend>
-            <ul className="flex list-none flex-wrap gap-2 p-0">
-              {chapters.data.map((ch) => {
-                const on = chapterIds.includes(ch.id);
-                return (
-                  <li key={ch.id}>
-                    <button
-                      type="button"
-                      aria-pressed={on}
-                      onClick={() =>
-                        setChapterIds((c) =>
-                          on ? c.filter((x) => x !== ch.id) : [...c, ch.id],
-                        )
-                      }
-                      className="min-h-11 cursor-pointer border-0 bg-transparent p-0"
-                    >
-                      <Chip variant={on ? 'primary' : 'neutral'}>
-                        {ch.labels?.[locale] ?? ch.key}
-                      </Chip>
-                    </button>
-                  </li>
-                );
-              })}
-            </ul>
-          </fieldset>
-        ) : null}
-
-        <div className="mt-4">
-          <Button
-            variant="primary"
-            onClick={onPropose}
-            loading={propose.isPending}
-            busyLabel={t('proposing')}
-          >
-            {t('propose')}
-          </Button>
-        </div>
-
-        {/* A failed proposal used to fall through to the empty state, which
-            tells the teacher they have no sheets — the wrong thing entirely. */}
-        {propose.isError ? (
-          <p className="mt-3 text-body-s text-danger-600" role="alert">
-            {t('proposeFailed')}
+        {selectedSource?.notice ? (
+          <p className="mt-3 text-body-s text-warn-600" role="status">
+            {selectedSource.notice}
           </p>
         ) : null}
-        {create.isError ? (
-          <p className="mt-3 text-body-s text-danger-600" role="alert">
-            {t('createFailed')}
-          </p>
+
+        {sourceId ? (
+          <div className="mt-4">
+            <SectionPicker
+              sourceId={sourceId}
+              section={section}
+              onSelect={(next) => setSection(next)}
+            />
+          </div>
         ) : null}
       </Card>
 
-      {propose.isPending ? (
-        <LoadingState shape="list" label={t('proposing')} rows={6} />
-      ) : kept.length === 0 ? (
-        <EmptyState
-          illustration={<IlloCompass />}
-          title={t('empty.title')}
-          description={t('empty.body')}
-        />
-      ) : (
-        <>
-          {/* Exercise content follows the language of the source material, so a
-              chapter with fewer French items than requested falls back to
-              German ones. Printing that silently is the defect; saying so is
-              not. */}
-          {mixedLanguages ? (
-            <p className="mb-3 text-body-s text-warn-600" role="status">
-              {t('mixedLanguages', { language: sheetLanguage.toUpperCase() })}
+      <Tabs defaultValue="document">
+        <TabsList>
+          <TabsTrigger value="document">{t('tabDocument')}</TabsTrigger>
+          <TabsTrigger value="propose">{t('tabPropose')}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="document">
+          <BuilderColumns
+            previewOpen={previewOpen}
+            picker={
+              <ExercisePicker
+                sourceId={sourceId || null}
+                section={section}
+                chapters={chapters.data ?? []}
+                draft={draft}
+              />
+            }
+            composer={
+              <div ref={composer}>
+                <SheetComposer draft={draft} onAdd={() => setAdding(true)} footer={generate} />
+              </div>
+            }
+            preview={
+              activeClass && activeSubject ? (
+                <DraftPreview
+                  classId={activeClass}
+                  subjectId={activeSubject}
+                  title={title || ts('new')}
+                  language={sheetLanguage}
+                  items={draft.items}
+                />
+              ) : null
+            }
+          />
+        </TabsContent>
+
+        <TabsContent value="propose">
+          <BuilderColumns
+            previewOpen={previewOpen}
+            picker={
+              <ProposeTab
+                classId={activeClass}
+                subjectId={activeSubject}
+                chapters={chapters.data ?? []}
+                draft={draft}
+              />
+            }
+            composer={
+              <div ref={composer}>
+                <SheetComposer draft={draft} onAdd={() => setAdding(true)} footer={generate} />
+              </div>
+            }
+            preview={
+              activeClass && activeSubject ? (
+                <DraftPreview
+                  classId={activeClass}
+                  subjectId={activeSubject}
+                  title={title || ts('new')}
+                  language={sheetLanguage}
+                  items={draft.items}
+                />
+              ) : null
+            }
+          />
+        </TabsContent>
+      </Tabs>
+
+      {/* On a phone the composer sits below a list twenty rows long, so ticking
+          an exercise would otherwise produce no visible feedback at all. This
+          is the acknowledgement and the way back to it — plan.md §9: mobile is
+          not a degraded desktop. Above the app's own bottom tabs (`bottom-14`),
+          never over them. */}
+      {draft.count > 0 ? (
+        <div
+          className="fixed inset-x-0 bottom-14 z-20 flex items-center gap-3 border-t border-line bg-surface px-4 py-3 shadow-[0_-10px_30px_-12px_rgb(27_23_53_/_18%)] lg:hidden"
+          role="status"
+        >
+          <div className="min-w-0 flex-grow">
+            <p className="font-display font-semibold">
+              {t('exerciseCount', { count: draft.count })}
             </p>
-          ) : null}
-
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-            <h2 className="text-h3">{t('selected', { count: kept.length })}</h2>
-            <Button
-              variant="primary"
-              onClick={onCreate}
-              loading={create.isPending}
-              busyLabel={t('generating')}
-              disabled={kept.length === 0}
-            >
-              {t('preview')}
-            </Button>
+            <p className="text-body-s text-ink-500">
+              {t('pagesA4', { count: draft.minPages })}
+            </p>
           </div>
+          <Button
+            variant="primary"
+            onClick={() => composer.current?.scrollIntoView({ block: 'start' })}
+          >
+            {t('onSheet')}
+          </Button>
+        </div>
+      ) : null}
 
-          <ol className="flex list-none flex-col gap-3 p-0">
-            {kept.map((p, index) => (
-              <li key={p.exercise.id}>
-                <Panel>
-                  <div className="flex items-start gap-3">
-                    <span
-                      className="mono mt-1 w-6 shrink-0 text-body-s text-ink-500"
-                      data-numeric
-                    >
-                      {index + 1}
-                    </span>
+      {activeSubject ? (
+        <AddExerciseModal
+          open={adding}
+          onOpenChange={setAdding}
+          subjectId={activeSubject}
+          language={sheetLanguage}
+          onCreated={(exercise) => draft.add(exercise)}
+        />
+      ) : null}
+    </div>
+  );
+}
 
-                    <div className="min-w-0 flex-1">
-                      <div className="mb-1 flex flex-wrap items-center gap-2">
-                        <Badge>{tx(`type.${p.exercise.type}`)}</Badge>
-                        <Badge variant="neutral">
-                          {tx('difficultyLevel', { level: p.exercise.difficulty })}
-                        </Badge>
-                        {/* The one place the mandarin is allowed. */}
-                        {p.exercise.origin === 'ai_generated' ? (
-                          <AiBadge label={ta('aiBadge')} />
-                        ) : null}
-                      </div>
-
-                      {editing === p.exercise.id ? (
-                        <div>
-                          <Textarea
-                            aria-label={t('editStatement')}
-                            value={overrides[p.exercise.id] ?? p.exercise.statement}
-                            onChange={(e) => {
-                              // Read the value before the updater runs:
-                              // `currentTarget` is null by the time React
-                              // calls a lazy updater, which threw and took the
-                              // whole editor down with it.
-                              const next = e.currentTarget.value;
-                              setOverrides((o) => ({ ...o, [p.exercise.id]: next }));
-                            }}
-                            rows={3}
-                          />
-                          <div className="mt-2 flex gap-2">
-                            <Button size="sm" onClick={() => setEditing(null)}>
-                              {tc('done')}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              onClick={() => {
-                                setOverrides(({ [p.exercise.id]: _drop, ...rest }) => rest);
-                                setEditing(null);
-                              }}
-                            >
-                              {t('resetStatement')}
-                            </Button>
-                          </div>
-                        </div>
-                      ) : (
-                        <p data-student-facing>
-                          {overrides[p.exercise.id] ?? p.exercise.statement}
-                          {overrides[p.exercise.id] ? (
-                            <Badge variant="neutral" className="ml-2">
-                              {t('edited')}
-                            </Badge>
-                          ) : null}
-                        </p>
-                      )}
-
-                      {p.exercise.options ? (
-                        <ol className="mt-2 flex list-none flex-wrap gap-3 p-0 text-body-s">
-                          {p.exercise.options.map((o, i) => (
-                            <li key={i} className="text-ink-700">
-                              {/* The glyphs the sheet actually prints: MCQ is
-                                  ABCD, true/false is V/F, R/F or T/F by the
-                                  exercise's own language. Hardcoding ABCD made
-                                  the preview disagree with the paper. */}
-                              <span className="mono mr-1">
-                                {optionLetters(p.exercise.type, p.exercise.language)[i] ?? ''}
-                              </span>
-                              {o}
-                            </li>
-                          ))}
-                        </ol>
-                      ) : p.exercise.type === 'open' ? (
-                        <p className="mt-2 text-body-s text-ink-500">{tx('openNotGraded')}</p>
-                      ) : null}
-
-                      {/* The teacher audits this against the book on the desk. */}
-                      <div className="mt-3">
-                        <ProvenancePanel
-                          sourceTitle={p.provenance.source_filename ?? p.provenance.reason}
-                          page={p.provenance.page ?? undefined}
-                          excerpt={p.provenance.excerpt ?? p.provenance.reason}
-                          similarity={p.provenance.similarity ?? undefined}
-                          labels={provenanceLabels}
-                          aiBadge={
-                            p.exercise.origin === 'ai_generated' ? (
-                              <AiBadge label={ta('aiBadge')} size="sm" />
-                            ) : undefined
-                          }
-                        />
-                      </div>
-                    </div>
-
-                    <div className="flex shrink-0 flex-col gap-1">
-                      <IconButton
-                        label={t('editStatement')}
-                        icon={<IconEdit />}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setEditing((cur) => (cur === p.exercise.id ? null : p.exercise.id))
-                        }
-                      />
-                      <IconButton
-                        label={t('moveUp')}
-                        icon={<IconChevronUp />}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => move(index, -1)}
-                      />
-                      <IconButton
-                        label={t('moveDown')}
-                        icon={<IconChevronDown />}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => move(index, 1)}
-                      />
-                      <IconButton
-                        label={t('remove')}
-                        icon={<IconClose />}
-                        variant="ghost"
-                        size="sm"
-                        onClick={() =>
-                          setKept((c) => c.filter((x) => x.exercise.id !== p.exercise.id))
-                        }
-                      />
-                    </div>
-                  </div>
-                </Panel>
-              </li>
-            ))}
-          </ol>
-        </>
-      )}
+/**
+ * Two columns, or three when the preview is open.
+ *
+ * The preview does not overlay the work: the picker and the composer narrow to
+ * make room for it, so the teacher never loses their place in a chapter to look
+ * at the paper. Below `lg` everything stacks, in the order the work happens.
+ */
+function BuilderColumns({
+  previewOpen,
+  picker,
+  composer,
+  preview,
+}: {
+  previewOpen: boolean;
+  picker: React.ReactNode;
+  composer: React.ReactNode;
+  preview: React.ReactNode;
+}) {
+  return (
+    <div
+      className={
+        previewOpen
+          ? 'grid grid-cols-1 items-start gap-6 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.15fr)_minmax(0,0.85fr)_minmax(0,1fr)]'
+          : 'grid grid-cols-1 items-start gap-6 lg:grid-cols-[minmax(0,1.15fr)_minmax(0,1fr)]'
+      }
+    >
+      {picker}
+      {composer}
+      {previewOpen ? <div className="lg:col-span-2 xl:col-span-1">{preview}</div> : null}
     </div>
   );
 }

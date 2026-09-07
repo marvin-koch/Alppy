@@ -121,3 +121,44 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
   if (!text) return undefined as T;
   return JSON.parse(text) as T;
 }
+
+/**
+ * Same request, but the body is returned verbatim instead of parsed.
+ *
+ * `POST /sheets/preview` answers with the print document itself — the same
+ * markup the PDF renderer consumes — so there is no JSON to parse. Errors still
+ * arrive as the usual envelope and still become an `ApiError`, which is the
+ * whole reason this shares a code path with `apiRequest` rather than being a
+ * bare `fetch` at the call site: a 422 saying "this statement is taller than a
+ * page" has to reach the teacher as a message, not as raw JSON rendered inside
+ * the preview frame.
+ */
+export async function apiRequestText(path: string, options: RequestOptions = {}): Promise<string> {
+  const { method = 'GET', body, signal, query } = options;
+  const url = withQuery(path, query);
+
+  if (isMockEnabled()) {
+    const { handleMock } = await import('./mock/handlers');
+    return handleMock<string>(method, url, body);
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(`${API_BASE}${url}`, {
+      method,
+      credentials: 'include',
+      headers: {
+        Accept: 'text/html',
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+      },
+      body: body === undefined ? undefined : JSON.stringify(body),
+      signal: signal ?? null,
+    });
+  } catch (cause) {
+    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    throw new ApiError(0, 'network_error', 'the API could not be reached');
+  }
+
+  if (!response.ok) throw await parseError(response);
+  return response.text();
+}
