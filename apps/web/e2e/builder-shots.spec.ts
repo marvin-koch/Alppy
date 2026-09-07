@@ -15,6 +15,14 @@ import { gotoStable, withDisplay } from './helpers';
 const SHOTS = '../../docs/reviews/screenshots/builder';
 
 test.describe('builder screenshots', () => {
+  // Opt-in: `ALPPY_SHOTS=1 pnpm test:e2e builder-shots`.
+  //
+  // This spec's only job is to write PNGs into the repository, and a
+  // pixel-identical re-render is not guaranteed — so running it as part of the
+  // ordinary suite leaves a dirty working tree after every `pnpm test:e2e` and
+  // after every CI run. The screenshots are refreshed deliberately, when the
+  // screen changes, not as a side effect of running the tests.
+  test.skip(!process.env.ALPPY_SHOTS, 'set ALPPY_SHOTS=1 to refresh the screenshots');
   test.skip(({ browserName }) => browserName !== 'chromium', 'one browser is enough');
 
   test('the three states', async ({ page }, testInfo) => {
