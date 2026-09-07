@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { gotoStable, shot, withDisplay, type Display } from './helpers';
+import { gotoMatrix, gotoStable, shot, withDisplay, type Display } from './helpers';
 
 /**
  * DESIGN.md §8: three theme states, not two, plus an independent contrast layer
@@ -25,7 +25,7 @@ for (const { name, display } of COMBINATIONS) {
 
   test(`matrix renders in ${name}`, async ({ page }) => {
     await withDisplay(page, display);
-    await gotoStable(page, '/fr/classes');
+    await gotoMatrix(page, 'fr');
     await expect(page).toHaveScreenshot(shot('classes', name), { fullPage: true });
   });
 }

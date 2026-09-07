@@ -44,3 +44,45 @@ test('the keyboard alone can reach and operate the settings', async ({ page }, t
   });
   expect(outline).not.toBe('none|none');
 });
+
+test('a ghost button shows the focus ring like every other variant', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the drawer trigger is the phone-only ghost');
+  await withDisplay(page, {});
+  await gotoStable(page, '/fr');
+
+  const trigger = page.getByRole('button', { name: 'Ouvrir le menu' });
+  await trigger.focus();
+  // `.ard-btn[data-variant='ghost']`'s `box-shadow: none` had the same
+  // specificity as `.ard-btn:focus-visible` and came later, so it won and the
+  // ring was never drawn. The transition has to settle before measuring.
+  await page.waitForTimeout(400);
+  const shadow = await trigger.evaluate((el) => getComputedStyle(el).boxShadow);
+  expect(shadow, 'ghost buttons must draw --focus-ring').toContain('rgb(91, 63, 240)');
+});
+
+test('the drawer is a modal, and gives focus back when it closes', async ({
+  page,
+}, testInfo) => {
+  test.skip(testInfo.project.name !== 'phone', 'the drawer is the phone layout');
+  await withDisplay(page, {});
+  await gotoStable(page, '/fr');
+
+  const trigger = page.getByRole('button', { name: 'Ouvrir le menu' });
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+
+  const dialog = page.locator('[role=dialog]');
+  await expect(dialog).toBeVisible();
+  // Focus is genuinely trapped, so say so.
+  await expect(dialog).toHaveAttribute('aria-modal', 'true');
+  // ...and the region is named for what it is, not for the button that opened it.
+  await expect(dialog).not.toHaveAccessibleName('Ouvrir le menu');
+
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  // Radix focused a null trigger ref and cancelled its own fallback, so focus
+  // landed on <body> and a keyboard user restarted from the top of the page.
+  await expect(trigger).toBeFocused();
+});

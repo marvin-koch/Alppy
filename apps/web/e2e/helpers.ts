@@ -2,6 +2,22 @@ import type { Page } from '@playwright/test';
 
 export const LOCALES = ['fr', 'de', 'en'] as const;
 
+/**
+ * The class whose mastery matrix the suite screenshots.
+ *
+ * `/classes` is the class *index* — two cards and no grid. Every test named
+ * "matrix renders in ..." pointed there, so eighteen baselines were pictures of
+ * the wrong page and the matrix had no visual-regression coverage at all. It is
+ * also why the sideways-scroll guard never saw the matrix overflow the document
+ * on a phone. This id comes from `lib/api/mock/fixtures.ts` (`id(20)`, class 7B).
+ */
+export const MATRIX_CLASS_ID = '00000000-0000-4000-8000-000000000020';
+
+/** The route the mastery matrix actually lives on. */
+export function matrixPath(locale: string): string {
+  return `/${locale}/classes/${MATRIX_CLASS_ID}`;
+}
+
 /** The four display switches, as they are actually persisted. */
 export interface Display {
   theme?: 'light' | 'dark';
@@ -33,6 +49,12 @@ export async function gotoStable(page: Page, path: string): Promise<void> {
   await page.waitForLoadState('networkidle');
   // Skeletons resolve into content; wait for the heading rather than a timeout.
   await page.locator('h1').first().waitFor({ state: 'visible' });
+}
+
+/** Navigate to the matrix and wait for the grid itself, not just the heading. */
+export async function gotoMatrix(page: Page, locale = 'fr'): Promise<void> {
+  await gotoStable(page, matrixPath(locale));
+  await page.locator('table tbody tr td button').first().waitFor({ state: 'visible' });
 }
 
 /** The name a screenshot is filed under. */

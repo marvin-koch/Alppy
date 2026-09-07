@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { LOCALES, gotoStable, shot, withDisplay } from './helpers';
+import { LOCALES, gotoMatrix, gotoStable, shot, withDisplay } from './helpers';
 
 /**
  * French is the default. All three ship from day one, so all three are
@@ -17,7 +17,7 @@ for (const locale of LOCALES) {
 
   test(`matrix renders in ${locale}`, async ({ page }) => {
     await withDisplay(page, { theme: 'light' });
-    await gotoStable(page, `/${locale}/classes`);
+    await gotoMatrix(page, locale);
     await expect(page).toHaveScreenshot(shot('classes-locale', locale), { fullPage: true });
   });
 }
