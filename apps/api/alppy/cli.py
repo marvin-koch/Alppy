@@ -1,6 +1,7 @@
 """Small operational entry points that don't belong on the HTTP API.
 
     python -m alppy.cli seed
+    python -m alppy.cli backfill-events
 
 Seeds the demo dataset (see ``alppy.seed``) so a fresh ``docker compose up``
 has a class, a subject and three weeks of history to look at instead of an
@@ -55,17 +56,47 @@ def _seed() -> int:
     return 0
 
 
+def _backfill_events() -> int:
+    """Reconstruct the agenda for work that predates the event log.
+
+    Idempotent: a second run adds nothing, so it is safe in an entrypoint that
+    runs on every container start.
+    """
+    from alppy.services.event_backfill import backfill_events
+
+    db = SessionLocal()
+    try:
+        log.info("backfill.start")
+        result = backfill_events(db)
+        db.commit()
+        log.info("backfill.done", events=result.total)
+    except Exception:
+        db.rollback()
+        log.exception("backfill.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging(debug=get_settings().debug)
 
     parser = argparse.ArgumentParser(prog="python -m alppy.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("seed", help="Load the demo dataset (idempotent).")
+    subparsers.add_parser(
+        "backfill-events",
+        help="Reconstruct the agenda from existing timestamps (idempotent).",
+    )
 
     args = parser.parse_args(argv)
 
     if args.command == "seed":
         return _seed()
+
+    if args.command == "backfill-events":
+        return _backfill_events()
 
     parser.print_help()
     return 1
