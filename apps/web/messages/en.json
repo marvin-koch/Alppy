@@ -505,8 +505,6 @@
     "sectionCount": "{count, plural, one {# chapter} other {# chapters}}",
     "exerciseCount": "{count, plural, =0 {no exercises} one {# exercise} other {# exercises}}",
     "searchPlaceholder": "Search a statement…",
-    "theme": "Theme",
-    "allThemes": "All themes",
     "filterAll": "All",
     "anyDifficulty": "Any difficulty",
     "difficultyLevel": "Difficulty {level}",

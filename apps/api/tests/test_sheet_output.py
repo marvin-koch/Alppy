@@ -26,7 +26,6 @@ from alppy.models.enums import ExerciseType
 from alppy.sheets.pagination import (
     FIGURE_GAP_MM,
     FIGURE_MAX_H_MM,
-    FIGURE_MIN_SCALE,
     OPEN_LINES_MARGIN_MM,
     TEXT_W_MM,
     USABLE_H_MM,
@@ -34,7 +33,9 @@ from alppy.sheets.pagination import (
     Item,
     ItemTooTallError,
     estimate_item_height_mm,
+    figure_room_mm,
     paginate,
+    printed_figure_size_mm,
 )
 
 FORTY_LINES = "\n".join(f"Ligne {i + 1} de cet énoncé délibérément très long." for i in range(40))
@@ -257,16 +258,38 @@ def test_pagination_reserves_the_figures_printed_height() -> None:
     assert len(paginate(two)) == 1
 
 
-def test_a_figure_that_would_print_unreadably_small_is_refused() -> None:
-    """A three-page exercise cannot be a sheet item. Shrinking it to 40 %
-    would print 4 pt type; refusing names the item, like an over-long text."""
+def test_a_figure_taller_than_the_page_is_shrunk_to_fit_never_refused() -> None:
+    """A half-page exercise of the book used to fail the whole sheet with a
+    message about one item. It is a raster at print resolution: shrink it."""
     huge = Item(key="h", type=ExerciseType.OPEN, statement="NO113 Rectangle coloré",
                 figure=_figure(165.0, 300.0))
-    with pytest.raises(ItemTooTallError) as caught:
-        paginate([huge])
-    assert caught.value.number == 1
-    assert "Rectangle" in str(caught.value)
-    assert FIGURE_MAX_H_MM / FIGURE_MIN_SCALE < 300.0
+    pages = paginate([huge])
+    assert len(pages) == 1 and not pages[0].overflowing
+    width, height, scale = printed_figure_size_mm(huge)
+    assert height == pytest.approx(figure_room_mm(huge))
+    assert height <= FIGURE_MAX_H_MM
+    assert width == pytest.approx(165.0 * scale)
+
+
+def test_the_figure_makes_room_for_the_text_printed_above_it() -> None:
+    """A teacher's three-line wording above a full-height crop must not push
+    the item past the page — the picture gives way, and the item still fits."""
+    long_wording = " ".join(["Mesure chaque côté du rectangle avec la règle"] * 6)
+    figure = Figure(
+        src="data:image/png;base64,iVBORw0KGgo=", width_mm=165.0, height_mm=150.0,
+        show_statement=True,
+    )
+    item = Item(key="w", type=ExerciseType.OPEN, statement=long_wording, figure=figure)
+    assert figure_room_mm(item) < FIGURE_MAX_H_MM
+    assert estimate_item_height_mm(item) <= USABLE_H_MM
+    assert len(paginate([item])) == 1
+
+    # An MCQ with a picture pays for its options the same way.
+    mcq = Item(key="m", type=ExerciseType.MCQ, statement="Quelle aire ?",
+               options=("12 cm²", "24 cm²", "36 cm²", "48 cm²"), figure=_figure(165.0, 150.0))
+    plain = Item(key="x", type=ExerciseType.OPEN, statement="x", figure=_figure(165.0, 150.0))
+    assert figure_room_mm(mcq) < figure_room_mm(plain)
+    assert len(paginate([mcq])) == 1
 
 
 def test_the_markup_sizes_the_picture_to_what_pagination_reserved() -> None:
@@ -279,7 +302,7 @@ def test_the_markup_sizes_the_picture_to_what_pagination_reserved() -> None:
         copies=(Copy(uid="10B_01", items=(item,)),),
     )
     html = render_sheet_html(data)
-    width, height, _ = item.figure.printed_size_mm()  # type: ignore[union-attr]
+    width, height, _ = printed_figure_size_mm(item)
     assert f'style="width: {width:g}mm; height: {height:g}mm"' in html
     assert 'alt="Prends les mesures nécessaires."' in html
     # The statement is the alt, not a paragraph: printed once, as the picture.

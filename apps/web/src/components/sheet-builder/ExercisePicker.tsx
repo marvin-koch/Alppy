@@ -14,25 +14,18 @@ import {
   LoadingState,
   Select,
 } from '@alppy/ui';
-import { useLocale, useTranslations } from 'next-intl';
+import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 
 import { DEFAULT_PAGE_SIZE, useSourceExercises } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import type {
-  ChapterOut,
-  ExerciseOut,
-  ExerciseType,
-  SourceSectionOut,
-  Uuid,
-} from '@/lib/api/types';
+import type { ExerciseOut, ExerciseType, SourceSectionOut, Uuid } from '@/lib/api/types';
 import { ExerciseRow } from './ExerciseRow';
 import type { DraftSheet } from './useDraftSheet';
 
 interface Props {
   sourceId: Uuid | null;
   section: SourceSectionOut | null;
-  chapters: ChapterOut[];
   draft: DraftSheet;
 }
 
@@ -41,25 +34,23 @@ interface Props {
  *
  * Two properties this component exists to keep.
  *
- * **Nothing is unreachable.** Filtering happens server-side across two axes —
- * the book's own chapter (always set) and the teacher's curriculum theme
- * (inferred, and legitimately null). The theme filter is therefore the
- * *secondary* one and defaults to off, because a null `chapter_id` is normal
- * and a filter that hides those rows would lose them.
+ * **Nothing is unreachable.** Filtering happens server-side on the book's own
+ * chapter, which every row carries. There is deliberately no second filter on
+ * the inferred curriculum theme: the chapter the teacher picked already says
+ * what they are teaching, and a theme is legitimately null on many rows, so a
+ * filter on it hid exercises without saying so.
  *
  * **Ticks survive filter changes.** The selection lives in `draft`, never in
  * this list. A teacher who ticks three exercises, searches for a fourth, and
  * finds the first three gone has lost work.
  */
-export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
+export function ExercisePicker({ sourceId, section, draft }: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
   const tx = useTranslations('exercise');
   const te = useTranslations('errors');
-  const locale = useLocale();
 
   const [type, setType] = useState<ExerciseType | ''>('');
-  const [chapterId, setChapterId] = useState<Uuid | ''>('');
   const [difficulty, setDifficulty] = useState<number | ''>('');
   const [search, setSearch] = useState('');
   const [debounced, setDebounced] = useState('');
@@ -75,19 +66,18 @@ export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
   // result set that now has one page shows an empty list and no explanation.
   useEffect(() => {
     setOffset(0);
-  }, [type, chapterId, difficulty, debounced, section?.id]);
+  }, [type, difficulty, debounced, section?.id]);
 
   const query = useMemo(
     () => ({
       ...(section ? { section_id: section.id } : {}),
-      ...(chapterId ? { chapter_id: chapterId } : {}),
       ...(type ? { type } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(debounced ? { q: debounced } : {}),
       offset,
       limit: DEFAULT_PAGE_SIZE,
     }),
-    [section, chapterId, type, difficulty, debounced, offset],
+    [section, type, difficulty, debounced, offset],
   );
 
   const exercises = useSourceExercises(sourceId, query);
@@ -96,7 +86,7 @@ export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
   const total = data?.total ?? 0;
   const facets = data?.facets;
 
-  const hasFilters = Boolean(type || chapterId || difficulty || debounced);
+  const hasFilters = Boolean(type || difficulty || debounced);
 
   if (!sourceId) {
     return (
@@ -127,7 +117,7 @@ export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
       </div>
 
       {/* — filters — */}
-      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-2">
         <label className="relative flex items-center">
           <span className="sr-only">{t('searchPlaceholder')}</span>
           <IconSearch
@@ -142,18 +132,6 @@ export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
             className="pl-10"
           />
         </label>
-        <Select
-          aria-label={t('theme')}
-          value={chapterId}
-          onChange={(e) => setChapterId(e.currentTarget.value as Uuid | '')}
-        >
-          <option value="">{t('allThemes')}</option>
-          {chapters.map((chapter) => (
-            <option key={chapter.id} value={chapter.id}>
-              {chapter.labels?.[locale] ?? chapter.key}
-            </option>
-          ))}
-        </Select>
       </div>
 
       <div className="flex flex-wrap items-center gap-2">
@@ -232,7 +210,6 @@ export function ExercisePicker({ sourceId, section, chapters, draft }: Props) {
                     variant="secondary"
                     onClick={() => {
                       setType('');
-                      setChapterId('');
                       setDifficulty('');
                       setSearch('');
                     }}

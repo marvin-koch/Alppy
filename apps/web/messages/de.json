@@ -505,8 +505,6 @@
     "sectionCount": "{count, plural, one {# Kapitel} other {# Kapitel}}",
     "exerciseCount": "{count, plural, =0 {keine Aufgaben} one {# Aufgabe} other {# Aufgaben}}",
     "searchPlaceholder": "Aufgabentext suchen…",
-    "theme": "Thema",
-    "allThemes": "Alle Themen",
     "filterAll": "Alle",
     "anyDifficulty": "Jede Schwierigkeit",
     "difficultyLevel": "Schwierigkeit {level}",

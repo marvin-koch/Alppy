@@ -100,12 +100,17 @@ FIGURE_MAX_H_MM: float = 116.0
 size — the student reads the book's own type — and shrunk only to fit the
 column or this ceiling. The ceiling is the statement region less the item's
 own furniture (padding, the number line, the gap, the rules' margin), so a
-full-page exercise of the book still fits alone on one sheet."""
+full-page exercise of the book still fits alone on one sheet.
 
-FIGURE_MIN_SCALE: float = 0.65
-"""Below this a 10 pt textbook page is a 6.5 pt page, and past that it stops
-being readable on a photocopy. A figure that would need more shrinking than
-this is refused (``ItemTooTallError``) rather than printed unreadable."""
+It is a ceiling, not the box: ``figure_room_mm`` lowers it by whatever text
+the item prints above the picture — a teacher's own wording, MCQ options — so
+an item with a figure *always* fits a page on its own. A crop taller than the
+room is shrunk further, never refused: the sheet used to raise
+``ItemTooTallError`` below a 0.65 scale, which meant a half-page exercise of
+the book could be imported, ticked and previewed, and then failed the whole
+sheet with a message about one item. The crop is a raster at print
+resolution, so it stays sharp when small; a teacher who finds it too small on
+paper can see that in the preview, which is what the preview is for."""
 
 # Ruled lines under a picture: none, and no rules block at all. A textbook
 # exercise is worked in the notebook, as the book intends, and two token rules
@@ -217,28 +222,57 @@ def wrapped_lines(text: str, width_mm: float, *, font_mm: float = BODY_L_MM) -> 
     return max(1, total)
 
 
+def _text_above_figure_mm(item: Item) -> float:
+    """Millimetres of text an item prints *above* its picture: the number line,
+    or the teacher's wording when that is printed instead."""
+    if item.figure is not None and item.figure.show_statement:
+        return wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
+    return LINE_H_MM
+
+
+def _options_height_mm(item: Item) -> float:
+    if not item.options:
+        return 0.0
+    option_w = TEXT_W_MM - OPTION_INDENT_MM - OPTION_LETTER_W_MM
+    return OPTIONS_GAP_MM + sum(wrapped_lines(o, option_w) * LINE_H_MM for o in item.options)
+
+
+def figure_room_mm(item: Item) -> float:
+    """The tallest this item's picture may print, in millimetres.
+
+    ``FIGURE_MAX_H_MM`` less whatever else the item puts on the page, so the
+    whole item — text, picture and options — fits the statement region alone.
+    Never below a millimetre: a degenerate item still prints *something*."""
+    room = USABLE_H_MM - ITEM_PADDING_MM - ITEM_RULE_MM - FIGURE_GAP_MM
+    room -= _text_above_figure_mm(item) + _options_height_mm(item)
+    return max(1.0, min(FIGURE_MAX_H_MM, room))
+
+
+def printed_figure_size_mm(item: Item) -> tuple[float, float, float]:
+    """``(width, height, scale)`` of the item's picture as it prints.
+
+    The one place that decides the printed size: pagination reserves it and
+    the markup writes it as an inline style, so they cannot disagree."""
+    if item.figure is None:
+        raise ValueError("item has no figure")
+    return item.figure.printed_size_mm(max_height_mm=figure_room_mm(item))
+
+
 def estimate_item_height_mm(item: Item) -> float:
     """Millimetres of statement region this item will occupy.
 
     Deliberately an over-estimate. See ``AVG_CHAR_EM``."""
     height = ITEM_PADDING_MM + ITEM_RULE_MM
     if item.figure is not None:
-        _, figure_h, _ = item.figure.printed_size_mm()
+        _, figure_h, _ = printed_figure_size_mm(item)
         # The number sits on its own line above the picture, unless the
         # teacher's wording is printed there instead.
-        if item.figure.show_statement:
-            height += wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
-        else:
-            height += LINE_H_MM
+        height += _text_above_figure_mm(item)
         height += FIGURE_GAP_MM + figure_h
     else:
         height += wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
 
-    if item.options:
-        option_w = TEXT_W_MM - OPTION_INDENT_MM - OPTION_LETTER_W_MM
-        height += OPTIONS_GAP_MM
-        for option in item.options:
-            height += wrapped_lines(option, option_w) * LINE_H_MM
+    height += _options_height_mm(item)
 
     if item.type is ExerciseType.OPEN and item.figure is None:
         height += OPEN_LINES_MARGIN_MM + max(0, item.open_lines) * OPEN_LINE_PITCH_MM
@@ -374,15 +408,8 @@ def paginate(
         used = 0.0
 
     for item in items:
-        if item.figure is not None and not allow_overflow:
-            _, _, scale = item.figure.printed_size_mm()
-            if scale < FIGURE_MIN_SCALE:
-                raise ItemTooTallError(
-                    number=number + 1,
-                    height_mm=item.figure.height_mm,
-                    limit_mm=FIGURE_MAX_H_MM / FIGURE_MIN_SCALE,
-                    statement=item.statement,
-                )
+        # A figured item is sized by ``figure_room_mm`` to fit a page on its
+        # own, so only a text item can be too tall here.
         height = estimate_item_height_mm(item)
         if height > usable_height_mm and not allow_overflow:
             raise ItemTooTallError(

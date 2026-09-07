@@ -28,7 +28,8 @@ interface Props {
  *
  * A textbook is not a list to scroll — it is a structure to navigate, and the
  * teacher already knows which chapter they are teaching. This is therefore the
- * builder's primary control, and the curriculum-theme filter is secondary.
+ * builder's only filter on *where* an exercise comes from; the curriculum theme
+ * the model inferred is not a second one, because the chapter already says it.
  *
  * It is also where on-demand extraction surfaces. Importing a 400-page book
  * maps every chapter and indexes every page, but transcribes only as many

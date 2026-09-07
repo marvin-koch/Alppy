@@ -14,7 +14,7 @@ import {
   TabsTrigger,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
-import { use, useEffect, useState } from 'react';
+import { use, useEffect, useRef, useState } from 'react';
 
 import { API_BASE } from '@/lib/api/client';
 import { useJob, useMarkPrinted, useRenderSheet, useSheet } from '@/lib/api/queries';
@@ -32,6 +32,35 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
   const markPrinted = useMarkPrinted();
+
+  // Which document the teacher is looking at, and the frame that holds it.
+  // Print used to call `window.print()` on *this* page: the app chrome, the
+  // tab strip, and the A4 preview scaled to 42 % inside a scroll box — never
+  // the sheet. The preview frame is the print document itself, served with the
+  // same print.css the PDF is made from, so printing means printing the frame.
+  const [kind, setKind] = useState<PreviewKind>('blank');
+  const frames = useRef<Record<PreviewKind, HTMLIFrameElement | null>>({
+    blank: null,
+    key: null,
+  });
+
+  const printPreview = () => {
+    const frame = frames.current[kind];
+    const target = frame?.contentWindow;
+    if (target) {
+      try {
+        target.focus();
+        target.print();
+        if (kind === 'blank') markPrinted.mutate(sheetId);
+        return;
+      } catch {
+        // A frame the browser will not let us drive falls through to a tab.
+      }
+    }
+    // No frame (the preview errored) or a frame we cannot reach: open the
+    // print document on its own so the browser's print dialog gets the sheet.
+    window.open(previewUrl(sheetId, kind), '_blank', 'noopener');
+  };
 
   // The PDF keys land on the sheet row, written by the worker — so the sheet
   // has to be re-read once the job finishes. Without this the render succeeded,
@@ -69,11 +98,7 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
-          <Button
-            onClick={() => window.print()}
-            leadingIcon={<IconPrint />}
-            variant="secondary"
-          >
+          <Button onClick={printPreview} leadingIcon={<IconPrint />} variant="secondary">
             {t('print')}
           </Button>
           <Button
@@ -129,20 +154,26 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
         ) : null}
       </Panel>
 
-      <Tabs defaultValue="blank">
+      <Tabs value={kind} onValueChange={(next) => setKind(next as PreviewKind)}>
         <TabsList data-no-print>
           <TabsTrigger value="blank">{t('blank')}</TabsTrigger>
           <TabsTrigger value="key">{t('answerKey')}</TabsTrigger>
         </TabsList>
 
-        {(['blank', 'key'] as const).map((kind) => (
-          <TabsContent key={kind} value={kind}>
+        {(['blank', 'key'] as const).map((tab) => (
+          <TabsContent key={tab} value={tab}>
             {/* On a phone the A4 page is scaled to fit rather than making the
                 body scroll sideways. */}
             <div className="overflow-x-auto">
               <div className="origin-top-left scale-[0.42] sm:scale-[0.6] md:scale-100">
                 <Card flush>
-                  <SheetPreview sheet={s} showKey={kind === 'key'} />
+                  <SheetPreview
+                    sheet={s}
+                    showKey={tab === 'key'}
+                    frameRef={(el) => {
+                      frames.current[tab] = el;
+                    }}
+                  />
                 </Card>
               </div>
             </div>
@@ -153,12 +184,20 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   );
 }
 
+type PreviewKind = 'blank' | 'key';
+
+function previewUrl(sheetId: string, kind: PreviewKind): string {
+  return `${API_BASE}/sheets/${sheetId}/preview${kind === 'key' ? '?kind=answer_key' : ''}`;
+}
+
 function SheetPreview({
   sheet,
   showKey,
+  frameRef,
 }: {
   sheet: NonNullable<ReturnType<typeof useSheet>['data']>;
   showKey: boolean;
+  frameRef: (el: HTMLIFrameElement | null) => void;
 }) {
   const t = useTranslations('sheets');
   const [error, setError] = useState<string | null>(null);
@@ -172,7 +211,7 @@ function SheetPreview({
   // detector reads, printed no UID grid at all, and hardcoded A/B/C/D where
   // the sheet prints V/F. A teacher checking their sheet before printing 72
   // pages was checking something else.
-  const src = `${API_BASE}/sheets/${sheet.id}/preview${showKey ? '?kind=answer_key' : ''}`;
+  const src = previewUrl(sheet.id, showKey ? 'key' : 'blank');
 
   // A sheet the renderer refuses — a statement taller than the page, a class
   // with no students — answers 422 with the reason. Read it and show it: an
@@ -204,11 +243,15 @@ function SheetPreview({
 
   return (
     <iframe
+      ref={frameRef}
       src={src}
       title={showKey ? t('answerKey') : t('blank')}
       className="h-[297mm] w-[210mm] border-0 bg-white"
-      // Same-origin so the print stylesheet resolves; the document is ours.
-      sandbox="allow-same-origin"
+      // Same-origin so the print stylesheet resolves and the page can reach
+      // the frame's window; the document is ours. `allow-modals` is what lets
+      // a sandboxed frame open the print dialog — without it the browser
+      // silently ignores `print()` and the button does nothing.
+      sandbox="allow-same-origin allow-modals"
     />
   );
 }

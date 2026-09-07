@@ -526,8 +526,7 @@ Consequences, all deliberate:
   outline gives the twenty it actually has.
 * **The sheet prints the crop in place of the statement**, at the book's own
   size, shrunk only to fit the column or a 116 mm ceiling and never enlarged.
-  Below a 0.65 scale the item is refused with the same `ItemTooTallError` an
-  over-long text gets: a three-page exercise is not a sheet item. Under a
+  (D41 later dropped the 0.65 minimum scale this first carried.) Under a
   picture there are **no ruled lines** — the book's exercises are worked in
   the notebook — because two token rules cost the millimetres that keep a
   second exercise off the page. The text stays as the image's alt and for
@@ -540,3 +539,34 @@ Consequences, all deliberate:
   not fetch from the object store while Chromium waits. The web app gets an
   ordinary `figure_url` (`/api/v1/files/…`, tenant-checked, served as
   `image/png`).
+
+### D41 · The sheet builder filters by chapter only, the folio is the student's, and a big crop shrinks
+
+Three corrections from using the builder with a real book, 2026-09-07.
+
+* **No curriculum-theme filter beside the chapter.** The picker offered the
+  book's chapter (always set) and the inferred curriculum theme (often null).
+  The chapter already says what the teacher is teaching, and a filter on a
+  nullable field hid rows without saying so. The theme stays on the row and in
+  the AI "propose" tab, where it is the only handle there is; it is no longer a
+  second control on the document tab.
+* **Page numbers restart per student.** The footer printed the document-wide
+  folio, so student 18's first page read "36/72". A student holds their own
+  copy and reads "1/2". The document-wide number is kept in `data-page` for
+  collation; nothing on the printed face carries it.
+* **Print prints the preview frame.** The button called `window.print()` on
+  the app page, which printed the chrome, the tab strip and the A4 preview
+  scaled to 42 % inside a scroll box. The preview iframe *is* the print
+  document, served with the same `print.css` the PDF is made from, so the
+  button now drives that frame (`allow-modals` on the sandbox, without which
+  the browser ignores `print()`), and falls back to opening the document in
+  its own tab when the frame cannot be reached.
+* **A crop taller than the page is shrunk, never refused.** D40's 0.65
+  minimum scale meant a half-page exercise imported, ticked and previewed
+  cleanly, then failed the whole sheet — preview and PDF — with a message about
+  one item. The crop is a raster at print resolution, so it stays sharp when
+  small, and the preview shows the teacher how small before anything is
+  printed. `figure_room_mm` now sizes the picture to the room left after the
+  text the item prints above it (the teacher's own wording, MCQ options), so a
+  figured item always fits a page on its own; `ItemTooTallError` is still
+  raised for text, where shrinking is not an option.

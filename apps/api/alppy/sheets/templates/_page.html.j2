@@ -41,8 +41,11 @@
 
     {% include "_answer_grid.html.j2" %}
 
+    {#- The folio is the STUDENT's: "page 2/2" of their copy, never "36/72" of
+        the class pile. The document-wide number stays in data-page for the
+        printer's collation, which is the only reader that wants it. -#}
     <footer class="print-footer">
-      <span class="print-meta">{{ t.page }} {{ page.number }}/{{ page.count }} &middot; {{ page.copy_uid }} &middot; {{ t.layout }} {{ layout_version }}</span>
+      <span class="print-meta">{{ t.page }} {{ page.copy_page }}/{{ page.copy_pages }} &middot; {{ page.copy_uid }} &middot; {{ t.layout }} {{ layout_version }}</span>
       {% if show_legend %}{% include "_legend.html.j2" %}{% endif %}
     </footer>
   </div>

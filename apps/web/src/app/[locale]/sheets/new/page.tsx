@@ -273,12 +273,7 @@ export default function SheetBuilderPage() {
           <BuilderColumns
             previewOpen={previewOpen}
             picker={
-              <ExercisePicker
-                sourceId={sourceId || null}
-                section={section}
-                chapters={chapters.data ?? []}
-                draft={draft}
-              />
+              <ExercisePicker sourceId={sourceId || null} section={section} draft={draft} />
             }
             composer={
               <div ref={composer}>

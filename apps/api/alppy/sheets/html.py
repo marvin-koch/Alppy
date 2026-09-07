@@ -32,7 +32,7 @@ from markupsafe import Markup
 
 from alppy.models.enums import BAND_ORDER, ExerciseType, SheetKind
 from alppy.sheets import layout as L
-from alppy.sheets.pagination import Item, Page, paginate
+from alppy.sheets.pagination import Item, Page, paginate, printed_figure_size_mm
 from alppy.sheets.uid_code import bits_to_cells, encode_uid
 
 TEMPLATE_DIR: Final = Path(__file__).resolve().parent / "templates"
@@ -405,7 +405,7 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
         ]
     figure: dict[str, Any] | None = None
     if item.figure is not None:
-        width_mm, height_mm, _ = item.figure.printed_size_mm()
+        width_mm, height_mm, _ = printed_figure_size_mm(item)
         figure = {
             "src": item.figure.src,
             "alt": item.figure.alt or item.statement,
