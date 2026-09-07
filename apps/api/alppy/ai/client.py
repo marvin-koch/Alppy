@@ -130,14 +130,17 @@ class AiClient:
         temperature: float = 0.4,
     ) -> tuple[ChatResponse, CallRecord]:
         system, user = prompt.render(**values)
-
-        # The gate. Raises rather than redacting: a leak is a caller bug.
-        assert_no_pii(system, names=student_names)
-        assert_no_pii(user, names=student_names)
-
         digest = hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
         started = time.perf_counter()
         try:
+            # The gate, inside the try so a rejection is *audited* like any
+            # other failed call. It still runs before the provider does, so
+            # nothing leaves the process either way — but a silent gate is an
+            # unfalsifiable one, and a prompt that was blocked is exactly the
+            # event an audit trail exists to record.
+            assert_no_pii(system, names=student_names)
+            assert_no_pii(user, names=student_names)
+
             response = self._chat.complete(
                 ChatRequest(
                     system=system,

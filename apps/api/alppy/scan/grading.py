@@ -122,6 +122,22 @@ _GRADERS: dict[ExerciseType, ItemGrader] = {
 }
 
 
+def register_grader(exercise_type: ExerciseType, grader: ItemGrader) -> None:
+    """Install a grader for one exercise type.
+
+    This is the seam a free-text grader arrives through, and it is public so
+    that arriving through it does not mean reaching into a private name. The
+    MVP ships ``open`` mapped to ``_grade_open``, which returns
+    ``NOT_GRADEABLE`` — replacing that mapping is the whole change.
+    """
+    _GRADERS[exercise_type] = grader
+
+
+def grader_for(exercise_type: ExerciseType) -> ItemGrader | None:
+    """The grader currently installed for a type, if any."""
+    return _GRADERS.get(exercise_type)
+
+
 def grade_item(key: AnswerKey, detected: DetectedAnswer) -> GradedItem:
     """Grade one item. Never raises: an unknown type is simply not gradeable."""
     grader = _GRADERS.get(key.type)

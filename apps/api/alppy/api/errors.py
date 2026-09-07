@@ -72,8 +72,11 @@ def forbidden(message: str) -> ApiError:
     return ApiError(status.HTTP_403_FORBIDDEN, "forbidden", message)
 
 
-def conflict(message: str, **details: Any) -> ApiError:
-    return ApiError(status.HTTP_409_CONFLICT, "conflict", message, details=details)
+def conflict(message: str, *, code: str = "conflict", **details: Any) -> ApiError:
+    """A 409. ``code`` is what the UI switches on, so a conflict the teacher can
+    resolve — and each one is resolved differently — gets its own name rather
+    than sharing a generic one with every other 409."""
+    return ApiError(status.HTTP_409_CONFLICT, code, message, details=details)
 
 
 def unprocessable(message: str, **details: Any) -> ApiError:

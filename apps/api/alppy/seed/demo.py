@@ -23,6 +23,30 @@ DEMO_TEACHER_EMAIL = "demo@alppy.ch"
 DEMO_TEACHER_PASSWORD = "alppy-demo-2026"
 DEMO_SCHOOL = "Collège de démonstration"
 
+# A second class for the same teacher, and a colleague with a third.
+#
+# The demo used to ship one teacher, one class and one subject, which made the
+# whole of F7 undemonstrable: with nothing to switch between, a class/subject
+# switcher shows an empty menu and cross-teacher isolation cannot be seen at
+# all. 9A also deliberately has a roster but no sheets and no history, so the
+# "class with students but nothing taught yet" empty state is reachable from
+# `docker compose up` without anyone having to fabricate it.
+DEMO_SECOND_CLASS_CODE = "9A"
+DEMO_SECOND_ROSTER: list[tuple[str, str]] = [
+    ("Noémie", "D'Amico"),
+    ("Gabriel", "Fasel"),
+    ("Ana", "Šarić"),
+    ("Théo", "Buchs"),
+    ("Yasmin", "Haddad"),
+]
+
+# The colleague exists to prove the boundary, not to be logged into: their
+# class must never appear on the demo teacher's home screen.
+COLLEAGUE_EMAIL = "colleague@alppy.ch"
+COLLEAGUE_PASSWORD = "alppy-demo-2026"
+COLLEAGUE_CLASS_CODE = "7A"
+COLLEAGUE_ROSTER: list[tuple[str, str]] = [("Marc", "Dupont"), ("Sarah", "Meier")]
+
 # Invented names. Any resemblance to a real pupil is unintended.
 DEMO_ROSTER: list[tuple[str, str]] = [
     ("Léa", "Progin"),
@@ -98,6 +122,17 @@ DEMO_LESSONS: list[tuple[int, str]] = [
     # "percentages" is deliberately never taught in the demo, so the matrix shows
     # the "not yet seen" band rather than implying every competency is assessed.
 ]
+
+
+def lesson_moments(now: datetime) -> list[datetime]:
+    """Each distinct lesson date, oldest first, an hour after the last item.
+
+    The seed recomputes mastery at every one of these so the profile curve has
+    real points to draw. The one-hour offset puts the snapshot after the work it
+    summarises rather than in the middle of it.
+    """
+    days = sorted({days_ago for days_ago, _chapter in DEMO_LESSONS}, reverse=True)
+    return [now - timedelta(days=d) + timedelta(hours=7) for d in days]
 
 
 def _success_probability(

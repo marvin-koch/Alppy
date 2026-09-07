@@ -6,5 +6,5 @@
  * here so there is one import path, and so the generated file has at least one
  * consumer — a contract nothing imports is a contract nobody keeps.
  */
-export { SHEET_LAYOUT } from './layout.generated';
+export { SCAN_THRESHOLDS, SHEET_LAYOUT } from './layout.generated';
 export type { SheetLayout } from './layout.generated';

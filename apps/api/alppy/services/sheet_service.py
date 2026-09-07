@@ -16,16 +16,26 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
+from alppy.api.deps import Scope
 from alppy.models import Exercise, Sheet, SheetInstance, SheetItem, Student, Subject
 from alppy.models.enums import SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
-from alppy.services.class_service import get_class, list_students
+from alppy.services.approval import UnapprovedExerciseError, ensure_printable
+from alppy.services.class_service import get_class, list_students, owned_class_ids
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
-def get_sheet(db: Session, school_id: uuid.UUID, sheet_id: uuid.UUID) -> Sheet:
+def get_sheet(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
+    """One sheet for a class the caller owns, or 404.
+
+    A sheet carries its class's roster on paper, so it inherits that class's
+    ownership rather than only the school boundary (decisions-log D23).
+    """
     sheet = db.execute(
-        select(Sheet).where(Sheet.id == sheet_id).where(Sheet.school_id == school_id)
+        select(Sheet)
+        .where(Sheet.id == sheet_id)
+        .where(Sheet.school_id == scope.school_id)
+        .where(Sheet.class_id.in_(owned_class_ids(scope)))
     ).scalar_one_or_none()
     if sheet is None:
         raise errors.not_found("sheet", id=str(sheet_id))
@@ -33,9 +43,13 @@ def get_sheet(db: Session, school_id: uuid.UUID, sheet_id: uuid.UUID) -> Sheet:
 
 
 def list_sheets(
-    db: Session, school_id: uuid.UUID, *, class_id: uuid.UUID | None = None
+    db: Session, scope: Scope, *, class_id: uuid.UUID | None = None
 ) -> list[Sheet]:
-    stmt = select(Sheet).where(Sheet.school_id == school_id)
+    stmt = (
+        select(Sheet)
+        .where(Sheet.school_id == scope.school_id)
+        .where(Sheet.class_id.in_(owned_class_ids(scope)))
+    )
     if class_id is not None:
         stmt = stmt.where(Sheet.class_id == class_id)
     return list(db.execute(stmt.order_by(Sheet.created_at.desc())).scalars())
@@ -127,10 +141,9 @@ def _bind_instances(
     db.flush()
 
 
-def create_sheet(
-    db: Session, school_id: uuid.UUID, teacher_id: uuid.UUID, payload: SheetCreate
-) -> Sheet:
-    school_class = get_class(db, school_id, payload.class_id)
+def create_sheet(db: Session, scope: Scope, teacher_id: uuid.UUID, payload: SheetCreate) -> Sheet:
+    school_id = scope.school_id
+    school_class = get_class(db, scope, payload.class_id)
     _require_subject(db, school_id, payload.subject_id)
 
     sheet = Sheet(
@@ -150,16 +163,17 @@ def create_sheet(
 
     _replace_items(db, school_id, sheet, payload.items)
     plan = _item_plan(payload.items)
-    students = list_students(db, school_id, school_class.id)
+    students = list_students(db, scope, school_class.id)
     _bind_instances(db, school_id, sheet, students, {s.id: plan for s in students})
     db.refresh(sheet)
     return sheet
 
 
 def update_sheet(
-    db: Session, school_id: uuid.UUID, sheet_id: uuid.UUID, payload: SheetUpdate
+    db: Session, scope: Scope, sheet_id: uuid.UUID, payload: SheetUpdate
 ) -> Sheet:
-    sheet = get_sheet(db, school_id, sheet_id)
+    school_id = scope.school_id
+    sheet = get_sheet(db, scope, sheet_id)
     if payload.title is not None:
         sheet.title = payload.title
     if payload.items is not None:
@@ -177,7 +191,7 @@ def update_sheet(
 
 
 def create_adaptive_sheet(
-    db: Session, school_id: uuid.UUID, teacher_id: uuid.UUID, payload: AdaptiveBatchRequest
+    db: Session, scope: Scope, teacher_id: uuid.UUID, payload: AdaptiveBatchRequest
 ) -> Sheet:
     """One sheet, N different printed pages — the F4 deliverable.
 
@@ -185,12 +199,13 @@ def create_adaptive_sheet(
     corpus reference is complete; each instance's ``item_plan`` is that
     student's own ordered subset, which is what the renderer prints.
     """
-    school_class = get_class(db, school_id, payload.class_id)
+    school_id = scope.school_id
+    school_class = get_class(db, scope, payload.class_id)
     _require_subject(db, school_id, payload.subject_id)
     if not payload.plans:
         raise errors.unprocessable("an adaptive batch needs at least one student plan")
 
-    students = {s.id: s for s in list_students(db, school_id, school_class.id)}
+    students = {s.id: s for s in list_students(db, scope, school_class.id)}
     unknown = [str(p.student_id) for p in payload.plans if p.student_id not in students]
     if unknown:
         raise errors.not_found("student", ids=unknown)
@@ -200,7 +215,20 @@ def create_adaptive_sheet(
         for proposal in [*plan.retrieved, *plan.generated]:
             if proposal.exercise.id not in union:
                 union.append(proposal.exercise.id)
-    _load_exercises(db, school_id, union)
+    exercises = _load_exercises(db, school_id, union)
+
+    # The approval gate, at the first door rather than the last. The client
+    # sends exercise ids, so "the UI would not offer an unapproved item" is not
+    # a guarantee — it is a hope about one caller. Refusing here means the
+    # teacher hears about it while they are still looking at the plan, not when
+    # a render job fails half an hour later.
+    try:
+        ensure_printable(exercises.values())
+    except UnapprovedExerciseError as exc:
+        raise errors.unprocessable(
+            "this batch contains AI-generated exercises that have not been approved",
+            exercise_ids=[str(i) for i in exc.exercise_ids],
+        ) from exc
 
     sheet = Sheet(
         id=uuid.uuid4(),

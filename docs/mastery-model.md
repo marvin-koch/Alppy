@@ -132,7 +132,7 @@ pins it down:
 | Days since the lesson | score | band |
 |---|---|---|
 | 0 – 7 | 1.00 | Solid |
-| 14 | 0.90 | Solid / To review |
+| 14 | 0.898 | To review |
 | 21 | 0.81 | To review |
 | 28 | 0.72 | Fragile |
 | 35 | 0.65 | Fragile |
@@ -151,9 +151,23 @@ factor: a perfect record from two months ago is not evidence of present mastery.
 `days_until_review` answers "when will this drop below *to review*", by solving
 for the first whole day `d` where `accuracy × recency(last_attempt, now + d) <
 0.75`. It is what the `MasteryMeter` caption shows: *62 % · révision dans 2
-jours*. It returns `0` when already due, and `None` when the recency floor holds
-the score above the threshold indefinitely, or when the competency has never
-been assessed.
+jours*.
+
+It returns `0` when already due. **That includes an accuracy of zero** — a
+student who has got everything wrong is maximally due, not exempt, and an
+earlier version returned `None` there, which captioned the worst cells in the
+matrix with a neutral answer count instead of *à revoir maintenant*.
+
+It returns `None` in exactly one case: the competency has never been assessed,
+so there is no last attempt to decay from and nothing to predict.
+
+There is no third case. A previous version of this section also promised `None`
+"when the recency floor holds the score above the threshold indefinitely", which
+the shipped constants make impossible: `accuracy ≤ 1` and `1 × FLOOR = 0.55`,
+comfortably below the 0.75 threshold, so every assessed competency eventually
+comes due. `test_the_recency_floor_never_holds_a_score_above_the_threshold`
+pins that invariant, so the claim cannot silently become true again if a
+constant moves.
 
 ---
 

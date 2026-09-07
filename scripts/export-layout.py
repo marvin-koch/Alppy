@@ -11,6 +11,12 @@ CI step (see ``.github/workflows/ci.yml``) can catch the day someone changes
 a number on one side and forgets the other, by re-running this script and
 failing if the generated file changes.
 
+The detector's decision thresholds come along for the ride, from
+``alppy.scan.detector``. The review screen has to draw the same line the
+pipeline draws — "below this the machine does not trust itself" — and it used
+to do that with a `0.65` typed into a React component, three files and one
+language away from the constant it was mirroring.
+
 Usage:
     PYTHONPATH=apps/api python scripts/export-layout.py
 """
@@ -38,8 +44,26 @@ def _import_layout():
     return layout
 
 
-def render_ts(data: dict[str, object], *, source: str, layout_version: str) -> str:
+def _import_detector():
+    try:
+        from alppy.scan import detector
+    except ImportError:  # pragma: no cover - same path fix as _import_layout
+        api_src = str(REPO_ROOT / "apps" / "api")
+        if api_src not in sys.path:
+            sys.path.insert(0, api_src)
+        from alppy.scan import detector
+    return detector
+
+
+def render_ts(
+    data: dict[str, object],
+    thresholds: dict[str, float],
+    *,
+    source: str,
+    layout_version: str,
+) -> str:
     body = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=False)
+    detection = json.dumps(thresholds, indent=2, ensure_ascii=False, sort_keys=False)
     return (
         "// AUTO-GENERATED — DO NOT EDIT.\n"
         f"// Source of truth: {source} (as_dict()).\n"
@@ -53,16 +77,28 @@ def render_ts(data: dict[str, object], *, source: str, layout_version: str) -> s
         f"export const SHEET_LAYOUT = {body} as const;\n"
         "\n"
         "export type SheetLayout = typeof SHEET_LAYOUT;\n"
+        "\n"
+        "/** The detector's own decision thresholds, so the review UI can draw\n"
+        " *  the same line the pipeline draws rather than a copy of it. */\n"
+        f"export const SCAN_THRESHOLDS = {detection} as const;\n"
     )
 
 
 def main() -> int:
     layout = _import_layout()
+    detector = _import_detector()
     data = layout.as_dict()
+    thresholds = {
+        "lowConfidence": detector.LOW_CONFIDENCE,
+        "fillMarked": detector.FILL_MARKED,
+        "fillBlank": detector.FILL_BLANK,
+        "minQuality": detector.MIN_QUALITY,
+    }
 
     ts = render_ts(
         data,
-        source="apps/api/alppy/sheets/layout.py",
+        thresholds,
+        source="apps/api/alppy/sheets/layout.py + alppy/scan/detector.py",
         layout_version=layout.LAYOUT_VERSION,
     )
 

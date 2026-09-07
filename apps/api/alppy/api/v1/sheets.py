@@ -16,9 +16,9 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    ScopeDep,
     StorageDep,
     TeacherDep,
-    TenantDep,
     load_optional,
     start_job,
 )
@@ -44,17 +44,17 @@ router = APIRouter(tags=["sheets"])
     "/sheets/propose", response_model=SheetProposeResponse, dependencies=[AiRateLimit]
 )
 def propose(
-    payload: SheetProposeRequest, teacher: TeacherDep, school_id: TenantDep, db: DbDep
+    payload: SheetProposeRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep
 ) -> SheetProposeResponse:
     """Ranked exercises for a lesson, each with the provenance to audit it."""
-    get_class(db, school_id, payload.class_id)
+    get_class(db, scope, payload.class_id)
     propose_exercises = load_optional(
         "alppy.services.retrieval", "propose_exercises", feature="exercise retrieval"
     )
     language = payload.language or str(teacher.locale) or get_settings().default_locale
     proposals = propose_exercises(
         db,
-        school_id=school_id,
+        school_id=scope.school_id,
         class_id=payload.class_id,
         subject_id=payload.subject_id,
         chapter_ids=list(payload.chapter_ids),
@@ -68,14 +68,14 @@ def propose(
 
 @router.get("/sheets", response_model=list[SheetOut])
 def list_sheets(
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
     class_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[SheetOut]:
     return [
         sheet_out(s, storage=storage)
-        for s in svc.list_sheets(db, school_id, class_id=class_id)
+        for s in svc.list_sheets(db, scope, class_id=class_id)
     ]
 
 
@@ -83,11 +83,11 @@ def list_sheets(
 def create_sheet(
     payload: SheetCreate,
     teacher: TeacherDep,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
 ) -> SheetOut:
-    sheet = svc.create_sheet(db, school_id, teacher.id, payload)
+    sheet = svc.create_sheet(db, scope, teacher.id, payload)
     db.commit()
     db.refresh(sheet)
     return sheet_out(sheet, storage=storage)
@@ -95,20 +95,20 @@ def create_sheet(
 
 @router.get("/sheets/{sheet_id}", response_model=SheetOut)
 def get_sheet(
-    sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep, storage: StorageDep
+    sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
 ) -> SheetOut:
-    return sheet_out(svc.get_sheet(db, school_id, sheet_id), storage=storage)
+    return sheet_out(svc.get_sheet(db, scope, sheet_id), storage=storage)
 
 
 @router.patch("/sheets/{sheet_id}", response_model=SheetOut)
 def update_sheet(
     sheet_id: uuid.UUID,
     payload: SheetUpdate,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
 ) -> SheetOut:
-    sheet = svc.update_sheet(db, school_id, sheet_id, payload)
+    sheet = svc.update_sheet(db, scope, sheet_id, payload)
     db.commit()
     db.refresh(sheet)
     return sheet_out(sheet, storage=storage)
@@ -117,9 +117,9 @@ def update_sheet(
 @router.post(
     "/sheets/{sheet_id}/render", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED
 )
-def render_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut:
+def render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     """Queue the blank sheet and the answer key. Returns the job to poll."""
-    sheet = svc.get_sheet(db, school_id, sheet_id)
+    sheet = svc.get_sheet(db, scope, sheet_id)
     if not sheet.items:
         raise errors.unprocessable("a sheet with no items cannot be rendered")
     load_optional("alppy.sheets.render", "render_sheet_pdfs", feature="PDF rendering")
@@ -131,7 +131,7 @@ def render_sheet(sheet_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> JobOut
 
     job = Job(
         id=uuid.uuid4(),
-        school_id=school_id,
+        school_id=scope.school_id,
         kind=JobKind.RENDER_SHEET,
         status=JobStatus.QUEUED,
         progress=0.0,
@@ -165,7 +165,7 @@ def _assert_printable(db: DbDep, sheet: Any) -> None:
 @router.get("/sheets/{sheet_id}/preview", response_class=Response)
 def preview_sheet(
     sheet_id: uuid.UUID,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     kind: SheetKind = SheetKind.BLANK,
 ) -> Response:
@@ -176,7 +176,7 @@ def preview_sheet(
     ``render_sheet_html(db, sheet_id=...)``, a signature that does not exist,
     and answered 500 on every request.
     """
-    sheet = svc.get_sheet(db, school_id, sheet_id)
+    sheet = svc.get_sheet(db, scope, sheet_id)
     build_sheet_data = load_optional(
         "alppy.sheets.render", "build_sheet_data", feature="sheet preview"
     )

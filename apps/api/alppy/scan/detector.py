@@ -53,6 +53,21 @@ student meant. A small gap means a stray pencil line or an erased answer."""
 LOW_CONFIDENCE: Final = 0.65
 """Below this the item is surfaced to the teacher first, before anything else."""
 
+MIN_QUALITY: Final = 0.55
+"""Below this the located frame is not a page, and nothing read from it means
+anything.
+
+``register`` will happily fit a homography onto any four dark marks. Erase the
+four corner fiducials and it finds four cells of the UID grid instead, warps the
+page onto them, and reads bubbles from whatever lands at the resulting
+coordinates — nine wrong answers at confidence 1.0 in the case that found this.
+The bubble confidences cannot see it: they only measure the ink at the
+coordinates they were handed, never whether those were the right coordinates.
+``quality`` can, and it separates cleanly — a real page scores >0.99 flat, 0.92
+through a phone photo and 0.62 at the steepest perspective that still registers,
+while a page fitted onto the wrong marks scores 0.11-0.29.
+"""
+
 
 class RegistrationError(RuntimeError):
     """Raised when the four fiducials cannot be located on a page."""
@@ -94,6 +109,14 @@ class PageResult:
     skew_deg: float
     quality: float
     error: str | None = None
+    canonical: Image | None = None
+    """The deskewed page, in canonical coordinates.
+
+    The review overlay draws boxes at the coordinates the detector sampled. Laid
+    over the *original* upload those boxes are wrong twice over -- the page is
+    still rotated, and the frame is inset from the paper -- so the image the
+    teacher checks against must be this one, not what came off the camera.
+    """
 
 
 # --------------------------------------------------------------------------
@@ -130,10 +153,14 @@ def find_fiducials(image: Image) -> npt.NDArray[np.float32]:
     binary = _binarise(gray)
     h, w = binary.shape[:2]
 
-    # The fiducial is 8mm on a 210mm page: ~3.8% of page width. Allow a wide
-    # band because we do not yet know the scale or how much margin was cropped.
+    # The fiducial is 8mm on a 210mm page: ~3.8% of page width. The band is wide
+    # because we do not yet know the scale or how much margin was cropped — and
+    # it is derived from the whole image, so a photo with desk visible around
+    # the sheet makes every threshold larger than the page warrants. Keep the
+    # floor generous for that reason; squareness and solidity below are what
+    # actually identify a fiducial, and they do not care about the framing.
     page_min = min(h, w)
-    area_lo = (page_min * 0.012) ** 2
+    area_lo = (page_min * 0.006) ** 2
     area_hi = (page_min * 0.12) ** 2
 
     contours, _ = cv2.findContours(binary, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
@@ -147,15 +174,30 @@ def find_fiducials(image: Image) -> npt.NDArray[np.float32]:
         approx = cv2.approxPolyDP(c, 0.04 * peri, True)
         if len(approx) != 4 or not cv2.isContourConvex(approx):
             continue
-        _x, _y, bw, bh = cv2.boundingRect(approx)
-        if bh == 0:
+
+        # Squareness and solidity are measured on the contour's OWN rectangle,
+        # not on an axis-aligned one. A square photographed at an angle is still
+        # a square, but its axis-aligned box grows as (cos t + sin t)^2, so an
+        # axis-aligned extent falls away as the page rotates and crosses 0.72 at
+        # about 10 degrees — the detector was rejecting real fiducials for the
+        # crime of being tilted. minAreaRect is rotation-invariant, which is
+        # what "is this shape a solid square" was always supposed to mean.
+        (_cx, _cy), (rw, rh), _angle = cv2.minAreaRect(approx)
+        if rw <= 0 or rh <= 0:
             continue
-        aspect = bw / bh
-        if not 0.7 <= aspect <= 1.4:
+        # A square photographed from an angle is a genuine rectangle: at the
+        # steepest keystone this pipeline registers (perspective s=0.22, about
+        # a 14 degree tilt) the far marks compress by roughly 1.4x. The old
+        # 0.7-1.4 band was measured on an axis-aligned box, where rotation and
+        # keystone partly cancelled; on the true rectangle it has to admit the
+        # distortion the rest of the pipeline is built to survive. Solidity
+        # below is the discriminating test, not this one.
+        aspect = rw / rh
+        if not 0.55 <= aspect <= 1.8:
             continue
-        # A fiducial is SOLID: its area nearly fills its bounding box. This is
+        # A fiducial is SOLID: its area nearly fills its own rectangle. This is
         # what separates it from a bubble outline or a letter like "O".
-        extent = area / float(bw * bh)
+        extent = area / float(rw * rh)
         if extent < 0.72:
             continue
         m = cv2.moments(approx)
@@ -363,8 +405,14 @@ def detect_item(canonical: Image, item_index: int, option_count: int) -> ItemDet
         outcome = DetectionOutcome.BLANK
         detected: int | None = None
         confidence = float(max(0.0, min(1.0, 1.0 - best.fill / FILL_BLANK)))
-    elif second >= FILL_MARKED and margin < MARGIN_CONFIDENT:
-        # Two bubbles both look filled: never guess between them.
+    elif second >= FILL_MARKED:
+        # Two bubbles are both filled. Never guess between them, and note that
+        # the margin plays no part in this test: it used to, and a runner-up at
+        # 0.66 -- nearly twice FILL_MARKED, unmistakably a mark -- cleared the
+        # margin and was silently dropped, reporting a single answer at
+        # confidence 1.0. A student who fills B and half-fills C is asking the
+        # teacher a question (D5); the size of the second mark does not make it
+        # less of a question.
         outcome = DetectionOutcome.MULTIPLE
         detected = None
         confidence = float(max(0.0, 1.0 - margin / MARGIN_CONFIDENT) * 0.5)
@@ -424,8 +472,35 @@ def _flag_suspicious_blanks(detections: list[ItemDetection]) -> None:
         d.confidence = min(d.confidence, 0.35)
 
 
-def process_page(image: Image, option_counts: list[int]) -> PageResult:
-    """The whole per-page pipeline. Never raises: a failure is a result."""
+def process_page(
+    image: Image,
+    option_counts: list[int],
+    *,
+    layout_version: str = L.LAYOUT_VERSION,
+) -> PageResult:
+    """The whole per-page pipeline. Never raises: a failure is a result.
+
+    ``layout_version`` is the version the page was *printed* with, carried on
+    the sheet. Every coordinate below comes from ``alppy.sheets.layout`` as it
+    exists today, so reading a page printed under a different version would not
+    fail -- it would silently sample the wrong places and return plausible
+    answers. Until versioned geometry exists there is exactly one honest
+    response to a mismatch, and it is to refuse.
+    """
+    if layout_version != L.LAYOUT_VERSION:
+        return PageResult(
+            registered=False,
+            uid=None,
+            uid_confidence=0.0,
+            detections=[],
+            skew_deg=0.0,
+            quality=0.0,
+            error=(
+                f"sheet was printed with layout {layout_version}, "
+                f"this detector reads {L.LAYOUT_VERSION}"
+            ),
+        )
+
     try:
         reg = register(image)
     except RegistrationError as exc:
@@ -437,6 +512,22 @@ def process_page(image: Image, option_counts: list[int]) -> PageResult:
             skew_deg=0.0,
             quality=0.0,
             error=str(exc),
+        )
+
+    if reg.quality < MIN_QUALITY:
+        # Four marks were found and they are not a page. See MIN_QUALITY.
+        return PageResult(
+            registered=False,
+            uid=None,
+            uid_confidence=0.0,
+            detections=[],
+            skew_deg=reg.skew_deg,
+            quality=reg.quality,
+            canonical=reg.canonical,
+            error=(
+                f"registration quality {reg.quality:.2f} is below {MIN_QUALITY:.2f}: "
+                "the four marks found do not form a page"
+            ),
         )
 
     uid, uid_conf, _ = read_uid_grid(reg.canonical)
@@ -451,4 +542,5 @@ def process_page(image: Image, option_counts: list[int]) -> PageResult:
         detections=detections,
         skew_deg=reg.skew_deg,
         quality=reg.quality,
+        canonical=reg.canonical,
     )

@@ -74,6 +74,10 @@ class Settings(BaseSettings):
         "image/jpeg",
         "image/png",
         "image/webp",
+        # An iPhone photographs in HEIC unless it is told otherwise, and
+        # photographing the copies is the workflow, not a fallback.
+        "image/heic",
+        "image/heif",
     )
 
     default_locale: Locale = "fr"

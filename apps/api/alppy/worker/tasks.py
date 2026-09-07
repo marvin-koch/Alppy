@@ -180,9 +180,10 @@ async def generate_adaptive(ctx: dict[str, Any], job_id: str) -> None:
 
         sheet_id = _uuid_from(job, "sheet_id")
         # One PDF for the whole class, one .print-page per physical page, every
-        # page carrying its own header and UID.
-        key = render_adaptive_batch(db, sheet_id=sheet_id)
+        # page carrying its own header and UID — and the answer key beside it,
+        # in the same copy order.
+        blank_key, answer_key = render_adaptive_batch(db, sheet_id=sheet_id)
         on_progress(1.0, "batch rendered")
-        return {"batch_pdf_key": key}
+        return {"batch_pdf_key": blank_key, "answer_key_pdf_key": answer_key}
 
     await asyncio.to_thread(_run_job, job_id, _call)

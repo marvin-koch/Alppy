@@ -33,6 +33,7 @@ from alppy.models import (
     Subject,
     Teacher,
 )
+from alppy.models.enums import ExerciseOrigin, ExerciseType
 from alppy.schemas import (
     ChapterOut,
     ClassOut,
@@ -51,6 +52,7 @@ from alppy.schemas import (
     TeacherOut,
     TeacherPreferences,
 )
+from alppy.sheets.layout import OptionLetters, tf_letters
 from alppy.storage import Storage
 
 __all__ = [
@@ -218,11 +220,37 @@ def sheet_out(sheet: Sheet, *, storage: Storage | None = None) -> SheetOut:
     )
 
 
-def detection_out(detection: Detection) -> DetectionOut:
+def detection_out(detection: Detection, *, language: str = "fr") -> DetectionOut:
+    """One reading, with the question it is a reading *of*.
+
+    The statement and the option letters travel with the detection because the
+    review screen is where a teacher adjudicates a mark the machine was unsure
+    about, and "#7, low confidence, A/B/C/D" is not something anyone can
+    adjudicate. The letters come from the layout so a true/false item shows
+    V/F (or R/F, T/F) — the glyphs the student actually saw on the paper.
+    """
+    exercise = detection.exercise
+    options: list[str] | None = None
+    letters: str | None = None
+    answer_index: int | None = None
+    if exercise is not None:
+        if exercise.type is ExerciseType.TRUE_FALSE:
+            letters = tf_letters(exercise.language or language)
+            # Bubble 0 is "true" in every sheet language; the glyph changes,
+            # the position never does.
+            if exercise.answer_bool is not None:
+                answer_index = 0 if exercise.answer_bool else 1
+        elif exercise.type is ExerciseType.MCQ:
+            options = list(exercise.options or [])
+            letters = OptionLetters.MCQ.value[: exercise.option_count]
+            answer_index = exercise.answer_index
+
     return DetectionOut(
         id=detection.id,
         item_index=detection.item_index,
+        number=detection.printed_number,
         sheet_item_id=detection.sheet_item_id,
+        exercise_id=detection.exercise_id,
         detected_index=detection.detected_index,
         detected_bool=detection.detected_bool,
         confidence=detection.confidence,
@@ -230,10 +258,22 @@ def detection_out(detection: Detection) -> DetectionOut:
         fill_ratios=list(detection.fill_ratios) if detection.fill_ratios else None,
         bubble_boxes=[dict(b) for b in detection.bubble_boxes] if detection.bubble_boxes else None,
         corrected_at=detection.corrected_at,
+        machine_index=detection.machine_index,
+        machine_outcome=detection.machine_outcome,
+        machine_confidence=detection.machine_confidence,
+        statement=exercise.statement if exercise is not None else None,
+        options=options,
+        option_letters=letters,
+        exercise_type=exercise.type if exercise is not None else None,
+        ai_generated=(
+            exercise is not None and exercise.origin is ExerciseOrigin.AI_GENERATED
+        ),
+        answer_index=answer_index,
     )
 
 
 def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPageOut:
+    meta = page.registration_meta or {}
     return ScanPageOut(
         id=page.id,
         page_index=page.page_index,
@@ -243,14 +283,21 @@ def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPage
         uid_confidence=page.uid_confidence,
         student_id=page.student_id,
         sheet_instance_id=page.sheet_instance_id,
+        wrong_class=page.wrong_class,
+        discarded=page.discarded,
+        page_in_copy=page.page_in_copy,
+        registration_error=meta.get("error"),
         detections=[
             detection_out(d) for d in sorted(page.detections, key=lambda d: d.item_index)
         ],
     )
 
 
-def scan_out(scan: Scan, *, storage: Storage | None = None) -> ScanOut:
+def scan_out(
+    scan: Scan, *, storage: Storage | None = None, job_id: uuid.UUID | None = None
+) -> ScanOut:
     return ScanOut(
+        job_id=job_id,
         id=scan.id,
         sheet_id=scan.sheet_id,
         original_filename=scan.original_filename,

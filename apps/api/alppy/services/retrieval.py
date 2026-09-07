@@ -225,6 +225,11 @@ def gather_candidates(
         .options(selectinload(Exercise.competencies))
         .where(Exercise.school_id == school_id, Exercise.subject_id == subject_id)
     )
+    # A discarded item is one the teacher has already said no to. It is never
+    # proposed again, approved or not, and `include_unapproved` does not lift
+    # this: that flag exists to let the adaptive path *see* what it just
+    # generated, not to re-offer a rejection.
+    stmt = stmt.where(Exercise.discarded_at.is_(None))
     if not include_unapproved:
         # origin=ai_generated + approved_at IS NULL is the one combination the
         # print path refuses, so it never becomes a proposal either.

@@ -28,6 +28,11 @@ dependencies = [
   "numpy>=2.1.0",
   "opencv-python-headless>=4.10.0",
   "pillow>=11.0.0",
+  # iOS photographs in HEIC by default, and photographing the pile of copies is
+  # an explicit workflow (docs/plan.md §9). Neither OpenCV nor Pillow reads it
+  # unaided, so this is the decode path that lets the allowlist accept it —
+  # accepting the content type without one only moves the failure later.
+  "pillow-heif>=0.21.0",
   "pymupdf>=1.24.0",
   "structlog>=24.4.0",
   "jinja2>=3.1.4",

@@ -13,10 +13,11 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
+from alppy.api.deps import Scope
 from alppy.core.uid import MAX_STUDENT_NUMBER, InvalidUidError, format_uid
 from alppy.models import Class, Scan, SchoolYear, Sheet, Student, Subject, Teacher
 from alppy.models.enums import ScanStatus
@@ -88,33 +89,59 @@ def current_school_year(
 # --------------------------------------------------------------------------
 # Classes
 # --------------------------------------------------------------------------
-def list_classes(db: Session, school_id: uuid.UUID) -> list[Class]:
+def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
+    """The ids of the classes this teacher owns, as a subquery.
+
+    Everything that hangs off a class — roster, mastery, sheets, scans — filters
+    through this rather than through ``school_id`` alone. One definition, so a
+    new read path cannot quietly pick a laxer rule (decisions-log D23).
+    """
+    return (
+        select(Class.id)
+        .where(Class.school_id == scope.school_id)
+        .where(Class.teacher_id == scope.teacher_id)
+    )
+
+
+def list_classes(db: Session, scope: Scope) -> list[Class]:
     return list(
         db.execute(
-            select(Class).where(Class.school_id == school_id).order_by(Class.code.asc())
+            select(Class)
+            .where(Class.school_id == scope.school_id)
+            .where(Class.teacher_id == scope.teacher_id)
+            .order_by(Class.code.asc())
         ).scalars()
     )
 
 
-def get_class(db: Session, school_id: uuid.UUID, class_id: uuid.UUID) -> Class:
+def get_class(db: Session, scope: Scope, class_id: uuid.UUID) -> Class:
+    """One class the caller owns, or 404.
+
+    A colleague's class reads as missing rather than forbidden, for the same
+    reason another school's does: the response must not confirm the id exists.
+    """
     row = db.execute(
-        select(Class).where(Class.id == class_id).where(Class.school_id == school_id)
+        select(Class)
+        .where(Class.id == class_id)
+        .where(Class.school_id == scope.school_id)
+        .where(Class.teacher_id == scope.teacher_id)
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("class", id=str(class_id))
     return row
 
 
-def student_counts(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, int]:
+def student_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
     rows = db.execute(
         select(Student.class_id, func.count(Student.id))
-        .where(Student.school_id == school_id)
+        .where(Student.school_id == scope.school_id)
+        .where(Student.class_id.in_(owned_class_ids(scope)))
         .group_by(Student.class_id)
     ).all()
     return {class_id: int(count) for class_id, count in rows}
 
 
-def subject_ids_for_class(db: Session, school_id: uuid.UUID, class_id: uuid.UUID) -> list[uuid.UUID]:
+def subject_ids_for_class(db: Session, scope: Scope, class_id: uuid.UUID) -> list[uuid.UUID]:
     """Subjects this class has sheets for.
 
     There is no Class-Subject association table in the model, so "the subjects
@@ -122,30 +149,28 @@ def subject_ids_for_class(db: Session, school_id: uuid.UUID, class_id: uuid.UUID
     """
     rows = db.execute(
         select(Sheet.subject_id)
-        .where(Sheet.school_id == school_id)
+        .where(Sheet.school_id == scope.school_id)
         .where(Sheet.class_id == class_id)
         .distinct()
     ).scalars()
     return list(rows)
 
 
-def create_class(
-    db: Session, school_id: uuid.UUID, teacher: Teacher, payload: ClassCreate
-) -> Class:
+def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCreate) -> Class:
     if payload.school_year_id is not None:
         year = db.execute(
             select(SchoolYear)
             .where(SchoolYear.id == payload.school_year_id)
-            .where(SchoolYear.school_id == school_id)
+            .where(SchoolYear.school_id == scope.school_id)
         ).scalar_one_or_none()
         if year is None:
             raise errors.not_found("school year", id=str(payload.school_year_id))
     else:
-        year = current_school_year(db, school_id)
+        year = current_school_year(db, scope.school_id)
 
     clash = db.execute(
         select(Class)
-        .where(Class.school_id == school_id)
+        .where(Class.school_id == scope.school_id)
         .where(Class.school_year_id == year.id)
         .where(Class.code == payload.code)
     ).scalar_one_or_none()
@@ -156,7 +181,7 @@ def create_class(
 
     row = Class(
         id=uuid.uuid4(),
-        school_id=school_id,
+        school_id=scope.school_id,
         school_year_id=year.id,
         teacher_id=teacher.id,
         code=payload.code,
@@ -170,11 +195,12 @@ def create_class(
 # --------------------------------------------------------------------------
 # Roster
 # --------------------------------------------------------------------------
-def list_students(db: Session, school_id: uuid.UUID, class_id: uuid.UUID) -> list[Student]:
+def list_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Student]:
     return list(
         db.execute(
             select(Student)
-            .where(Student.school_id == school_id)
+            .where(Student.school_id == scope.school_id)
+            .where(Student.class_id.in_(owned_class_ids(scope)))
             .where(Student.class_id == class_id)
             .order_by(Student.number.asc())
         ).scalars()
@@ -182,7 +208,7 @@ def list_students(db: Session, school_id: uuid.UUID, class_id: uuid.UUID) -> lis
 
 
 def add_students(
-    db: Session, school_id: uuid.UUID, school_class: Class, payload: RosterCreate
+    db: Session, scope: Scope, school_class: Class, payload: RosterCreate
 ) -> list[Student]:
     """Add a pasted roster. Numbers are sequential from the first free slot.
 
@@ -190,7 +216,7 @@ def add_students(
     mistake), but a collision is a 409 rather than a silent renumber: student
     numbers are printed on paper that may already be in a pile on the desk.
     """
-    taken = {s.number for s in list_students(db, school_id, school_class.id)}
+    taken = {s.number for s in list_students(db, scope, school_class.id)}
     next_free = 1
     created: list[Student] = []
 
@@ -219,7 +245,7 @@ def add_students(
 
         student = Student(
             id=uuid.uuid4(),
-            school_id=school_id,
+            school_id=scope.school_id,
             class_id=school_class.id,
             school_year_id=school_class.school_year_id,
             uid=uid,
@@ -245,21 +271,23 @@ def list_subjects(db: Session, school_id: uuid.UUID) -> list[Subject]:
     )
 
 
-def _pending_scan_counts(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, int]:
+def _pending_scan_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
     rows = db.execute(
         select(Sheet.class_id, func.count(Scan.id))
         .join(Sheet, Sheet.id == Scan.sheet_id)
-        .where(Scan.school_id == school_id)
+        .where(Scan.school_id == scope.school_id)
+        .where(Sheet.class_id.in_(owned_class_ids(scope)))
         .where(Scan.status.in_(PENDING_SCAN_STATUSES))
         .group_by(Sheet.class_id)
     ).all()
     return {class_id: int(count) for class_id, count in rows}
 
 
-def _last_sheets(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, Sheet]:
+def _last_sheets(db: Session, scope: Scope) -> dict[uuid.UUID, Sheet]:
     rows = db.execute(
         select(Sheet)
-        .where(Sheet.school_id == school_id)
+        .where(Sheet.school_id == scope.school_id)
+        .where(Sheet.class_id.in_(owned_class_ids(scope)))
         .order_by(Sheet.created_at.asc(), Sheet.title.asc())
     ).scalars()
     return {sheet.class_id: sheet for sheet in rows}  # last write per class wins
@@ -267,19 +295,19 @@ def _last_sheets(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, Sheet]:
 
 def class_summary(
     db: Session,
-    school_id: uuid.UUID,
+    scope: Scope,
     school_class: Class,
     *,
     counts: dict[uuid.UUID, int] | None = None,
     pending: dict[uuid.UUID, int] | None = None,
     last_sheets: dict[uuid.UUID, Sheet] | None = None,
 ) -> ClassSummary:
-    counts = counts if counts is not None else student_counts(db, school_id)
-    pending = pending if pending is not None else _pending_scan_counts(db, school_id)
-    last_sheets = last_sheets if last_sheets is not None else _last_sheets(db, school_id)
+    counts = counts if counts is not None else student_counts(db, scope)
+    pending = pending if pending is not None else _pending_scan_counts(db, scope)
+    last_sheets = last_sheets if last_sheets is not None else _last_sheets(db, scope)
 
-    student_ids = [s.id for s in list_students(db, school_id, school_class.id)]
-    bands, needing = band_summary(db, school_id, student_ids)
+    student_ids = [s.id for s in list_students(db, scope, school_class.id)]
+    bands, needing = band_summary(db, scope.school_id, student_ids)
     last = last_sheets.get(school_class.id)
 
     return ClassSummary(
@@ -295,33 +323,30 @@ def class_summary(
     )
 
 
-def home(db: Session, teacher: Teacher) -> HomeOut:
-    school_id = teacher.school_id
-    counts = student_counts(db, school_id)
-    pending = _pending_scan_counts(db, school_id)
-    last_sheets = _last_sheets(db, school_id)
+def home(db: Session, scope: Scope, teacher: Teacher) -> HomeOut:
+    counts = student_counts(db, scope)
+    pending = _pending_scan_counts(db, scope)
+    last_sheets = _last_sheets(db, scope)
     return HomeOut(
         teacher=teacher_out(teacher),
-        subjects=[subject_out(s) for s in list_subjects(db, school_id)],
+        subjects=[subject_out(s) for s in list_subjects(db, scope.school_id)],
         classes=[
             class_summary(
                 db,
-                school_id,
+                scope,
                 c,
                 counts=counts,
                 pending=pending,
                 last_sheets=last_sheets,
             )
-            for c in list_classes(db, school_id)
+            for c in list_classes(db, scope)
         ],
     )
 
 
-def class_out_with_counts(
-    db: Session, school_id: uuid.UUID, school_class: Class
-) -> ClassOut:
+def class_out_with_counts(db: Session, scope: Scope, school_class: Class) -> ClassOut:
     return class_out(
         school_class,
-        student_count=student_counts(db, school_id).get(school_class.id, 0),
-        subject_ids=subject_ids_for_class(db, school_id, school_class.id),
+        student_count=student_counts(db, scope).get(school_class.id, 0),
+        subject_ids=subject_ids_for_class(db, scope, school_class.id),
     )

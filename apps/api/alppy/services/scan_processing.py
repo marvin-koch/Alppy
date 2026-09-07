@@ -11,11 +11,25 @@ until a teacher signs it off.
 
 Runs in the arq worker: registration and detection are CPU-bound OpenCV work and
 must never block a request handler.
+
+Three things here are load-bearing and were each got wrong once:
+
+* **A page belongs to a copy, and a copy belongs to a student.** Which page of
+  whose copy is resolved from the *decoded UID*, never from the position in the
+  upload — one unreadable photo in the pile used to shift every copy behind it
+  and grade a whole class against the wrong questions.
+* **An item belongs to the paper it was printed on.** A differentiated copy
+  prints its own item list, so the exercise is resolved through that copy's
+  pagination and stored on the row, not re-derived from a position in the
+  sheet's class-wide list.
+* **The machine's reading is written once.** ``machine_*`` is what the detector
+  saw; a teacher override later goes into ``detected_*`` beside it.
 """
 
 from __future__ import annotations
 
 import uuid
+from collections import Counter
 from collections.abc import Callable
 from typing import Any
 
@@ -24,11 +38,19 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
-from alppy.models import Detection, Scan, ScanPage, Sheet, SheetInstance, Student
-from alppy.models.enums import ScanStatus
+from alppy.models import (
+    Detection,
+    Scan,
+    ScanPage,
+    Sheet,
+    SheetInstance,
+    SheetItem,
+    Student,
+)
+from alppy.models.enums import ExerciseType, ScanStatus
 from alppy.scan.detector import PageResult, process_page
 from alppy.sheets import layout as L
-from alppy.sheets.pagination import paginate
+from alppy.sheets.pagination import Page, paginate
 from alppy.sheets.render import build_sheet_data
 from alppy.storage import Storage, storage_key
 
@@ -41,33 +63,110 @@ ProgressCB = Callable[[float, "str | None"], None]
 MAX_PAGES = 200
 
 
-def _decode_pages(data: bytes, content_type: str) -> list[np.ndarray]:
-    """Decode an upload into greyscale page images.
+class ScanDecodeError(ValueError):
+    """The upload could not be turned into page images.
+
+    Raised rather than returned. The worker records a job failure from the
+    exception; returning a result dict made the job report *success* while the
+    scan sat in ``FAILED``, so a client polling the job saw a green tick and
+    then an empty review screen.
+    """
+
+
+def _decode_one(data: bytes, filename: str, *, budget: int) -> list[np.ndarray]:
+    """Decode a single uploaded file into greyscale page images.
 
     A PDF is rasterised at 200 dpi — enough to resolve a 5 mm bubble comfortably
     while keeping a 30-page class set to a sane amount of memory.
     """
     import cv2
 
-    if content_type == "application/pdf":
+    if filename.lower().endswith(".pdf"):
         import fitz  # PyMuPDF
 
         pages: list[np.ndarray] = []
-        with fitz.open(stream=data, filetype="pdf") as doc:
-            for page in doc[:MAX_PAGES]:
-                pix = page.get_pixmap(dpi=200, colorspace=fitz.csGRAY)
-                buf = np.frombuffer(pix.samples, dtype=np.uint8)
-                pages.append(buf.reshape(pix.height, pix.width).copy())
+        try:
+            with fitz.open(stream=data, filetype="pdf") as doc:
+                total = doc.page_count
+                for page in doc[:budget]:
+                    pix = page.get_pixmap(dpi=200, colorspace=fitz.csGRAY)
+                    buf = np.frombuffer(pix.samples, dtype=np.uint8)
+                    pages.append(buf.reshape(pix.height, pix.width).copy())
+        except ScanDecodeError:
+            raise
+        except Exception as exc:  # PyMuPDF raises a wide variety of its own
+            raise ScanDecodeError(
+                f"{filename} is not a readable PDF (it may be corrupt or password-protected)"
+            ) from exc
+        if not pages:
+            raise ScanDecodeError(f"{filename} contains no pages")
+        if total > budget:
+            log.warning("scan.pages_truncated", filename=filename, total=total, kept=budget)
         return pages
 
     buf = np.frombuffer(data, dtype=np.uint8)
     image = cv2.imdecode(buf, cv2.IMREAD_GRAYSCALE)
     if image is None:
-        raise ValueError("could not decode the uploaded image")
+        image = _decode_heif(data)
+    if image is None:
+        raise ScanDecodeError(f"{filename} is not a readable image")
     return [image]
 
 
-def _pages_by_uid(db: Session, sheet: Sheet | None) -> dict[str, list[Any]]:
+def _decode_heif(data: bytes) -> np.ndarray | None:
+    """HEIC/HEIF, which OpenCV does not read.
+
+    An iPhone photographs in HEIC unless it is told otherwise, so a teacher
+    photographing the pile gets a format the rest of the pipeline cannot open.
+    Tried only after OpenCV has declined, so nothing else pays for it.
+    """
+    import io
+
+    try:
+        import pillow_heif
+        from PIL import Image as PilImage
+
+        # pillow-heif ships no re-export marker for this, and mypy is strict.
+        pillow_heif.register_heif_opener()  # type: ignore[attr-defined]  # unmarked re-export
+        with PilImage.open(io.BytesIO(data)) as im:
+            return np.asarray(im.convert("L"), dtype=np.uint8)
+    except Exception as exc:
+        log.info("scan.heif_decode_failed", error=str(exc))
+        return None
+
+
+def _decode_pages(storage: Storage, scan: Scan) -> list[np.ndarray]:
+    """Every page of every file in this upload, in the order they were selected.
+
+    A phone upload is one file per copy: the teacher picks 28 photos and expects
+    one review session, so all of them concatenate into this scan's pages.
+    """
+    keys = list(scan.storage_keys or [scan.storage_key])
+    names = _filenames(scan, len(keys))
+
+    pages: list[np.ndarray] = []
+    for key, name in zip(keys, names, strict=True):
+        if len(pages) >= MAX_PAGES:
+            log.warning("scan.pages_truncated", scan_id=str(scan.id), kept=MAX_PAGES)
+            break
+        pages.extend(_decode_one(storage.get_bytes(key), name, budget=MAX_PAGES - len(pages)))
+    if not pages:
+        raise ScanDecodeError("the upload contained no pages")
+    return pages
+
+
+def _filenames(scan: Scan, count: int) -> list[str]:
+    """One name per stored file. ``original_filename`` holds them comma-joined
+    when several were uploaded together, and falls back to the key's own suffix
+    so a PDF is still recognised as one."""
+    parts = [p.strip() for p in (scan.original_filename or "").split(",") if p.strip()]
+    if len(parts) == count:
+        return parts
+    keys = list(scan.storage_keys or [scan.storage_key])
+    return [keys[i].rsplit("/", 1)[-1] for i in range(count)]
+
+
+def _copies_by_uid(db: Session, sheet: Sheet | None) -> dict[str, list[Page]]:
     """The pagination of every printed copy, keyed by student UID.
 
     Keyed by UID rather than computed once, because **a differentiated batch
@@ -76,16 +175,15 @@ def _pages_by_uid(db: Session, sheet: Sheet | None) -> dict[str, list[Any]]:
     3" has a different answer per copy. Using one copy's layout for the whole
     pile would look for bubbles that were never printed.
 
-    The detector needs nothing else about the content — it addresses bubbles by
-    page-local index, so this tells it exactly where to look without reading a
-    word of the page.
+    Each ``PlacedItem`` carries its own exercise id (``Item.key``), which is how
+    a detection is paired with the question the student actually answered.
     """
     if sheet is None:
         # No sheet was named on upload. A full grid is assumed and the
         # confidence model sorts out which positions were actually printed.
         return {}
     data = build_sheet_data(db, sheet)
-    return {copy.uid: list(paginate(copy.items)) for copy in data.copies}
+    return {copy.uid: list(paginate(list(copy.items))) for copy in data.copies}
 
 
 def _resolve_student(
@@ -98,6 +196,12 @@ def _resolve_student(
     ).scalar_one_or_none()
 
 
+def _sheet_items_by_exercise(sheet: Sheet | None) -> dict[uuid.UUID, SheetItem]:
+    if sheet is None:
+        return {}
+    return {si.exercise_id: si for si in sheet.items}
+
+
 def _persist_page(
     db: Session,
     *,
@@ -106,13 +210,14 @@ def _persist_page(
     image_key: str,
     result: PageResult,
     sheet: Sheet | None,
-    printed_pages: list[Any],
-    page_in_copy: int,
+    student: Student | None,
+    wrong_class: bool,
+    printed_page: Page | None,
+    page_in_copy: int | None,
+    sheet_items: dict[uuid.UUID, SheetItem],
 ) -> ScanPage:
-    student = _resolve_student(db, school_id=scan.school_id, uid=result.uid)
-
     instance: SheetInstance | None = None
-    if sheet is not None and student is not None:
+    if sheet is not None and student is not None and not wrong_class:
         instance = db.execute(
             select(SheetInstance)
             .where(SheetInstance.sheet_id == sheet.id)
@@ -135,44 +240,84 @@ def _persist_page(
         uid_confidence=result.uid_confidence,
         student_id=student.id if student else None,
         sheet_instance_id=instance.id if instance else None,
+        wrong_class=wrong_class,
+        page_in_copy=page_in_copy,
     )
     db.add(page)
     db.flush()
-
-    # Pair detections with the sheet items that were printed on this page, so
-    # the review UI can show the statement next to the mark it read.
-    sheet_items = list(sheet.items) if sheet is not None else []
-    placed = (
-        {p.item_index: p for p in printed_pages[page_in_copy].items}
-        if page_in_copy < len(printed_pages)
-        else {}
+    _persist_detections(
+        db, scan=scan, page=page, result=result,
+        printed_page=printed_page, sheet_items=sheet_items,
     )
+    return page
+
+
+def _persist_detections(
+    db: Session,
+    *,
+    scan: Scan,
+    page: ScanPage,
+    result: PageResult,
+    printed_page: Page | None,
+    sheet_items: dict[uuid.UUID, SheetItem],
+) -> None:
+    """One ``Detection`` per item read on this page.
+
+    Pair each with the exercise printed at that position ON THIS COPY.
+    ``printed_page`` is this student's own pagination, so a differentiated copy
+    resolves to its own questions rather than to whatever sits at the same index
+    of the class-wide list.
+    """
+    placed = {p.item_index: p for p in printed_page.items} if printed_page else {}
 
     for detection in result.detections:
+        exercise_id: uuid.UUID | None = None
+        sheet_item_id: uuid.UUID | None = None
         placed_item = placed.get(detection.item_index)
-        sheet_item_id = None
-        if placed_item is not None and placed_item.number - 1 < len(sheet_items):
-            sheet_item_id = sheet_items[placed_item.number - 1].id
+        if placed_item is not None:
+            try:
+                exercise_id = uuid.UUID(placed_item.item.key)
+            except (ValueError, AttributeError):  # pragma: no cover - defensive
+                exercise_id = None
+            if exercise_id is not None:
+                sheet_item = sheet_items.get(exercise_id)
+                sheet_item_id = sheet_item.id if sheet_item else None
+
         db.add(
             Detection(
                 id=uuid.uuid4(),
                 school_id=scan.school_id,
                 scan_page_id=page.id,
                 sheet_item_id=sheet_item_id,
+                exercise_id=exercise_id,
                 item_index=detection.item_index,
+                printed_number=placed_item.number if placed_item else None,
                 detected_index=detection.detected_index,
-                detected_bool=(
-                    None
-                    if detection.detected_index is None
-                    else detection.detected_index == 0
-                ),
+                detected_bool=_detected_bool(placed_item, detection.detected_index),
                 confidence=detection.confidence,
                 outcome=detection.outcome,
+                # Written once. A teacher override later changes the columns
+                # above and leaves these three alone.
+                machine_index=detection.detected_index,
+                machine_outcome=detection.outcome,
+                machine_confidence=detection.confidence,
                 fill_ratios=detection.fill_ratios or None,
                 bubble_boxes=detection.bubble_boxes or None,
             )
         )
-    return page
+
+
+def _detected_bool(placed_item: Any, detected_index: int | None) -> bool | None:
+    """Only a true/false item has a boolean reading.
+
+    An MCQ answered "C" used to carry ``detected_bool = False``, which is not
+    false, it is meaningless — bubble 0 is only "true" on a two-option item.
+    """
+    if detected_index is None or placed_item is None:
+        return None
+    if placed_item.item.type is not ExerciseType.TRUE_FALSE:
+        return None
+    return detected_index == 0
 
 
 def process_scan(
@@ -191,40 +336,76 @@ def process_scan(
     db.flush()
 
     try:
-        images = _decode_pages(storage.get_bytes(scan.storage_key), _content_type(scan))
+        images = _decode_pages(storage, scan)
     except Exception as exc:
         scan.status = ScanStatus.FAILED
-        scan.error = f"could not read the upload: {exc}"
+        scan.error = str(exc) if isinstance(exc, ScanDecodeError) else "could not read the upload"
         db.commit()
         log.warning("scan.decode_failed", scan_id=str(scan_id), error=str(exc))
-        return {"pages": 0, "registered": 0, "error": scan.error}
+        # Raise: the job must record a failure, not a success with an error in
+        # its result payload.
+        raise ScanDecodeError(scan.error) from exc
 
     sheet = (
         db.execute(select(Sheet).where(Sheet.id == scan.sheet_id)).scalar_one_or_none()
         if scan.sheet_id
         else None
     )
-    pages_by_uid = _pages_by_uid(db, sheet)
+    # The layout a page must be registered against is the one it was PRINTED
+    # with, which travels on the sheet — never whatever the code implements now.
+    layout_version = scan.layout_version or (sheet.layout_version if sheet else None)
+    layout_version = layout_version or L.LAYOUT_VERSION
+
+    copies = _copies_by_uid(db, sheet)
+    sheet_items = _sheet_items_by_exercise(sheet)
     default_counts = [L.MAX_OPTIONS] * L.ITEMS_PER_PAGE
+
+    # How many pages of each student's copy we have already seen. This, and not
+    # the index in the upload, is which page of their paper the next one is.
+    seen: Counter[str] = Counter()
 
     registered = 0
     identified = 0
+    foreign = 0
     for index, image in enumerate(images):
         # Pass 1: register and read the printed UID against a full grid. We
         # cannot know which bubbles were printed until we know whose copy this
         # is, and on a differentiated sheet that differs per student.
-        result = process_page(image, default_counts)
+        result = process_page(image, default_counts, layout_version=layout_version)
 
-        printed_pages = pages_by_uid.get(result.uid or "", [])
-        page_in_copy = _page_within_copy(index, images_seen=index, pages=printed_pages)
+        student = _resolve_student(db, school_id=scan.school_id, uid=result.uid)
+        wrong_class = bool(
+            student is not None and sheet is not None and student.class_id != sheet.class_id
+        )
 
-        if printed_pages and page_in_copy < len(printed_pages):
+        if wrong_class:
+            # It is someone else's paper. Reading its bubbles against this
+            # sheet's grid produces a screenful of phantom low-confidence rows
+            # for a page the teacher only needs to be told about.
+            result.detections = []
+
+        printed_pages = [] if wrong_class else copies.get(result.uid or "", [])
+        page_in_copy: int | None = None
+        printed_page: Page | None = None
+        if printed_pages and result.uid:
+            # A copy longer than one page arrives as several scans carrying the
+            # same UID. Count per UID: a page whose code did not decode belongs
+            # to no copy and must not consume anybody's slot.
+            page_in_copy = seen[result.uid] % len(printed_pages)
+            seen[result.uid] += 1
+            printed_page = printed_pages[page_in_copy]
             # Pass 2: now that the copy is known, look only where its own
             # bubbles actually are.
-            result = process_page(image, printed_pages[page_in_copy].option_counts)
+            result = process_page(
+                image, printed_page.option_counts, layout_version=layout_version
+            )
 
         key = storage_key("scan-pages", scan.school_id, scan.id, f"page-{index:03d}.png")
-        _store_page_image(storage, key, image)
+        # The registered page, not the raw upload: the review overlay draws
+        # boxes at the coordinates the detector sampled, and those only line up
+        # with the deskewed page. A page that failed to register keeps its
+        # original so the teacher can see what went wrong.
+        _store_page_image(storage, key, result.canonical if result.registered else image)
 
         _persist_page(
             db,
@@ -233,11 +414,15 @@ def process_scan(
             image_key=key,
             result=result,
             sheet=sheet,
-            printed_pages=printed_pages,
+            student=student,
+            wrong_class=wrong_class,
+            printed_page=printed_page,
             page_in_copy=page_in_copy,
+            sheet_items=sheet_items,
         )
         registered += 1 if result.registered else 0
         identified += 1 if result.uid else 0
+        foreign += 1 if wrong_class else 0
 
         if on_progress is not None:
             on_progress(
@@ -248,6 +433,7 @@ def process_scan(
     # Every scan lands in review. Even a page the detector is sure about is the
     # teacher's to confirm — nothing reaches the mastery model unsigned.
     scan.status = ScanStatus.NEEDS_REVIEW
+    scan.error = None
     db.commit()
 
     log.info(
@@ -256,32 +442,89 @@ def process_scan(
         pages=len(images),
         registered=registered,
         identified=identified,
+        wrong_class=foreign,
     )
-    return {"pages": len(images), "registered": registered, "identified": identified}
+    return {
+        "pages": len(images),
+        "registered": registered,
+        "identified": identified,
+        "wrong_class": foreign,
+    }
 
 
-def _page_within_copy(scan_page_index: int, *, images_seen: int, pages: list[Any]) -> int:
-    """Which page of that student's copy this scanned sheet is.
+def redetect_page(
+    db: Session, storage: Storage, *, page: ScanPage, student: Student
+) -> int:
+    """Read a page again, now that we know whose copy it is.
 
-    A copy longer than one page arrives as consecutive scans of the same UID, so
-    the position within the copy is not the position within the upload. Single-
-    page copies — the common case — make this zero.
+    A page whose printed code could not be read is detected against the full
+    default grid, because until the copy is known there is no way to tell which
+    bubbles were printed — and every reading is left unpaired, since "item 3"
+    means nothing without a copy. When the teacher assigns the page by hand,
+    that changes: the copy is known, and the readings have to be redone against
+    it. Without this the manual fallback produced a page full of detections that
+    graded nothing, which is the failure it exists to prevent.
+
+    Returns the number of detections written.
     """
-    if len(pages) <= 1:
-        return 0
-    return scan_page_index % len(pages)
-
-
-def _content_type(scan: Scan) -> str:
-    name = (scan.original_filename or "").lower()
-    if name.endswith(".pdf"):
-        return "application/pdf"
-    return "image/*"
-
-
-def _store_page_image(storage: Storage, key: str, image: np.ndarray) -> None:
     import cv2
 
+    scan = db.execute(select(Scan).where(Scan.id == page.scan_id)).scalar_one()
+    sheet = (
+        db.execute(select(Sheet).where(Sheet.id == scan.sheet_id)).scalar_one_or_none()
+        if scan.sheet_id
+        else None
+    )
+    if sheet is None or not page.registered:
+        return 0
+
+    printed_pages = _copies_by_uid(db, sheet).get(student.uid, [])
+    if not printed_pages:
+        return 0
+    index = page.page_in_copy if page.page_in_copy is not None else 0
+    printed_page = printed_pages[min(index, len(printed_pages) - 1)]
+
+    # Re-reading is a bonus, never a precondition: naming the student is the
+    # part that matters, and a page image that has expired or gone missing must
+    # not make the assignment itself fail.
+    try:
+        raw = np.frombuffer(storage.get_bytes(page.image_key), dtype=np.uint8)
+        decoded = cv2.imdecode(raw, cv2.IMREAD_GRAYSCALE)
+    except Exception as exc:
+        log.warning(
+            "scan.redetect_unavailable", page_id=str(page.id), error=str(exc)
+        )
+        return 0
+    if decoded is None:
+        return 0
+    image: np.ndarray = decoded.astype(np.uint8)
+
+    layout_version = scan.layout_version or sheet.layout_version or L.LAYOUT_VERSION
+    result = process_page(image, printed_page.option_counts, layout_version=layout_version)
+    if not result.registered:
+        return 0
+
+    for stale in list(page.detections):
+        db.delete(stale)
+    db.flush()
+
+    page.page_in_copy = index
+    _persist_detections(
+        db,
+        scan=scan,
+        page=page,
+        result=result,
+        printed_page=printed_page,
+        sheet_items=_sheet_items_by_exercise(sheet),
+    )
+    return len(result.detections)
+
+
+def _store_page_image(storage: Storage, key: str, image: np.ndarray | None) -> None:
+    import cv2
+
+    if image is None:  # pragma: no cover - registered pages always carry one
+        return
     ok, buf = cv2.imencode(".png", image)
     if ok:
         storage.put_bytes(key, buf.tobytes(), "image/png")

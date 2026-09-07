@@ -14,10 +14,10 @@ from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from alppy.api.deps import (
     DbDep,
+    ScopeDep,
     SettingsDep,
     StorageDep,
     TeacherDep,
-    TenantDep,
     read_upload,
     start_job,
 )
@@ -27,9 +27,11 @@ from alppy.schemas import (
     ScanConfirmResponse,
     ScanOut,
     ScanPageAssign,
+    ScanPageDiscard,
     ScanPageOut,
+    StudentOut,
 )
-from alppy.services import detection_out, scan_out, scan_page_out
+from alppy.services import detection_out, scan_out, scan_page_out, student_out
 from alppy.services import scan_service as svc
 
 router = APIRouter(tags=["scans"])
@@ -37,52 +39,63 @@ router = APIRouter(tags=["scans"])
 
 @router.get("/scans", response_model=list[ScanOut])
 def list_scans(
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
     sheet_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[ScanOut]:
     return [
-        scan_out(s, storage=storage) for s in svc.list_scans(db, school_id, sheet_id=sheet_id)
+        scan_out(s, storage=storage) for s in svc.list_scans(db, scope, sheet_id=sheet_id)
     ]
 
 
 @router.post("/scans", response_model=ScanOut, status_code=status.HTTP_202_ACCEPTED)
 async def upload_scan(
     teacher: TeacherDep,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     settings: SettingsDep,
     storage: StorageDep,
-    file: Annotated[UploadFile, File()],
-    sheet_id: Annotated[uuid.UUID | None, Form()] = None,
+    files: Annotated[list[UploadFile], File()],
+    sheet_id: Annotated[uuid.UUID, Form()],
 ) -> ScanOut:
-    """Accept a PDF or a phone photo and return immediately.
+    """Accept a PDF, or a pile of phone photos, and return immediately.
+
+    ``files`` is a list because photographing a class set gives one file per
+    copy: 28 photos are ONE pile to review, not 28 scans. Their pages
+    concatenate in the order they were selected.
+
+    ``sheet_id`` is required. Without it the pipeline has no answer key, no
+    per-copy pagination and no class to check the UIDs against, so it can read
+    the marks and then grade exactly nothing — which it used to do while
+    reporting success. Which sheet these are copies of is something only the
+    teacher knows; asking is the whole cost of never silently discarding a
+    class's work.
 
     Registration, UID reading and bubble detection run in the worker; the
     response is the scan row, whose status the client polls.
     """
-    payload = await read_upload(file, settings)
-    scan, job = svc.create_scan(db, school_id, teacher.id, storage, payload, sheet_id=sheet_id)
+    payloads = [await read_upload(f, settings) for f in files]
+    scan, job = svc.create_scan(db, scope.school_id, teacher.id, storage, payloads, sheet_id=sheet_id)
     db.commit()
     start_job(db, job)
     db.refresh(scan)
-    return scan_out(scan, storage=storage)
+    return scan_out(scan, storage=storage, job_id=job.id)
 
 
 @router.get("/scans/{scan_id}", response_model=ScanOut)
 def get_scan(
-    scan_id: uuid.UUID, school_id: TenantDep, db: DbDep, storage: StorageDep
+    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
 ) -> ScanOut:
-    return scan_out(svc.get_scan(db, school_id, scan_id), storage=storage)
+    return scan_out(svc.get_scan(db, scope, scan_id), storage=storage)
 
 
 @router.get("/scans/{scan_id}/detections", response_model=list[DetectionOut])
 def list_detections(
-    scan_id: uuid.UUID, school_id: TenantDep, db: DbDep
+    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep
 ) -> list[DetectionOut]:
-    svc.get_scan(db, school_id, scan_id)
-    return [detection_out(d) for d in svc.list_detections(db, school_id, scan_id)]
+    svc.get_scan(db, scope, scan_id)
+    return [detection_out(d) for d in svc.list_detections(db, scope.school_id, scan_id)]
 
 
 @router.patch("/scans/{scan_id}/detections/{detection_id}", response_model=DetectionOut)
@@ -91,17 +104,51 @@ def correct_detection(
     detection_id: uuid.UUID,
     payload: DetectionCorrection,
     teacher: TeacherDep,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
 ) -> DetectionOut:
     """A teacher overriding the machine. Always allowed, always recorded."""
-    svc.get_scan(db, school_id, scan_id)
+    svc.get_scan(db, scope, scan_id)
     detection = svc.correct_detection(
-        db, school_id, teacher.id, scan_id, detection_id, payload
+        db, scope.school_id, teacher.id, scan_id, detection_id, payload
     )
     db.commit()
     db.refresh(detection)
     return detection_out(detection)
+
+
+@router.get("/scans/{scan_id}/students", response_model=list[StudentOut])
+def assignable_students(
+    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> list[StudentOut]:
+    """Who a page of this scan may be assigned to.
+
+    The class the sheet was printed for, and nobody else: assigning a page to a
+    student from another class files one child's answers under another's name.
+    """
+    return [student_out(s) for s in svc.assignable_students(db, scope, scan_id)]
+
+
+@router.post("/scans/{scan_id}/pages/{page_id}/discard", response_model=ScanPageOut)
+def discard_page(
+    scan_id: uuid.UUID,
+    page_id: uuid.UUID,
+    payload: ScanPageDiscard,
+    scope: ScopeDep,
+    db: DbDep,
+    storage: StorageDep,
+) -> ScanPageOut:
+    """Take a page out of the pile, or put it back.
+
+    A cover sheet or a lens-cap frame belongs to nobody, and without this the
+    only way past it was to attribute it to a real child.
+    """
+    page = svc.set_page_discarded(
+        db, scope, scan_id, page_id, discarded=payload.discarded
+    )
+    db.commit()
+    db.refresh(page)
+    return scan_page_out(page, storage=storage)
 
 
 @router.patch("/scans/{scan_id}/pages/{page_id}", response_model=ScanPageOut)
@@ -109,13 +156,15 @@ def assign_page(
     scan_id: uuid.UUID,
     page_id: uuid.UUID,
     payload: ScanPageAssign,
-    school_id: TenantDep,
+    scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
 ) -> ScanPageOut:
     """Manual fallback when the printed UID grid could not be read."""
-    svc.get_scan(db, school_id, scan_id)
-    page = svc.assign_page_student(db, school_id, scan_id, page_id, payload.student_id)
+    svc.get_scan(db, scope, scan_id)
+    page = svc.assign_page_student(
+        db, scope, scan_id, page_id, payload.student_id, storage=storage
+    )
     db.commit()
     db.refresh(page)
     return scan_page_out(page, storage=storage)
@@ -123,9 +172,9 @@ def assign_page(
 
 @router.post("/scans/{scan_id}/confirm", response_model=ScanConfirmResponse)
 def confirm_scan(
-    scan_id: uuid.UUID, school_id: TenantDep, db: DbDep
+    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep
 ) -> ScanConfirmResponse:
     """Grade the confirmed readings and recompute the affected mastery cells."""
-    result = svc.confirm_scan(db, school_id, scan_id)
+    result = svc.confirm_scan(db, scope, scan_id)
     db.commit()
     return result

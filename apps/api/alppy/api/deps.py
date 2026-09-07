@@ -84,6 +84,39 @@ def get_tenant(teacher: TeacherDep) -> uuid.UUID:
 
 TenantDep = Annotated[uuid.UUID, Depends(get_tenant)]
 
+
+@dataclass(frozen=True, slots=True)
+class Scope:
+    """Who is asking, and for which tenant.
+
+    Two boundaries, not one, because the domain has two:
+
+    ``school_id`` is the **tenant** boundary. Teaching material is shared by the
+    staffroom on purpose — subjects, chapters, uploaded textbooks, extracted
+    exercises and the curriculum are school-wide, and a colleague's scan of a
+    textbook is meant to be usable.
+
+    ``teacher_id`` is the **ownership** boundary. A class is personal: its
+    roster of named children, its mastery matrix, its sheets and its scans
+    belong to the teacher who teaches it. ``Class.teacher_id`` has always been
+    ``NOT NULL`` and indexed; until now nothing read it, so every teacher in a
+    school could list and open every other teacher's class. See decisions-log
+    D23.
+
+    Handlers that touch a class take ``ScopeDep`` rather than ``TenantDep``, so
+    forgetting the owner is a type error and not a leak.
+    """
+
+    school_id: uuid.UUID
+    teacher_id: uuid.UUID
+
+
+def get_scope(teacher: TeacherDep) -> Scope:
+    return Scope(school_id=teacher.school_id, teacher_id=teacher.id)
+
+
+ScopeDep = Annotated[Scope, Depends(get_scope)]
+
 ModelT = TypeVar("ModelT", bound=SchoolScopedMixin)
 
 
@@ -207,7 +240,16 @@ _MAGIC: Final[dict[str, tuple[bytes, ...]]] = {
     "image/png": (b"\x89PNG\r\n\x1a\n",),
     "image/jpeg": (b"\xff\xd8\xff",),
     "image/webp": (b"RIFF",),
+    "image/heic": (b"ftyp",),
+    "image/heif": (b"ftyp",),
 }
+
+_HEIF_BRANDS: Final = (
+    b"heic", b"heix", b"heim", b"heis", b"hevc", b"hevx",
+    b"mif1", b"msf1", b"avif", b"avis",
+)
+"""ISO-BMFF brands a HEIF-family still can carry. An iPhone writes `heic` for a
+single photo and `mif1` for one out of a burst or a Live Photo."""
 _UPLOAD_CHUNK: Final = 256 * 1024
 
 
@@ -230,6 +272,9 @@ def _sniff(data: bytes, content_type: str) -> bool:
         return True
     if content_type == "image/webp":
         return data[:4] == b"RIFF" and data[8:12] == b"WEBP"
+    if content_type in ("image/heic", "image/heif"):
+        # ISO-BMFF: a 4-byte box length, then "ftyp", then the brand.
+        return data[4:8] == b"ftyp" and data[8:12] in _HEIF_BRANDS
     return any(data.startswith(p) for p in prefixes)
 
 

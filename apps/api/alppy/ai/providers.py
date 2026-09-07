@@ -46,9 +46,10 @@ class EchoChatProvider:
                 model="echo",
             )
         seed = hashlib.sha256(request.user.encode()).hexdigest()
-        n = int(seed[:2], 16) % 3 + 2
-        language = "de" if "language: de" in request.user else "fr"
-        items = [_offline_item(seed, i, language) for i in range(n)]
+        language = _asked(request.user, "Language", default="fr")
+        n = _asked_int(request.user, "Number of exercises", default=3, lo=1, hi=16)
+        difficulty = _asked_int(request.user, "Difficulty", default=2, lo=1, hi=5)
+        items = [_offline_item(seed, i, language, difficulty) for i in range(n)]
         text = json.dumps({"exercises": items}, ensure_ascii=False)
         return ChatResponse(
             text=text,
@@ -58,19 +59,48 @@ class EchoChatProvider:
         )
 
 
-def _offline_item(seed: str, i: int, language: str) -> dict[str, object]:
+#: The offline provider answers in whatever language it was asked for. It reads
+#: the prompt for this one value only — it is still ungrounded, and still says
+#: so — because a stand-in that silently ignores the language would let a bug in
+#: the language path pass every offline test.
+_OFFLINE_STEMS: dict[str, str] = {
+    "fr": "Calcule {a} × {b}.",
+    "de": "Berechne {a} × {b}.",
+    "en": "Work out {a} × {b}.",
+}
+
+
+def _asked(user: str, field: str, *, default: str) -> str:
+    match = re.search(rf"^{field}:\s*(\S+)", user, re.MULTILINE)
+    return match.group(1) if match else default
+
+
+def _asked_int(user: str, field: str, *, default: int, lo: int, hi: int) -> int:
+    match = re.search(rf"^{field}:\s*(\d+)", user, re.MULTILINE)
+    if not match:
+        return default
+    return max(lo, min(hi, int(match.group(1))))
+
+
+def _offline_item(seed: str, i: int, language: str, difficulty: int) -> dict[str, object]:
     a = int(seed[i * 2 : i * 2 + 2], 16) % 9 + 2
     b = int(seed[i * 2 + 4 : i * 2 + 6], 16) % 9 + 2
     product = a * b
-    statement = f"Berechne {a} × {b}." if language == "de" else f"Calcule {a} × {b}."
+    stem = _OFFLINE_STEMS.get(language, _OFFLINE_STEMS["fr"])
     distractors = [product + a, product - b, product + 1]
+    options = [str(product), *[str(d) for d in distractors]]
+    # The correct answer moves. A stub that always keyed option A trained the
+    # whole pipeline — and every test over it — on a sheet a child could pass by
+    # filling the first bubble sixteen times.
+    key = int(seed[i * 2 + 8 : i * 2 + 10] or "0", 16) % len(options)
+    options[0], options[key] = options[key], options[0]
     return {
         "type": "mcq",
-        "statement": statement,
-        "options": [str(product), *[str(d) for d in distractors]],
-        "answer_index": 0,
+        "statement": stem.format(a=a, b=b),
+        "options": options,
+        "answer_index": key,
         "explanation": f"{a} × {b} = {product}",
-        "difficulty": 2,
+        "difficulty": difficulty,
     }
 
 

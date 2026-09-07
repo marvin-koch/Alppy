@@ -1,5 +1,5 @@
 // AUTO-GENERATED — DO NOT EDIT.
-// Source of truth: apps/api/alppy/sheets/layout.py (as_dict()).
+// Source of truth: apps/api/alppy/sheets/layout.py + alppy/scan/detector.py (as_dict()).
 // Regenerate with: PYTHONPATH=apps/api python scripts/export-layout.py
 // CI fails if this file is stale (see .github/workflows/ci.yml) --
 // the print markup, the server-side PDF renderer and the scan
@@ -69,3 +69,12 @@ export const SHEET_LAYOUT = {
 } as const;
 
 export type SheetLayout = typeof SHEET_LAYOUT;
+
+/** The detector's own decision thresholds, so the review UI can draw
+ *  the same line the pipeline draws rather than a copy of it. */
+export const SCAN_THRESHOLDS = {
+  "lowConfidence": 0.65,
+  "fillMarked": 0.35,
+  "fillBlank": 0.18,
+  "minQuality": 0.55
+} as const;

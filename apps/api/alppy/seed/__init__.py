@@ -40,11 +40,18 @@ from alppy.models import (
 )
 from alppy.models.enums import CurriculumKind, Locale
 from alppy.seed.demo import (
+    COLLEAGUE_CLASS_CODE,
+    COLLEAGUE_EMAIL,
+    COLLEAGUE_PASSWORD,
+    COLLEAGUE_ROSTER,
     DEMO_CLASS_CODE,
     DEMO_ROSTER,
     DEMO_SCHOOL,
+    DEMO_SECOND_CLASS_CODE,
+    DEMO_SECOND_ROSTER,
     DEMO_TEACHER_EMAIL,
     DEMO_TEACHER_PASSWORD,
+    lesson_moments,
     simulate_attempts,
 )
 from alppy.seed.loader import load_demo_corpus, load_reference_data
@@ -69,18 +76,42 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
 
     school_class = _get_or_create_class(db, school, year, teacher)
     students = _get_or_create_students(db, school, year, school_class)
+
+    # A second class for the same teacher, so the class switcher has somewhere
+    # to switch to, and a second subject so the subject switcher does too.
+    second_class = _get_or_create_class(
+        db, school, year, teacher, code=DEMO_SECOND_CLASS_CODE, label="Mathématiques — 9e"
+    )
+    _get_or_create_students(db, school, year, second_class, roster=DEMO_SECOND_ROSTER)
+    sciences = _get_or_create_subject(
+        db,
+        school,
+        key="sciences",
+        labels={"fr": "Sciences de la nature", "de": "Naturwissenschaften", "en": "Sciences"},
+    )
+
+    # A colleague in the same school. Their class must never show up on the
+    # demo teacher's home screen — that is the point of them.
+    colleague = _get_or_create_colleague(db, school)
+    colleague_class = _get_or_create_class(
+        db, school, year, colleague, code=COLLEAGUE_CLASS_CODE, label="Classe de Beatrice"
+    )
+    _get_or_create_students(db, school, year, colleague_class, roster=COLLEAGUE_ROSTER)
     db.flush()
 
     created = _simulate_history(db, school, students, moment)
     db.flush()
 
     if created:
-        recompute_for_students(
-            db,
-            school.id,
-            [s.id for s in students.values()],
-            now=moment,
-        )
+        # One recompute per lesson date, oldest first, then one for today. A
+        # single recompute at the end leaves exactly one snapshot per cell, and
+        # the profile curve — which needs at least two points to be a curve —
+        # never renders. Each pass sees only the attempts that existed on that
+        # date, so the series shows the class actually learning.
+        student_ids = [s.id for s in students.values()]
+        for lesson_moment in lesson_moments(moment):
+            recompute_for_students(db, school.id, student_ids, now=lesson_moment)
+        recompute_for_students(db, school.id, student_ids, now=moment)
 
     db.commit()
 
@@ -88,6 +119,10 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
         "school": school.name,
         "teacher": teacher.email,
         "class": school_class.code,
+        "classes": [school_class.code, second_class.code],
+        "colleague": colleague.email,
+        "colleague_class": colleague_class.code,
+        "subjects": [subject.key, sciences.key],
         "students": len(students),
         "competencies": len(reference.competency_ids),
         "chapters": len(reference.chapter_ids),
@@ -158,13 +193,19 @@ def _get_or_create_year(db: Session, school: School, now: datetime) -> SchoolYea
 
 
 def _get_or_create_class(
-    db: Session, school: School, year: SchoolYear, teacher: Teacher
+    db: Session,
+    school: School,
+    year: SchoolYear,
+    teacher: Teacher,
+    *,
+    code: str = DEMO_CLASS_CODE,
+    label: str = "Mathématiques — cycle 3",
 ) -> Class:
     school_class = db.execute(
         select(Class)
         .where(Class.school_id == school.id)
         .where(Class.school_year_id == year.id)
-        .where(Class.code == DEMO_CLASS_CODE)
+        .where(Class.code == code)
     ).scalar_one_or_none()
     if school_class is None:
         school_class = Class(
@@ -172,16 +213,58 @@ def _get_or_create_class(
             school_id=school.id,
             school_year_id=year.id,
             teacher_id=teacher.id,
-            code=DEMO_CLASS_CODE,
-            label="Mathématiques — cycle 3",
+            code=code,
+            label=label,
         )
         db.add(school_class)
         db.flush()
     return school_class
 
 
+def _get_or_create_subject(
+    db: Session, school: School, *, key: str, labels: dict[str, str]
+) -> Subject:
+    subject = db.execute(
+        select(Subject).where(Subject.school_id == school.id).where(Subject.key == key)
+    ).scalar_one_or_none()
+    if subject is None:
+        subject = Subject(id=uuid.uuid4(), school_id=school.id, key=key, labels=labels)
+        db.add(subject)
+        db.flush()
+    return subject
+
+
+def _get_or_create_colleague(db: Session, school: School) -> Teacher:
+    """Another teacher in the same staffroom.
+
+    Not a fixture for a test — a fixture for a *reviewer*: tenancy between
+    colleagues cannot be checked on a seed with one teacher in it.
+    """
+    teacher = db.execute(
+        select(Teacher).where(Teacher.email == COLLEAGUE_EMAIL)
+    ).scalar_one_or_none()
+    if teacher is None:
+        teacher = Teacher(
+            id=uuid.uuid4(),
+            school_id=school.id,
+            email=COLLEAGUE_EMAIL,
+            password_hash=hash_password(COLLEAGUE_PASSWORD),
+            first_name="Beatrice",
+            last_name="Blanc",
+            locale=Locale.FR,
+        )
+        db.add(teacher)
+        db.flush()
+    return teacher
+
+
 def _get_or_create_students(
-    db: Session, school: School, year: SchoolYear, school_class: Class
+    db: Session,
+    school: School,
+    year: SchoolYear,
+    school_class: Class,
+    *,
+    roster: list[tuple[str, str]] | None = None,
 ) -> dict[str, Student]:
     """Keyed by first name, which is how the simulated history refers to them."""
     existing = {
@@ -192,7 +275,7 @@ def _get_or_create_students(
             .where(Student.class_id == school_class.id)
         )
     }
-    for number, (first, last) in enumerate(DEMO_ROSTER, start=1):
+    for number, (first, last) in enumerate(roster or DEMO_ROSTER, start=1):
         if first in existing:
             continue
         student = Student(

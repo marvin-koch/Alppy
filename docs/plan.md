@@ -102,15 +102,24 @@ assumptions.
 
 ## 6. Mastery model (documented fully in `docs/mastery-model.md`)
 
-Weighted recent accuracy with exponential time decay, per (student, competency):
+Two factors, per (student, competency) — weighted recent accuracy, then how much
+we still trust it given how long ago the student last practised:
 
 ```
-w_i     = exp(-ln(2) * age_days_i / HALF_LIFE_DAYS) * difficulty_weight_i
-score   = Σ(w_i * correct_i) / Σ(w_i)          ∈ [0,1]
+w_i      = exp(-ln(2) * age_days_i / HALF_LIFE_DAYS) * difficulty_weight_i
+accuracy = Σ(w_i * correct_i) / Σ(w_i)
+recency  = 1 if idle ≤ 0 else max(FLOOR, 2^(-idle / RECENCY_HALF_LIFE_DAYS))
+score    = accuracy × recency                  ∈ [0,1]
 ```
 
-`HALF_LIFE_DAYS = 21`. Bands: ≥0.90 solid · 0.75–0.90 ok · 0.60–0.75 weak · <0.60 fading ·
-no attempts → none. Explainable, cheap to recompute, no BKT.
+`HALF_LIFE_DAYS = 21`, `RECENCY_HALF_LIFE_DAYS = 45`, `GRACE = 7`, `FLOOR = 0.55`.
+Bands: ≥0.90 solid · 0.75–0.90 ok · 0.60–0.75 weak · <0.60 fading · no attempts →
+none. Explainable, cheap to recompute, no BKT.
+
+The second factor is not optional: `accuracy` is scale-invariant under uniform
+time decay, so without `recency` a perfect record would read as mastered forever
+and the "fading" band would never fade (decisions-log D4).
+`docs/mastery-model.md` is the authority on the constants.
 
 ## 7. Open assumptions
 

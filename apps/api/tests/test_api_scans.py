@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, datetime, timedelta
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
@@ -20,12 +21,51 @@ CORRECT_INDEX = 1
 # --------------------------------------------------------------------------
 # Upload validation
 # --------------------------------------------------------------------------
+@pytest.fixture
+def sheet_id(client: TestClient, tenant: Tenant, db: Session) -> str:
+    """A sheet to attach an upload to.
+
+    ``sheet_id`` is required on POST /scans: a pile that is not linked to the
+    sheet it was printed from has no answer key, no per-copy pagination and no
+    class to check its UIDs against, so it can read every mark and grade
+    nothing.
+    """
+    login(client, tenant.teacher.email)
+    exercise = make_exercise(db, tenant, statement="Une question", answer_index=1)
+    body = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Copies",
+            "language": "fr",
+            "items": [{"exercise_id": str(exercise.id), "position": 0}],
+        },
+    ).json()
+    return str(body["id"])
+
+
+def test_upload_without_a_sheet_is_refused(client: TestClient, tenant: Tenant) -> None:
+    """The failure this prevents is silent: marks read, nothing graded, and the
+    teacher told their results were saved."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/scans", files={"files": ("copies.pdf", PDF_BYTES, "application/pdf")}
+    )
+    assert response.status_code == 422
+    assert any(
+        e["loc"][-1] == "sheet_id" for e in response.json()["error"]["details"]["errors"]
+    )
+
+
 def test_upload_accepts_a_pdf_and_returns_without_detecting_anything(
-    client: TestClient, tenant: Tenant, db: Session
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
 ) -> None:
     login(client, tenant.teacher.email)
     response = client.post(
-        "/api/v1/scans", files={"file": ("copies.pdf", PDF_BYTES, "application/pdf")}
+        "/api/v1/scans",
+        files={"files": ("copies.pdf", PDF_BYTES, "application/pdf")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 202
     body = response.json()
@@ -37,59 +77,145 @@ def test_upload_accepts_a_pdf_and_returns_without_detecting_anything(
     assert jobs[0]["message"]
 
 
-def test_upload_accepts_a_phone_photo(client: TestClient, tenant: Tenant) -> None:
+def test_upload_accepts_a_phone_photo(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
     login(client, tenant.teacher.email)
     response = client.post(
-        "/api/v1/scans", files={"file": ("IMG_0042.png", PNG_BYTES, "image/png")}
+        "/api/v1/scans",
+        files={"files": ("IMG_0042.png", PNG_BYTES, "image/png")},
+        data={"sheet_id": sheet_id},
+    )
+    assert response.status_code == 202
+    body = response.json()
+    assert body["status"] == "uploaded"
+    assert body["original_filename"] == "IMG_0042.png"
+
+    scan = db.execute(select(Scan)).scalars().one()
+    assert scan.storage_keys == [scan.storage_key]
+    assert client.get("/api/v1/jobs?kind=process_scan").json()[0]["status"] == "queued"
+
+
+def test_a_pile_of_photos_is_one_scan_not_one_each(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """Photographing a class set gives one file per copy. The teacher expects
+    one review session, not twenty-eight."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/scans",
+        files=[
+            ("files", ("IMG_0042.png", PNG_BYTES, "image/png")),
+            ("files", ("IMG_0043.png", PNG_BYTES, "image/png")),
+            ("files", ("IMG_0044.png", PNG_BYTES, "image/png")),
+        ],
+        data={"sheet_id": sheet_id},
+    )
+    assert response.status_code == 202
+
+    scans = db.execute(select(Scan)).scalars().all()
+    assert len(scans) == 1
+    assert len(scans[0].storage_keys or []) == 3
+    assert scans[0].original_filename == "IMG_0042.png, IMG_0043.png, IMG_0044.png"
+    # One job too: one pile, one piece of work.
+    assert len(client.get("/api/v1/jobs?kind=process_scan").json()) == 1
+
+
+def test_upload_accepts_a_heic_photo(
+    client: TestClient, tenant: Tenant, sheet_id: str
+) -> None:
+    """The format an iPhone produces by default is not an exotic case."""
+    import io
+
+    pillow_heif = pytest.importorskip("pillow_heif")
+    from PIL import Image as PilImage
+
+    pillow_heif.register_heif_opener()
+    buffer = io.BytesIO()
+    PilImage.new("RGB", (64, 64), "white").save(buffer, format="HEIF")
+
+    response = client.post(
+        "/api/v1/scans",
+        files={"files": ("IMG_0042.heic", buffer.getvalue(), "image/heic")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 202
 
 
-def test_upload_rejects_a_disallowed_content_type(client: TestClient, tenant: Tenant) -> None:
+def test_upload_rejects_something_only_claiming_to_be_heic(
+    client: TestClient, tenant: Tenant, sheet_id: str
+) -> None:
+    """The allowlist accepts the type; the magic bytes decide whether it is one."""
+    response = client.post(
+        "/api/v1/scans",
+        files={"files": ("fake.heic", b"not an ISO-BMFF file at all", "image/heic")},
+        data={"sheet_id": sheet_id},
+    )
+    assert response.status_code == 415
+    assert "do not look like" in response.json()["error"]["message"]
+
+
+def test_upload_rejects_a_disallowed_content_type(client: TestClient, tenant: Tenant, sheet_id: str) -> None:
     login(client, tenant.teacher.email)
     response = client.post(
-        "/api/v1/scans", files={"file": ("notes.txt", b"hello", "text/plain")}
+        "/api/v1/scans",
+        files={"files": ("notes.txt", b"hello", "text/plain")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 415
     assert response.json()["error"]["code"] == "unsupported_media_type"
 
 
 def test_upload_rejects_a_file_that_is_not_what_it_claims(
-    client: TestClient, tenant: Tenant
+    client: TestClient, tenant: Tenant, sheet_id: str
 ) -> None:
     login(client, tenant.teacher.email)
     response = client.post(
-        "/api/v1/scans", files={"file": ("evil.pdf", b"MZ\x90\x00 not a pdf", "application/pdf")}
+        "/api/v1/scans",
+        files={"files": ("evil.pdf", b"MZ\x90\x00 not a pdf", "application/pdf")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 415
     assert "do not look like" in response.json()["error"]["message"]
 
 
-def test_upload_rejects_an_oversized_file(client: TestClient, tenant: Tenant) -> None:
+def test_upload_rejects_an_oversized_file(client: TestClient, tenant: Tenant, sheet_id: str) -> None:
     login(client, tenant.teacher.email)
     oversized = b"%PDF-1.7\n" + b"0" * (2 * 1024 * 1024)
     response = client.post(
-        "/api/v1/scans", files={"file": ("huge.pdf", oversized, "application/pdf")}
+        "/api/v1/scans",
+        files={"files": ("huge.pdf", oversized, "application/pdf")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "payload_too_large"
 
 
-def test_upload_rejects_an_empty_file(client: TestClient, tenant: Tenant) -> None:
-    login(client, tenant.teacher.email)
-    response = client.post(
-        "/api/v1/scans", files={"file": ("empty.pdf", b"", "application/pdf")}
-    )
-    assert response.status_code == 422
-
-
-def test_a_hostile_filename_never_becomes_a_storage_path(
-    client: TestClient, tenant: Tenant, db: Session
+def test_upload_rejects_an_empty_file(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
 ) -> None:
     login(client, tenant.teacher.email)
     response = client.post(
         "/api/v1/scans",
-        files={"file": ("../../../etc/passwd.pdf", PDF_BYTES, "application/pdf")},
+        files={"files": ("empty.pdf", b"", "application/pdf")},
+        data={"sheet_id": sheet_id},
+    )
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "unprocessable"
+    assert "empty" in response.json()["error"]["message"]
+    # Nothing was written: a rejected upload leaves no scan and no job behind.
+    assert db.execute(select(Scan)).scalars().all() == []
+    assert client.get("/api/v1/jobs?kind=process_scan").json() == []
+
+
+def test_a_hostile_filename_never_becomes_a_storage_path(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/scans",
+        files={"files": ("../../../etc/passwd.pdf", PDF_BYTES, "application/pdf")},
+        data={"sheet_id": sheet_id},
     )
     assert response.status_code == 202
     scan = db.execute(select(Scan)).scalars().one()

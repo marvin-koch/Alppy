@@ -358,6 +358,22 @@ def _stamp(sheet: Any, data: SheetData) -> None:
 # --------------------------------------------------------------------------
 # 4 · the two entry points the API layer calls
 # --------------------------------------------------------------------------
+def _refuse_unapproved(sheet: Any) -> None:
+    """No AI-generated exercise reaches paper without a teacher's approval.
+
+    Checked here, in the render path, and not only where the sheet was built:
+    a sheet can be re-rendered long after it was assembled, and an exercise can
+    be un-approved (or discarded) in between. This is the last door, so it is
+    the one that has to be locked.
+    """
+    from alppy.services.approval import UnapprovedExerciseError, ensure_printable
+
+    try:
+        ensure_printable(item.exercise for item in sheet.items)
+    except UnapprovedExerciseError as exc:
+        raise SheetRenderError(str(exc)) from exc
+
+
 def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     """Render both documents for a sheet: ``(blank_key, answer_key_key)``.
 
@@ -368,6 +384,8 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     sheet = db.get(Sheet, sheet_id)
     if sheet is None:
         raise SheetRenderError(f"no sheet {sheet_id}")
+
+    _refuse_unapproved(sheet)
 
     data = build_sheet_data(db, sheet)
     blank = html_to_pdf(render_sheet_html(data, kind=SheetKind.BLANK))
@@ -383,9 +401,14 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     return (blank_key, answer_key)
 
 
-def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> str:
-    """One PDF for a whole differentiated class — one ``.print-page`` per
-    physical page, never one per student.
+def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
+    """One PDF for a whole differentiated class, plus its answer key.
+
+    One ``.print-page`` per physical page, never one per student. Always both
+    documents: a differentiated pile is the case where a teacher *cannot*
+    correct from memory, because no two children answered the same questions.
+    The key is rendered from the same `SheetData`, so the copies come out in the
+    same order as the blanks and the piles line up.
 
     The batch carries the mastery legend, because an adaptive sheet is the one
     place the teacher reads bands off paper."""
@@ -395,14 +418,20 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> str:
     if sheet is None:
         raise SheetRenderError(f"no sheet {sheet_id}")
 
-    data = build_sheet_data(db, sheet, show_legend=True, require_instances=True)
-    payload = html_to_pdf(render_sheet_html(data, kind=SheetKind.BLANK))
-    key = store_pdf(payload, storage_key(sheet.id, "adaptive-batch.pdf"))
+    _refuse_unapproved(sheet)
 
-    sheet.blank_pdf_key = key
+    data = build_sheet_data(db, sheet, show_legend=True, require_instances=True)
+    blank = html_to_pdf(render_sheet_html(data, kind=SheetKind.BLANK))
+    key = html_to_pdf(render_sheet_html(data, kind=SheetKind.ANSWER_KEY))
+
+    blank_key = store_pdf(blank, storage_key(sheet.id, "adaptive-batch.pdf"))
+    answer_key = store_pdf(key, storage_key(sheet.id, "adaptive-batch-answer-key.pdf"))
+
+    sheet.blank_pdf_key = blank_key
+    sheet.answer_key_pdf_key = answer_key
     _stamp(sheet, data)
     db.flush()
-    return key
+    return (blank_key, answer_key)
 
 
 __all__ = [

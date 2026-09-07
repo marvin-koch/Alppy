@@ -23,22 +23,32 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
+from alppy.api.deps import Scope
 from alppy.mastery.model import AttemptInput, MasteryResult, compute_mastery
 from alppy.models import (
     Attempt,
+    Chapter,
     Class,
     Competency,
+    Detection,
     Exercise,
     MasterySnapshot,
+    Scan,
+    ScanPage,
+    Sheet,
     Student,
+    chapter_competency,
     exercise_competency,
 )
-from alppy.models.enums import BAND_ORDER, MasteryBand
+from alppy.models.enums import BAND_ORDER, DetectionOutcome, MasteryBand
 from alppy.schemas import (
+    AttemptOut,
+    CompetencyAttemptsOut,
     CompetencyMastery,
     MasteryCell,
     MasteryMatrixOut,
     MasteryPoint,
+    SheetTaken,
     StudentProfileOut,
 )
 from alppy.services import competency_out, student_out
@@ -68,19 +78,46 @@ def _now(now: datetime | None) -> datetime:
 # --------------------------------------------------------------------------
 # Loading
 # --------------------------------------------------------------------------
+def _chapter_competency_ids(
+    db: Session, school_id: uuid.UUID, chapter_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The competencies a chapter covers, scoped to the teacher's school.
+
+    An unknown or foreign chapter yields an empty list rather than an error, so
+    the filter narrows to nothing instead of leaking whether the id exists.
+    """
+    return list(
+        db.execute(
+            select(chapter_competency.c.competency_id)
+            .join(Chapter, Chapter.id == chapter_competency.c.chapter_id)
+            .where(Chapter.id == chapter_id)
+            .where(Chapter.school_id == school_id)
+        ).scalars()
+    )
+
+
 def load_attempt_inputs(
     db: Session,
     school_id: uuid.UUID,
     student_ids: list[uuid.UUID],
     *,
     subject_id: uuid.UUID | None = None,
+    competency_ids: list[uuid.UUID] | None = None,
+    as_of: datetime | None = None,
 ) -> dict[Key, list[AttemptInput]]:
     """Every attempt, keyed by (student, competency).
 
     An exercise mapped to two competencies contributes to both — that is the
     point of the mapping, and it is why this cannot be a simple group-by.
+
+    ``as_of`` drops attempts answered after that moment. Live callers never
+    need it — nothing is answered in the future — but a snapshot dated last
+    Tuesday must be computed from the evidence that existed last Tuesday, or
+    backfilling a history produces the same number at every point on the curve.
     """
     if not student_ids:
+        return {}
+    if competency_ids is not None and not competency_ids:
         return {}
     stmt = (
         select(
@@ -94,10 +131,14 @@ def load_attempt_inputs(
         .where(Attempt.school_id == school_id)
         .where(Attempt.student_id.in_(student_ids))
     )
+    if as_of is not None:
+        stmt = stmt.where(Attempt.answered_at <= as_of)
     if subject_id is not None:
         stmt = stmt.join(Exercise, Exercise.id == Attempt.exercise_id).where(
             Exercise.subject_id == subject_id
         )
+    if competency_ids is not None:
+        stmt = stmt.where(exercise_competency.c.competency_id.in_(competency_ids))
 
     grouped: dict[Key, list[AttemptInput]] = defaultdict(list)
     for student_id, competency_id, correct, answered_at, difficulty in db.execute(stmt):
@@ -146,6 +187,7 @@ def assessed_competencies(
     student_ids: list[uuid.UUID],
     *,
     subject_id: uuid.UUID | None = None,
+    competency_ids: list[uuid.UUID] | None = None,
 ) -> list[Competency]:
     """Competencies the class has actually met, which is what the matrix shows.
 
@@ -153,6 +195,8 @@ def assessed_competencies(
     teacher wants the competencies their sheets have touched.
     """
     if not student_ids:
+        return []
+    if competency_ids is not None and not competency_ids:
         return []
     stmt = (
         select(Competency)
@@ -167,6 +211,8 @@ def assessed_competencies(
         stmt = stmt.join(Exercise, Exercise.id == Attempt.exercise_id).where(
             Exercise.subject_id == subject_id
         )
+    if competency_ids is not None:
+        stmt = stmt.where(Competency.id.in_(competency_ids))
     return list(db.execute(stmt).scalars())
 
 
@@ -180,12 +226,18 @@ def recompute_for_students(
     *,
     now: datetime | None = None,
 ) -> int:
-    """Recompute and persist mastery. Returns the number of cells written."""
+    """Recompute and persist mastery. Returns the number of cells written.
+
+    ``now`` is both the moment the score is computed *for* and the cut-off for
+    the evidence that feeds it, so calling this at a series of past dates
+    backfills a genuine time series rather than stamping today's number on
+    yesterday's row.
+    """
     at = _now(now)
     if not student_ids:
         return 0
 
-    grouped = load_attempt_inputs(db, school_id, student_ids)
+    grouped = load_attempt_inputs(db, school_id, student_ids, as_of=at)
     existing = latest_snapshots(db, school_id, student_ids)
     day = at.date()
     written = 0
@@ -238,31 +290,78 @@ def _cell(
     )
 
 
+def _weakest_first(
+    students: list[Student], results: dict[Key, MasteryResult]
+) -> list[Student]:
+    """Order the roster by each student's worst assessed cell, worst first.
+
+    A never-assessed cell is deliberately NOT a weakness: it would sort every
+    student who simply missed a lesson to the top of a list whose whole purpose
+    is "who needs help". A student with nothing assessed at all sorts last.
+    """
+    def key(student: Student) -> tuple[int, float, int]:
+        scores = [
+            r.score
+            for (sid, _cid), r in results.items()
+            if sid == student.id and r.band is not MasteryBand.NONE
+        ]
+        if not scores:
+            return (1, 0.0, student.number)  # nothing to judge — after everyone
+        return (0, min(scores), student.number)
+
+    return sorted(students, key=key)
+
+
 def class_matrix(
     db: Session,
-    school_id: uuid.UUID,
+    scope: Scope,
     class_id: uuid.UUID,
     *,
     subject_id: uuid.UUID | None = None,
+    chapter_id: uuid.UUID | None = None,
+    sort: str = "roster",
     now: datetime | None = None,
 ) -> MasteryMatrixOut:
     at = _now(now)
+    school_id = scope.school_id
+    # The matrix is a roster of named children: it follows class ownership, not
+    # just the school boundary (decisions-log D23).
     school_class = db.execute(
-        select(Class).where(Class.id == class_id).where(Class.school_id == school_id)
+        select(Class)
+        .where(Class.id == class_id)
+        .where(Class.school_id == school_id)
+        .where(Class.teacher_id == scope.teacher_id)
     ).scalar_one_or_none()
     if school_class is None:
         raise errors.not_found("class", id=str(class_id))
 
+    limit_to: list[uuid.UUID] | None = None
+    if chapter_id is not None:
+        limit_to = _chapter_competency_ids(db, school_id, chapter_id)
+
     students = _student_ids_for_class(db, school_id, class_id)
     student_ids = [s.id for s in students]
-    competencies = assessed_competencies(db, school_id, student_ids, subject_id=subject_id)
-    grouped = load_attempt_inputs(db, school_id, student_ids, subject_id=subject_id)
+    competencies = assessed_competencies(
+        db, school_id, student_ids, subject_id=subject_id, competency_ids=limit_to
+    )
+    grouped = load_attempt_inputs(
+        db, school_id, student_ids, subject_id=subject_id, competency_ids=limit_to
+    )
 
-    cells: list[MasteryCell] = []
+    results: dict[Key, MasteryResult] = {}
     for student in students:
         for competency in competencies:
             attempts = grouped.get((student.id, competency.id), [])
-            cells.append(_cell(student.id, competency.id, compute_mastery(attempts, at)))
+            results[(student.id, competency.id)] = compute_mastery(attempts, at)
+
+    if sort == "weakest":
+        students = _weakest_first(students, results)
+
+    cells = [
+        _cell(student.id, competency.id, results[(student.id, competency.id)])
+        for student in students
+        for competency in competencies
+    ]
 
     return MasteryMatrixOut(
         class_id=class_id,
@@ -271,6 +370,154 @@ def class_matrix(
         cells=cells,
         computed_at=at,
     )
+
+
+def _owned_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
+    """One student from a class the caller owns, or 404.
+
+    A student profile names a child and lists their every answer, so it follows
+    the same ownership rule as the class they sit in (decisions-log D23).
+    """
+    student = db.execute(
+        select(Student)
+        .join(Class, Class.id == Student.class_id)
+        .where(Student.id == student_id)
+        .where(Student.school_id == scope.school_id)
+        .where(Class.teacher_id == scope.teacher_id)
+    ).scalar_one_or_none()
+    if student is None:
+        raise errors.not_found("student", id=str(student_id))
+    return student
+
+
+def competency_attempts(
+    db: Session,
+    scope: Scope,
+    student_id: uuid.UUID,
+    competency_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> CompetencyAttemptsOut:
+    """The individual answers behind one matrix cell, newest first.
+
+    This is what a teacher reaches when they disagree with a band. Every row
+    carries its provenance — the sheet it was printed on and the scan it was
+    read from — because "where did this mark come from" is the first question
+    asked of a number a teacher did not expect.
+    """
+    at = _now(now)
+    school_id = scope.school_id
+    student = _owned_student(db, scope, student_id)
+    competency = db.execute(
+        select(Competency).where(Competency.id == competency_id)
+    ).scalar_one_or_none()
+    if competency is None:
+        raise errors.not_found("competency", id=str(competency_id))
+
+    # One row per attempt, left-joined out to the sheet it was printed on and
+    # the scan its detection came from. Both are nullable: a seeded attempt has
+    # no paper behind it, and an attempt whose scan was deleted keeps the mark.
+    stmt = (
+        select(Attempt, Exercise, Sheet.title, Scan.id, Detection.outcome)
+        .join(exercise_competency, exercise_competency.c.exercise_id == Attempt.exercise_id)
+        .join(Exercise, Exercise.id == Attempt.exercise_id)
+        .outerjoin(Sheet, Sheet.id == Attempt.sheet_id)
+        .outerjoin(Detection, Detection.id == Attempt.detection_id)
+        .outerjoin(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .outerjoin(Scan, Scan.id == ScanPage.scan_id)
+        .where(Attempt.school_id == school_id)
+        .where(Attempt.student_id == student_id)
+        .where(exercise_competency.c.competency_id == competency_id)
+        .order_by(Attempt.answered_at.desc())
+    )
+
+    rows = db.execute(stmt).all()
+    attempts: list[AttemptOut] = []
+    inputs: list[AttemptInput] = []
+    for attempt, exercise, sheet_title, scan_id, outcome in rows:
+        answered = _aware(attempt.answered_at)
+        if answered is None:  # pragma: no cover - answered_at is NOT NULL
+            continue
+        inputs.append(
+            AttemptInput(
+                correct=bool(attempt.correct),
+                answered_at=answered,
+                difficulty=int(attempt.difficulty),
+            )
+        )
+        attempts.append(
+            AttemptOut(
+                id=attempt.id,
+                exercise_id=attempt.exercise_id,
+                statement=exercise.statement,
+                origin=exercise.origin,
+                correct=bool(attempt.correct),
+                difficulty=int(attempt.difficulty),
+                answered_at=answered,
+                sheet_id=attempt.sheet_id,
+                sheet_title=sheet_title,
+                scan_id=scan_id,
+                corrected=outcome is DetectionOutcome.CORRECTED,
+            )
+        )
+
+    result = compute_mastery(inputs, at)
+    return CompetencyAttemptsOut(
+        student=student_out(student),
+        competency=competency_out(competency),
+        score=result.score,
+        band=result.band,
+        provisional=result.provisional,
+        days_until_review=result.days_until_review,
+        attempts=attempts,
+    )
+
+
+def _sheets_taken(
+    db: Session, school_id: uuid.UUID, student_id: uuid.UUID
+) -> list[SheetTaken]:
+    """The sheets this student actually sat, newest first.
+
+    Grouped in Python rather than SQL because the scan id needs a two-hop
+    outer join per attempt and the row count here is a handful of sheets.
+    """
+    rows = db.execute(
+        select(Attempt, Sheet.title, Scan.id)
+        .join(Sheet, Sheet.id == Attempt.sheet_id)
+        .outerjoin(Detection, Detection.id == Attempt.detection_id)
+        .outerjoin(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .outerjoin(Scan, Scan.id == ScanPage.scan_id)
+        .where(Attempt.school_id == school_id)
+        .where(Attempt.student_id == student_id)
+        .where(Attempt.sheet_id.is_not(None))
+        .order_by(Attempt.answered_at.desc())
+    ).all()
+
+    by_sheet: dict[uuid.UUID, SheetTaken] = {}
+    for attempt, title, scan_id in rows:
+        answered = _aware(attempt.answered_at)
+        if answered is None or attempt.sheet_id is None:  # pragma: no cover - NOT NULL
+            continue
+        taken = by_sheet.get(attempt.sheet_id)
+        if taken is None:
+            by_sheet[attempt.sheet_id] = SheetTaken(
+                sheet_id=attempt.sheet_id,
+                title=title,
+                answered_at=answered,
+                attempts_count=1,
+                correct_count=1 if attempt.correct else 0,
+                scan_id=scan_id,
+            )
+            continue
+        taken.attempts_count += 1
+        if attempt.correct:
+            taken.correct_count += 1
+        if answered > taken.answered_at:
+            taken.answered_at = answered
+        if taken.scan_id is None:
+            taken.scan_id = scan_id
+
+    return sorted(by_sheet.values(), key=lambda s: s.answered_at, reverse=True)
 
 
 def _history(
@@ -295,17 +542,14 @@ def _history(
 
 def student_profile(
     db: Session,
-    school_id: uuid.UUID,
+    scope: Scope,
     student_id: uuid.UUID,
     *,
     now: datetime | None = None,
 ) -> StudentProfileOut:
     at = _now(now)
-    student = db.execute(
-        select(Student).where(Student.id == student_id).where(Student.school_id == school_id)
-    ).scalar_one_or_none()
-    if student is None:
-        raise errors.not_found("student", id=str(student_id))
+    school_id = scope.school_id
+    student = _owned_student(db, scope, student_id)
 
     grouped = load_attempt_inputs(db, school_id, [student_id])
     competency_ids = [cid for (_sid, cid) in grouped]
@@ -343,13 +587,7 @@ def student_profile(
     )[:MAX_GAPS]
     overall = sum(e.score for e in entries) / len(entries) if entries else 0.0
 
-    sheets_taken = db.execute(
-        select(Attempt.sheet_id)
-        .where(Attempt.school_id == school_id)
-        .where(Attempt.student_id == student_id)
-        .where(Attempt.sheet_id.is_not(None))
-        .distinct()
-    ).all()
+    sheets = _sheets_taken(db, school_id, student_id)
 
     return StudentProfileOut(
         student=student_out(student),
@@ -357,7 +595,8 @@ def student_profile(
         strengths=strengths,
         gaps=gaps,
         all_competencies=entries,
-        sheets_taken=len(sheets_taken),
+        sheets_taken=len(sheets),
+        sheets=sheets,
     )
 
 

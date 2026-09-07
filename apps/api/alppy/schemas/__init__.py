@@ -269,6 +269,7 @@ class DetectionOut(ApiModel):
     id: uuid.UUID
     item_index: int
     sheet_item_id: uuid.UUID | None
+    exercise_id: uuid.UUID | None = None
     detected_index: int | None
     detected_bool: bool | None
     confidence: float
@@ -276,10 +277,33 @@ class DetectionOut(ApiModel):
     fill_ratios: list[float] | None = None
     bubble_boxes: list[dict[str, float]] | None = None
     corrected_at: datetime | None = None
+    # What the machine read, kept beside the teacher's override rather than
+    # under it, so the review UI can show what was disagreed with.
+    machine_index: int | None = None
+    machine_outcome: DetectionOutcome | None = None
+    machine_confidence: float | None = None
+    # The question this reading is graded against, so the teacher reviewing a
+    # low-confidence mark can see what was asked instead of a bare "#7".
+    number: int | None = None
+    statement: str | None = None
+    options: list[str] | None = None
+    option_letters: str | None = None
+    exercise_type: ExerciseType | None = None
+    ai_generated: bool = False
+    # The correct option, as an index into option_letters. The teacher is
+    # adjudicating what the machine read, and "is that what they meant" is a
+    # different question from "were they right" — but both are asked of the
+    # same row, and the key is already on the answer-key sheet in their hand.
+    answer_index: int | None = None
 
 
 class DetectionCorrection(BaseModel):
-    """A teacher overriding the machine. Always allowed, always recorded."""
+    """A teacher overriding the machine. Always allowed, always recorded.
+
+    ``le=3`` is the layout's hard ceiling (``MAX_OPTIONS``); the item's own
+    option count is checked in the service, which is the only place that knows
+    it — a two-bubble true/false item must not accept option 3.
+    """
 
     detected_index: Annotated[int, Field(ge=0, le=3)] | None = None
 
@@ -293,7 +317,20 @@ class ScanPageOut(ApiModel):
     uid_confidence: float | None
     student_id: uuid.UUID | None
     sheet_instance_id: uuid.UUID | None
+    # Why this page is not simply one of the copies: it belongs to another
+    # class, or the teacher took it out of the pile. Both are shown, and
+    # neither blocks confirmation.
+    wrong_class: bool = False
+    discarded: bool = False
+    page_in_copy: int | None = None
+    registration_error: str | None = None
     detections: list[DetectionOut] = []
+
+
+class ScanPageDiscard(BaseModel):
+    """Take a page out of the pile, or put it back."""
+
+    discarded: bool = True
 
 
 class ScanPageAssign(BaseModel):
@@ -308,6 +345,10 @@ class ScanOut(ApiModel):
     original_filename: str
     status: ScanStatus
     error: str | None = None
+    # The job registering and detecting this pile. Returned on upload so the
+    # review screen can poll it for real per-page progress rather than showing
+    # a still-processing scan as a finished empty one.
+    job_id: uuid.UUID | None = None
     pages: list[ScanPageOut] = []
     created_at: datetime
 
@@ -316,6 +357,11 @@ class ScanConfirmResponse(ApiModel):
     attempts_created: int
     students_affected: int
     competencies_updated: int
+    # A re-scan of the same pile corrects the record rather than doubling it.
+    attempts_superseded: int = 0
+    # Items that went in on paper and produced no attempt: two bubbles filled,
+    # or free text. Counted rather than dropped in silence.
+    items_skipped: int = 0
 
 
 # ------------------------------------------------------------------ mastery
@@ -354,6 +400,57 @@ class CompetencyMastery(ApiModel):
     history: list[MasteryPoint] = []
 
 
+class SheetTaken(ApiModel):
+    """One sheet a student actually sat, newest first on the profile.
+
+    ``scan_id`` is the pile the marks were read from, so the teacher can get
+    from "she did badly here" back to the photograph of her copy in one click.
+    """
+
+    sheet_id: uuid.UUID
+    title: str
+    answered_at: datetime
+    attempts_count: int
+    correct_count: int
+    scan_id: uuid.UUID | None = None
+
+
+class AttemptOut(ApiModel):
+    """One graded item behind a matrix cell, with its provenance.
+
+    This is the bottom of the drill-down: a teacher who disagrees with a band
+    follows it to the individual answers, and from any answer back to the sheet
+    it was printed on and the scan it was read from.
+    """
+
+    id: uuid.UUID
+    exercise_id: uuid.UUID
+    statement: str
+    # Marks the item with the mandarin accent in the drill-down: an AI-written
+    # exercise is the one a teacher should read twice before trusting the mark.
+    origin: ExerciseOrigin
+    correct: bool
+    difficulty: int
+    answered_at: datetime
+    sheet_id: uuid.UUID | None = None
+    sheet_title: str | None = None
+    scan_id: uuid.UUID | None = None
+    # The teacher overrode the scanner's reading of this item during review.
+    corrected: bool = False
+
+
+class CompetencyAttemptsOut(ApiModel):
+    """The drill-down payload for one (student, competency) cell."""
+
+    student: StudentOut
+    competency: CompetencyOut
+    score: float
+    band: MasteryBand
+    provisional: bool
+    days_until_review: int | None = None
+    attempts: list[AttemptOut] = []
+
+
 class StudentProfileOut(ApiModel):
     student: StudentOut
     overall_score: float
@@ -361,6 +458,7 @@ class StudentProfileOut(ApiModel):
     gaps: list[CompetencyMastery] = []
     all_competencies: list[CompetencyMastery] = []
     sheets_taken: int = 0
+    sheets: list[SheetTaken] = []
 
 
 # ----------------------------------------------------------------- adaptive
@@ -370,7 +468,13 @@ class AdaptiveProposeRequest(BaseModel):
     student_ids: Annotated[list[uuid.UUID], Field(max_length=40)] = []
     items_per_student: Annotated[int, Field(ge=1, le=16)] = 8
     allow_generation: bool = True
+    #: An explicit teacher override. Normally absent: the language of a sheet
+    #: follows the source material, not the UI locale, and the server reads it
+    #: off the corpus.
     language: Locale | None = None
+    #: One shared sheet for the selected students, targeting the union of their
+    #: gaps, instead of one sheet each.
+    group: bool = False
 
 
 class AdaptiveStudentPlan(ApiModel):
@@ -385,11 +489,79 @@ class AdaptiveStudentPlan(ApiModel):
         return len(self.retrieved) + len(self.generated)
 
 
+class AdaptiveGroupItem(ApiModel):
+    """Which students in the group a shared item is actually for."""
+
+    exercise_id: uuid.UUID
+    for_student_uids: list[str] = []
+
+
+class AdaptiveGroupPlan(ApiModel):
+    """One item list shared by several students with overlapping gaps."""
+
+    student_ids: list[uuid.UUID] = []
+    student_uids: list[str] = []
+    targeted_competency_ids: list[uuid.UUID] = []
+    retrieved: list[ExerciseProposal] = []
+    generated: list[ExerciseProposal] = []
+    items: list[AdaptiveGroupItem] = []
+
+
+class AdaptiveGenerationFailure(ApiModel):
+    """Generation could not fill a student's sheet, and why.
+
+    A shorter sheet with no explanation is the failure a teacher cannot act on:
+    they count fifteen items where they asked for sixteen and have no way to
+    tell whether the corpus ran out or the provider fell over.
+    """
+
+    student_id: uuid.UUID
+    student_uid: str
+    #: `provider_error` | `unparsable_response` | `pii_gate` | `incomplete`
+    reason: str
+    requested: int
+    produced: int = 0
+    detail: str | None = None
+
+
 class AdaptiveProposeResponse(ApiModel):
     plans: list[AdaptiveStudentPlan]
     language: str
     generated_count: int = 0
     needs_approval: bool = True
+    group: AdaptiveGroupPlan | None = None
+    failures: list[AdaptiveGenerationFailure] = []
+
+
+class AdaptiveApproveRequest(BaseModel):
+    """The only way an AI-generated item becomes printable."""
+
+    exercise_ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=400)]
+
+
+class AdaptiveApproveResponse(ApiModel):
+    approved: int
+    exercise_ids: list[uuid.UUID] = []
+
+
+class AdaptiveDiscardRequest(BaseModel):
+    exercise_ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=400)]
+
+
+class AdaptiveDiscardResponse(ApiModel):
+    discarded: int
+    exercise_ids: list[uuid.UUID] = []
+
+
+class AdaptiveRegenerateRequest(BaseModel):
+    exercise_id: uuid.UUID
+
+
+class AdaptiveRegenerateResponse(ApiModel):
+    """The replacement, plus the id it replaced so the UI can swap in place."""
+
+    replaced_exercise_id: uuid.UUID
+    proposal: ExerciseProposal
 
 
 class AdaptiveBatchRequest(BaseModel):

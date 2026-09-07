@@ -5,789 +5,1335 @@
       "language": "fr",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1"],
+      "competency_codes": [
+        "MSN 32.1"
+      ],
       "difficulty": 1,
       "statement": "Quelle fraction est équivalente à 2/5 ?",
-      "options": ["4/10", "5/2", "2/10", "4/5"],
+      "options": [
+        "4/10",
+        "5/2",
+        "2/10",
+        "4/5"
+      ],
       "answer_index": 0,
       "explanation": "On multiplie le numérateur et le dénominateur par 2 : 2×2=4 et 5×2=10.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-frac-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MA.1.A.3"],
+      "competency_codes": [
+        "MA.1.A.3"
+      ],
       "difficulty": 1,
       "statement": "Welcher Bruch ist gleichwertig zu 3/4?",
-      "options": ["6/8", "4/3", "3/8", "9/16"],
-      "answer_index": 0,
+      "options": [
+        "4/3",
+        "6/8",
+        "3/8",
+        "9/16"
+      ],
+      "answer_index": 1,
       "explanation": "Zähler und Nenner werden beide mit 2 multipliziert: 3×2=6 und 4×2=8.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-frac-002",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1"],
+      "competency_codes": [
+        "MSN 32.1"
+      ],
       "difficulty": 2,
       "statement": "Simplifie la fraction 18/24 sous sa forme irréductible.",
-      "options": ["3/4", "6/8", "9/12", "2/3"],
-      "answer_index": 0,
+      "options": [
+        "6/8",
+        "9/12",
+        "3/4",
+        "2/3"
+      ],
+      "answer_index": 2,
       "explanation": "Le PGCD de 18 et 24 est 6 : 18÷6=3 et 24÷6=4.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-frac-002",
       "language": "de",
       "type": "true_false",
       "chapter_key": "fractions",
-      "competency_codes": ["MA.1.A.2"],
+      "competency_codes": [
+        "MA.1.A.2"
+      ],
       "difficulty": 2,
       "statement": "Der Bruch 5/8 ist grösser als 0,6.",
       "answer_bool": true,
       "explanation": "5/8 = 0,625, das ist grösser als 0,6.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-frac-003",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1", "MA.1.A.3"],
+      "competency_codes": [
+        "MSN 32.1",
+        "MA.1.A.3"
+      ],
       "difficulty": 3,
       "statement": "Calcule : 2/3 + 1/4.",
-      "options": ["11/12", "3/7", "5/6", "13/12"],
+      "options": [
+        "11/12",
+        "3/7",
+        "5/6",
+        "13/12"
+      ],
       "answer_index": 0,
       "explanation": "Dénominateur commun 12 : 2/3=8/12 et 1/4=3/12, donc 8/12+3/12=11/12.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-frac-003",
       "language": "de",
       "type": "true_false",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1"],
+      "competency_codes": [
+        "MSN 32.1"
+      ],
       "difficulty": 3,
       "statement": "Für den Bruch 4/6 gilt: Er ist bereits vollständig gekürzt.",
       "answer_bool": false,
       "explanation": "4/6 lässt sich durch 2 kürzen zu 2/3, ist also nicht vollständig gekürzt.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-frac-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1", "MA.1.A.3"],
+      "competency_codes": [
+        "MSN 32.1",
+        "MA.1.A.3"
+      ],
       "difficulty": 4,
       "statement": "Un randonneur parcourt 3/5 d'un sentier de 12 km lors de la 1re étape, puis 1/4 du reste lors de la 2e étape. Combien de km lui reste-t-il ensuite ?",
-      "options": ["3,6 km", "4,8 km", "1,8 km", "9 km"],
-      "answer_index": 0,
+      "options": [
+        "4,8 km",
+        "1,8 km",
+        "3,6 km",
+        "9 km"
+      ],
+      "answer_index": 2,
       "explanation": "Après la 1re étape, il reste 12 − 3/5×12 = 4,8 km. Après la 2e étape (1/4 de 4,8 km = 1,2 km), il reste 4,8 − 1,2 = 3,6 km.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-frac-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "fractions",
-      "competency_codes": ["MA.1.A.3"],
+      "competency_codes": [
+        "MA.1.A.3"
+      ],
       "difficulty": 4,
       "statement": "Ein Wassertank fasst 80 Liter und ist zu 3/8 gefüllt. Wie viele Liter fehlen, damit der Tank ganz voll ist?",
-      "options": ["50 l", "30 l", "45 l", "10 l"],
-      "answer_index": 0,
+      "options": [
+        "30 l",
+        "45 l",
+        "10 l",
+        "50 l"
+      ],
+      "answer_index": 3,
       "explanation": "Gefüllt sind 3/8 von 80 l = 30 l. Es fehlen also 80 l − 30 l = 50 l.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-frac-005",
       "language": "fr",
       "type": "open",
       "chapter_key": "fractions",
-      "competency_codes": ["MSN 32.1", "MA.1.A.3"],
+      "competency_codes": [
+        "MSN 32.1",
+        "MA.1.A.3"
+      ],
       "difficulty": 5,
       "statement": "Une pizzeria de Sion partage une pizza en parts égales. Léa en mange 1/3, Noah en mange 1/4, et le reste est partagé entre 5 amis. Quelle fraction chaque ami reçoit-il ? Détaille ta démarche.",
       "answer_text": "Léa et Noah mangent 1/3 + 1/4 = 7/12 de la pizza. Il reste 1 − 7/12 = 5/12. Partagé entre 5 amis : (5/12) ÷ 5 = 1/12. Chaque ami reçoit 1/12 de la pizza.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-prop-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MA.3.A.3"],
+      "competency_codes": [
+        "MA.3.A.3"
+      ],
       "difficulty": 1,
       "statement": "Für ein Rezept braucht man für 4 Personen 300 g Mehl. Wie viel Mehl braucht man für 6 Personen bei gleichem Verhältnis?",
-      "options": ["450 g", "500 g", "375 g", "600 g"],
-      "answer_index": 0,
+      "options": [
+        "500 g",
+        "450 g",
+        "375 g",
+        "600 g"
+      ],
+      "answer_index": 1,
       "explanation": "1 Person braucht 300÷4=75 g. Für 6 Personen: 75×6=450 g.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-prop-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3"],
+      "competency_codes": [
+        "MSN 33.3"
+      ],
       "difficulty": 1,
       "statement": "Une voiture roule à vitesse constante et parcourt 90 km en 1 heure. Combien de km parcourt-elle en 3 heures ?",
-      "options": ["270 km", "180 km", "300 km", "93 km"],
-      "answer_index": 0,
+      "options": [
+        "180 km",
+        "300 km",
+        "270 km",
+        "93 km"
+      ],
+      "answer_index": 2,
       "explanation": "Vitesse constante : 90 km/h × 3 h = 270 km.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-prop-002",
       "language": "de",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3", "MA.3.A.3"],
+      "competency_codes": [
+        "MSN 33.3",
+        "MA.3.A.3"
+      ],
       "difficulty": 2,
       "statement": "Auf einer Karte im Massstab 1:25'000 misst eine Strecke 4 cm. Wie lang ist sie in Wirklichkeit?",
-      "options": ["1 km", "100 km", "0,1 km", "4 km"],
-      "answer_index": 0,
+      "options": [
+        "100 km",
+        "0,1 km",
+        "4 km",
+        "1 km"
+      ],
+      "answer_index": 3,
       "explanation": "4 cm × 25'000 = 100'000 cm = 1000 m = 1 km.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-prop-002",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3"],
+      "competency_codes": [
+        "MSN 33.3"
+      ],
       "difficulty": 2,
       "statement": "Vrai ou faux : si une grandeur double, une grandeur qui lui est proportionnelle double aussi.",
       "answer_bool": true,
       "explanation": "Dans une relation de proportionnalité, le rapport reste constant : si une grandeur est multipliée par 2, l'autre l'est aussi.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-prop-003",
       "language": "de",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MA.3.A.3"],
+      "competency_codes": [
+        "MA.3.A.3"
+      ],
       "difficulty": 3,
       "statement": "Ein Kanton verteilt Fördergelder proportional zur Einwohnerzahl. Gemeinde A hat 3'000 Einwohner und erhält CHF 45'000. Gemeinde B hat 5'000 Einwohner. Wie viel erhält Gemeinde B?",
-      "options": ["CHF 75'000", "CHF 27'000", "CHF 60'000", "CHF 90'000"],
-      "answer_index": 0,
+      "options": [
+        "CHF 27'000",
+        "CHF 75'000",
+        "CHF 60'000",
+        "CHF 90'000"
+      ],
+      "answer_index": 1,
       "explanation": "Pro Einwohner: 45'000 ÷ 3'000 = 15 CHF. Für 5'000 Einwohner: 5'000 × 15 = 75'000 CHF.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-prop-003",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3"],
+      "competency_codes": [
+        "MSN 33.3"
+      ],
       "difficulty": 3,
       "statement": "Vrai ou faux : dans le tableau où x=2 correspond à y=6 et x=5 correspond à y=16, la relation entre x et y est proportionnelle.",
       "answer_bool": false,
       "explanation": "Le rapport y/x vaut 3 pour x=2 mais 3,2 pour x=5 : ce n'est pas constant, la relation n'est donc pas proportionnelle.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "de-prop-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MA.3.A.3"],
+      "competency_codes": [
+        "MA.3.A.3"
+      ],
       "difficulty": 4,
       "statement": "Für 8 identische Holzregale werden 24 Schrauben benötigt. Wie viele Schrauben braucht man für 20 solche Regale bei gleichbleibendem Verbrauch?",
-      "options": ["60", "48", "72", "54"],
-      "answer_index": 0,
+      "options": [
+        "48",
+        "72",
+        "54",
+        "60"
+      ],
+      "answer_index": 3,
       "explanation": "Pro Regal werden 24÷8=3 Schrauben gebraucht. Für 20 Regale: 20×3=60 Schrauben.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 1 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 1
+      }
     },
     {
       "key": "fr-prop-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3"],
+      "competency_codes": [
+        "MSN 33.3"
+      ],
       "difficulty": 4,
       "statement": "Le prix de 3,5 kg de fromage d'alpage est de CHF 42.–. Quel est le prix pour 5 kg au même tarif ?",
-      "options": ["CHF 60.–", "CHF 54.–", "CHF 63.–", "CHF 50.–"],
+      "options": [
+        "CHF 60.–",
+        "CHF 54.–",
+        "CHF 63.–",
+        "CHF 50.–"
+      ],
       "answer_index": 0,
       "explanation": "Prix au kilo : 42 ÷ 3,5 = 12 CHF/kg. Pour 5 kg : 5 × 12 = 60 CHF.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-prop-005",
       "language": "de",
       "type": "open",
       "chapter_key": "proportionality",
-      "competency_codes": ["MSN 33.3", "MA.3.A.3"],
+      "competency_codes": [
+        "MSN 33.3",
+        "MA.3.A.3"
+      ],
       "difficulty": 5,
       "statement": "Ein Bergbähnli in Graubünden verbraucht bei 1200 m Streckenlänge 18 kWh Energie. Für eine neue, proportional längere Strecke von 1950 m: Wie viel Energie wird benötigt? Zeige deinen Lösungsweg.",
       "answer_text": "Pro Meter: 18 kWh ÷ 1200 m = 0,015 kWh/m. Für 1950 m: 1950 × 0,015 = 29,25 kWh.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-eqn-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MA.1.C.1"],
+      "competency_codes": [
+        "MA.1.C.1"
+      ],
       "difficulty": 1,
       "statement": "Résous : x + 7 = 15.",
-      "options": ["8", "22", "−8", "7"],
-      "answer_index": 0,
+      "options": [
+        "22",
+        "−8",
+        "8",
+        "7"
+      ],
+      "answer_index": 2,
       "explanation": "x = 15 − 7 = 8.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-eqn-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MA.1.C.1"],
+      "competency_codes": [
+        "MA.1.C.1"
+      ],
       "difficulty": 1,
       "statement": "Löse die Gleichung: 3x = 21.",
-      "options": ["7", "18", "24", "3"],
-      "answer_index": 0,
+      "options": [
+        "18",
+        "24",
+        "3",
+        "7"
+      ],
+      "answer_index": 3,
       "explanation": "x = 21 ÷ 3 = 7.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-eqn-002",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MA.1.C.1"],
+      "competency_codes": [
+        "MA.1.C.1"
+      ],
       "difficulty": 2,
       "statement": "Résous : 2x − 5 = 11.",
-      "options": ["8", "3", "5,5", "16"],
+      "options": [
+        "8",
+        "3",
+        "5,5",
+        "16"
+      ],
       "answer_index": 0,
       "explanation": "2x = 11 + 5 = 16, donc x = 16 ÷ 2 = 8.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-eqn-002",
       "language": "de",
       "type": "true_false",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MSN 33.2", "MA.1.C.1"],
+      "competency_codes": [
+        "MSN 33.2",
+        "MA.1.C.1"
+      ],
       "difficulty": 2,
       "statement": "Wahr oder falsch: Die Gleichung 4x + 2 = 4x + 9 hat keine Lösung.",
       "answer_bool": true,
       "explanation": "Nach Subtraktion von 4x auf beiden Seiten bleibt 2 = 9, was nie stimmt. Die Gleichung hat also keine Lösung.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-eqn-003",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MA.1.C.1"],
+      "competency_codes": [
+        "MA.1.C.1"
+      ],
       "difficulty": 3,
       "statement": "Résous : 3(x − 2) = 2x + 1.",
-      "options": ["7", "3", "−5", "1,4"],
-      "answer_index": 0,
+      "options": [
+        "3",
+        "−5",
+        "7",
+        "1,4"
+      ],
+      "answer_index": 2,
       "explanation": "3(x−2)=3x−6. L'équation devient 3x−6=2x+1, donc x=1+6=7.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-eqn-003",
       "language": "de",
       "type": "true_false",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MA.1.C.1"],
+      "competency_codes": [
+        "MA.1.C.1"
+      ],
       "difficulty": 3,
       "statement": "Wahr oder falsch: x = 4 ist eine Lösung der Gleichung 5x − 3 = 2x + 9.",
       "answer_bool": true,
       "explanation": "Einsetzen von x=4: 5×4−3=17 und 2×4+9=17. Beide Seiten sind gleich, also ist x=4 eine Lösung.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-eqn-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MSN 33.2", "MA.1.C.1"],
+      "competency_codes": [
+        "MSN 33.2",
+        "MA.1.C.1"
+      ],
       "difficulty": 4,
       "statement": "Léo a un certain montant. Après avoir dépensé CHF 12.– et reçu CHF 25.– de sa grand-mère, il lui reste CHF 48.–. Quel montant avait-il au départ ?",
-      "options": ["CHF 35.–", "CHF 61.–", "CHF 11.–", "CHF 85.–"],
+      "options": [
+        "CHF 35.–",
+        "CHF 61.–",
+        "CHF 11.–",
+        "CHF 85.–"
+      ],
       "answer_index": 0,
       "explanation": "x − 12 + 25 = 48 → x + 13 = 48 → x = 35.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-eqn-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MSN 33.2", "MA.1.C.1"],
+      "competency_codes": [
+        "MSN 33.2",
+        "MA.1.C.1"
+      ],
       "difficulty": 4,
       "statement": "Zwei Zahlen unterscheiden sich um 9. Ihre Summe beträgt 47. Wie lautet die grössere Zahl?",
-      "options": ["28", "19", "23,5", "38"],
-      "answer_index": 0,
+      "options": [
+        "19",
+        "28",
+        "23,5",
+        "38"
+      ],
+      "answer_index": 1,
       "explanation": "2x+9=47 → x=19 (kleinere Zahl); die grössere Zahl ist 19+9=28.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-eqn-005",
       "language": "fr",
       "type": "open",
       "chapter_key": "linear_equations",
-      "competency_codes": ["MSN 33.2"],
+      "competency_codes": [
+        "MSN 33.2"
+      ],
       "difficulty": 5,
       "statement": "Un club de ski de Verbier facture une cotisation fixe plus un montant par sortie. Une saison avec 6 sorties coûte CHF 210.–, une saison avec 10 sorties coûte CHF 330.–. Détermine la cotisation fixe et le prix d'une sortie en posant un système d'équations.",
       "answer_text": "En posant a + 6b = 210 et a + 10b = 330, on soustrait : 4b = 120, donc b = 30. Puis a = 210 − 180 = 30. La cotisation fixe est de CHF 30.– et chaque sortie coûte CHF 30.–.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-geom-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 1,
       "statement": "In einem rechtwinkligen Dreieck sind die Katheten 3 cm und 4 cm lang. Wie lang ist die Hypotenuse?",
-      "options": ["5 cm", "7 cm", "3,5 cm", "25 cm"],
-      "answer_index": 0,
+      "options": [
+        "7 cm",
+        "3,5 cm",
+        "25 cm",
+        "5 cm"
+      ],
+      "answer_index": 3,
       "explanation": "c = √(3²+4²) = √(9+16) = √25 = 5 cm.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-geom-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.1"],
+      "competency_codes": [
+        "MSN 31.1"
+      ],
       "difficulty": 1,
       "statement": "Combien de degrés mesure la somme des angles intérieurs d'un triangle ?",
-      "options": ["180°", "360°", "90°", "270°"],
+      "options": [
+        "180°",
+        "360°",
+        "90°",
+        "270°"
+      ],
       "answer_index": 0,
       "explanation": "La somme des angles d'un triangle vaut toujours 180°.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-geom-002",
       "language": "de",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 2,
       "statement": "Ein Rechteck hat die Seiten 6 cm und 8 cm. Wie lang ist seine Diagonale?",
-      "options": ["10 cm", "14 cm", "7 cm", "100 cm"],
-      "answer_index": 0,
+      "options": [
+        "14 cm",
+        "10 cm",
+        "7 cm",
+        "100 cm"
+      ],
+      "answer_index": 1,
       "explanation": "Die Diagonale d = √(6²+8²) = √100 = 10 cm.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-geom-002",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 2,
       "statement": "Vrai ou faux : un triangle dont les côtés mesurent 5 cm, 12 cm et 13 cm est un triangle rectangle.",
       "answer_bool": true,
       "explanation": "5² + 12² = 169 = 13² : la réciproque du théorème de Pythagore confirme que le triangle est rectangle.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "de-geom-003",
       "language": "de",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 3,
       "statement": "Eine Leiter lehnt an einer Hauswand. Der Fuss der Leiter steht 1,5 m von der Wand entfernt, die Leiter ist 4 m lang. Wie hoch reicht sie an der Wand hinauf (auf 0,1 m gerundet)?",
-      "options": ["≈ 3,7 m", "≈ 4,3 m", "≈ 2,5 m", "≈ 5,5 m"],
-      "answer_index": 0,
+      "options": [
+        "≈ 4,3 m",
+        "≈ 2,5 m",
+        "≈ 5,5 m",
+        "≈ 3,7 m"
+      ],
+      "answer_index": 3,
       "explanation": "Höhe = √(4² − 1,5²) = √13,75 ≈ 3,7 m.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 2 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 2
+      }
     },
     {
       "key": "fr-geom-003",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.1"],
+      "competency_codes": [
+        "MSN 31.1"
+      ],
       "difficulty": 3,
       "statement": "Vrai ou faux : deux figures symétriques par rapport à un axe ont toujours la même aire.",
       "answer_bool": true,
       "explanation": "Une symétrie axiale est une isométrie : elle conserve les longueurs et donc l'aire des figures.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-geom-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 4,
       "statement": "Ein gleichschenkliges Dreieck hat eine Basis von 10 cm und zwei gleich lange Schenkel von 13 cm. Wie hoch ist das Dreieck (Höhe auf die Basis)?",
-      "options": ["12 cm", "8,5 cm", "18 cm", "144 cm"],
-      "answer_index": 0,
+      "options": [
+        "8,5 cm",
+        "12 cm",
+        "18 cm",
+        "144 cm"
+      ],
+      "answer_index": 1,
       "explanation": "Höhe h = √(13² − 5²) = √(169−25) = √144 = 12 cm (5 cm ist die halbe Basis).",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-geom-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 4,
       "statement": "Un cerf-volant triangulaire a une base de 24 cm et une hauteur de 9 cm mesurée depuis le sommet opposé. Si les deux côtés obliques sont égaux, quelle est leur longueur ?",
-      "options": ["15 cm", "21 cm", "10,5 cm", "33 cm"],
-      "answer_index": 0,
+      "options": [
+        "21 cm",
+        "10,5 cm",
+        "15 cm",
+        "33 cm"
+      ],
+      "answer_index": 2,
       "explanation": "Chaque côté oblique = √(12² + 9²) = √225 = 15 cm (12 cm étant la moitié de la base).",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-geom-005",
       "language": "de",
       "type": "open",
       "chapter_key": "plane_geometry_pythagoras",
-      "competency_codes": ["MSN 31.2", "MA.2.A.2"],
+      "competency_codes": [
+        "MSN 31.2",
+        "MA.2.A.2"
+      ],
       "difficulty": 5,
       "statement": "Ein Segelboot auf dem Genfersee fährt 8 km nach Osten und danach 6 km nach Norden. Wie weit ist es in direkter Linie vom Ausgangspunkt entfernt, und um wie viele km ist dieser direkte Weg kürzer als die gefahrene Strecke? Zeige deine Rechnung.",
       "answer_text": "Direkte Entfernung: √(8²+6²) = √100 = 10 km. Die gefahrene Strecke betrug 8+6=14 km, also ist der direkte Weg 14−10=4 km kürzer.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-vol-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.1", "MA.2.A.1"],
+      "competency_codes": [
+        "MSN 34.1",
+        "MA.2.A.1"
+      ],
       "difficulty": 1,
       "statement": "Quelle est l'aire d'un rectangle de 7 cm sur 4 cm ?",
-      "options": ["28 cm²", "22 cm²", "11 cm²", "14 cm²"],
+      "options": [
+        "28 cm²",
+        "22 cm²",
+        "11 cm²",
+        "14 cm²"
+      ],
       "answer_index": 0,
       "explanation": "Aire = longueur × largeur = 7 × 4 = 28 cm².",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-vol-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.1"],
+      "competency_codes": [
+        "MSN 34.1"
+      ],
       "difficulty": 1,
       "statement": "Wie gross ist der Umfang eines Quadrats mit Seitenlänge 6 cm?",
-      "options": ["24 cm", "36 cm", "12 cm", "6 cm"],
-      "answer_index": 0,
+      "options": [
+        "36 cm",
+        "24 cm",
+        "12 cm",
+        "6 cm"
+      ],
+      "answer_index": 1,
       "explanation": "Umfang = 4 × Seitenlänge = 4 × 6 = 24 cm.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-vol-002",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.1", "MA.2.A.1"],
+      "competency_codes": [
+        "MSN 34.1",
+        "MA.2.A.1"
+      ],
       "difficulty": 2,
       "statement": "Un triangle a une base de 10 cm et une hauteur de 6 cm. Quelle est son aire ?",
-      "options": ["30 cm²", "60 cm²", "16 cm²", "36 cm²"],
-      "answer_index": 0,
+      "options": [
+        "60 cm²",
+        "16 cm²",
+        "30 cm²",
+        "36 cm²"
+      ],
+      "answer_index": 2,
       "explanation": "Aire du triangle = (base × hauteur) ÷ 2 = (10 × 6) ÷ 2 = 30 cm².",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-vol-002",
       "language": "de",
       "type": "true_false",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.2"],
+      "competency_codes": [
+        "MSN 34.2"
+      ],
       "difficulty": 2,
       "statement": "Wahr oder falsch: Ein Würfel mit Kantenlänge 3 cm hat ein Volumen von 27 cm³.",
       "answer_bool": true,
       "explanation": "V = a³ = 3³ = 27 cm³.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-vol-003",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.2", "MA.2.A.1"],
+      "competency_codes": [
+        "MSN 34.2",
+        "MA.2.A.1"
+      ],
       "difficulty": 3,
       "statement": "Une piscine rectangulaire mesure 12 m de long, 5 m de large et 1,5 m de profondeur (uniforme). Quel est son volume en m³ ?",
-      "options": ["90 m³", "60 m³", "18,5 m³", "102 m³"],
+      "options": [
+        "90 m³",
+        "60 m³",
+        "18,5 m³",
+        "102 m³"
+      ],
       "answer_index": 0,
       "explanation": "Volume = longueur × largeur × profondeur = 12 × 5 × 1,5 = 90 m³.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-vol-003",
       "language": "de",
       "type": "true_false",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.2"],
+      "competency_codes": [
+        "MSN 34.2"
+      ],
       "difficulty": 3,
       "statement": "Wahr oder falsch: Verdoppelt man die Kantenlänge eines Würfels, so verdoppelt sich auch sein Volumen.",
       "answer_bool": false,
       "explanation": "Das Volumen eines Würfels ist proportional zur dritten Potenz der Kantenlänge: bei doppelter Kantenlänge wird das Volumen 2³=8-mal so gross, nicht nur doppelt.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-vol-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.2", "MSN 31.3"],
+      "competency_codes": [
+        "MSN 34.2",
+        "MSN 31.3"
+      ],
       "difficulty": 4,
       "statement": "Un silo à grains cylindrique a un rayon de base de 2 m et une hauteur de 5 m. Quel est son volume (π ≈ 3,14, arrondi à l'unité) ?",
-      "options": ["≈ 63 m³", "≈ 31 m³", "≈ 126 m³", "≈ 20 m³"],
-      "answer_index": 0,
+      "options": [
+        "≈ 31 m³",
+        "≈ 126 m³",
+        "≈ 63 m³",
+        "≈ 20 m³"
+      ],
+      "answer_index": 2,
       "explanation": "V = π × r² × h ≈ 3,14 × 2² × 5 = 3,14 × 4 × 5 = 62,8 ≈ 63 m³.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-vol-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.1"],
+      "competency_codes": [
+        "MSN 34.1"
+      ],
       "difficulty": 4,
       "statement": "Ein Bauer möchte ein rechteckiges Feld von 240 m² Fläche einzäunen. Die Länge soll 20 m betragen. Wie viele Meter Zaun braucht er für den gesamten Umfang?",
-      "options": ["64 m", "52 m", "32 m", "120 m"],
-      "answer_index": 0,
+      "options": [
+        "52 m",
+        "32 m",
+        "120 m",
+        "64 m"
+      ],
+      "answer_index": 3,
       "explanation": "Breite = 240 ÷ 20 = 12 m. Umfang = 2 × (20 + 12) = 64 m.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-vol-005",
       "language": "fr",
       "type": "open",
       "chapter_key": "areas_volumes",
-      "competency_codes": ["MSN 34.1", "MSN 34.2"],
+      "competency_codes": [
+        "MSN 34.1",
+        "MSN 34.2"
+      ],
       "difficulty": 5,
       "statement": "Une entreprise valaisanne coule une dalle de béton en forme de trapèze pour une terrasse : les côtés parallèles mesurent 8 m et 5 m, la hauteur du trapèze est 4 m, et l'épaisseur de la dalle est 0,12 m. Calcule le volume de béton nécessaire, en m³.",
       "answer_text": "Aire du trapèze = ((8+5)/2) × 4 = 6,5 × 4 = 26 m². Volume de béton = 26 × 0,12 = 3,12 m³.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-data-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.B.2"],
+      "competency_codes": [
+        "MA.3.B.2"
+      ],
       "difficulty": 1,
       "statement": "Bei einem einzigen Wurf eines fairen Würfels: Wie gross ist die Wahrscheinlichkeit, eine 6 zu würfeln?",
-      "options": ["1/6", "1/2", "1/3", "6"],
-      "answer_index": 0,
+      "options": [
+        "1/2",
+        "1/6",
+        "1/3",
+        "6"
+      ],
+      "answer_index": 1,
       "explanation": "Ein Würfel hat 6 gleich wahrscheinliche Seiten, davon eine 6, also P = 1/6.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-data-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.B.2"],
+      "competency_codes": [
+        "MA.3.B.2"
+      ],
       "difficulty": 1,
       "statement": "On lance une pièce de monnaie équilibrée. Quelle est la probabilité d'obtenir « pile » ?",
-      "options": ["1/2", "1", "1/4", "2"],
-      "answer_index": 0,
+      "options": [
+        "1",
+        "1/4",
+        "1/2",
+        "2"
+      ],
+      "answer_index": 2,
       "explanation": "Il y a deux issues également probables (pile ou face), donc P(pile) = 1/2.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "de-data-002",
       "language": "de",
       "type": "mcq",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.C.1", "MSN 33.4"],
+      "competency_codes": [
+        "MA.3.C.1",
+        "MSN 33.4"
+      ],
       "difficulty": 2,
       "statement": "Die Tagestemperaturen einer Woche in Chur waren: 18, 20, 19, 22, 21, 17, 19 °C. Wie hoch ist der Mittelwert?",
-      "options": ["≈ 19,4 °C", "20 °C", "18 °C", "136 °C"],
-      "answer_index": 0,
+      "options": [
+        "20 °C",
+        "18 °C",
+        "136 °C",
+        "≈ 19,4 °C"
+      ],
+      "answer_index": 3,
       "explanation": "Summe = 136, geteilt durch 7 Tage ≈ 19,4 °C.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 3 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 3
+      }
     },
     {
       "key": "fr-data-002",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "data_probability",
-      "competency_codes": ["MSN 33.4"],
+      "competency_codes": [
+        "MSN 33.4"
+      ],
       "difficulty": 2,
       "statement": "Vrai ou faux : dans un diagramme circulaire, la somme de tous les secteurs représente toujours 100% des données.",
       "answer_bool": true,
       "explanation": "Un diagramme circulaire représente la totalité des données réparties en secteurs dont la somme des pourcentages vaut 100%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-data-003",
       "language": "de",
       "type": "open",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.C.1", "MSN 33.4"],
+      "competency_codes": [
+        "MA.3.C.1",
+        "MSN 33.4"
+      ],
       "difficulty": 3,
       "statement": "Eine Schulklasse in Luzern befragt 25 Mitschülerinnen und Mitschüler nach ihrem Lieblingssport: 10 Fussball, 7 Schwimmen, 5 Turnen, 3 anderer Sport. Stelle die Daten mit den entsprechenden Prozentanteilen dar.",
       "answer_text": "Fussball: 10/25 = 40%. Schwimmen: 7/25 = 28%. Turnen: 5/25 = 20%. Anderer Sport: 3/25 = 12%. Die Summe der Prozentanteile ergibt 100%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-data-003",
       "language": "fr",
       "type": "true_false",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.B.2"],
+      "competency_codes": [
+        "MA.3.B.2"
+      ],
       "difficulty": 3,
       "statement": "Vrai ou faux : si on lance deux dés équilibrés, la probabilité d'obtenir un total de 7 est la même que celle d'obtenir un total de 2.",
       "answer_bool": false,
       "explanation": "La somme 7 peut s'obtenir de 6 façons différentes (6/36), alors que la somme 2 ne peut s'obtenir que d'une seule façon (1/36) : les probabilités ne sont pas égales.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-data-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.B.2"],
+      "competency_codes": [
+        "MA.3.B.2"
+      ],
       "difficulty": 4,
       "statement": "In einer Urne liegen 4 rote, 3 blaue und 5 grüne Kugeln. Man zieht zufällig eine Kugel. Wie gross ist die Wahrscheinlichkeit, dass sie nicht grün ist?",
-      "options": ["7/12", "5/12", "1/12", "7/7"],
-      "answer_index": 0,
+      "options": [
+        "5/12",
+        "1/12",
+        "7/7",
+        "7/12"
+      ],
+      "answer_index": 3,
       "explanation": "Insgesamt 12 Kugeln, 5 davon grün, also 12−5=7 nicht grün: P = 7/12.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-data-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.C.1"],
+      "competency_codes": [
+        "MA.3.C.1"
+      ],
       "difficulty": 4,
       "statement": "Les notes sur 20 obtenues par 6 élèves sont : 12, 15, 15, 18, 9, 15. Quelle est la médiane de cette série ?",
-      "options": ["15", "14", "15,5", "12"],
+      "options": [
+        "15",
+        "14",
+        "15,5",
+        "12"
+      ],
       "answer_index": 0,
       "explanation": "En ordonnant les notes (9,12,15,15,15,18), la médiane est la moyenne des deux valeurs centrales : (15+15)/2 = 15.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-data-005",
       "language": "de",
       "type": "open",
       "chapter_key": "data_probability",
-      "competency_codes": ["MA.3.C.1"],
+      "competency_codes": [
+        "MA.3.C.1"
+      ],
       "difficulty": 5,
       "statement": "Ein Fitnessstudio in Bern zeichnet an einem Tag die Besucherzahl pro Stunde auf (9–16 Uhr): 8, 12, 15, 20, 18, 10, 6. Berechne den Mittelwert und die Spannweite dieser Datenreihe und interpretiere das Ergebnis kurz.",
       "answer_text": "Mittelwert: (8+12+15+20+18+10+6) ÷ 7 = 89 ÷ 7 ≈ 12,7 Besucher pro Stunde. Spannweite: 20 − 6 = 14. Die Besucherzahl schwankt also relativ stark über den Tag, mit einem Höchststand am frühen Nachmittag (20) und einem Tiefststand am frühen Morgen (6).",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-pct-001",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2"],
+      "competency_codes": [
+        "MA.3.C.2"
+      ],
       "difficulty": 1,
       "statement": "20% de 150 correspond à quel nombre ?",
-      "options": ["30", "20", "15", "35"],
-      "answer_index": 0,
+      "options": [
+        "20",
+        "15",
+        "30",
+        "35"
+      ],
+      "answer_index": 2,
       "explanation": "20% de 150 = 0,20 × 150 = 30.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-pct-001",
       "language": "de",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.A.2"],
+      "competency_codes": [
+        "MA.3.A.2"
+      ],
       "difficulty": 1,
       "statement": "Wie viel sind 50% von 84?",
-      "options": ["42", "50", "84", "28"],
-      "answer_index": 0,
+      "options": [
+        "50",
+        "84",
+        "28",
+        "42"
+      ],
+      "answer_index": 3,
       "explanation": "50% entsprechen der Hälfte: 84 ÷ 2 = 42.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-pct-002",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2", "MSN 33.3"],
+      "competency_codes": [
+        "MA.3.C.2",
+        "MSN 33.3"
+      ],
       "difficulty": 2,
       "statement": "Un pantalon coûtait CHF 80.– et est maintenant soldé à CHF 60.–. Quel est le pourcentage de réduction ?",
-      "options": ["25%", "20%", "33%", "75%"],
+      "options": [
+        "25%",
+        "20%",
+        "33%",
+        "75%"
+      ],
       "answer_index": 0,
       "explanation": "Réduction = 80−60=20 CHF. Pourcentage = 20/80 × 100 = 25%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-pct-002",
       "language": "de",
       "type": "true_false",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2"],
+      "competency_codes": [
+        "MA.3.C.2"
+      ],
       "difficulty": 2,
       "statement": "Wahr oder falsch: Wenn ein Preis um 10% erhöht und danach wieder um 10% gesenkt wird, erhält man wieder den ursprünglichen Preis.",
       "answer_bool": false,
       "explanation": "Bei einem Startpreis von 100 CHF ergibt +10% dann −10%: 100 → 110 → 99. Der ursprüngliche Preis wird nicht mehr erreicht, da sich die Prozente auf unterschiedliche Grundwerte beziehen.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-pct-003",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2", "MSN 33.3"],
+      "competency_codes": [
+        "MA.3.C.2",
+        "MSN 33.3"
+      ],
       "difficulty": 3,
       "statement": "Le prix d'un abonnement de transport passe de CHF 640.– à CHF 704.–. Quel est le pourcentage d'augmentation ?",
-      "options": ["10%", "9%", "64%", "6,4%"],
-      "answer_index": 0,
+      "options": [
+        "9%",
+        "64%",
+        "10%",
+        "6,4%"
+      ],
+      "answer_index": 2,
       "explanation": "Augmentation = 704−640=64 CHF. Pourcentage = 64/640 × 100 = 10%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-pct-003",
       "language": "de",
       "type": "true_false",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.A.2"],
+      "competency_codes": [
+        "MA.3.A.2"
+      ],
       "difficulty": 3,
       "statement": "Wahr oder falsch: 3/8 entsprechen 37,5%.",
       "answer_bool": true,
       "explanation": "3 ÷ 8 = 0,375 = 37,5%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-pct-004",
       "language": "fr",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2", "MSN 33.3"],
+      "competency_codes": [
+        "MA.3.C.2",
+        "MSN 33.3"
+      ],
       "difficulty": 4,
       "statement": "Après une hausse de 15%, le prix d'un vélo est de CHF 690.–. Quel était le prix avant la hausse ?",
-      "options": ["CHF 600.–", "CHF 586,50.–", "CHF 621.–", "CHF 703,50.–"],
+      "options": [
+        "CHF 600.–",
+        "CHF 586,50.–",
+        "CHF 621.–",
+        "CHF 703,50.–"
+      ],
       "answer_index": 0,
       "explanation": "Prix initial = 690 ÷ 1,15 = 600 CHF.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "de-pct-004",
       "language": "de",
       "type": "mcq",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2"],
+      "competency_codes": [
+        "MA.3.C.2"
+      ],
       "difficulty": 4,
       "statement": "In einer Klasse von 24 Schülerinnen und Schülern sind 9 Mädchen. Wie viel Prozent der Klasse sind Jungen?",
-      "options": ["62,5%", "37,5%", "66,7%", "55%"],
-      "answer_index": 0,
+      "options": [
+        "37,5%",
+        "62,5%",
+        "66,7%",
+        "55%"
+      ],
+      "answer_index": 1,
       "explanation": "Jungen = 24−9=15. Anteil = 15/24 × 100 = 62,5%.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     },
     {
       "key": "fr-pct-005",
       "language": "fr",
       "type": "open",
       "chapter_key": "percentages",
-      "competency_codes": ["MA.3.C.2", "MSN 33.3"],
+      "competency_codes": [
+        "MA.3.C.2",
+        "MSN 33.3"
+      ],
       "difficulty": 5,
       "statement": "Une commune tessinoise annonce que sa population a augmenté de 8% en une année pour atteindre 5'400 habitants. Quelle était la population l'année précédente ? Détaille ta démarche et arrondis à l'unité.",
       "answer_text": "Si P est la population de l'année précédente, P × 1,08 = 5400, donc P = 5400 ÷ 1,08 = 5000 habitants.",
-      "source_hint": { "document": "Demo corpus — maths cycle 3", "page": 4 }
+      "source_hint": {
+        "document": "Demo corpus — maths cycle 3",
+        "page": 4
+      }
     }
   ]
 }

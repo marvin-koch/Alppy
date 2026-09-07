@@ -22,6 +22,7 @@ from alppy.mastery.model import (
     compute_accuracy,
     compute_mastery,
     compute_recency,
+    days_until_review,
     decay,
     difficulty_weight,
 )
@@ -210,6 +211,40 @@ def test_review_prediction_is_sooner_for_a_weaker_score(now: datetime) -> None:
 def test_already_below_threshold_is_due_now(now: datetime) -> None:
     r = compute_mastery([A(True, 90, now=now) for _ in range(3)], now)
     assert r.days_until_review == 0
+
+
+def test_a_student_who_got_everything_wrong_is_due_now_not_never(now: datetime) -> None:
+    """Zero accuracy is the most urgent case there is, not an exempt one.
+
+    This used to return None, because the guard read ``accuracy <= 0.0`` as
+    "nothing to predict". The profile then captioned the worst cells in the
+    matrix with a neutral answer count instead of "due for review now".
+    """
+    r = compute_mastery([A(False, 1, now=now) for _ in range(5)], now)
+    assert r.score == 0.0
+    assert r.band is MasteryBand.FADING
+    assert r.days_until_review == 0
+
+
+def test_never_assessed_is_the_only_none_review_prediction(now: datetime) -> None:
+    """None means "never assessed" and nothing else."""
+    assert compute_mastery([], now).days_until_review is None
+    assert days_until_review(0.0, None, now) is None
+    # Every assessed competency, however strong, eventually comes due.
+    for attempts in ([A(True, 0, now=now)], [A(True, 0, now=now) for _ in range(20)]):
+        assert compute_mastery(attempts, now).days_until_review is not None
+
+
+def test_the_recency_floor_never_holds_a_score_above_the_threshold() -> None:
+    """The invariant that makes "never comes due" impossible.
+
+    ``days_until_review`` scans forward a year and returns None if it never
+    finds a day below the threshold. With the shipped constants that cannot
+    happen: accuracy is at most 1.0, so the floor caps the eventual score at
+    RECENCY_FLOOR, well under BAND_OK. If a future tuning breaks this, the
+    scan starts returning None and the docs in §4 stop being true — so pin it.
+    """
+    assert 1.0 * RECENCY_FLOOR < BAND_OK
 
 
 def test_percent_is_a_rounded_whole_number(now: datetime) -> None:

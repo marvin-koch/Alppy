@@ -254,7 +254,7 @@ def test_generated_items_cannot_be_printed_without_approval(
         school_id=world.school_id,
         exercise_ids=[p.exercise.id for p in plan.generated],
     )
-    assert approved == len(plan.generated)
+    assert sorted(approved) == sorted(p.exercise.id for p in plan.generated)
     world.db.commit()
     adaptive_service.ensure_printable([r for r in rows if r is not None])
     assert all(adaptive_service.is_printable(r) for r in rows if r is not None)
@@ -389,7 +389,7 @@ def test_generation_meta_records_the_uid_never_the_name(
         row = world.db.get(Exercise, proposal.exercise.id)
         assert row is not None
         meta = row.generation_meta or {}
-        assert meta["student_ref"] == "7B_01"
+        assert meta["student_refs"] == ["7B_01"]
         assert str(to_ref("7B_01")) == "7B_01"
         blob = str(meta)
         for first, last in ROSTER:
@@ -435,12 +435,18 @@ def test_generated_exercises_follow_the_language_of_the_material(
 
 
 def test_approving_nothing_is_a_no_op(world: World) -> None:
-    assert adaptive_service.approve_exercises(
-        world.db, school_id=world.school_id, exercise_ids=[]
-    ) == 0
-    assert adaptive_service.approve_exercises(
-        world.db, school_id=world.school_id, exercise_ids=[uuid.uuid4()]
-    ) == 0
+    assert (
+        adaptive_service.approve_exercises(
+            world.db, school_id=world.school_id, exercise_ids=[]
+        )
+        == []
+    )
+    assert (
+        adaptive_service.approve_exercises(
+            world.db, school_id=world.school_id, exercise_ids=[uuid.uuid4()]
+        )
+        == []
+    )
 
 
 def test_ensure_printable_accepts_approved_and_textbook_items(world: World) -> None:

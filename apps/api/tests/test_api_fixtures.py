@@ -41,25 +41,34 @@ def _compile_vector_sqlite(_type: Any, _compiler: Any, **_kw: Any) -> str:
 
 
 from alppy.api import deps  # noqa: E402
+from alppy.api.deps import Scope  # noqa: E402
 from alppy.core.config import Settings  # noqa: E402
 from alppy.core.security import hash_password  # noqa: E402
 from alppy.db.base import Base  # noqa: E402
 from alppy.main import create_app  # noqa: E402
 from alppy.models import (  # noqa: E402
+    Chapter,
     Class,
     Competency,
+    Detection,
     Exercise,
+    Scan,
+    ScanPage,
     School,
     SchoolYear,
+    Sheet,
     Student,
     Subject,
     Teacher,
 )
 from alppy.models.enums import (  # noqa: E402
     CurriculumKind,
+    DetectionOutcome,
     ExerciseOrigin,
     ExerciseType,
     Locale,
+    ScanStatus,
+    SheetTarget,
 )
 from alppy.storage import LocalStorage  # noqa: E402
 
@@ -85,6 +94,15 @@ class Tenant:
         self.school_class = school_class
         self.students = students
         self.competency = competency
+
+    @property
+    def scope(self) -> Scope:
+        """What a request from this teacher resolves to.
+
+        Class-derived reads take a ``Scope`` (school + owner), not a bare
+        ``school_id`` — see decisions-log D23.
+        """
+        return Scope(school_id=self.school.id, teacher_id=self.teacher.id)
 
 
 @pytest.fixture
@@ -311,3 +329,158 @@ def days_before(days: float) -> datetime:
 
 PDF_BYTES = b"%PDF-1.7\n" + b"0" * 512
 PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"0" * 256
+
+
+def make_chapter(
+    db: Session,
+    tenant: Tenant,
+    *,
+    key: str,
+    competencies: list[Competency],
+    position: int = 0,
+) -> Chapter:
+    """A chapter grouping competencies, so the matrix filter has something to
+    narrow to."""
+    chapter = Chapter(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        subject_id=tenant.subject.id,
+        key=key,
+        labels={"fr": key, "de": key, "en": key},
+        position=position,
+    )
+    chapter.competencies = competencies
+    db.add(chapter)
+    db.flush()
+    db.commit()
+    return chapter
+
+
+def make_paper_trail(
+    db: Session, tenant: Tenant, exercise: Exercise, student: Student
+) -> tuple[Sheet, Scan, Detection]:
+    """A sheet, a scan of it, and one teacher-corrected detection.
+
+    The drill-down promises a route from a mark back to the paper it came from,
+    which needs the whole chain to exist: attempt -> detection -> page -> scan,
+    and attempt -> sheet.
+    """
+    sheet = Sheet(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        class_id=tenant.school_class.id,
+        subject_id=tenant.subject.id,
+        title="Fractions, controle 1",
+        target=SheetTarget.CLASS,
+        language="fr",
+        layout_version="v1",
+    )
+    scan = Scan(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        sheet_id=sheet.id,
+        original_filename="copies.pdf",
+        storage_key="scans/copies.pdf",
+        status=ScanStatus.CONFIRMED,
+    )
+    db.add_all([sheet, scan])
+    db.flush()
+
+    page = ScanPage(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        scan_id=scan.id,
+        page_index=0,
+        image_key="scans/page-000.png",
+        registered=True,
+        student_id=student.id,
+    )
+    db.add(page)
+    db.flush()
+
+    detection = Detection(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        scan_page_id=page.id,
+        exercise_id=exercise.id,
+        item_index=0,
+        detected_index=1,
+        confidence=0.4,
+        outcome=DetectionOutcome.CORRECTED,
+    )
+    db.add(detection)
+    db.flush()
+    db.commit()
+    return sheet, scan, detection
+
+
+def make_colleague(
+    db: Session,
+    host: Tenant,
+    *,
+    email: str = "beatrice@alpes.ch",
+    class_code: str = "7C",
+    student_names: list[tuple[str, str]] | None = None,
+) -> Tenant:
+    """A second teacher **inside an existing school**, with their own class.
+
+    Every other fixture pair in this suite is two different *schools*, so the
+    only isolation the suite could ever see was the tenant boundary. The
+    boundary that actually leaked was the one inside a school: a colleague
+    could list and open another teacher's class, roster and mastery. This
+    fixture is what makes that testable (decisions-log D23).
+    """
+    teacher = Teacher(
+        id=uuid.uuid4(),
+        school_id=host.school.id,
+        email=email,
+        password_hash=hash_password(PASSWORD),
+        first_name="Beatrice",
+        last_name="Blanc",
+        locale=Locale.FR,
+    )
+    db.add(teacher)
+    db.flush()
+
+    school_class = Class(
+        id=uuid.uuid4(),
+        school_id=host.school.id,
+        school_year_id=host.school_class.school_year_id,
+        teacher_id=teacher.id,
+        code=class_code,
+        label="Groupe B",
+    )
+    db.add(school_class)
+    db.flush()
+
+    students: list[Student] = []
+    for number, (first, last) in enumerate(student_names or [("Marc", "Dupont")], start=1):
+        students.append(
+            Student(
+                id=uuid.uuid4(),
+                school_id=host.school.id,
+                class_id=school_class.id,
+                school_year_id=host.school_class.school_year_id,
+                uid=f"{class_code}_{number:02d}",
+                number=number,
+                first_name=first,
+                last_name=last,
+            )
+        )
+    db.add_all(students)
+    db.flush()
+    db.commit()
+    return Tenant(
+        school=host.school,
+        teacher=teacher,
+        subject=host.subject,
+        school_class=school_class,
+        students=students,
+        competency=host.competency,
+    )
+
+
+@pytest.fixture
+def colleague(db: Session, tenant: Tenant) -> Tenant:
+    """Another teacher in the SAME school as ``tenant``."""
+    return make_colleague(db, tenant)

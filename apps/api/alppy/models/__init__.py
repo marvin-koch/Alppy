@@ -307,6 +307,10 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
 
     # AI-generated exercises are never printed without teacher approval.
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # A generated item the teacher threw away. Kept rather than deleted so the
+    # next adaptive run knows not to propose it again (and so any Attempt that
+    # already points at it still resolves).
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
     competencies: Mapped[list[Competency]] = relationship(secondary=exercise_competency)
@@ -317,7 +321,13 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
         if self.type is ExerciseType.TRUE_FALSE:
             return 2
         if self.type is ExerciseType.MCQ:
-            return len(self.options or [])
+            # Capped at the grid width: the sheet only ever draws MAX_OPTIONS
+            # bubbles, so claiming more would key an answer to a bubble that is
+            # not on the paper. `sheets.pagination.Item.option_count` caps the
+            # same way; the two must agree.
+            from alppy.sheets.layout import MAX_OPTIONS
+
+            return min(len(self.options or []), MAX_OPTIONS)
         return 0  # open: printed, no bubbles, never auto-graded
 
 
@@ -417,6 +427,14 @@ class Scan(Base, TimestampMixin, SchoolScopedMixin):
     uploaded_by_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="SET NULL", nullable=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
+    # A phone upload is one file per copy: the teacher selects 28 photos and
+    # expects ONE review session, not 28. Every uploaded file is stored, in the
+    # order it was selected, and the pages of all of them concatenate into this
+    # scan. ``storage_key`` stays as the first file so old rows keep working.
+    storage_keys: Mapped[list[str] | None] = mapped_column(JSONB)
+    # Set once from the sheet the pile was printed from, so a page is always
+    # registered against the layout it was printed with (never the current one).
+    layout_version: Mapped[str | None] = mapped_column(String(10))
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus, name="scan_status"), default=ScanStatus.UPLOADED, nullable=False
     )
@@ -443,6 +461,16 @@ class ScanPage(Base, TimestampMixin, SchoolScopedMixin):
     sheet_instance_id: Mapped[uuid.UUID | None] = _fk(
         "sheet_instance.id", nullable=True, ondelete="SET NULL"
     )
+    # The UID decoded to a real student who is not in this sheet's class: last
+    # week's pile got shuffled into this one. Not an error, but never silently
+    # part of this sheet either.
+    wrong_class: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # A cover sheet, a lens-cap frame, a page re-shot later. Discarded pages are
+    # kept for audit and ignored by confirmation, so one bad photo cannot hold
+    # a whole class set hostage.
+    discarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # Which page of that student's copy this is, resolved from the decoded UID.
+    page_in_copy: Mapped[int | None] = mapped_column(Integer)
 
     scan: Mapped[Scan] = relationship(back_populates="pages")
     detections: Mapped[list[Detection]] = relationship(
@@ -460,13 +488,32 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     sheet_item_id: Mapped[uuid.UUID | None] = _fk(
         "sheet_item.id", nullable=True, ondelete="SET NULL"
     )
+    # The exercise this reading is graded against, resolved from the copy the
+    # page belongs to. Stored rather than derived: a differentiated copy prints
+    # its own item list, so "item 3 of the sheet" is not "item 3 of this paper".
+    exercise_id: Mapped[uuid.UUID | None] = _fk(
+        "exercise.id", nullable=True, ondelete="SET NULL"
+    )
     item_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    # The number printed beside the statement AND beside the grid row, counting
+    # across the whole copy. item_index restarts at 0 on every physical page, so
+    # it is not what the student's paper says next to the question.
+    printed_number: Mapped[int | None] = mapped_column(Integer)
     detected_index: Mapped[int | None] = mapped_column(Integer)
     detected_bool: Mapped[bool | None] = mapped_column(Boolean)
     confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
     outcome: Mapped[DetectionOutcome] = mapped_column(
         Enum(DetectionOutcome, name="detection_outcome"), nullable=False
     )
+    # What the MACHINE read, written once and never updated. A teacher override
+    # goes into detected_*/outcome/confidence above; these three keep the
+    # reading it replaced, because "the teacher disagreed with the scanner" is
+    # the fact worth auditing and it is unrecoverable once overwritten.
+    machine_index: Mapped[int | None] = mapped_column(Integer)
+    machine_outcome: Mapped[DetectionOutcome | None] = mapped_column(
+        Enum(DetectionOutcome, name="detection_outcome")
+    )
+    machine_confidence: Mapped[float | None] = mapped_column(Float)
     # Per-bubble fill ratios, kept so the review overlay can explain itself.
     fill_ratios: Mapped[list[float] | None] = mapped_column(JSONB)
     # Normalised [0,1] frame coords so the overlay scales to any rendered size.
@@ -477,6 +524,9 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     corrected_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     page: Mapped[ScanPage] = relationship(back_populates="detections")
+    # selectin, not joined: the review screen loads every detection of a scan at
+    # once, so one extra query beats a row per detection.
+    exercise: Mapped[Exercise | None] = relationship(lazy="selectin")
 
 
 class Attempt(Base, TimestampMixin, SchoolScopedMixin):
@@ -485,6 +535,13 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "attempt"
     __table_args__ = (
         Index("ix_attempt_student_answered", "student_id", "answered_at"),
+        # Re-scanning a pile must correct the record, not double it: mastery is
+        # a weighted mean over attempts, so a duplicate silently doubles one
+        # lesson's weight against every other. confirm_scan supersedes rather
+        # than inserts; this is the backstop that makes that a guarantee.
+        UniqueConstraint(
+            "student_id", "exercise_id", "sheet_id", name="uq_attempt_student_exercise_sheet"
+        ),
     )
 
     id: Mapped[uuid.UUID] = _pk()

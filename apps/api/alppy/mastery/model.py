@@ -71,6 +71,10 @@ MIN_EVIDENCE: Final = 1.5
 """Effective sample size below which a band is provisional. One lucky guess on
 one MCQ is not mastery; the UI marks these cells as provisional."""
 
+REVIEW_HORIZON_DAYS: Final = 366
+"""How far ahead ``days_until_review`` will look before giving up. A year is
+past the point where the answer is actionable for a teacher."""
+
 # --- Band thresholds. Ordered, and the order is meaningful.
 BAND_SOLID: Final = 0.90
 BAND_OK: Final = 0.75
@@ -163,17 +167,24 @@ def days_until_review(accuracy: float, last_attempt_at: datetime | None, now: da
     """Days until this competency is predicted to drop below the OK threshold.
 
     This is what the MasteryMeter caption ("62 % · revision dans 2 jours")
-    shows. Returns 0 if it is already due, and None if it never will be — which
-    happens when the recency floor holds the score above the threshold, or when
-    the competency has never been assessed.
+    shows. Returns 0 when it is already due — which includes an accuracy of
+    zero, the single most urgent case there is — and None only when the
+    competency has never been assessed and there is therefore nothing to
+    predict.
+
+    A zero accuracy used to return None here, which sent the worst cells in the
+    matrix to the neutral "n answers" caption instead of "due for review now".
     """
-    if last_attempt_at is None or accuracy <= 0.0:
+    if last_attempt_at is None:
         return None
-    if accuracy * RECENCY_FLOOR >= BAND_OK:
-        return None  # the floor keeps it above the threshold forever
-    for d in range(0, 366):
+    for d in range(0, REVIEW_HORIZON_DAYS):
         if accuracy * compute_recency(last_attempt_at, now + timedelta(days=d)) < BAND_OK:
             return d
+    # Only reachable if the constants are changed so that the recency floor
+    # holds the score above the threshold forever, i.e. accuracy * RECENCY_FLOOR
+    # >= BAND_OK. With the shipped values the maximum is 1.0 * 0.55 = 0.55,
+    # comfortably under 0.75, so every competency eventually comes due;
+    # test_the_recency_floor_never_holds_a_score_above_the_threshold pins that.
     return None
 
 

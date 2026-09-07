@@ -2,7 +2,7 @@
 name: generate_exercises
 version: v1
 purpose: Generate exercises targeting a student's weak competencies (F4)
-inputs: [language, competency_labels, difficulty, count, style_examples, student_ref]
+inputs: [language, competency_labels, difficulty, count, max_options, style_examples, student_ref]
 ---
 SYSTEM:
 You write mathematics exercises for Swiss compulsory school, cycle 3 (Sekundarstufe I,
@@ -19,7 +19,16 @@ Rules you must follow:
 - Every multiple-choice distractor must correspond to a specific, plausible
   mistake a student of this age actually makes. Never pad with obviously silly
   options.
-- Return only JSON matching the schema. No prose, no code fence.
+- A multiple-choice item has between 2 and {{max_options}} options, never more:
+  the printed answer grid draws exactly {{max_options}} bubbles, so a fifth
+  option would be a correct answer with no bubble to fill in.
+- All options must be different from one another and none may be empty. Two
+  identical options with one marked correct scores a child wrong for choosing
+  the same answer.
+- Vary which option is correct. Do not always put it first.
+- Return only JSON matching the schema exactly. No prose, no code fence, and no
+  fields beyond those listed: an unexpected field means the whole item is
+  discarded.
 
 You are given a student reference such as 7B_15. It is an identifier, not a name,
 and you must never invent a name for it or address the student personally.
@@ -35,7 +44,10 @@ Style reference — match the register and phrasing of these existing exercises,
 but do not copy them:
 {{style_examples}}
 
-Return JSON:
-{"exercises": [{"type": "mcq" | "true_false", "statement": "...",
-  "options": ["...", "..."], "answer_index": 0, "answer_bool": true,
+Return JSON. `options` and `answer_index` are for "mcq" only; `answer_bool` is
+for "true_false" only. Use no other fields.
+{"exercises": [{"type": "mcq", "statement": "...",
+  "options": ["...", "...", "...", "..."], "answer_index": 2,
+  "explanation": "...", "difficulty": 3},
+ {"type": "true_false", "statement": "...", "answer_bool": false,
   "explanation": "...", "difficulty": 3}]}
