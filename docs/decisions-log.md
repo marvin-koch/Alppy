@@ -155,3 +155,119 @@ nothing today would fill it), or if a school requires Swiss data residency —
 the Worker serves only the UI shell, but it proxies every API call, so
 [`privacy.md`](privacy.md) makes that a change to this decision and not just to
 the API's host.
+
+### D26 · The builder navigates the document's own chapters, not just the teacher's
+
+`Exercise.chapter_id` is inferred at ingest from competency overlap
+(`pipeline._chapter_for`) and is legitimately `NULL`: it needs the teacher to
+have created chapters, those chapters to carry competency codes, *and* the
+extraction to have tagged the item. On a real textbook a large minority of rows
+fail one of those. `_chapter_for`'s own docstring names the consequence — "an
+untagged exercise is invisible to the builder's chapter filter, which is the
+only way a teacher finds it".
+
+So `SourceSection` was added: the chapter the *document* declares, read from its
+headings at ingest (`ingest/sections.py`). It is a fact about the file, needs no
+setup, cannot be null for an exercise that came from a page, and is how a
+teacher actually navigates 400 pages. It is the builder's **primary** filter;
+the curriculum chapter stays as the secondary one, because only that one answers
+"fractions across every book I own".
+
+Detection is deliberately conservative — short lines, alone, either carrying a
+chapter word or a number plus a title-cased phrase, with running heads dropped
+by repetition. A false heading shatters the outline into noise, which is worse
+than a coarse one: a teacher can scroll twenty pages inside a correct chapter
+and cannot find anything in ninety spurious ones. Sections are contiguous and
+gapless, a document with no recognisable headings becomes one section covering
+it, and pages before the first heading become a leading section rather than
+being attached to chapter 1.
+
+**Revisit if** teachers report bad outlines on real textbooks — the next step is
+letting them rename and merge sections, which is deliberately not in this pass.
+
+### D27 · A chapter is read by the model on first open, not at import
+
+`MAX_EXTRACTION_CHUNKS = 200` used to be a per-*upload* ceiling: roughly the
+first 50-80 pages of a book became exercises and the teacher was told to split
+the PDF by hand. It is now the budget for eager extraction at import, and the
+remainder of the document waits with `SourceSection.extracted_at IS NULL` until
+somebody opens that chapter in the builder
+(`POST /sources/{id}/sections/{sid}/extract`).
+
+Two properties this keeps. **Nothing that worked before needs a click**: import
+walks sections in book order and extracts while the budget lasts, so a
+worksheet, a single chapter and every test fixture still arrive complete — and
+it stops *before* a section that will not fit whole, because half a chapter is
+the worst outcome available (the teacher sees exercises and cannot tell the back
+half is missing). **A book nobody teaches from costs nothing**: a 400-page
+textbook is indexed and searchable for the price of embeddings, and its
+chapter 19 is never sent to a model unless someone asks for it.
+
+De-duplication moved from a per-run set to `_existing_statements`, reading the
+database. Sections are extracted separately and their page ranges abut, so a
+chunk carrying the tail of one chapter and the head of the next could otherwise
+offer the same exercise twice.
+
+### D28 · A teacher-written exercise is its own origin
+
+`ExerciseOrigin.TEACHER`, for items written with the builder's plus button.
+Filing them under `TEXTBOOK` would claim a provenance they do not have — a
+source filename and a page the teacher could check against the book on the desk
+— and filing them under `AI_GENERATED` would put the mandarin accent on a
+sentence a human wrote, which is the one thing that accent must never mean
+(DESIGN.md §1). They need no approval gate: the teacher approved it by writing
+it, so `approved_at` is stamped at creation and `approval.is_printable` keeps
+working unchanged.
+
+They are corpus rows rather than sheet-local ones, because `SheetItem.exercise_id`
+is a non-null FK and because a teacher who writes a good true/false item should
+get it back next term.
+
+### D29 · A draft sheet is previewed by POST, and never stored
+
+The builder shows the paper while the teacher is still reordering, which is the
+only moment the information is worth anything — it is where a sixth exercise
+turning into a second sheet, or a statement too tall for any page, becomes
+visible *before* 72 pages come off the photocopier.
+
+`POST /sheets/preview` takes the unsaved item list and renders it through the
+same `SheetData`, the same templates and the same millimetre geometry as the PDF
+(`build_draft_sheet_data`). The two alternatives were both worse. Redrawing the
+page in React duplicates what `sheets/layout.py` owns and the scan detector
+reads — the previous hand-rolled attempt put the bubbles inline instead of on
+the fixed grid, printed no UID grid, and hardcoded A/B/C/D where the sheet
+prints V/F. Creating a real draft `Sheet` and PATCHing it writes one
+`SheetInstance` per student on every keystroke and abandons a row whenever the
+teacher changes their mind.
+
+The preview renders **one** copy, not one per student: it answers "what does
+this sheet look like", and thirty near-identical copies would make the teacher
+page through the class to reach page 2.
+
+### D30 · The preview is closed by default, and the page count is not
+
+Two working columns beat three cramped ones, so the A4 preview is behind a
+toggle and the picker and composer get the room. The consequence had to be
+designed for rather than accepted: with the preview closed, nothing would tell a
+teacher that ticking forty exercises overflows a grid holding sixteen a page. So
+the composer carries its own budget line — pages, `n / 64 max`, and an overflow
+warning — computed from `SHEET_LAYOUT.itemsPerPage`. It reports the *floor* the
+answer grid forces; the server preview remains the authority, because statement
+height also decides the real page count.
+
+### D31 · Scanned paper still needs OCR, and is still refused rather than faked
+
+This is a **known gap**, recorded here so it is not rediscovered. The sheet
+builder now reads a document's exercises, but `ingest.extract` still fails an
+image-only PDF outright (`NO_TEXT_LAYER_ERROR`), because there is no OCR
+anywhere in the repo. A teacher who literally scans an old paper worksheet gets
+a `FAILED` source and a message telling them why — not a green tick over an
+empty document, which is the failure mode that branch exists to prevent.
+
+The builder handles it honestly: such a document simply never appears in the
+picker, since only `SUCCEEDED` sources are offered.
+
+The integration point when this is taken on is `extract.document_from_pages()`,
+which already accepts pre-extracted text: an OCR pass ahead of `extract_pdf` in
+`pipeline._ingest_fresh` feeds it without touching anything downstream —
+`detect_sections` reads `PageText` and does not care where the text came from.

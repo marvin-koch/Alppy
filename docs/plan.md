@@ -35,8 +35,11 @@ School ──< Teacher (locale, theme, contrast, motion, calm)
 Curriculum (LP21 | PER) ──< Competency (hierarchical, code, subject, cycle)
 Chapter (teacher grouping) ──>< Competency        (chapter_competency)
 Source (uploaded PDF) ──< SourceChunk (text, page, embedding vector(1024))
-Exercise (type mcq|true_false|open, origin textbook|ai_generated,
-          statement, options, answer_key, difficulty, source_chunk_id, page)
+                      ──< SourceSection (the book's own chapter: title, label,
+                          page range, extracted_at — read on demand)
+Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
+          statement, options, answer_key, difficulty, source_chunk_id,
+          source_section_id, page)
         ──>< Competency                            (exercise_competency)
         ──< ExerciseVariant (per-student generated)
 Sheet (target class|student|group, layout_version, subject, chapter set)
@@ -64,10 +67,14 @@ GET    /subjects                   GET  /curricula/{kind}/competencies
 GET    /chapters                   POST /chapters
 
 POST   /sources                    (upload PDF -> job)      GET /sources/{id}
-GET    /sources/{id}/status        GET /sources/{id}/exercises
+GET    /sources/{id}/status        GET /sources/{id}/sections
+GET    /sources/{id}/exercises     (section/chapter/type/difficulty/q, paged, faceted)
+POST   /sources/{id}/sections/{sid}/extract   -> job   (read one chapter on demand)
+POST   /exercises                  PATCH /exercises/{id}
 
 POST   /sheets/propose             (class, subject, chapters[], intent) -> ranked exercises + provenance
 POST   /sheets                     PATCH /sheets/{id}       GET /sheets/{id}
+POST   /sheets/preview             (an UNSAVED draft, rendered; persists nothing)
 POST   /sheets/{id}/render         -> job -> blank.pdf + answer-key.pdf
 GET    /sheets/{id}/preview        (server-rendered HTML using the same print.css)
 
@@ -94,7 +101,9 @@ assumptions.
 3. `/classes/[classId]` — roster + mastery matrix (five bands)
 4. `/classes/[classId]/students/[studentId]` — profile: rings, curve, history
 5. `/sources` — upload + ingestion status + extracted exercises
-6. `/sheets/new` — builder: chapter picker, intent, ranked proposals, provenance panel, reorder/edit
+6. `/sheets/new` — builder, document-first: source + chapter of that book, the exercises it holds
+   (filtered and paged server-side), tick / reorder / edit / add your own, with the A4 preview
+   behind a toggle. A second tab keeps the RAG path (intent, ranked proposals, provenance).
 7. `/sheets/[id]` — print preview (blank + answer key), download
 8. `/scans/new` + `/scans/[id]` — upload, then review overlay with confidence bars
 9. `/adaptive` — gap targeting, accent-marked AI items, batch export
