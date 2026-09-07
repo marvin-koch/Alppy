@@ -63,12 +63,15 @@ test.describe('@live the F1 loop against a real API', () => {
 
     // --- build a sheet ---------------------------------------------------
     await page.goto(`${WEB}/fr/sheets/new`);
-    await expect(page.locator('main select')).toHaveCount(2); // class + subject
-    await page.locator('textarea').first().fill('fractions');
-    await page.getByRole('button', { name: /proposer/i }).click();
+    // class + subject + source document. The builder is document-first now, so
+    // the retrieval path lives behind its own tab.
+    await expect(page.locator('main select').first()).toBeVisible();
+    await page.getByRole('tab', { name: /proposer pour moi/i }).click();
+    await page.getByPlaceholder(/révision fractions/i).fill('fractions');
+    await page.getByRole('button', { name: /^proposer des exercices$/i }).click();
     await expect(page.locator('[data-student-facing]').first()).toBeVisible({ timeout: 30_000 });
 
-    await page.getByRole('button', { name: /aperçu avant impression/i }).click();
+    await page.getByRole('button', { name: /générer la feuille/i }).click();
     await expect(page).toHaveURL(/\/sheets\/[0-9a-f-]{36}/);
 
     // --- the preview is the server's own document ------------------------
