@@ -59,6 +59,12 @@ jobs:
         # root silently ran with DEFAULT settings — `strict = true` was not in
         # force here for the whole life of the project.
         run: mypy --config-file apps/api/pyproject.toml apps/api/alppy
+      # The print -> rasterise -> detect round trip is the only test that puts
+      # the real renderer and the real detector in the same sentence, and it
+      # needs a browser. Without this it skips, and a geometry drift between
+      # layout.py, print.css and the detector would ship green.
+      - name: Install Chromium for the print/scan round trip
+        run: python -m playwright install --with-deps chromium
       - name: Tests
         run: PYTHONPATH=apps/api pytest apps/api/tests -q
 
@@ -139,6 +145,37 @@ jobs:
             echo "::error::layout.generated.ts is stale — run scripts/export-layout.py and commit"
             exit 1
           fi
+
+  schema-drift:
+    name: Migrations reproduce the models
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: alppy
+          POSTGRES_PASSWORD: alppy
+          POSTGRES_DB: alppy_drift
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        run: pip install -e "apps/api[dev]"
+      # Unit tests build the schema with create_all() from the models, which is
+      # the very thing the migrations are meant to reproduce — so they cannot
+      # see the two disagreeing. Five index drifts accumulated across 0003-0005
+      # exactly this way (see migration 0008); the damage was not a slow query,
+      # it was that --autogenerate proposed the same five forever and real
+      # changes arrived buried in noise.
+      - name: Diff a freshly migrated database against the models
+        env:
+          ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_drift
+        run: python scripts/check-schema-drift.py
 
   e2e:
     name: E2E and theme screenshots
