@@ -98,7 +98,11 @@ export default function SheetBuilderPage() {
       if (current && sections.data.some((row) => row.id === current.id)) {
         return sections.data.find((row) => row.id === current.id) ?? current;
       }
-      return sections.data.find((row) => row.extracted_at !== null) ?? sections.data[0] ?? null;
+      return (
+        sections.data.find((row) => row.extracted_at !== null || row.exercise_count > 0) ??
+        sections.data[0] ??
+        null
+      );
     });
   }, [sections.data]);
 

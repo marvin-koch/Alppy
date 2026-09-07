@@ -520,6 +520,8 @@
     "extract": "Extract",
     "extracting": "Reading the chapter…",
     "notExtracted": "indexed, not read yet",
+    "notTagged": "read, not yet classified by the model",
+    "tagChapter": "Classify with the model",
     "extractHelp": "A chapter is only read by the model the first time you open it. The whole book is searchable from import.",
     "extractFailed": "The chapter could not be read. Please try again.",
     "openChapter": "Open chapter",

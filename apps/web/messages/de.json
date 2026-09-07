@@ -520,6 +520,8 @@
     "extract": "Auslesen",
     "extracting": "Kapitel wird gelesen…",
     "notExtracted": "indexiert, noch nicht gelesen",
+    "notTagged": "gelesen, noch nicht vom Modell klassifiziert",
+    "tagChapter": "Mit dem Modell klassifizieren",
     "extractHelp": "Ein Kapitel wird erst beim ersten Öffnen vom Modell gelesen. Das ganze Buch ist ab dem Import durchsuchbar.",
     "extractFailed": "Das Kapitel konnte nicht gelesen werden. Bitte erneut versuchen.",
     "openChapter": "Kapitel öffnen",

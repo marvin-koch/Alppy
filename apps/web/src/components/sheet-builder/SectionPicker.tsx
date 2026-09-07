@@ -119,11 +119,16 @@ export function SectionPicker({ sourceId, section, onSelect }: Props) {
               const isCurrent = row.id === section?.id;
               const isExtracting = extractingId === row.id;
               const isExtracted = row.extracted_at !== null;
+              // A chapter read from the page layout has its exercises before
+              // any model has classified them. It opens like any other; the
+              // model pass stays available as a secondary action.
+              const hasRows = row.exercise_count > 0;
+              const canOpen = isExtracted || hasRows;
               return (
                 <li key={row.id}>
                   <Panel
                     className={isCurrent ? 'border-primary-500 bg-primary-050' : undefined}
-                    sunken={!isExtracted && !isCurrent}
+                    sunken={!canOpen && !isCurrent}
                   >
                     <div className="flex flex-wrap items-center gap-3">
                       <span
@@ -136,13 +141,13 @@ export function SectionPicker({ sourceId, section, onSelect }: Props) {
                         <p className="font-display font-semibold">{row.title}</p>
                         <p className="text-body-s text-ink-500">
                           {t('chapterPages', { from: row.page_from, to: row.page_to })}
-                          {isExtracted ? '' : ` · ${t('notExtracted')}`}
+                          {isExtracted ? '' : ` · ${t(hasRows ? 'notTagged' : 'notExtracted')}`}
                         </p>
                       </div>
 
                       {isExtracting ? (
                         <Badge variant="info">{t('extracting')}</Badge>
-                      ) : isExtracted ? (
+                      ) : canOpen ? (
                         <>
                           {/* Green would say "we have these" over the words
                               "no exercises". A chapter that was read and held
@@ -170,6 +175,16 @@ export function SectionPicker({ sourceId, section, onSelect }: Props) {
                               }}
                             >
                               {t('openChapter')}
+                            </Button>
+                          )}
+                          {isExtracted ? null : (
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              leadingIcon={<IconPlus />}
+                              onClick={() => onExtract(row)}
+                            >
+                              {t('tagChapter')}
                             </Button>
                           )}
                         </>

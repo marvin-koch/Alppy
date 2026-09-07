@@ -520,6 +520,8 @@
     "extract": "Extraire",
     "extracting": "Lecture du chapitre…",
     "notExtracted": "indexé, pas encore lu",
+    "notTagged": "lu, pas encore classé par le modèle",
+    "tagChapter": "Classer avec le modèle",
     "extractHelp": "Un chapitre n'est lu par le modèle qu'à la première ouverture. Le livre entier reste cherchable dès l'import.",
     "extractFailed": "La lecture du chapitre a échoué. Réessayez.",
     "openChapter": "Ouvrir le chapitre",
