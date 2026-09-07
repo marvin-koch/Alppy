@@ -20,7 +20,14 @@ from alppy.core.config import get_settings
 #: Purposes whose output must come from the prompt. An ungrounded provider
 #: returns nothing for these rather than inventing content that would be stored
 #: with the source document's provenance.
-TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset({"extract_exercises"})
+#:
+#: ``adaptive_feedback`` belongs here for a different reason than
+#: ``extract_exercises`` and a stronger one. An invented exercise is a bad
+#: question a teacher can read and reject. An invented misconception is a claim
+#: about how one named child thinks, printed and handed to that child — and the
+#: echo provider cannot read the prompt, so anything it said about a student's
+#: mistakes would be fiction with a UID attached. Better an honest empty note.
+TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset({"extract_exercises", "adaptive_feedback"})
 
 
 class EchoChatProvider:
@@ -38,7 +45,13 @@ class EchoChatProvider:
 
     def complete(self, request: ChatRequest) -> ChatResponse:
         if request.purpose in TRANSCRIPTION_PURPOSES:
-            text = json.dumps({"exercises": []})
+            # Empty, in the shape the caller parses. A feedback caller reading
+            # `{"exercises": []}` would report "the model did not return usable
+            # JSON", which blames the provider for a refusal that is correct.
+            empty: dict[str, list[str]] = (
+                {"notes": []} if request.purpose == "adaptive_feedback" else {"exercises": []}
+            )
+            text = json.dumps(empty)
             return ChatResponse(
                 text=text,
                 input_tokens=len(request.user) // 4,

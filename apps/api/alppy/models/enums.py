@@ -51,6 +51,11 @@ class SheetTarget(StrEnum):
 class SheetKind(StrEnum):
     BLANK = "blank"
     ANSWER_KEY = "answer_key"
+    #: The per-student feedback pages. Its OWN document, never extra pages
+    #: inside a copy: the detector counts a copy's pages by re-paginating its
+    #: items, so a page the renderer adds and that count does not know about
+    #: rotates every later page onto the wrong item list.
+    FEEDBACK = "feedback"
 
 
 class MasteryBand(StrEnum):
@@ -85,6 +90,7 @@ class JobKind(StrEnum):
     RENDER_SHEET = "render_sheet"
     PROCESS_SCAN = "process_scan"
     GENERATE_ADAPTIVE = "generate_adaptive"
+    GENERATE_FEEDBACK = "generate_feedback"
 
 
 class ScanStatus(StrEnum):
@@ -104,3 +110,37 @@ class DetectionOutcome(StrEnum):
     MULTIPLE = "multiple"          # more than one bubble filled
     CORRECTED = "corrected"        # teacher overrode the detection
     NOT_GRADEABLE = "not_gradeable"  # free-text; printed, never auto-graded
+
+
+class EventKind(StrEnum):
+    """What happened, in the teacher's vocabulary rather than the schema's.
+
+    An append-only log rather than a column per lifecycle moment. `updated_at`
+    cannot answer "when was this confirmed" — it is overwritten by the next
+    edit to the row, whatever that edit was — and two of the moments a teacher
+    most wants back (a sheet printed, a pile confirmed) had no timestamp at all.
+
+    The names are what a teacher would say happened, because they are read back
+    as a sentence in the agenda, not as a status field.
+    """
+
+    SOURCE_IMPORTED = "source_imported"
+    CHAPTER_READ = "chapter_read"
+    SHEET_CREATED = "sheet_created"
+    SHEET_RENDERED = "sheet_rendered"
+    SHEET_PRINTED = "sheet_printed"
+    SCAN_UPLOADED = "scan_uploaded"
+    SCAN_CONFIRMED = "scan_confirmed"
+    ADAPTIVE_PROPOSED = "adaptive_proposed"
+    ADAPTIVE_EXPORTED = "adaptive_exported"
+    FEEDBACK_WRITTEN = "feedback_written"
+    FEEDBACK_APPROVED = "feedback_approved"
+
+
+class EventSubject(StrEnum):
+    """Which row the event is about, so the agenda can link back to it."""
+
+    SOURCE = "source"
+    SHEET = "sheet"
+    SCAN = "scan"
+    CLASS = "class"

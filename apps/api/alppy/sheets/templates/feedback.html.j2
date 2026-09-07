@@ -1,0 +1,36 @@
+{#-
+  The per-student feedback document.
+
+  Its own document, never pages inside a copy. The scan detector recomputes a
+  copy's page count by re-paginating its items and maps a photographed page
+  with `seen[uid] % len(printed_pages)`; a page the renderer adds and that
+  count does not know about rotates every later page onto the wrong item list.
+
+  So this document carries NO fiducials, NO UID grid and NO answer grid. A page
+  that is never scanned must not look like one that is.
+-#}
+<!doctype html>
+<html lang="{{ lang }}" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ doc_title }}</title>
+<style>/* packages/ui/src/design/tokens.css */
+{{ css.tokens }}
+</style>
+<style>/* packages/ui/src/design/base.css */
+{{ css.base }}
+</style>
+<style>/* packages/ui/src/design/print.css */
+{{ css.print }}
+</style>
+<style>/* generated from alppy.sheets.layout */
+{{ css.geometry }}
+</style>
+</head>
+<body>
+<div class="print-sheet" data-sheet-kind="{{ kind }}">
+{% for page in pages %}{% include "_feedback_page.html.j2" %}
+{% endfor %}</div>
+</body>
+</html>

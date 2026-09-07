@@ -213,6 +213,8 @@ def sheet_instance_out(instance: SheetInstance) -> SheetInstanceOut:
         student_id=instance.student_id,
         student_uid=instance.student_uid,
         page_count=instance.page_count,
+        group_label=instance.group_label,
+        has_feedback=instance.feedback_id is not None,
     )
 
 
@@ -236,6 +238,8 @@ def sheet_out(sheet: Sheet, *, storage: Storage | None = None) -> SheetOut:
         instances=[sheet_instance_out(i) for i in sheet.instances],
         blank_pdf_url=_url(storage, sheet.blank_pdf_key),
         answer_key_pdf_url=_url(storage, sheet.answer_key_pdf_key),
+        feedback_pdf_url=_url(storage, sheet.feedback_pdf_key),
+        derived_from_id=sheet.derived_from_id,
         rendered_at=sheet.rendered_at,
         created_at=sheet.created_at,
     )

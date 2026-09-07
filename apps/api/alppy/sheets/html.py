@@ -113,6 +113,14 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
         "legend": "Légende des paliers",
         "key_badge": "CORRIGÉ",
         "key_suffix": "corrigé",
+        "feedback_title": "Ce que tu peux revoir",
+        "feedback_suffix": "retour personnalisé",
+        "feedback_intro": (
+            "Voici ce qui revient dans tes réponses. Chaque point renvoie à un exercice "
+            "de ta nouvelle fiche."
+        ),
+        "feedback_ai": "Écrit par l'IA, relu par ton enseignant",
+        "feedback_keep": "À garder — cette page n'est pas à rendre",
     },
     "de": {
         "code": "Schülercode",
@@ -128,6 +136,14 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
         "legend": "Legende der Stufen",
         "key_badge": "LÖSUNG",
         "key_suffix": "Lösung",
+        "feedback_title": "Was du üben kannst",
+        "feedback_suffix": "persönliche Rückmeldung",
+        "feedback_intro": (
+            "Das kommt in deinen Antworten immer wieder vor. Jeder Punkt gehört zu einer "
+            "Aufgabe auf deinem neuen Blatt."
+        ),
+        "feedback_ai": "Von der KI geschrieben, von deiner Lehrperson geprüft",
+        "feedback_keep": "Behalten — dieses Blatt wird nicht abgegeben",
     },
     "en": {
         "code": "Student code",
@@ -143,6 +159,14 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
         "legend": "Mastery legend",
         "key_badge": "ANSWER KEY",
         "key_suffix": "answer key",
+        "feedback_title": "What to look at again",
+        "feedback_suffix": "personal feedback",
+        "feedback_intro": (
+            "Here is what keeps coming up in your answers. Each point matches an exercise "
+            "on your new sheet."
+        ),
+        "feedback_ai": "Written by AI, checked by your teacher",
+        "feedback_keep": "Keep this — it is not handed in",
     },
 }
 
@@ -277,6 +301,12 @@ def geometry_context() -> dict[str, Any]:
         "uid_text_w": _fmt(uid_text_w),
         "items_top": _fmt(L.ITEMS_TOP_MM),
         "items_h": _fmt(L.ITEMS_BOTTOM_MM - L.ITEMS_TOP_MM),
+        # The feedback document has no answer grid to stay clear of, so its
+        # region runs from the same top down to the footer. Derived here rather
+        # than in layout.py on purpose: it positions prose no machine reads, so
+        # it is not part of the geometry contract the detector is versioned
+        # against and changing it is not a layout version bump.
+        "feedback_h": _fmt(L.PAGE_H_MM - L.MARGIN_MM - 10.0 - L.ITEMS_TOP_MM),
         "caption_top": _fmt(L.ITEMS_BOTTOM_MM + 0.5),
         "grid_x": _fmt(grid_x),
         "grid_y": _fmt(grid_y),
@@ -496,3 +526,91 @@ __all__ = [
     "render_sheet_html",
     "strings",
 ]
+
+
+# --------------------------------------------------------------------------
+# The feedback document — separate on purpose
+# --------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class FeedbackCopy:
+    """One student's feedback page."""
+
+    uid: str
+    notes: tuple[str, ...]
+    group_label: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class FeedbackData:
+    """Everything the feedback templates need. No SQLAlchemy, no clock.
+
+    Deliberately NOT a variant of `SheetData`, and deliberately not routed
+    through `physical_pages`/`paginate`. The scan detector recomputes a copy's
+    page count from its *items* (`scan_processing._copies_by_uid`) and maps a
+    photographed page with ``seen[uid] % len(printed_pages)``. Any page the
+    renderer emits inside a copy that this count does not know about shifts
+    that modulo and grades a page against the wrong questions — silently, with
+    confident detections. Keeping feedback in its own document means the two
+    can never disagree, whatever is approved or discarded afterwards.
+    """
+
+    title: str
+    class_code: str
+    subject: str
+    language: str
+    copies: tuple[FeedbackCopy, ...]
+    date_label: str | None = None
+    source_title: str | None = None
+
+
+def _feedback_page_context(copy: FeedbackCopy, data: FeedbackData, *, number: int, count: int
+                           ) -> dict[str, Any]:
+    t = strings(data.language)
+    meta_parts = [data.class_code, data.subject]
+    if data.source_title:
+        meta_parts.append(data.source_title)
+    if data.date_label:
+        meta_parts.append(data.date_label)
+    if copy.group_label:
+        meta_parts.append(copy.group_label)
+    return {
+        "copy_uid": copy.uid,
+        "title": t["feedback_title"],
+        "meta": " · ".join(p for p in meta_parts if p),
+        "notes": list(copy.notes),
+        "number": number,
+        "count": count,
+    }
+
+
+def render_feedback_html(data: FeedbackData) -> str:
+    """One standalone document holding every student's feedback page.
+
+    Carries no fiducials, no UID grid and no answer grid. A page that is never
+    scanned must not *look* like a page that is: the four corner squares are
+    what the detector registers on, and a stack of feedback pages fed into the
+    scanner by accident should be rejected outright rather than read as blank
+    answers for the child whose UID is printed on them.
+    """
+    if not data.copies:
+        raise ValueError("a feedback document needs at least one copy")
+    t = strings(data.language)
+    css = read_design_css()
+    total = len(data.copies)
+    context = {
+        "lang": data.language,
+        "kind": SheetKind.FEEDBACK.value,
+        "doc_title": f"{data.title} — {t['feedback_suffix']}",
+        "t": t,
+        "css": {
+            "tokens": Markup(css["tokens"]),
+            "base": Markup(css["base"]),
+            "print": Markup(css["print"]),
+            "geometry": Markup(render_geometry_css()),
+        },
+        "pages": [
+            _feedback_page_context(copy, data, number=i + 1, count=total)
+            for i, copy in enumerate(data.copies)
+        ],
+    }
+    return _html_env().get_template("feedback.html.j2").render(**context)

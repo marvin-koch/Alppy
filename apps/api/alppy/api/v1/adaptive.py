@@ -29,8 +29,8 @@ from alppy.api.deps import (
     start_job,
 )
 from alppy.core.config import get_settings
-from alppy.models import Job
-from alppy.models.enums import JobKind, JobStatus
+from alppy.models import Job, MisconceptionNote, Student
+from alppy.models.enums import EventKind, EventSubject, JobKind, JobStatus
 from alppy.schemas import (
     AdaptiveApproveRequest,
     AdaptiveApproveResponse,
@@ -41,12 +41,23 @@ from alppy.schemas import (
     AdaptiveProposeResponse,
     AdaptiveRegenerateRequest,
     AdaptiveRegenerateResponse,
+    FeedbackApproveRequest,
+    FeedbackApproveResponse,
+    FeedbackDiscardRequest,
+    FeedbackDiscardResponse,
+    FeedbackGenerateRequest,
     JobOut,
+    MisconceptionNoteOut,
     SheetOut,
 )
-from alppy.services import job_out, sheet_out
+from alppy.services import event_service, job_out, sheet_out
 from alppy.services import sheet_service as sheet_svc
-from alppy.services.approval import approve_exercises, discard_exercises
+from alppy.services.approval import (
+    approve_exercises,
+    approve_feedback,
+    discard_exercises,
+    discard_feedback,
+)
 from alppy.services.class_service import get_class, list_students
 
 router = APIRouter(tags=["adaptive"])
@@ -90,7 +101,26 @@ def propose(
         language=payload.language,
         fallback_language=str(teacher.locale) or get_settings().default_locale,
         group=payload.group,
+        n_groups=payload.n_groups,
     )
+
+    # Attach whatever feedback already exists for these students on the common
+    # sheet, so the review screen shows the notes beside the plans they explain.
+    # Generating it is a separate, queued call: it is one model request per
+    # student, which a request handler may not block on.
+    if payload.source_sheet_id is not None:
+        from alppy.services.feedback_service import latest_for_students
+
+        notes = latest_for_students(
+            db,
+            school_id=scope.school_id,
+            student_ids=[p.student_id for p in response.plans],
+            source_sheet_id=payload.source_sheet_id,
+        )
+        for plan in response.plans:
+            note = notes.get(plan.student_id)
+            if note is not None:
+                plan.feedback_id = note.id
     return response
 
 
@@ -203,3 +233,140 @@ def render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     start_job(db, job)
     db.refresh(job)
     return job_out(job)
+
+
+# --------------------------------------------------------------------------
+# Per-student feedback
+# --------------------------------------------------------------------------
+@router.post(
+    "/adaptive/feedback/generate",
+    response_model=JobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+)
+def generate_feedback(
+    payload: FeedbackGenerateRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep
+) -> JobOut:
+    """Queue one misconception note per student, read off a corrected sheet.
+
+    Queued rather than synchronous because it is one model call per student:
+    a class of twenty inside a request handler is a timeout with a half-written
+    batch behind it (CLAUDE.md — nothing blocks a request handler on a model
+    call).
+    """
+    school_class = get_class(db, scope, payload.class_id)
+    source = sheet_svc.get_sheet(db, scope, payload.source_sheet_id)
+    if not list_students(db, scope, school_class.id):
+        raise errors.unprocessable("this class has no students yet")
+    load_optional(
+        "alppy.services.feedback_service", "generate_for_sheet", feature="feedback generation"
+    )
+
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=scope.school_id,
+        kind=JobKind.GENERATE_FEEDBACK,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="queued for feedback",
+        payload={
+            "class_id": str(school_class.id),
+            "subject_id": str(payload.subject_id),
+            "source_sheet_id": str(source.id),
+            "language": str(payload.language) if payload.language else source.language,
+        },
+    )
+    db.add(job)
+    db.commit()
+    start_job(db, job)
+    db.refresh(job)
+    return job_out(job)
+
+
+@router.get("/adaptive/feedback", response_model=list[MisconceptionNoteOut])
+def list_feedback(
+    source_sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> list[MisconceptionNoteOut]:
+    """Every live note written from one common sheet, newest per student."""
+    from sqlalchemy import select
+
+    sheet_svc.get_sheet(db, scope, source_sheet_id)  # tenancy check
+    rows = list(
+        db.scalars(
+            select(MisconceptionNote)
+            .where(
+                MisconceptionNote.school_id == scope.school_id,
+                MisconceptionNote.based_on_sheet_id == source_sheet_id,
+                MisconceptionNote.discarded_at.is_(None),
+            )
+            .order_by(MisconceptionNote.created_at.desc())
+        )
+    )
+    uids = {
+        s.id: s.uid
+        for s in db.scalars(
+            select(Student).where(Student.id.in_([r.student_id for r in rows] or [uuid.uuid4()]))
+        )
+    }
+    seen: set[uuid.UUID] = set()
+    out: list[MisconceptionNoteOut] = []
+    for row in rows:
+        if row.student_id in seen:
+            continue
+        seen.add(row.student_id)
+        out.append(
+            MisconceptionNoteOut(
+                id=row.id,
+                student_id=row.student_id,
+                student_uid=uids.get(row.student_id, ""),
+                subject_id=row.subject_id,
+                based_on_sheet_id=row.based_on_sheet_id,
+                language=row.language,
+                notes=list(row.notes or []),
+                competency_ids=[uuid.UUID(c) for c in (row.competency_ids or [])],
+                approved_at=row.approved_at,
+                created_at=row.created_at,
+            )
+        )
+    out.sort(key=lambda n: n.student_uid)
+    return out
+
+
+@router.post("/adaptive/feedback/approve", response_model=FeedbackApproveResponse)
+def approve_notes(
+    payload: FeedbackApproveRequest, scope: ScopeDep, db: DbDep
+) -> FeedbackApproveResponse:
+    """The only way a generated note becomes printable."""
+    ids = approve_feedback(db, school_id=scope.school_id, feedback_ids=payload.feedback_ids)
+    if ids:
+        # Anchored to the common sheet the notes were read from: that is the
+        # thing in the agenda a teacher would click to see what this was about.
+        note = db.get(MisconceptionNote, ids[0])
+        source = (
+            sheet_svc.get_sheet(db, scope, note.based_on_sheet_id)
+            if note is not None and note.based_on_sheet_id is not None
+            else None
+        )
+        if source is not None:
+            event_service.record(
+                db,
+                school_id=scope.school_id,
+                kind=EventKind.FEEDBACK_APPROVED,
+                subject_type=EventSubject.SHEET,
+                subject_id=source.id,
+                summary=source.title,
+                actor_id=scope.teacher_id,
+                class_id=source.class_id,
+                subject_area_id=source.subject_id,
+                detail={"notes": len(ids)},
+            )
+    db.commit()
+    return FeedbackApproveResponse(approved=len(ids), feedback_ids=ids)
+
+
+@router.post("/adaptive/feedback/discard", response_model=FeedbackDiscardResponse)
+def discard_notes(
+    payload: FeedbackDiscardRequest, scope: ScopeDep, db: DbDep
+) -> FeedbackDiscardResponse:
+    ids = discard_feedback(db, school_id=scope.school_id, feedback_ids=payload.feedback_ids)
+    db.commit()
+    return FeedbackDiscardResponse(discarded=len(ids), feedback_ids=ids)

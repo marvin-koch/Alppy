@@ -26,6 +26,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
@@ -36,6 +37,8 @@ from alppy.db.base import Base, SchoolScopedMixin, TimestampMixin
 from alppy.models.enums import (
     CurriculumKind,
     DetectionOutcome,
+    EventKind,
+    EventSubject,
     ExerciseOrigin,
     ExerciseType,
     JobKind,
@@ -335,6 +338,17 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
         Index("ix_exercise_subject_origin", "subject_id", "origin"),
         # The builder's hot query: one section, ordered as the book prints it.
         Index("ix_exercise_source_section", "source_section_id", "source_page"),
+        # Created in migration 0004 and declared nowhere until now, so
+        # autogenerate proposed dropping it on every run. Partial on purpose:
+        # the discarded rows are a small tail of the table, and the only query
+        # that wants them is "what has this teacher already rejected for this
+        # subject", which the next generation run asks so it does not offer the
+        # same item twice.
+        Index(
+            "ix_exercise_discarded",
+            "subject_id",
+            postgresql_where=text("discarded_at IS NOT NULL"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -428,12 +442,28 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     language: Mapped[str] = mapped_column(String(5), nullable=False)
     intent: Mapped[str | None] = mapped_column(Text)
 
+    # The COMMON sheet whose corrected scan produced this one. NULL on every
+    # sheet that is not an adaptive descendant. A teaching unit is a chain of
+    # these: one common sheet, then the differentiated sheets its results
+    # justify. Nothing else records that a sheet answers another one — without
+    # it the two are just two rows with adjacent dates.
+    derived_from_id: Mapped[uuid.UUID | None] = _fk(
+        "sheet.id", ondelete="SET NULL", nullable=True
+    )
+
     # The print layout and the scan detector are versioned together. A scan is
     # always registered against the layout the sheet was printed with.
     layout_version: Mapped[str] = mapped_column(String(10), default="v1", nullable=False)
 
     blank_pdf_key: Mapped[str | None] = mapped_column(String(500))
     answer_key_pdf_key: Mapped[str | None] = mapped_column(String(500))
+    # The feedback pages, as their OWN document. Deliberately not extra pages
+    # inside the copy: the detector counts a copy's pages by re-paginating its
+    # items (`scan_processing._copies_by_uid`), so a page the renderer adds and
+    # that count does not know about shifts `seen[uid] % len(printed_pages)`
+    # and grades page 2 against page 1's questions. A separate document cannot
+    # do that, whatever happens to the feedback afterwards.
+    feedback_pdf_key: Mapped[str | None] = mapped_column(String(500))
     rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     items: Mapped[list[SheetItem]] = relationship(
@@ -477,7 +507,119 @@ class SheetInstance(Base, TimestampMixin, SchoolScopedMixin):
     item_plan: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     page_count: Mapped[int | None] = mapped_column(Integer)
 
+    # Which personalised group this copy belongs to, as a printable label
+    # ("Groupe 2 · Fractions équivalentes"). A label rather than a foreign key
+    # to a group entity: the grouping is recomputed from mastery every time the
+    # teacher asks, so a stored group would be stale the moment the next scan
+    # lands, and nothing downstream — mastery, attempts, scans — needs to know
+    # a copy belonged to one.
+    group_label: Mapped[str | None] = mapped_column(String(60))
+
+    # This student's misconception note, bound when the batch is created.
+    feedback_id: Mapped[uuid.UUID | None] = _fk(
+        "misconception_note.id", ondelete="SET NULL", nullable=True
+    )
+
     sheet: Mapped[Sheet] = relationship(back_populates="instances")
+    feedback: Mapped[MisconceptionNote | None] = relationship()
+
+
+class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
+    """What one student got wrong on one common sheet, written for the student.
+
+    A synthesis over several attempts rather than a fact about one, which is
+    why it is not a column on ``Attempt``: "you subtract in the wrong order"
+    is read off three wrong answers, and hanging it on an arbitrary one of them
+    would make the other two look unexplained.
+
+    It is not an ``ExerciseVariant`` either. That models a per-student rewrite
+    of a *question*; this is prose about the student, addressed to them, with
+    no question of its own.
+
+    ``approved_at`` mirrors ``Exercise.approved_at`` and is enforced by the same
+    module (`services.approval`). An unreviewed generated exercise is a bad
+    question a teacher can spot on the page; an unreviewed generated note is a
+    claim about how a named child thinks, handed to that child. The second
+    needs the gate at least as much as the first.
+    """
+
+    __tablename__ = "misconception_note"
+    __table_args__ = (
+        Index("ix_misconception_note_student_sheet", "student_id", "based_on_sheet_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    # The common sheet the wrong answers came from. SET NULL rather than
+    # CASCADE: deleting the sheet must not silently delete the explanation of
+    # what a child misunderstood.
+    based_on_sheet_id: Mapped[uuid.UUID | None] = _fk(
+        "sheet.id", ondelete="SET NULL", nullable=True
+    )
+    language: Mapped[str] = mapped_column(String(5), nullable=False)
+    # ["...", "..."] — one sentence group per misconception, printed in order.
+    notes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    competency_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
+
+    student: Mapped[Student] = relationship()
+
+
+class Event(Base, TimestampMixin, SchoolScopedMixin):
+    """One thing that happened, append-only — the spine of the agenda.
+
+    Why a log rather than more columns
+    ----------------------------------
+    Every row already carries ``created_at``/``updated_at``, and neither can
+    answer the questions a teacher actually asks of a term. ``updated_at`` is
+    overwritten by whatever edit came last, so it cannot say when a pile was
+    confirmed; and two of the moments that matter most — a sheet going to the
+    photocopier, a scan being confirmed — left no trace anywhere. Adding a
+    column per moment would mean a migration every time the product learns a
+    new verb, and would still not give one query that returns them in order.
+
+    Append-only, deliberately. An event is a record that something happened; it
+    is never corrected, only followed by another event. That is what makes the
+    agenda trustworthy enough to answer "what did I actually do in March".
+
+    ``occurred_at`` is separate from ``created_at`` because they are not always
+    the same: a scan confirmed on Sunday evening carries the lesson's date, and
+    a backfilled event carries the date of the thing it describes rather than
+    the date the backfill ran.
+    """
+
+    __tablename__ = "event"
+    __table_args__ = (
+        # The agenda's only query: this school, newest first.
+        Index("ix_event_school_occurred", "school_id", "occurred_at"),
+        Index("ix_event_subject", "subject_type", "subject_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    kind: Mapped[EventKind] = mapped_column(Enum(EventKind, name="event_kind"), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    #: Who did it. SET NULL: the record of the lesson outlives the account.
+    actor_id: Mapped[uuid.UUID | None] = _fk("teacher.id", ondelete="SET NULL", nullable=True)
+    subject_type: Mapped[EventSubject] = mapped_column(
+        Enum(EventSubject, name="event_subject"), nullable=False
+    )
+    #: Deliberately NOT a foreign key. The log must outlive what it describes —
+    #: a deleted sheet does not un-happen — and one column cannot point at four
+    #: different tables. The agenda resolves the title itself and degrades to
+    #: the stored summary when the row is gone.
+    subject_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    class_id: Mapped[uuid.UUID | None] = _fk("class.id", ondelete="CASCADE", nullable=True)
+    subject_area_id: Mapped[uuid.UUID | None] = _fk(
+        "subject.id", ondelete="SET NULL", nullable=True
+    )
+    #: What to show when the subject row no longer exists. Never PII: a sheet
+    #: title, a filename, a chapter — never a student name.
+    summary: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    #: Counts the agenda shows inline (pages, copies, exercises). No free text.
+    detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 # --------------------------------------------------------------------------
@@ -697,10 +839,12 @@ __all__ = [
     "Class",
     "Competency",
     "Detection",
+    "Event",
     "Exercise",
     "ExerciseVariant",
     "Job",
     "MasterySnapshot",
+    "MisconceptionNote",
     "ModelCall",
     "Scan",
     "ScanPage",

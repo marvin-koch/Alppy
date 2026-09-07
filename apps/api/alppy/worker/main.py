@@ -22,6 +22,7 @@ from alppy.core.logging import configure_logging, get_logger
 from alppy.worker.tasks import (
     extract_section,
     generate_adaptive,
+    generate_feedback,
     ingest_source,
     process_scan,
     render_sheet,
@@ -52,6 +53,7 @@ class WorkerSettings:
         render_sheet,
         process_scan,
         generate_adaptive,
+        generate_feedback,
     ]
     redis_settings = _redis_settings()
     on_startup = on_startup

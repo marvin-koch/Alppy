@@ -36,6 +36,7 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
@@ -213,5 +214,53 @@ async def generate_adaptive(ctx: dict[str, Any], job_id: str) -> None:
         blank_key, answer_key = render_adaptive_batch(db, sheet_id=sheet_id)
         on_progress(1.0, "batch rendered")
         return {"batch_pdf_key": blank_key, "answer_key_pdf_key": answer_key}
+
+    await asyncio.to_thread(_run_job, job_id, _call)
+
+
+async def generate_feedback(ctx: dict[str, Any], job_id: str) -> None:
+    """``JobKind.GENERATE_FEEDBACK`` — one misconception note per student, read
+    off their corrected answers on a common sheet.
+
+    A job rather than part of ``POST /adaptive/propose`` because it is one model
+    call per student: a class of twenty inside a request handler is a timeout
+    with a half-written batch behind it, and CLAUDE.md is explicit that nothing
+    blocks a request handler on a model call.
+    """
+
+    def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
+        from alppy.ai.client import AiClient
+        from alppy.models import Student
+        from alppy.services.feedback_service import generate_for_sheet
+
+        source_sheet_id = _uuid_from(job, "source_sheet_id")
+        subject_id = _uuid_from(job, "subject_id")
+        class_id = _uuid_from(job, "class_id")
+        language = str((job.payload or {}).get("language") or "fr")
+
+        students = list(
+            db.scalars(
+                select(Student)
+                .where(Student.school_id == job.school_id, Student.class_id == class_id)
+                .order_by(Student.number)
+            )
+        )
+        notes = generate_for_sheet(
+            db,
+            school_id=job.school_id,
+            source_sheet_id=source_sheet_id,
+            subject_id=subject_id,
+            students=students,
+            language=language,
+            ai=AiClient(),
+            on_progress=on_progress,
+        )
+        # Every note lands unapproved. The count is what the review screen
+        # polls for; nothing here may print.
+        return {
+            "feedback_ids": [str(n.id) for n in notes],
+            "written": len(notes),
+            "students": len(students),
+        }
 
     await asyncio.to_thread(_run_job, job_id, _call)

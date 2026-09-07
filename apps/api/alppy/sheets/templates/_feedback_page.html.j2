@@ -1,0 +1,38 @@
+{#-
+  ONE .print-page IS ONE PHYSICAL PAGE, here too: one student's feedback.
+
+  Student-facing text, so nothing below `body-l` (DESIGN.md §3) — the notes are
+  set at that floor and the chrome around them is what may go smaller.
+
+  The AI mark carries its WORD as well as the accent (`sheet-ai-mark`, the same
+  markup a generated exercise uses): this page is photocopied in black and
+  white, and a child must be able to tell a machine wrote it either way.
+-#}
+<section class="print-page print-feedback" data-page="{{ page.number }}" data-copy-uid="{{ page.copy_uid }}">
+  <div class="sheet-geometry">
+
+    <header class="print-header">
+      <h2 class="print-title">{{ page.title }}</h2>
+      <p class="print-meta">{{ page.meta }}</p>
+    </header>
+
+    <div class="print-uid">
+      <span class="sheet-uid-label">{{ t.code }}</span>
+      <span class="print-uid-text">{{ page.copy_uid }}</span>
+    </div>
+
+    <section class="sheet-feedback" data-student-facing="true">
+      <p class="sheet-feedback-mark"><span class="sheet-ai-mark">{{ t.ai }}</span>{{ t.feedback_ai }}</p>
+      <p class="sheet-feedback-intro">{{ t.feedback_intro }}</p>
+      <ol class="sheet-feedback-list">
+        {%- for note in page.notes %}
+        <li class="sheet-feedback-note">{{ note }}</li>
+        {%- endfor %}
+      </ol>
+    </section>
+
+    <footer class="print-footer">
+      <span class="print-meta">{{ t.feedback_keep }} &middot; {{ page.copy_uid }}</span>
+    </footer>
+  </div>
+</section>

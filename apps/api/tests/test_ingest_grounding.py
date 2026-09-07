@@ -16,6 +16,7 @@ Two failures live here, both of which shipped green:
 
 from __future__ import annotations
 
+import json
 import uuid
 
 from sqlalchemy.orm import Session
@@ -40,14 +41,24 @@ PROSE = (
 # --------------------------------------------------------------------------
 # 1 · The offline provider refuses to transcribe
 # --------------------------------------------------------------------------
-def test_the_offline_provider_returns_nothing_for_transcription() -> None:
+def test_the_offline_provider_returns_nothing_for_grounded_purposes() -> None:
+    """Empty, and empty *in the shape the caller parses*.
+
+    Every grounded purpose gets an empty payload rather than invented content.
+    The shape differs by purpose — an extraction caller reads `exercises`, a
+    feedback caller reads `notes` — because handing one the other's envelope
+    would be reported to the teacher as "the model did not return usable JSON",
+    which blames the provider for a refusal that is correct.
+    """
     provider = EchoChatProvider()
     assert provider.grounded is False
     for purpose in TRANSCRIPTION_PURPOSES:
         response = provider.complete(
             ChatRequest(system="s", user="a page of a real textbook", purpose=purpose)
         )
-        assert '"exercises": []' in response.text.replace(" ", "").replace('":[]', '": []')
+        payload = json.loads(response.text)
+        assert len(payload) == 1, purpose
+        assert next(iter(payload.values())) == [], purpose
 
 
 def test_the_offline_provider_still_generates_when_asked_to_author() -> None:

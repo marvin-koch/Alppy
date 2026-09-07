@@ -311,3 +311,63 @@
   font-size: var(--text-body-s);
   line-height: var(--lh-body-s);
 }
+
+/* -- The feedback document ------------------------------------------------
+ * Its own document, so it claims the whole page below the header: no answer
+ * grid to stay clear of, and no fiducials, because it is never scanned.
+ * The region therefore runs to the footer instead of stopping at
+ * g.items_bottom, which is the only geometry difference between the two. */
+.sheet-feedback {
+  position: absolute;
+  left: {{ g.margin }}mm;
+  top: {{ g.items_top }}mm;
+  width: {{ g.col_w }}mm;
+  height: {{ g.feedback_h }}mm;
+  overflow: hidden;
+}
+
+.sheet-feedback-mark {
+  font-size: var(--text-body-s);
+  margin-bottom: 4mm;
+}
+
+.sheet-feedback-intro {
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  margin-bottom: 5mm;
+}
+
+.sheet-feedback-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: feedback-note;
+}
+
+/* Student-facing prose: the body-l floor is a product constraint, not a
+   preference (DESIGN.md §3). */
+.sheet-feedback-note {
+  position: relative;
+  font-size: var(--text-body-l);
+  line-height: var(--lh-body-l);
+  padding-left: 9mm;
+  margin-bottom: 5mm;
+  counter-increment: feedback-note;
+}
+
+.sheet-feedback-note::before {
+  content: counter(feedback-note);
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: var(--text-body-l);
+}
+
+.print-feedback .print-footer {
+  position: absolute;
+  left: {{ g.margin }}mm;
+  right: {{ g.margin }}mm;
+  bottom: {{ g.margin }}mm;
+}

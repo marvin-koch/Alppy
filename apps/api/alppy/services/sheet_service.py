@@ -10,6 +10,7 @@ given child's page should hold.
 from __future__ import annotations
 
 import uuid
+from collections.abc import Sequence
 from typing import Any
 
 from sqlalchemy import select
@@ -17,10 +18,24 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
-from alppy.models import Exercise, Sheet, SheetInstance, SheetItem, Student, Subject
-from alppy.models.enums import SheetTarget
+from alppy.models import (
+    Exercise,
+    MisconceptionNote,
+    Sheet,
+    SheetInstance,
+    SheetItem,
+    Student,
+    Subject,
+)
+from alppy.models.enums import EventKind, EventSubject, SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
-from alppy.services.approval import UnapprovedExerciseError, ensure_printable
+from alppy.services import event_service
+from alppy.services.approval import (
+    UnapprovedExerciseError,
+    UnapprovedFeedbackError,
+    ensure_notes_printable,
+    ensure_printable,
+)
 from alppy.services.class_service import get_class, list_students, owned_class_ids
 from alppy.sheets.layout import LAYOUT_VERSION
 
@@ -122,6 +137,8 @@ def _bind_instances(
     sheet: Sheet,
     students: list[Student],
     plans: dict[uuid.UUID, list[dict[str, Any]]] | None = None,
+    group_labels: dict[uuid.UUID, str] | None = None,
+    feedback_ids: dict[uuid.UUID, uuid.UUID] | None = None,
 ) -> None:
     """One printed instance per student, each carrying the student's UID."""
     existing = {i.student_id for i in sheet.instances}
@@ -136,6 +153,8 @@ def _bind_instances(
                 student_id=student.id,
                 student_uid=student.uid,
                 item_plan=(plans or {}).get(student.id, []),
+                group_label=(group_labels or {}).get(student.id),
+                feedback_id=(feedback_ids or {}).get(student.id),
             )
         )
     db.flush()
@@ -165,6 +184,18 @@ def create_sheet(db: Session, scope: Scope, teacher_id: uuid.UUID, payload: Shee
     plan = _item_plan(payload.items)
     students = list_students(db, scope, school_class.id)
     _bind_instances(db, school_id, sheet, students, {s.id: plan for s in students})
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.SHEET_CREATED,
+        subject_type=EventSubject.SHEET,
+        subject_id=sheet.id,
+        summary=sheet.title,
+        actor_id=teacher_id,
+        class_id=sheet.class_id,
+        subject_area_id=sheet.subject_id,
+        detail={"items": len(payload.items), "copies": len(students)},
+    )
     db.refresh(sheet)
     return sheet
 
@@ -230,6 +261,25 @@ def create_adaptive_sheet(
             exercise_ids=[str(i) for i in exc.exercise_ids],
         ) from exc
 
+    # The same door, for the notes. A feedback page is generated text handed to
+    # a child; it gets the gate the generated exercises get.
+    note_ids = [p.feedback_id for p in payload.plans if p.feedback_id is not None]
+    notes = _load_notes(db, school_id, note_ids)
+    missing_notes = [str(i) for i in note_ids if i not in notes]
+    if missing_notes:
+        raise errors.not_found("feedback", ids=missing_notes)
+    try:
+        ensure_notes_printable(notes.values())
+    except UnapprovedFeedbackError as exc:
+        raise errors.unprocessable(
+            "this batch contains feedback notes that have not been approved",
+            feedback_ids=[str(i) for i in exc.feedback_ids],
+        ) from exc
+
+    # `SheetTarget.GROUP` has sat in the enum since 0001 with nothing ever
+    # assigning it. A batch built from more than one personalised group is
+    # exactly what it was reserved for.
+    grouped = (payload.group_count or 0) > 1
     sheet = Sheet(
         id=uuid.uuid4(),
         school_id=school_id,
@@ -237,10 +287,11 @@ def create_adaptive_sheet(
         subject_id=payload.subject_id,
         created_by_id=teacher_id,
         title=payload.title,
-        target=SheetTarget.STUDENT,
+        target=SheetTarget.GROUP if grouped else SheetTarget.STUDENT,
         language=payload.language,
         intent="adaptive batch",
         layout_version=LAYOUT_VERSION,
+        derived_from_id=payload.source_sheet_id,
     )
     db.add(sheet)
     db.flush()
@@ -264,6 +315,44 @@ def create_adaptive_sheet(
         sheet,
         [students[p.student_id] for p in payload.plans],
         plans,
+        group_labels={
+            p.student_id: p.group_label for p in payload.plans if p.group_label
+        },
+        feedback_ids={
+            p.student_id: p.feedback_id for p in payload.plans if p.feedback_id is not None
+        },
+    )
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.ADAPTIVE_EXPORTED,
+        subject_type=EventSubject.SHEET,
+        subject_id=sheet.id,
+        summary=sheet.title,
+        actor_id=teacher_id,
+        class_id=sheet.class_id,
+        subject_area_id=sheet.subject_id,
+        detail={
+            "groups": payload.group_count or 1,
+            "copies": len(payload.plans),
+            "items": len(union),
+            "feedback": len(note_ids),
+        },
     )
     db.refresh(sheet)
     return sheet
+
+
+def _load_notes(
+    db: Session, school_id: uuid.UUID, note_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, MisconceptionNote]:
+    """The notes this batch references, scoped to the school."""
+    if not note_ids:
+        return {}
+    rows = db.scalars(
+        select(MisconceptionNote).where(
+            MisconceptionNote.school_id == school_id,
+            MisconceptionNote.id.in_(list(note_ids)),
+        )
+    )
+    return {row.id: row for row in rows}

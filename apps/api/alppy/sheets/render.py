@@ -29,7 +29,15 @@ from uuid import UUID
 from alppy.core.logging import get_logger
 from alppy.models.enums import ExerciseOrigin, ExerciseType, SheetKind
 from alppy.sheets import layout as L
-from alppy.sheets.html import Copy, SheetData, physical_pages, render_sheet_html
+from alppy.sheets.html import (
+    Copy,
+    FeedbackCopy,
+    FeedbackData,
+    SheetData,
+    physical_pages,
+    render_feedback_html,
+    render_sheet_html,
+)
 from alppy.sheets.pagination import Item
 
 log = get_logger(__name__)
@@ -481,6 +489,83 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     return (blank_key, answer_key)
 
 
+def build_feedback_data(db: Any, sheet: Any) -> FeedbackData | None:
+    """The feedback pages for one adaptive batch, or None if there are none.
+
+    Only APPROVED, non-discarded notes reach this. A note the teacher has not
+    read yet simply produces no page — the gate above raises for a batch that
+    references one, so silence here means "this student had nothing to be
+    told", which is a real and common outcome.
+    """
+    from alppy.models import Class
+
+    school_class = db.get(Class, sheet.class_id)
+    if school_class is None:
+        raise SheetRenderError(f"sheet {sheet.id} points at a class that no longer exists")
+
+    copies: list[FeedbackCopy] = []
+    for instance in sorted(sheet.instances, key=lambda i: i.student_uid):
+        note = instance.feedback
+        if note is None or note.approved_at is None or note.discarded_at is not None:
+            continue
+        notes = tuple(str(n) for n in (note.notes or []) if str(n).strip())
+        if not notes:
+            continue
+        copies.append(
+            FeedbackCopy(
+                uid=instance.student_uid,
+                notes=notes,
+                group_label=instance.group_label,
+            )
+        )
+    if not copies:
+        return None
+
+    source_title = None
+    if sheet.derived_from_id is not None:
+        from alppy.models import Sheet as SheetModel
+
+        source = db.get(SheetModel, sheet.derived_from_id)
+        source_title = source.title if source is not None else None
+
+    return FeedbackData(
+        title=sheet.title,
+        class_code=school_class.code,
+        subject=_subject_label(db, sheet),
+        language=sheet.language,
+        copies=tuple(copies),
+        # DD.MM.YYYY reads the same in fr, de and en-CH, so this needs no
+        # locale table — unlike a month name, which would.
+        date_label=sheet.created_at.strftime("%d.%m.%Y") if sheet.created_at else None,
+        source_title=source_title,
+    )
+
+
+def render_feedback_pdf(db: Any, *, sheet_id: UUID) -> str | None:
+    """The third document: one feedback page per student who has a note.
+
+    Separate from the blank and the key by design, not by convenience — see
+    `html.FeedbackData` for the misgrading this prevents.
+    """
+    from alppy.models import Sheet
+
+    sheet = db.get(Sheet, sheet_id)
+    if sheet is None:
+        raise SheetRenderError(f"no sheet {sheet_id}")
+
+    data = build_feedback_data(db, sheet)
+    if data is None:
+        sheet.feedback_pdf_key = None
+        db.flush()
+        return None
+
+    pdf = html_to_pdf(render_feedback_html(data))
+    key = store_pdf(pdf, storage_key(sheet.id, "feedback.pdf"))
+    sheet.feedback_pdf_key = key
+    db.flush()
+    return key
+
+
 def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     """One PDF for a whole differentiated class, plus its answer key.
 
@@ -510,6 +595,15 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     sheet.blank_pdf_key = blank_key
     sheet.answer_key_pdf_key = answer_key
     _stamp(sheet, data)
+
+    # The feedback pages, as their own document. `_stamp` has already recorded
+    # `page_count` from the graded pagination above, and this cannot touch it.
+    feedback = build_feedback_data(db, sheet)
+    sheet.feedback_pdf_key = (
+        store_pdf(html_to_pdf(render_feedback_html(feedback)), storage_key(sheet.id, "feedback.pdf"))
+        if feedback is not None
+        else None
+    )
     db.flush()
     return (blank_key, answer_key)
 

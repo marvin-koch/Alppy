@@ -84,7 +84,7 @@ def propose(
 # --------------------------------------------------------------------------
 # Gap targeting
 # --------------------------------------------------------------------------
-def test_weakest_bands_come_first_and_solid_is_skipped(world: World) -> None:
+def test_weakest_bands_come_first_and_solid_trails_as_stretch(world: World) -> None:
     snapshot(world, student_uid="7B_01", competency_code="MSN 32.1", score=0.95, band=MasteryBand.SOLID)
     snapshot(world, student_uid="7B_01", competency_code="MSN 33.3", score=0.80, band=MasteryBand.OK)
     snapshot(world, student_uid="7B_01", competency_code="MSN 34.1", score=0.66, band=MasteryBand.WEAK)
@@ -98,12 +98,47 @@ def test_weakest_bands_come_first_and_solid_is_skipped(world: World) -> None:
         )
     )
     codes = [g.band for g in gaps]
-    assert codes == [MasteryBand.FADING, MasteryBand.WEAK, MasteryBand.OK]
+    # Real gaps first, weakest first; SOLID trails as the single stretch target.
+    assert codes == [MasteryBand.FADING, MasteryBand.WEAK, MasteryBand.OK, MasteryBand.SOLID]
     assert gaps[0].competency_id == world.competency("MSN 31.2")
-    # SOLID is not a gap; NONE is an absence of evidence, not a gap either.
-    targeted = {g.competency_id for g in gaps}
-    assert world.competency("MSN 32.1") not in targeted
-    assert world.competency("MSN 33.4") not in targeted
+    assert gaps[-1].competency_id == world.competency("MSN 32.1")
+    # NONE is an absence of evidence, not a gap: it is still never targeted.
+    assert world.competency("MSN 33.4") not in {g.competency_id for g in gaps}
+
+
+def test_stretch_never_crowds_out_real_gap_work(world: World) -> None:
+    """Four fading competencies fill the sheet; the solid one waits."""
+    for code in ("MSN 31.2", "MSN 33.3", "MSN 34.1", "MSN 34.2"):
+        snapshot(world, student_uid="7B_01", competency_code=code, score=0.4, band=MasteryBand.FADING)
+    snapshot(world, student_uid="7B_01", competency_code="MSN 32.1", score=0.95, band=MasteryBand.SOLID)
+    world.db.commit()
+
+    gaps = adaptive_service.pick_gaps(
+        adaptive_service.latest_snapshots(
+            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+        )
+    )
+    assert [g.band for g in gaps] == [MasteryBand.FADING] * 4
+    assert world.competency("MSN 32.1") not in {g.competency_id for g in gaps}
+
+
+def test_a_fully_mastered_student_gets_stretch_not_the_easy_diagnostic(world: World) -> None:
+    """The anti-ZPD bug: SOLID used to be skipped, so a student who had
+    mastered everything fell through to FALLBACK_DIFFICULTY — easier work than
+    they could already do. The cap is lifted when there is no gap work to
+    protect, and the stretch sits *above* the working level."""
+    for code in ("MSN 32.1", "MSN 33.3"):
+        snapshot(world, student_uid="7B_01", competency_code=code, score=0.95, band=MasteryBand.SOLID)
+    world.db.commit()
+
+    gaps = adaptive_service.pick_gaps(
+        adaptive_service.latest_snapshots(
+            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+        )
+    )
+    assert len(gaps) == 2, "a mastered student must not fall into the diagnostic branch"
+    assert all(g.band is MasteryBand.SOLID for g in gaps)
+    assert all(g.target_difficulty > adaptive_service.FALLBACK_DIFFICULTY for g in gaps)
 
 
 def test_only_the_latest_snapshot_per_competency_counts(world: World) -> None:
@@ -121,7 +156,10 @@ def test_only_the_latest_snapshot_per_competency_counts(world: World) -> None:
     )
     assert len(rows) == 1
     assert rows[0].band is MasteryBand.SOLID
-    assert adaptive_service.pick_gaps(rows) == []
+    # The stale FADING row is gone, so the competency is targeted as stretch
+    # rather than as the gap the 30-day-old snapshot would have made it.
+    gaps = adaptive_service.pick_gaps(rows)
+    assert [g.band for g in gaps] == [MasteryBand.SOLID]
 
 
 def test_a_fading_competency_is_practised_one_level_below_a_fragile_one() -> None:

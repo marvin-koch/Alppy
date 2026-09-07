@@ -30,7 +30,7 @@ from datetime import UTC, datetime
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alppy.models import Exercise
+from alppy.models import Exercise, MisconceptionNote
 from alppy.models.enums import ExerciseOrigin
 
 
@@ -128,10 +128,107 @@ def discard_exercises(
     return discarded
 
 
+# --------------------------------------------------------------------------
+# The same gate, for generated feedback
+# --------------------------------------------------------------------------
+class UnapprovedFeedbackError(RuntimeError):
+    """A generated misconception note reached the print path unapproved.
+
+    Held to the same standard as an exercise, and arguably a stricter one. An
+    unreviewed generated exercise is a bad question a teacher can spot on the
+    page. An unreviewed generated note is a claim about how one named child
+    thinks, printed and handed to that child.
+    """
+
+    def __init__(self, feedback_ids: Sequence[uuid.UUID]) -> None:
+        self.feedback_ids = list(feedback_ids)
+        shown = ", ".join(str(i) for i in self.feedback_ids[:5])
+        more = "" if len(self.feedback_ids) <= 5 else f" (+{len(self.feedback_ids) - 5} more)"
+        super().__init__(
+            f"{len(self.feedback_ids)} feedback note(s) are not approved and "
+            f"cannot be printed: {shown}{more}"
+        )
+
+
+def is_note_printable(note: MisconceptionNote) -> bool:
+    """Every note is model-written by construction, so approval is the whole
+    test — there is no `origin` to exempt one, as a textbook exercise is."""
+    return note.approved_at is not None and note.discarded_at is None
+
+
+def ensure_notes_printable(notes: Iterable[MisconceptionNote]) -> None:
+    """Raises `UnapprovedFeedbackError` unless every note may print.
+
+    A student with *no* note is fine and common: feedback is additive, and a
+    clean paper earns none. This gate is only about notes that exist.
+    """
+    offenders = [n.id for n in notes if not is_note_printable(n)]
+    if offenders:
+        raise UnapprovedFeedbackError(offenders)
+
+
+def approve_feedback(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    feedback_ids: Sequence[uuid.UUID],
+    at: datetime | None = None,
+) -> list[uuid.UUID]:
+    """Teacher approval. The only way a generated note becomes printable."""
+    if not feedback_ids:
+        return []
+    stamp = at or datetime.now(UTC)
+    rows = db.scalars(
+        select(MisconceptionNote).where(
+            MisconceptionNote.school_id == school_id,
+            MisconceptionNote.id.in_(list(feedback_ids)),
+            MisconceptionNote.discarded_at.is_(None),
+        )
+    )
+    approved: list[uuid.UUID] = []
+    for row in rows:
+        row.approved_at = stamp
+        approved.append(row.id)
+    db.flush()
+    return approved
+
+
+def discard_feedback(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    feedback_ids: Sequence[uuid.UUID],
+    at: datetime | None = None,
+) -> list[uuid.UUID]:
+    """Throw a note away. Kept, not deleted, for the same audit reason as an
+    exercise — and because a printed batch may still reference it."""
+    if not feedback_ids:
+        return []
+    stamp = at or datetime.now(UTC)
+    rows = db.scalars(
+        select(MisconceptionNote).where(
+            MisconceptionNote.school_id == school_id,
+            MisconceptionNote.id.in_(list(feedback_ids)),
+        )
+    )
+    discarded: list[uuid.UUID] = []
+    for row in rows:
+        row.discarded_at = stamp
+        row.approved_at = None  # a discarded note is never printable again
+        discarded.append(row.id)
+    db.flush()
+    return discarded
+
+
 __all__ = [
     "UnapprovedExerciseError",
+    "UnapprovedFeedbackError",
     "approve_exercises",
+    "approve_feedback",
     "discard_exercises",
+    "discard_feedback",
+    "ensure_notes_printable",
     "ensure_printable",
+    "is_note_printable",
     "is_printable",
 ]

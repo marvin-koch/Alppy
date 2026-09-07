@@ -16,6 +16,8 @@ from alppy.core.uid import InvalidUidError, parse_uid
 from alppy.models.enums import (
     CurriculumKind,
     DetectionOutcome,
+    EventKind,
+    EventSubject,
     ExerciseOrigin,
     ExerciseType,
     JobKind,
@@ -389,6 +391,10 @@ class SheetInstanceOut(ApiModel):
     student_id: uuid.UUID
     student_uid: str
     page_count: int | None = None
+    #: "Groupe 2 · Fractions équivalentes", printed on this copy.
+    group_label: str | None = None
+    #: Whether this copy has an approved feedback page in the third document.
+    has_feedback: bool = False
 
 
 class SheetOut(ApiModel):
@@ -404,6 +410,10 @@ class SheetOut(ApiModel):
     instances: list[SheetInstanceOut] = []
     blank_pdf_url: str | None = None
     answer_key_pdf_url: str | None = None
+    #: The per-student feedback pages, as their own document.
+    feedback_pdf_url: str | None = None
+    #: The common sheet whose corrected results produced this one.
+    derived_from_id: uuid.UUID | None = None
     rendered_at: datetime | None = None
     created_at: datetime
 
@@ -617,8 +627,16 @@ class AdaptiveProposeRequest(BaseModel):
     #: off the corpus.
     language: Locale | None = None
     #: One shared sheet for the selected students, targeting the union of their
-    #: gaps, instead of one sheet each.
+    #: gaps, instead of one sheet each. Kept for the single-group path;
+    #: `n_groups` supersedes it and wins when both are given.
     group: bool = False
+    #: How many personalised group sheets to build. 1 is one shared sheet for
+    #: the whole selection; a value at or above the class size is one sheet per
+    #: student. Absent means the per-student path, unchanged.
+    n_groups: Annotated[int | None, Field(ge=1, le=40)] = None
+    #: The COMMON sheet whose corrected results justify this batch. Recorded on
+    #: the sheet as lineage, and the sheet feedback is read from.
+    source_sheet_id: uuid.UUID | None = None
 
 
 class AdaptiveStudentPlan(ApiModel):
@@ -627,6 +645,13 @@ class AdaptiveStudentPlan(ApiModel):
     targeted_competency_ids: list[uuid.UUID]
     retrieved: list[ExerciseProposal] = []
     generated: list[ExerciseProposal] = []
+    #: Which personalised group this student's copy belongs to, printed on the
+    #: page. Absent on the per-student path, where there is no group.
+    group_label: str | None = None
+    group_index: int | None = None
+    #: The teacher may move a student between groups before exporting; the
+    #: batch request carries the result, so this is what it edits.
+    feedback_id: uuid.UUID | None = None
 
     @property
     def total_items(self) -> int:
@@ -643,6 +668,9 @@ class AdaptiveGroupItem(ApiModel):
 class AdaptiveGroupPlan(ApiModel):
     """One item list shared by several students with overlapping gaps."""
 
+    #: "Groupe 2 · Fractions équivalentes". Printed on every copy in the group.
+    label: str = ""
+    index: int = 1
     student_ids: list[uuid.UUID] = []
     student_uids: list[str] = []
     targeted_competency_ids: list[uuid.UUID] = []
@@ -673,7 +701,10 @@ class AdaptiveProposeResponse(ApiModel):
     language: str
     generated_count: int = 0
     needs_approval: bool = True
+    #: The single-group path. Kept so the existing screen keeps working.
     group: AdaptiveGroupPlan | None = None
+    #: The N-group path. One entry per personalised group, worst first.
+    groups: list[AdaptiveGroupPlan] = []
     failures: list[AdaptiveGenerationFailure] = []
 
 
@@ -714,6 +745,99 @@ class AdaptiveBatchRequest(BaseModel):
     title: Annotated[str, Field(min_length=1, max_length=200)]
     language: Locale
     plans: list[AdaptiveStudentPlan]
+    #: The common sheet this batch answers. Stored as `Sheet.derived_from_id`,
+    #: which is what makes a teaching unit a chain rather than two loose rows.
+    source_sheet_id: uuid.UUID | None = None
+    #: How many groups the plans were built from. >1 marks the sheet
+    #: `SheetTarget.GROUP`, which has been in the enum unused since 0001.
+    group_count: int | None = None
+
+
+# ------------------------------------------------------- misconception notes
+class MisconceptionNoteOut(ApiModel):
+    """One student's feedback, as the teacher reviews it before it prints."""
+
+    id: uuid.UUID
+    student_id: uuid.UUID
+    student_uid: str = ""
+    subject_id: uuid.UUID
+    based_on_sheet_id: uuid.UUID | None = None
+    language: str
+    notes: list[str] = []
+    competency_ids: list[uuid.UUID] = []
+    approved_at: datetime | None = None
+    created_at: datetime
+
+
+class FeedbackApproveRequest(BaseModel):
+    """The only way a generated note becomes printable."""
+
+    feedback_ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=400)]
+
+
+class FeedbackApproveResponse(ApiModel):
+    approved: int
+    feedback_ids: list[uuid.UUID] = []
+
+
+class FeedbackDiscardRequest(BaseModel):
+    feedback_ids: Annotated[list[uuid.UUID], Field(min_length=1, max_length=400)]
+
+
+class FeedbackDiscardResponse(ApiModel):
+    discarded: int
+    feedback_ids: list[uuid.UUID] = []
+
+
+class FeedbackGenerateRequest(BaseModel):
+    """Start the per-student feedback job for one corrected common sheet."""
+
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+    source_sheet_id: uuid.UUID
+    language: Locale | None = None
+
+
+# ----------------------------------------------------------------- timeline
+class TimelineEventOut(ApiModel):
+    """One line of the agenda.
+
+    ``title`` is resolved from the row the event points at when it still
+    exists, and falls back to the stored ``summary`` when it does not — an
+    event outlives its subject, because deleting a sheet does not un-print it.
+    """
+
+    id: uuid.UUID
+    kind: EventKind
+    occurred_at: datetime
+    subject_type: EventSubject
+    subject_id: uuid.UUID
+    title: str
+    class_id: uuid.UUID | None = None
+    class_code: str | None = None
+    subject_area_id: uuid.UUID | None = None
+    detail: dict[str, Any] = {}
+    #: False when the row the event describes has since been deleted, so the
+    #: agenda can show the line without offering a link that 404s.
+    resolved: bool = True
+
+
+class TimelineFacets(ApiModel):
+    """How many events each kind would give under the CURRENT filters.
+
+    Computed with every filter except the kind filter itself: a chip has to
+    report what selecting it would give, not what is already selected.
+    """
+
+    by_kind: dict[str, int] = {}
+
+
+class TimelineOut(ApiModel):
+    items: list[TimelineEventOut] = []
+    total: int = 0
+    offset: int = 0
+    limit: int = 0
+    facets: TimelineFacets = TimelineFacets()
 
 
 # --------------------------------------------------------------------- jobs

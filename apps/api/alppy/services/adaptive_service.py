@@ -104,16 +104,41 @@ __all__ = [
     "target_difficulty",
 ]
 
-TARGET_BANDS: tuple[MasteryBand, ...] = (MasteryBand.FADING, MasteryBand.WEAK, MasteryBand.OK)
-"""Weakest first. `SOLID` is skipped — re-drilling a mastered competency spends
-a student's attention on the thing they already have. `NONE` is skipped too: it
-is 'never assessed', which is an absence of evidence, not a gap; the fallback
-below covers a student with no evidence at all."""
+TARGET_BANDS: tuple[MasteryBand, ...] = (
+    MasteryBand.FADING,
+    MasteryBand.WEAK,
+    MasteryBand.OK,
+    MasteryBand.SOLID,
+)
+"""Weakest first, and `SOLID` last as a **stretch** target.
+
+`SOLID` used to be skipped, on the argument that re-drilling a mastered
+competency spends a student's attention on what they already have. That
+argument is right about *re-drilling* and wrong about the student it actually
+described: with no gap in any band, `pick_gaps` returned empty, the plan fell
+into its `diagnostic` branch, and a child who had mastered everything was
+handed `FALLBACK_DIFFICULTY = 2` — easier work than they can already do. The
+zone of proximal development points the other way, so `SOLID` is targeted at
+lowest priority and `target_difficulty` pushes it *above* the working level
+rather than at it. `MAX_STRETCH_COMPETENCIES` keeps it from crowding out real
+gap work.
+
+`NONE` is still skipped: it is 'never assessed', which is an absence of
+evidence rather than a gap; the diagnostic fallback covers a student with no
+evidence at all."""
 
 BAND_PRIORITY: dict[MasteryBand, int] = {band: i for i, band in enumerate(TARGET_BANDS)}
 
 MAX_TARGET_COMPETENCIES = 4
 """A sheet that chases eight gaps at once teaches nothing about any of them."""
+
+MAX_STRETCH_COMPETENCIES = 1
+"""How many of the targeted competencies may be a `SOLID` stretch target.
+
+One. A sheet is for the gaps; stretch is the part that keeps a strong student
+from being bored by their own revision. A student with *only* solid
+competencies is the exception the cap deliberately does not apply to — see
+`pick_gaps` — because for them there is no gap work to protect."""
 
 FALLBACK_DIFFICULTY = 2
 """For a student with no mastery data: a gentle diagnostic level."""
@@ -253,6 +278,7 @@ def propose_adaptive(
     language: str | None = None,
     fallback_language: str = "fr",
     group: bool = False,
+    n_groups: int | None = None,
     ai: AiClient | None = None,
 ) -> AdaptiveProposeResponse:
     """Build one differentiated plan per requested student.
@@ -267,6 +293,13 @@ def propose_adaptive(
     so the batch export is unchanged — every child needs their own page with
     their own UID grid whether or not the questions are shared.
 
+    ``n_groups`` supersedes ``group`` and is the whole point of the feature: it
+    partitions the selection into that many personalised groups, each with its
+    own shared item list. The two ends of the range are the two modes that
+    already existed — 1 is the single shared sheet, and a value at or above the
+    class size is one sheet per student — so nothing that worked before needs a
+    different call.
+
     ``ai`` has a default and exists so a worker can share one client (and one
     audit buffer) across a whole class batch.
     """
@@ -279,8 +312,31 @@ def propose_adaptive(
 
     failures: list[AdaptiveGenerationFailure] = []
     group_plan: AdaptiveGroupPlan | None = None
+    group_plans: list[AdaptiveGroupPlan] = []
 
-    if group:
+    # A request for as many groups as there are students is the per-student
+    # path spelled differently, and the per-student planner targets each child's
+    # own gaps rather than a one-member union. Route it there.
+    wants_groups = n_groups is not None and n_groups > 1 and n_groups < len(students)
+    single_group = group or (n_groups == 1)
+
+    if wants_groups:
+        assert n_groups is not None
+        plans, group_plans = _plan_for_groups(
+            db,
+            students=students,
+            school_id=school_id,
+            class_id=class_id,
+            subject_id=subject_id,
+            items_per_student=items_per_student,
+            allow_generation=allow_generation,
+            language=resolved,
+            roster_names=roster_names,
+            failures=failures,
+            ai=client,
+            n_groups=n_groups,
+        )
+    elif single_group:
         plans, group_plan = _plan_for_group(
             db,
             students=students,
@@ -318,6 +374,10 @@ def propose_adaptive(
         # The group's items are shared, so summing the per-student plans would
         # count the same rows once per child.
         generated_total = len(group_plan.generated)
+    elif group_plans:
+        # Same again, per group: the clusters are disjoint, so summing the
+        # groups counts each generated row exactly once.
+        generated_total = sum(len(g.generated) for g in group_plans)
 
     if generated_total:
         # Generated exercises are rows now: the response hands back their ids,
@@ -335,11 +395,13 @@ def propose_adaptive(
         generated=generated_total,
         failures=len(failures),
         language=resolved,
-        mode="group" if group else "per_student",
+        mode=("groups" if group_plans else "group" if single_group else "per_student"),
+        groups=len(group_plans),
     )
     return AdaptiveProposeResponse(
         plans=plans,
         group=group_plan,
+        groups=group_plans,
         language=resolved,
         generated_count=generated_total,
         needs_approval=generated_total > 0,
@@ -374,11 +436,36 @@ def latest_snapshots(
 
 
 def pick_gaps(
-    snapshots: Sequence[MasterySnapshot], *, limit: int = MAX_TARGET_COMPETENCIES
+    snapshots: Sequence[MasterySnapshot],
+    *,
+    limit: int = MAX_TARGET_COMPETENCIES,
+    max_stretch: int = MAX_STRETCH_COMPETENCIES,
 ) -> list[Gap]:
-    """Weakest competencies first: fading, then weak, then ok. Solid is skipped."""
+    """Weakest competencies first: fading, then weak, then ok, then solid.
+
+    Real gaps fill the sheet first. `SOLID` entries are *stretch* and are
+    admitted only with whatever room is left, at most ``max_stretch`` of them —
+    so a student with four fading competencies gets four of those and no
+    stretch at all.
+
+    The exception is a student with nothing but solid competencies. There is no
+    gap work to protect for them, so the cap is lifted and the whole sheet is
+    stretch; the alternative is the diagnostic fallback, which hands the
+    strongest child in the class the easiest sheet.
+    """
     scored = [s for s in snapshots if s.band in BAND_PRIORITY]
     scored.sort(key=lambda s: (BAND_PRIORITY[s.band], s.score))
+
+    gaps = [s for s in scored if s.band is not MasteryBand.SOLID]
+    stretch = [s for s in scored if s.band is MasteryBand.SOLID]
+
+    taken = gaps[:limit]
+    room = limit - len(taken)
+    if room > 0:
+        # No gaps at all: the cap has nothing to protect, so let stretch fill.
+        allowance = room if not taken else min(room, max_stretch)
+        taken += stretch[:allowance]
+
     return [
         Gap(
             competency_id=s.competency_id,
@@ -386,7 +473,7 @@ def pick_gaps(
             score=s.score,
             target_difficulty=target_difficulty(s.score, s.band),
         )
-        for s in scored[:limit]
+        for s in taken
     ]
 
 
@@ -397,11 +484,17 @@ def target_difficulty(score: float, band: MasteryBand) -> int:
     *fading* competency drops one below it: the evidence there is stale, so the
     first item should rebuild confidence rather than test it. A *weak* (fragile)
     competency is practised at level, which is where the struggle actually is.
+    A *solid* one is practised one level **above**: it is targeted as stretch
+    (see `TARGET_BANDS`), and stretch means the next thing up, not the thing
+    already held. That is the only direction in which the clamp at 5 is
+    reachable.
     """
     bounded = max(0.0, min(1.0, score))
     level = 1 + math.floor(3.0 * bounded + 0.5)  # 1..4, half-up
     if band is MasteryBand.FADING:
         level -= 1
+    elif band is MasteryBand.SOLID:
+        level += 1
     return max(1, min(5, level))
 
 
@@ -640,6 +733,202 @@ def _plan_for_group(
     return plans, group_plan
 
 
+# --------------------------------------------------------------------------
+# N groups
+# --------------------------------------------------------------------------
+@dataclass(slots=True)
+class _Bucket:
+    """A candidate group, with a key that survives re-partitioning.
+
+    The key is what a teacher's manual move is recorded against. Recording a
+    move against a *position* is the bug that looks fine until the partition
+    changes underneath it: groups reorder, one empties, and a student the
+    teacher placed by hand silently lands somewhere else.
+    """
+
+    key: str
+    gap_id: uuid.UUID | None
+    members: list[Student]
+
+
+def _severity(gap: Gap | None) -> tuple[int, float]:
+    """Worst first. A student with no gap at all sorts last, not first —
+    an absence of evidence is not a weakness (`mastery_service` says the same)."""
+    if gap is None:
+        return (len(TARGET_BANDS), 0.0)
+    return (BAND_PRIORITY[gap.band], gap.score)
+
+
+def cluster_students(
+    students: Sequence[Student],
+    gaps_by_student: dict[uuid.UUID, list[Gap]],
+    *,
+    n_groups: int,
+) -> list[list[Student]]:
+    """Partition a class into ``n_groups``, by the gap they most need.
+
+    The rule has to be one a teacher can state and defend, because they are the
+    one who will have to justify it to a parent:
+
+        *Students with the same principal gap go together. If that gives more
+        groups than you asked for, the smallest merge; if fewer, the largest
+        splits by how badly.*
+
+    Both extremes already exist and are preserved exactly: ``n_groups == 1`` is
+    today's single shared group, and ``n_groups >= len(students)`` is one sheet
+    per student. Nothing in between existed before.
+
+    Deterministic: ties break on the roster number, so re-running produces the
+    same partition and the teacher is not shown a reshuffled class for nothing.
+    """
+    if n_groups <= 1 or len(students) <= 1:
+        return [list(students)]
+
+    by_gap: dict[uuid.UUID | None, list[Student]] = {}
+    for student in students:
+        gaps = gaps_by_student.get(student.id) or []
+        principal = gaps[0].competency_id if gaps else None
+        by_gap.setdefault(principal, []).append(student)
+
+    def rank(student: Student) -> tuple[int, float, int]:
+        gaps = gaps_by_student.get(student.id) or []
+        band, score = _severity(gaps[0] if gaps else None)
+        return (band, score, student.number)
+
+    buckets = [
+        _Bucket(key=str(gap_id), gap_id=gap_id, members=sorted(members, key=rank))
+        for gap_id, members in by_gap.items()
+    ]
+
+    # More gaps than groups: merge the smallest pair, repeatedly. Merging the
+    # smallest keeps the largest coherent groups intact, which is where the
+    # shared sheet earns its keep.
+    while len(buckets) > n_groups:
+        buckets.sort(key=lambda b: (len(b.members), _severity_of(b, gaps_by_student)))
+        first, second = buckets.pop(0), buckets.pop(0)
+        keep = first if len(first.members) >= len(second.members) else second
+        buckets.append(
+            _Bucket(
+                key=f"{first.key}+{second.key}",
+                gap_id=keep.gap_id,
+                members=sorted(first.members + second.members, key=rank),
+            )
+        )
+
+    # Fewer gaps than groups: split the largest by severity, so the half that
+    # is struggling most is not held to the pace of the half that is not.
+    serial = 0
+    while len(buckets) < n_groups and any(len(b.members) > 1 for b in buckets):
+        buckets.sort(key=lambda b: -len(b.members))
+        big = buckets.pop(0)
+        half = (len(big.members) + 1) // 2
+        serial += 1
+        buckets.append(
+            _Bucket(key=f"{big.key}/a{serial}", gap_id=big.gap_id, members=big.members[:half])
+        )
+        buckets.append(
+            _Bucket(key=f"{big.key}/b{serial}", gap_id=big.gap_id, members=big.members[half:])
+        )
+
+    buckets.sort(key=lambda b: _severity_of(b, gaps_by_student))
+    return [b.members for b in buckets if b.members]
+
+
+def _severity_of(
+    bucket: _Bucket, gaps_by_student: dict[uuid.UUID, list[Gap]]
+) -> tuple[float, float]:
+    """A group's average severity, worst first, for a stable group order."""
+    if not bucket.members:
+        return (float(len(TARGET_BANDS)), 0.0)
+    bands = 0.0
+    scores = 0.0
+    for student in bucket.members:
+        gaps = gaps_by_student.get(student.id) or []
+        band, score = _severity(gaps[0] if gaps else None)
+        bands += band
+        scores += score
+    n = len(bucket.members)
+    return (bands / n, scores / n)
+
+
+def _plan_for_groups(
+    db: Session,
+    *,
+    students: Sequence[Student],
+    school_id: uuid.UUID,
+    class_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    items_per_student: int,
+    allow_generation: bool,
+    language: str,
+    roster_names: list[str],
+    failures: list[AdaptiveGenerationFailure],
+    ai: AiClient,
+    n_groups: int,
+) -> tuple[list[AdaptiveStudentPlan], list[AdaptiveGroupPlan]]:
+    """``n_groups`` shared sheets, one call to `_plan_for_group` per cluster.
+
+    `_plan_for_group` is unchanged: it always took an arbitrary sequence of
+    students, so N groups is a partition placed above it rather than a second
+    planner to keep in step with the first.
+    """
+    gaps_by_student = {
+        s.id: pick_gaps(latest_snapshots(db, school_id=school_id, student_id=s.id))
+        for s in students
+    }
+    clusters = cluster_students(students, gaps_by_student, n_groups=n_groups)
+
+    plans: list[AdaptiveStudentPlan] = []
+    group_plans: list[AdaptiveGroupPlan] = []
+    for index, cluster in enumerate(clusters, start=1):
+        cluster_plans, group_plan = _plan_for_group(
+            db,
+            students=cluster,
+            school_id=school_id,
+            class_id=class_id,
+            subject_id=subject_id,
+            items_per_student=items_per_student,
+            allow_generation=allow_generation,
+            language=language,
+            roster_names=roster_names,
+            failures=failures,
+            ai=ai,
+        )
+        label = _group_label(index, group_plan, language=language, db=db)
+        group_plan.label = label
+        group_plan.index = index
+        for plan in cluster_plans:
+            plan.group_label = label
+            plan.group_index = index
+        plans.extend(cluster_plans)
+        group_plans.append(group_plan)
+    return plans, group_plans
+
+
+def _group_label(
+    index: int, plan: AdaptiveGroupPlan, *, language: str, db: Session
+) -> str:
+    """"Groupe 2 · Fractions équivalentes" — the number and what it is for.
+
+    The number alone is a bucket; the competency alone does not survive two
+    groups chasing the same one after a split. Truncated to the column the
+    printed page gives it.
+    """
+    words = _GROUP_WORDS.get(language, _GROUP_WORDS["en"])
+    labels = _competency_labels(db, plan.targeted_competency_ids[:1], language=language)
+    name = next(iter(labels.values()), "")
+    base = f"{words['group']} {index}"
+    full = f"{base} · {name}" if name else base
+    return full[:60]
+
+
+_GROUP_WORDS: dict[str, dict[str, str]] = {
+    "fr": {"group": "Groupe"},
+    "de": {"group": "Gruppe"},
+    "en": {"group": "Group"},
+}
+
+
 def _gap_reason(
     candidate: retrieval.Candidate,
     gaps: Sequence[Gap],
@@ -653,6 +942,8 @@ def _gap_reason(
     hit = next((g for g in gaps if g.competency_id in candidate.matched_competency_ids), None)
     if hit is None:
         return None
+    if hit.band is MasteryBand.SOLID:
+        return p["stretch"]
     return p["gap"].format(band=_BAND_WORDS.get(language, _BAND_WORDS["en"])[hit.band])
 
 
@@ -677,18 +968,21 @@ def _group_reason(
 _GAP_PHRASES: dict[str, dict[str, str]] = {
     "fr": {
         "gap": "cible une compétence {band}",
+        "stretch": "approfondit une compétence déjà acquise",
         "diagnostic": "aucune donnée de maîtrise : série de diagnostic",
         "generated": "généré pour combler la fiche — validation requise",
         "group": "pour {count} élève(s) du groupe : {uids}",
     },
     "de": {
         "gap": "zielt auf eine {band} Kompetenz",
+        "stretch": "vertieft eine bereits gefestigte Kompetenz",
         "diagnostic": "keine Kompetenzdaten: diagnostische Serie",
         "generated": "erzeugt, um das Blatt zu füllen — Freigabe erforderlich",
         "group": "für {count} Lernende der Gruppe: {uids}",
     },
     "en": {
         "gap": "targets a {band} competency",
+        "stretch": "extends a competency already solid",
         "diagnostic": "no mastery data yet: diagnostic set",
         "generated": "generated to complete the sheet — approval required",
         "group": "for {count} student(s) in the group: {uids}",
@@ -700,6 +994,10 @@ _BAND_WORDS: dict[str, dict[MasteryBand, str]] = {
     "de": {MasteryBand.FADING: "verblassende", MasteryBand.WEAK: "brüchige", MasteryBand.OK: "solide"},
     "en": {MasteryBand.FADING: "fading", MasteryBand.WEAK: "fragile", MasteryBand.OK: "ok"},
 }
+"""No `SOLID` entry, deliberately: a solid competency is reported by the
+`stretch` phrase, which says what the item is *for*, not by the `gap` sentence
+with a band word slotted in. "cible une compétence acquise" would read as a
+mistake — and `OK` already holds "acquise" in French, so the two would collide."""
 
 
 # --------------------------------------------------------------------------
