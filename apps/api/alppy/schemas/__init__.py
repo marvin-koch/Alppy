@@ -10,7 +10,7 @@ import uuid
 from datetime import datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
 
 from alppy.core.uid import InvalidUidError, parse_uid
 from alppy.models.enums import (
@@ -24,6 +24,7 @@ from alppy.models.enums import (
     ScanStatus,
     SheetTarget,
 )
+from alppy.sheets.layout import MAX_OPTIONS as MAX_MCQ_OPTIONS
 
 Locale = Literal["fr", "de", "en"]
 LocalisedText = dict[str, str]
@@ -141,7 +142,32 @@ class SourceOut(ApiModel):
     error: str | None = None
     notice: str | None = None
     exercise_count: int = 0
+    section_count: int = 0
     created_at: datetime
+
+
+class SourceSectionOut(ApiModel):
+    """One chapter of the document, as the document declares it.
+
+    Distinct from `ChapterOut`: that is the teacher's curriculum grouping and an
+    exercise reaches one only by competency inference, so it is allowed to be
+    null. This one is a fact about the file and is always set, which is why the
+    builder filters on it first.
+    """
+
+    id: uuid.UUID
+    title: str
+    label: str | None = None
+    page_from: int
+    page_to: int
+    position: int
+    exercise_count: int = 0
+    extracted_at: datetime | None = None
+    extraction_notice: str | None = None
+
+    @property
+    def is_extracted(self) -> bool:
+        return self.extracted_at is not None
 
 
 # ---------------------------------------------------------------- exercises
@@ -160,6 +186,7 @@ class ExerciseOut(ApiModel):
     chapter_id: uuid.UUID | None = None
     competency_ids: list[uuid.UUID] = []
     source_id: uuid.UUID | None = None
+    source_section_id: uuid.UUID | None = None
     source_page: int | None = None
     approved_at: datetime | None = None
 
@@ -172,10 +199,104 @@ class ExerciseUpdate(BaseModel):
     statement: str | None = None
     options: list[str] | None = None
     answer_index: int | None = None
+    # `answer_bool` and `answer_text` were missing, so a true/false answer and an
+    # open question's expected answer — the thing the answer key prints — could
+    # be written by extraction and never corrected by the teacher who spotted it.
     answer_bool: bool | None = None
+    answer_text: str | None = None
     explanation: str | None = None
     difficulty: Annotated[int, Field(ge=1, le=5)] | None = None
     approved: bool | None = None
+
+    # `type` is deliberately absent. Changing it would leave the answer fields
+    # describing a different kind of question (an MCQ keeping `answer_bool`, an
+    # open item keeping four options), and the printed grid draws its bubbles
+    # from the type. Delete and re-add instead.
+
+
+class ExerciseCreate(BaseModel):
+    """An exercise the teacher wrote in the sheet builder.
+
+    Lands as `ExerciseOrigin.TEACHER`: not a transcription, so it carries no
+    source or page, and not a model's proposal, so it wears no accent and needs
+    no approval. The teacher approved it by writing it.
+    """
+
+    subject_id: uuid.UUID
+    type: ExerciseType
+    language: Locale
+    statement: Annotated[str, Field(min_length=1, max_length=4000)]
+    options: Annotated[list[str], Field(max_length=MAX_MCQ_OPTIONS)] | None = None
+    answer_index: int | None = None
+    answer_bool: bool | None = None
+    answer_text: str | None = None
+    explanation: str | None = None
+    difficulty: Annotated[int, Field(ge=1, le=5)] = 3
+    chapter_id: uuid.UUID | None = None
+    competency_ids: Annotated[list[uuid.UUID], Field(max_length=10)] = []
+
+    @field_validator("options")
+    @classmethod
+    def _trim_options(cls, value: list[str] | None) -> list[str] | None:
+        if value is None:
+            return None
+        cleaned = [o.strip() for o in value if o and o.strip()]
+        return cleaned or None
+
+    @model_validator(mode="after")
+    def _answer_matches_type(self) -> ExerciseCreate:
+        """Reject an answer that does not fit the type, rather than coercing it.
+
+        A silently dropped answer is a sheet whose key is blank for that item,
+        discovered by the teacher at the photocopier. `MAX_MCQ_OPTIONS` mirrors
+        `sheets.layout.MAX_OPTIONS`: a fifth option would key the answer to a
+        bubble that is not printed on the paper.
+        """
+        if self.type is ExerciseType.MCQ:
+            if not self.options or len(self.options) < 2:
+                raise ValueError("a multiple-choice exercise needs at least two answers")
+            if self.answer_index is None:
+                raise ValueError("a multiple-choice exercise needs a correct answer")
+            if not 0 <= self.answer_index < len(self.options):
+                raise ValueError("the correct answer must be one of the options")
+            self.answer_bool = None
+        elif self.type is ExerciseType.TRUE_FALSE:
+            if self.answer_bool is None:
+                raise ValueError("a true/false exercise needs a correct answer")
+            self.options, self.answer_index = None, None
+        else:  # open — printable, never auto-graded (D13)
+            self.options, self.answer_index, self.answer_bool = None, None, None
+        return self
+
+
+class ExerciseFacets(ApiModel):
+    """Counts for the filter chips, computed over the *unfiltered-by-type* set.
+
+    The chips have to show what selecting them would give, so these are counted
+    with every filter applied except the one each chip controls. A chip reading
+    "QCM · 0" is useful; a chip that silently yields nothing is not.
+    """
+
+    total: int = 0
+    mcq: int = 0
+    true_false: int = 0
+    open: int = 0
+
+
+class ExerciseListOut(ApiModel):
+    """One page of exercises.
+
+    `GET /sources/{id}/exercises` used to return every row of a document in a
+    single unpaginated array — fine for a 40-exercise worksheet, roughly two
+    megabytes of JSON for a textbook, through a Worker proxy, into a list of a
+    thousand React rows. Filtering and paging both happen in Postgres now.
+    """
+
+    items: list[ExerciseOut] = []
+    total: int = 0
+    offset: int = 0
+    limit: int = 0
+    facets: ExerciseFacets = ExerciseFacets()
 
 
 class Provenance(ApiModel):
@@ -231,6 +352,29 @@ class SheetCreate(BaseModel):
 class SheetUpdate(BaseModel):
     title: str | None = None
     items: list[SheetItemIn] | None = None
+
+
+class SheetDraftPreview(BaseModel):
+    """A sheet that does not exist yet, rendered so the teacher can see it.
+
+    The builder needs a preview while the teacher is still reordering, and the
+    two obvious ways to get one are both wrong. Redrawing the page in React
+    duplicates the millimetre geometry that `sheets.layout` owns and that the
+    scan detector reads — the previous hand-rolled attempt put the bubbles
+    inline instead of on the fixed grid and printed A/B/C/D where the sheet
+    prints V/F. Creating a real draft `Sheet` and PATCHing it writes a row plus
+    one `SheetInstance` per student on every keystroke, and leaves a junk sheet
+    behind whenever the teacher walks away.
+
+    So the draft is posted and rendered, never stored. The response is the same
+    markup `GET /sheets/{id}/preview` returns, from the same `SheetData`.
+    """
+
+    class_id: uuid.UUID
+    subject_id: uuid.UUID
+    title: Annotated[str, Field(max_length=200)] = ""
+    language: Locale
+    items: Annotated[list[SheetItemIn], Field(max_length=64)]
 
 
 class SheetItemOut(ApiModel):

@@ -28,6 +28,7 @@ from alppy.models.enums import JobKind, JobStatus, SheetKind
 from alppy.schemas import (
     JobOut,
     SheetCreate,
+    SheetDraftPreview,
     SheetOut,
     SheetProposeRequest,
     SheetProposeResponse,
@@ -160,6 +161,54 @@ def _assert_printable(db: DbDep, sheet: Any) -> None:
         physical_pages(build_sheet_data(db, sheet))
     except (render_error, ValueError) as exc:
         raise errors.unprocessable(str(exc)) from exc
+
+
+@router.post("/sheets/preview", response_class=Response)
+def preview_draft(
+    payload: SheetDraftPreview, scope: ScopeDep, db: DbDep
+) -> Response:
+    """Render a sheet that has not been saved yet.
+
+    The builder shows this while the teacher is still ticking and reordering,
+    which is the only moment the information is worth anything: it is where a
+    sixth exercise turning into a second sheet of paper, or a statement too tall
+    for any page, becomes visible *before* 72 pages come off the photocopier.
+
+    Nothing is written. That is the point — the alternative was to POST a real
+    draft `Sheet` and PATCH it on every edit, which rewrites one `SheetInstance`
+    per student per keystroke and abandons a junk row whenever the teacher
+    changes their mind.
+
+    Same `SheetData`, same templates, same `physical_pages` as the saved
+    preview and the PDF, so it cannot drift from the paper.
+    """
+    get_class(db, scope, payload.class_id)
+    build_draft = load_optional(
+        "alppy.sheets.render", "build_draft_sheet_data", feature="sheet preview"
+    )
+    render_html = load_optional(
+        "alppy.sheets.html", "render_sheet_html", feature="sheet preview"
+    )
+    render_error = load_optional(
+        "alppy.sheets.render", "SheetRenderError", feature="sheet preview"
+    )
+    try:
+        data = build_draft(
+            db,
+            school_id=scope.school_id,
+            class_id=payload.class_id,
+            subject_id=payload.subject_id,
+            title=payload.title,
+            language=str(payload.language),
+            items=payload.items,
+        )
+        html: str = render_html(data, kind=SheetKind.BLANK)
+    except (render_error, ValueError) as exc:
+        # "no students", "this statement is taller than a page": the teacher
+        # needs to read which, and needs to read it now rather than from a
+        # failed render job two minutes later.
+        raise errors.unprocessable(str(exc)) from exc
+    return Response(content=html, media_type="text/html; charset=utf-8")
 
 
 @router.get("/sheets/{sheet_id}/preview", response_class=Response)

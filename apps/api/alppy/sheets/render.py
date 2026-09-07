@@ -20,6 +20,7 @@ that installs it. It is a distinct, catchable type precisely so a caller can tel
 from __future__ import annotations
 
 import os
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -218,6 +219,85 @@ def _item_from_exercise(
         language=exercise.language or language,
         ai_generated=exercise.origin is ExerciseOrigin.AI_GENERATED,
     )
+
+
+def build_draft_sheet_data(
+    db: Any,
+    *,
+    school_id: Any,
+    class_id: Any,
+    subject_id: Any,
+    title: str,
+    language: str,
+    items: Sequence[Any],
+    show_legend: bool = False,
+) -> SheetData:
+    """Assemble a printable document from a sheet that has not been saved.
+
+    The builder needs a preview while the teacher is still reordering, and the
+    alternatives are both wrong: redrawing the page in React duplicates the
+    millimetre geometry `layout.py` owns and the scan detector reads, and
+    creating a real draft `Sheet` writes a row plus one `SheetInstance` per
+    student on every edit and leaves junk behind when the teacher walks away.
+
+    So this takes the unsaved item list and produces the same `SheetData` that
+    `build_sheet_data` produces from rows — same dataclass, same templates, same
+    pagination, therefore the same page breaks and the same `ItemTooTallError`.
+
+    One copy, not one per student: the preview answers "what does this sheet
+    look like", and thirty near-identical copies would only make the teacher
+    page through the class to reach page 2. The UID shown is the first student's,
+    so the grid is real rather than a drawn placeholder.
+    """
+    from alppy.models import Class, Exercise
+
+    school_class = db.get(Class, class_id)
+    if school_class is None or school_class.school_id != school_id:
+        raise SheetRenderError("this class does not exist")
+
+    ordered = sorted(items, key=lambda i: getattr(i, "position", 0))
+    built: list[Item] = []
+    for entry in ordered:
+        exercise = db.get(Exercise, entry.exercise_id)
+        if exercise is None or exercise.school_id != school_id:
+            raise SheetRenderError(f"unknown exercise {entry.exercise_id}")
+        built.append(
+            _item_from_exercise(
+                exercise,
+                language=language,
+                statement=getattr(entry, "statement_override", None),
+            )
+        )
+    if not built:
+        raise SheetRenderError("a sheet with no items cannot be previewed")
+
+    students = sorted(school_class.students, key=lambda s: s.uid)
+    if not students:
+        raise SheetRenderError(
+            f"class {school_class.code} has no students: nothing to print a UID for"
+        )
+
+    return SheetData(
+        title=title or school_class.code,
+        class_code=school_class.code,
+        subject=_subject_label_for(db, subject_id),
+        language=language,
+        copies=(Copy(uid=students[0].uid, items=tuple(built)),),
+        show_legend=show_legend,
+        layout_version=L.LAYOUT_VERSION,
+    )
+
+
+def _subject_label_for(db: Any, subject_id: Any) -> str:
+    from alppy.models import Subject
+
+    subject = db.get(Subject, subject_id)
+    if subject is None:
+        return ""
+    labels = getattr(subject, "labels", None) or {}
+    if isinstance(labels, dict) and labels:
+        return str(labels.get("fr") or labels.get("de") or labels.get("en") or subject.key)
+    return str(subject.key)
 
 
 def _sheet_items(sheet: Any) -> list[Item]:

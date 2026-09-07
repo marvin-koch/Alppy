@@ -1,7 +1,7 @@
 """arq task functions — the only place a slow pipeline (model call, OpenCV,
 Chromium render) runs. See ``docs/architecture.md`` §3: a FastAPI handler
 never awaits one of these directly; it writes a ``Job`` row and enqueues one
-of the four functions below by name, then the client polls ``GET /jobs/{id}``.
+of the five functions below by name, then the client polls ``GET /jobs/{id}``.
 
 Each task:
 
@@ -130,6 +130,34 @@ async def ingest_source(ctx: dict[str, Any], job_id: str) -> None:
         run_ingest_source(db, source_id=source_id)
         on_progress(1.0, "indexed")
         return {"source_id": str(source_id)}
+
+    await asyncio.to_thread(_run_job, job_id, _call)
+
+
+async def extract_section(ctx: dict[str, Any], job_id: str) -> None:
+    """``JobKind.EXTRACT_SECTION`` — read one chapter of a document on demand.
+
+    Importing a book maps its chapters and indexes every page but transcribes
+    only as many chapters as the import budget allows, so this is how the rest
+    of a 400-page textbook becomes exercises: the first time a teacher opens a
+    chapter in the sheet builder. Idempotent — a section already carrying
+    ``extracted_at`` returns immediately rather than transcribing twice.
+    """
+
+    def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
+        from alppy.ingest.pipeline import extract_section as run_extract_section
+
+        section_id = _uuid_from(job, "section_id")
+        on_progress(0.1, "reading the chapter")
+        result = run_extract_section(db, section_id=section_id)
+        on_progress(1.0, "chapter read")
+        return {
+            "section_id": str(section_id),
+            "exercises_created": result.exercises_created,
+            "exercises_total": result.exercises_total,
+            "skipped": result.skipped,
+            "notice": result.notice,
+        }
 
     await asyncio.to_thread(_run_job, job_id, _call)
 

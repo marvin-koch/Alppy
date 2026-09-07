@@ -11,14 +11,15 @@ from __future__ import annotations
 import hashlib
 import uuid
 from datetime import UTC, datetime
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, File, Form, UploadFile, status
+from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import (
+    AiRateLimit,
     DbDep,
     SettingsDep,
     StorageDep,
@@ -28,10 +29,19 @@ from alppy.api.deps import (
     read_upload,
     start_job,
 )
-from alppy.models import Exercise, Job, Source, Subject
-from alppy.models.enums import JobKind, JobStatus
-from alppy.schemas import ExerciseOut, ExerciseUpdate, JobOut, SourceOut
-from alppy.services import exercise_out, job_out, source_out
+from alppy.models import Chapter, Competency, Exercise, Job, Source, SourceSection, Subject
+from alppy.models.enums import ExerciseOrigin, ExerciseType, JobKind, JobStatus
+from alppy.schemas import (
+    ExerciseCreate,
+    ExerciseFacets,
+    ExerciseListOut,
+    ExerciseOut,
+    ExerciseUpdate,
+    JobOut,
+    SourceOut,
+    SourceSectionOut,
+)
+from alppy.services import exercise_out, job_out, source_out, source_section_out
 from alppy.storage import storage_key
 
 router = APIRouter(tags=["sources"])
@@ -49,6 +59,15 @@ def _exercise_counts(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, int]:
     return {source_id: int(count) for source_id, count in rows if source_id is not None}
 
 
+def _section_counts(db: Session, school_id: uuid.UUID) -> dict[uuid.UUID, int]:
+    rows = db.execute(
+        select(SourceSection.source_id, func.count(SourceSection.id))
+        .where(SourceSection.school_id == school_id)
+        .group_by(SourceSection.source_id)
+    ).all()
+    return {source_id: int(count) for source_id, count in rows}
+
+
 def _get_source(db: Session, school_id: uuid.UUID, source_id: uuid.UUID) -> Source:
     source = db.execute(
         select(Source).where(Source.id == source_id).where(Source.school_id == school_id)
@@ -64,7 +83,11 @@ def list_sources(school_id: TenantDep, db: DbDep) -> list[SourceOut]:
     rows = db.execute(
         select(Source).where(Source.school_id == school_id).order_by(Source.created_at.desc())
     ).scalars()
-    return [source_out(s, exercise_count=counts.get(s.id, 0)) for s in rows]
+    sections = _section_counts(db, school_id)
+    return [
+        source_out(s, exercise_count=counts.get(s.id, 0), section_count=sections.get(s.id, 0))
+        for s in rows
+    ]
 
 
 @router.post("/sources", response_model=SourceOut, status_code=status.HTTP_202_ACCEPTED)
@@ -93,7 +116,11 @@ async def upload_source(
         # Re-uploading the same book should not re-ingest it, and must not
         # produce a second copy of every exercise.
         counts = _exercise_counts(db, school_id)
-        return source_out(duplicate, exercise_count=counts.get(duplicate.id, 0))
+        return source_out(
+            duplicate,
+            exercise_count=counts.get(duplicate.id, 0),
+            section_count=_section_counts(db, school_id).get(duplicate.id, 0),
+        )
 
     source_id = uuid.uuid4()
     key = storage_key("sources", school_id, source_id, payload.filename)
@@ -134,7 +161,11 @@ async def upload_source(
 @router.get("/sources/{source_id}", response_model=SourceOut)
 def get_source(source_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> SourceOut:
     source = _get_source(db, school_id, source_id)
-    return source_out(source, exercise_count=_exercise_counts(db, school_id).get(source.id, 0))
+    return source_out(
+        source,
+        exercise_count=_exercise_counts(db, school_id).get(source.id, 0),
+        section_count=_section_counts(db, school_id).get(source.id, 0),
+    )
 
 
 @router.get("/sources/{source_id}/status", response_model=JobOut)
@@ -153,18 +184,222 @@ def get_source_status(source_id: uuid.UUID, school_id: TenantDep, db: DbDep) -> 
     raise errors.not_found("ingestion job", source_id=str(source_id))
 
 
-@router.get("/sources/{source_id}/exercises", response_model=list[ExerciseOut])
-def list_source_exercises(
+@router.get("/sources/{source_id}/sections", response_model=list[SourceSectionOut])
+def list_source_sections(
     source_id: uuid.UUID, school_id: TenantDep, db: DbDep
-) -> list[ExerciseOut]:
+) -> list[SourceSectionOut]:
+    """The document's own table of contents, with per-chapter exercise counts.
+
+    This is the builder's primary navigation. A textbook holds far more
+    exercises than any teacher will read past, so the first question is never
+    "show me everything" — it is "which chapter am I teaching".
+    """
     source = _get_source(db, school_id, source_id)
+    counts: dict[uuid.UUID, int] = {
+        section_id: int(count)
+        for section_id, count in db.execute(
+            select(Exercise.source_section_id, func.count(Exercise.id))
+            .where(Exercise.source_id == source.id)
+            .where(Exercise.source_section_id.is_not(None))
+            .group_by(Exercise.source_section_id)
+        ).all()
+        if section_id is not None
+    }
+    rows = db.execute(
+        select(SourceSection)
+        .where(SourceSection.source_id == source.id)
+        .order_by(SourceSection.position.asc())
+    ).scalars()
+    return [source_section_out(r, exercise_count=counts.get(r.id, 0)) for r in rows]
+
+
+@router.post(
+    "/sources/{source_id}/sections/{section_id}/extract",
+    response_model=JobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
+)
+def extract_source_section(
+    source_id: uuid.UUID, section_id: uuid.UUID, school_id: TenantDep, db: DbDep
+) -> JobOut:
+    """Read one chapter for exercises, on demand.
+
+    Import maps every chapter and indexes every page — both cheap — but only
+    transcribes as many chapters as the import budget allows. This is the door
+    for the rest, so a 400-page book costs nothing until somebody teaches from
+    chapter nineteen. Rate limited with the other model-reaching paths.
+    """
+    source = _get_source(db, school_id, source_id)
+    section = db.execute(
+        select(SourceSection)
+        .where(SourceSection.id == section_id)
+        .where(SourceSection.source_id == source.id)
+    ).scalar_one_or_none()
+    if section is None:
+        raise errors.not_found("source section", id=str(section_id))
+    if source.status is not JobStatus.SUCCEEDED:
+        raise errors.unprocessable(
+            "this document is not indexed yet, so its chapters cannot be read"
+        )
+    load_optional("alppy.ingest.pipeline", "extract_section", feature="exercise extraction")
+
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=school_id,
+        kind=JobKind.EXTRACT_SECTION,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="queued for extraction",
+        payload={"section_id": str(section.id), "source_id": str(source.id)},
+    )
+    db.add(job)
+    db.commit()
+    start_job(db, job)
+    db.refresh(job)
+    return job_out(job)
+
+
+@router.get("/sources/{source_id}/exercises", response_model=ExerciseListOut)
+def list_source_exercises(
+    source_id: uuid.UUID,
+    school_id: TenantDep,
+    db: DbDep,
+    section_id: Annotated[uuid.UUID | None, Query()] = None,
+    chapter_id: Annotated[uuid.UUID | None, Query()] = None,
+    type: Annotated[ExerciseType | None, Query()] = None,
+    difficulty: Annotated[int | None, Query(ge=1, le=5)] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ExerciseListOut:
+    """One page of a document's exercises, filtered in the database.
+
+    This used to return every row of the document in a single array. That is
+    fine for a worksheet and roughly two megabytes of JSON for a textbook, sent
+    through the Worker proxy into a thousand React rows, so both the filter and
+    the paging live in Postgres now.
+
+    The type facet counts are computed with every filter applied *except* the
+    type itself, so a chip reads what selecting it would actually give.
+    """
+    source = _get_source(db, school_id, source_id)
+
+    # One list of conditions, applied to both queries: the page and the facet
+    # counts must never disagree about what "this filter" means.
+    common: list[Any] = [
+        Exercise.school_id == school_id,
+        Exercise.source_id == source.id,
+        Exercise.discarded_at.is_(None),
+    ]
+    if section_id is not None:
+        common.append(Exercise.source_section_id == section_id)
+    if chapter_id is not None:
+        common.append(Exercise.chapter_id == chapter_id)
+    if difficulty is not None:
+        common.append(Exercise.difficulty == difficulty)
+    if q and q.strip():
+        # `ilike` rather than a tsvector: the set is already narrowed to one
+        # document and usually one chapter, so an index would buy nothing a
+        # teacher could measure.
+        common.append(Exercise.statement.ilike(f"%{q.strip()}%"))
+
+    # Facets deliberately exclude the type filter: a chip has to report what
+    # selecting it would give, not what it gives once already selected.
+    by_type = {
+        kind: int(count)
+        for kind, count in db.execute(
+            select(Exercise.type, func.count(Exercise.id)).where(*common).group_by(Exercise.type)
+        ).all()
+    }
+    facets = ExerciseFacets(
+        total=sum(by_type.values()),
+        mcq=by_type.get(ExerciseType.MCQ, 0),
+        true_false=by_type.get(ExerciseType.TRUE_FALSE, 0),
+        open=by_type.get(ExerciseType.OPEN, 0),
+    )
+
+    filtered = [*common, Exercise.type == type] if type is not None else common
+    total = int(
+        db.scalar(select(func.count()).select_from(Exercise).where(*filtered)) or 0
+    )
     rows = db.execute(
         select(Exercise)
-        .where(Exercise.school_id == school_id)
-        .where(Exercise.source_id == source.id)
+        .where(*filtered)
         .order_by(Exercise.source_page.asc(), Exercise.created_at.asc())
+        .offset(offset)
+        .limit(limit)
     ).scalars()
-    return [exercise_out(e) for e in rows]
+    return ExerciseListOut(
+        items=[exercise_out(e) for e in rows],
+        total=total,
+        offset=offset,
+        limit=limit,
+        facets=facets,
+    )
+
+
+@router.post("/exercises", response_model=ExerciseOut, status_code=status.HTTP_201_CREATED)
+def create_exercise(payload: ExerciseCreate, school_id: TenantDep, db: DbDep) -> ExerciseOut:
+    """An exercise the teacher wrote themselves, in the sheet builder.
+
+    `ExerciseOrigin.TEACHER`, so it carries no source page to audit against a
+    book, wears no mandarin accent, and passes the approval gate by construction.
+    It is a real corpus row rather than something sheet-local: `SheetItem` points
+    at an `Exercise` with a non-null FK, and the teacher who writes a good
+    true/false item should get it back next term.
+
+    The answer/type agreement is enforced in `ExerciseCreate`, not here.
+    """
+    # Both are school-scoped rows, so both are looked up *within* the tenant.
+    # `db.get` by primary key alone would happily accept another school's
+    # subject id and file the exercise against it — school_id would be right
+    # and the foreign keys would point across the tenant boundary.
+    subject = db.execute(
+        select(Subject)
+        .where(Subject.id == payload.subject_id)
+        .where(Subject.school_id == school_id)
+    ).scalar_one_or_none()
+    if subject is None:
+        raise errors.not_found("subject", id=str(payload.subject_id))
+
+    if payload.chapter_id is not None:
+        chapter = db.execute(
+            select(Chapter)
+            .where(Chapter.id == payload.chapter_id)
+            .where(Chapter.school_id == school_id)
+        ).scalar_one_or_none()
+        if chapter is None:
+            raise errors.not_found("chapter", id=str(payload.chapter_id))
+
+    exercise = Exercise(
+        id=uuid.uuid4(),
+        school_id=school_id,
+        subject_id=payload.subject_id,
+        chapter_id=payload.chapter_id,
+        type=payload.type,
+        origin=ExerciseOrigin.TEACHER,
+        language=str(payload.language),
+        statement=payload.statement.strip(),
+        options=list(payload.options) if payload.options else None,
+        answer_index=payload.answer_index,
+        answer_bool=payload.answer_bool,
+        answer_text=payload.answer_text,
+        explanation=payload.explanation,
+        difficulty=payload.difficulty,
+        # Written by a teacher, so already approved. Leaving this null would
+        # make `approval.is_printable` a coin toss on the origin check alone.
+        approved_at=datetime.now(UTC),
+    )
+    if payload.competency_ids:
+        exercise.competencies = list(
+            db.execute(
+                select(Competency).where(Competency.id.in_(payload.competency_ids))
+            ).scalars()
+        )
+    db.add(exercise)
+    db.commit()
+    db.refresh(exercise)
+    return exercise_out(exercise)
 
 
 @router.patch("/exercises/{exercise_id}", response_model=ExerciseOut)
@@ -191,6 +426,10 @@ def update_exercise(
         exercise.options = payload.options
     if payload.answer_index is not None:
         exercise.answer_index = payload.answer_index
+    if payload.answer_bool is not None:
+        exercise.answer_bool = payload.answer_bool
+    if payload.answer_text is not None:
+        exercise.answer_text = payload.answer_text
     if payload.explanation is not None:
         exercise.explanation = payload.explanation
     if payload.difficulty is not None:

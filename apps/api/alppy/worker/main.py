@@ -20,6 +20,7 @@ from arq.connections import RedisSettings
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
 from alppy.worker.tasks import (
+    extract_section,
     generate_adaptive,
     ingest_source,
     process_scan,
@@ -45,7 +46,13 @@ async def on_shutdown(ctx: dict[str, Any]) -> None:
 class WorkerSettings:
     """See https://arq-docs.helpmanual.io/#worker-settings."""
 
-    functions: ClassVar = [ingest_source, render_sheet, process_scan, generate_adaptive]
+    functions: ClassVar = [
+        ingest_source,
+        extract_section,
+        render_sheet,
+        process_scan,
+        generate_adaptive,
+    ]
     redis_settings = _redis_settings()
     on_startup = on_startup
     on_shutdown = on_shutdown

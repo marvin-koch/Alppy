@@ -28,6 +28,7 @@ import json
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,7 @@ from alppy.models import (
     Exercise,
     Source,
     SourceChunk,
+    SourceSection,
     Subject,
 )
 from alppy.models.enums import CurriculumKind, ExerciseOrigin, ExerciseType, JobStatus
@@ -91,6 +93,7 @@ class ReferenceLoadResult:
 class CorpusLoadResult:
     source_id: uuid.UUID
     chunks: int = 0
+    sections: int = 0
     exercises_created: int = 0
     exercises_updated: int = 0
     exercise_ids: dict[str, uuid.UUID] = field(default_factory=dict)
@@ -332,6 +335,8 @@ def load_demo_corpus(
     }
 
     result = CorpusLoadResult(source_id=source.id)
+    sections = _demo_sections(db, source=source, chapters=chapters, rows=rows)
+    result.sections = len(sections)
     chunk_texts = [_chunk_text(entry) for entry in rows]
     vectors = _embed_all(client, chunk_texts)
 
@@ -390,6 +395,7 @@ def load_demo_corpus(
         exercise.chapter_id = chapter.id
         exercise.source_id = source.id
         exercise.source_chunk_id = chunk.id
+        exercise.source_section_id = sections.get(chapter_key)
         exercise.source_page = page
         exercise.type = kind
         exercise.origin = ExerciseOrigin.TEXTBOOK
@@ -417,10 +423,79 @@ def load_demo_corpus(
         "seed.corpus",
         source_id=str(source.id),
         chunks=result.chunks,
+        sections=result.sections,
         created=result.exercises_created,
         updated=result.exercises_updated,
     )
     return result
+
+
+def _demo_sections(
+    db: Session,
+    *,
+    source: Source,
+    chapters: dict[str, Any],
+    rows: Sequence[dict[str, Any]],
+) -> dict[str, uuid.UUID]:
+    """The demo corpus's outline, one section per chapter it covers.
+
+    The seed writes `Exercise` rows straight into the database instead of
+    running them through `ingest.pipeline`, so nothing would otherwise detect
+    sections for it — and a demo whose only document has no chapters would show
+    the sheet builder's main control empty on a clean `docker compose up`.
+
+    A synthetic corpus has no printed headings to read, so the chapter each row
+    already declares is the honest structure here, and the page range is
+    whatever pages its exercises actually claim.
+
+    Returns ``chapter_key -> section_id``.
+    """
+    spans: dict[str, list[int]] = {}
+    order: list[str] = []
+    for entry in rows:
+        key = str(entry.get("chapter_key") or "")
+        if not key:
+            continue
+        page = int((entry.get("source_hint") or {}).get("page") or 1)
+        if key not in spans:
+            spans[key] = []
+            order.append(key)
+        spans[key].append(page)
+
+    existing = {
+        row.title: row
+        for row in db.scalars(
+            select(SourceSection).where(SourceSection.source_id == source.id)
+        )
+    }
+    mapping: dict[str, uuid.UUID] = {}
+    for position, key in enumerate(order):
+        chapter = chapters.get(key)
+        labels = getattr(chapter, "labels", None) or {}
+        title = str(
+            (labels.get("fr") or labels.get("de") or labels.get("en") or key)
+            if isinstance(labels, dict)
+            else key
+        )
+        pages = spans[key]
+        section = existing.get(title)
+        if section is None:
+            section = SourceSection(
+                id=uuid.uuid4(),
+                school_id=source.school_id,
+                source_id=source.id,
+                title=title[:300],
+                label=str(position + 1),
+            )
+            db.add(section)
+        section.page_from = min(pages)
+        section.page_to = max(pages)
+        section.position = position
+        # The demo corpus is already transcribed, so its chapters are read.
+        section.extracted_at = section.extracted_at or datetime.now(UTC)
+        db.flush()
+        mapping[key] = section.id
+    return mapping
 
 
 def _demo_source(

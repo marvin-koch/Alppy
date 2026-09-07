@@ -27,9 +27,10 @@ from __future__ import annotations
 import uuid
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
-from sqlalchemy import delete, select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from alppy.ai.audit import record_calls
@@ -37,7 +38,16 @@ from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
 from alppy.ingest.extract import ExtractedDocument, extract_pdf
-from alppy.models import Chapter, Competency, Exercise, Source, SourceChunk, chapter_competency
+from alppy.ingest.sections import detect_sections
+from alppy.models import (
+    Chapter,
+    Competency,
+    Exercise,
+    Source,
+    SourceChunk,
+    SourceSection,
+    chapter_competency,
+)
 from alppy.models.enums import ExerciseOrigin, ExerciseType, JobStatus
 
 log = get_logger(__name__)
@@ -52,9 +62,21 @@ NO_TEXT_LAYER_ERROR = (
 
 EMBED_BATCH = 32
 MAX_EXTRACTION_CHUNKS = 200
-"""Ceiling on model calls for one upload. A 400-page book is a background job,
-not a licence to spend an afternoon of tokens; the remaining chunks are still
-indexed and retrievable, they just contribute no structured exercises."""
+"""Ceiling on model calls made *eagerly*, at import. A 400-page book is a
+background job, not a licence to spend an afternoon of tokens.
+
+This used to be the end of the story: chunks past the ceiling were indexed,
+never transcribed, and the teacher was told to split the file by hand. Sections
+changed that. Import now walks the document's own chapters in order and extracts
+while this budget lasts, so anything that fitted before still arrives complete at
+import — a worksheet, a single chapter, every test fixture. What used to fall off
+the end now simply waits: the remaining sections carry ``extracted_at IS NULL``
+and are read the first time a teacher opens one (``extract_section``)."""
+
+MAX_SECTION_CHUNKS = 200
+"""Ceiling for one on-demand section. A section this long is a book with no
+usable headings, in which case the fallback section is the whole document and
+this is the old per-upload cap under a new name."""
 
 NO_GROUNDED_MODEL_NOTICE = (
     "Indexed for search, but no exercises were extracted: this deployment has no "
@@ -67,10 +89,24 @@ this teacher's filename and page numbers, with nothing marking them as written
 by a model. Indexing still happens; only transcription is refused."""
 
 
-def _chunk_cap_notice(scanned: int, total: int) -> str:
+def _chunk_cap_notice(extracted: int, total: int) -> str:
+    """No longer an apology for a truncated book.
+
+    The rest of the document is one click away rather than needing the teacher
+    to split the PDF, so this says what *will* happen, not what failed to.
+    """
+    remaining = total - extracted
     return (
-        f"Indexed all {total} sections for search, but only the first {scanned} were "
-        f"scanned for exercises (per-upload limit). Split the file to extract from the rest."
+        f"Indexed the whole document. {extracted} of {total} chapters were read for "
+        f"exercises straight away; the remaining {remaining} are read the first time "
+        f"you open them in the sheet builder."
+    )
+
+
+def _section_cap_notice(scanned: int, total: int) -> str:
+    return (
+        f"Only the first {scanned} of {total} sections of this chapter were read for "
+        f"exercises (per-chapter limit). The rest stays searchable."
     )
 
 
@@ -92,6 +128,20 @@ class IngestResult:
     reused_from_source_id: uuid.UUID | None = None
     skipped: bool = False
     error: str | None = None
+
+
+@dataclass(slots=True)
+class SectionExtractionResult:
+    """What one on-demand section extraction did, for the job record.
+
+    ``skipped`` covers both harmless cases — already read, or no grounded model
+    configured — and they are told apart by ``notice``."""
+
+    section_id: uuid.UUID
+    exercises_created: int
+    exercises_total: int
+    skipped: bool = False
+    notice: str | None = None
 
 
 def default_loader(source: Source) -> bytes:
@@ -253,12 +303,18 @@ def _ingest_fresh(
     client = ai or AiClient()
     chunks = chunk_pages(document.pages)
     rows = _persist_chunks(db, source=source, chunks=chunks, ai=client)
+    sections = _persist_sections(db, source=source, document=document)
 
     created = 0
     notice: str | None = None
     if extract_exercises:
-        created, notice = _extract_and_persist_exercises(
-            db, source=source, chunk_rows=rows, document=document, ai=client
+        created, notice = _extract_eagerly(
+            db,
+            source=source,
+            sections=sections,
+            chunk_rows=rows,
+            document=document,
+            ai=client,
         )
 
     source.status = JobStatus.SUCCEEDED
@@ -277,6 +333,40 @@ def _ingest_fresh(
         chunks_created=len(rows),
         exercises_created=created,
     )
+
+
+def _persist_sections(
+    db: Session, *, source: Source, document: ExtractedDocument
+) -> list[SourceSection]:
+    """Write the document's own outline. Always at least one row.
+
+    ``detect_sections`` guarantees the sections are contiguous and cover every
+    page, so an exercise extracted from any page has a section to belong to.
+    That is the whole point: the competency-derived ``chapter_id`` is allowed to
+    be NULL, and the builder's primary filter must never be.
+    """
+    rows: list[SourceSection] = []
+    for section in detect_sections(document.pages):
+        row = SourceSection(
+            id=uuid.uuid4(),
+            school_id=source.school_id,
+            source_id=source.id,
+            title=section.title[:300],
+            label=section.label,
+            page_from=section.page_from,
+            page_to=section.page_to,
+            position=section.position,
+        )
+        db.add(row)
+        rows.append(row)
+    db.flush()
+    log.info("ingest.sections", source_id=str(source.id), sections=len(rows))
+    return rows
+
+
+def _chunks_in(chunk_rows: Sequence[SourceChunk], section: SourceSection) -> list[SourceChunk]:
+    """The indexed chunks that fall inside a section's page range."""
+    return [c for c in chunk_rows if section.page_from <= c.page <= section.page_to]
 
 
 def _persist_chunks(
@@ -385,30 +475,79 @@ def _chapter_for(db: Session, source: Source, competencies: list[Competency]) ->
     return best[2] if best else None
 
 
-def _extract_and_persist_exercises(
+def _extract_eagerly(
     db: Session,
     *,
     source: Source,
+    sections: Sequence[SourceSection],
     chunk_rows: Sequence[SourceChunk],
     document: ExtractedDocument,
     ai: AiClient,
 ) -> tuple[int, str | None]:
-    """Extract exercises from the indexed chunks. Returns ``(created, notice)``.
+    """Read as many sections as the import budget allows, in book order.
 
-    Refuses to run at all on an ungrounded provider: transcription that does not
-    read the source is fabrication wearing the source's provenance.
+    A document small enough to have fitted under the old per-upload ceiling is
+    still fully extracted here, so nothing that worked before now needs a click.
+    A big one gets its opening chapters and leaves the rest marked unread, which
+    is the state the builder offers an "Extract" button for.
     """
     if not ai.chat_is_grounded:
         log.info("ingest.extract.skipped_ungrounded", source_id=str(source.id))
         return 0, NO_GROUNDED_MODEL_NOTICE
 
-    prompt = load_prompt("extract_exercises", version=EXTRACT_PROMPT_VERSION)
     language = document.language or DEFAULT_LANGUAGE
+    budget = MAX_EXTRACTION_CHUNKS
+    created = 0
+    done = 0
+
+    for section in sections:
+        in_section = _chunks_in(chunk_rows, section)
+        # Stop *before* a section that will not fit whole. Half a chapter is the
+        # worst outcome available: the teacher sees exercises and has no way to
+        # tell that the back half of the chapter is missing. The first section
+        # is exempt — a document with no usable headings is one section, and
+        # refusing to read any of it would be a regression on today's behaviour.
+        if done and len(in_section) > budget:
+            break
+        made, _ = _extract_into_section(
+            db,
+            source=source,
+            section=section,
+            chunk_rows=in_section,
+            language=language,
+            ai=ai,
+        )
+        created += made
+        budget -= len(in_section)
+        done += 1
+        if budget <= 0:
+            break
+
+    notice = _chunk_cap_notice(done, len(sections)) if done < len(sections) else None
+    return created, notice
+
+
+def _extract_into_section(
+    db: Session,
+    *,
+    source: Source,
+    section: SourceSection,
+    chunk_rows: Sequence[SourceChunk],
+    language: str,
+    ai: AiClient,
+) -> tuple[int, str | None]:
+    """Transcribe one section's chunks into `Exercise` rows.
+
+    Stamps ``extracted_at`` even when the section yielded nothing: "read, and
+    there was nothing here" and "never read" are different states, and only the
+    second one should offer the teacher a button.
+    """
+    prompt = load_prompt("extract_exercises", version=EXTRACT_PROMPT_VERSION)
     catalogue, by_code = _competency_catalogue(db, source)
-    seen: set[str] = set()
+    seen = _existing_statements(db, source)
     created = 0
 
-    for row in chunk_rows[:MAX_EXTRACTION_CHUNKS]:
+    for row in chunk_rows[:MAX_SECTION_CHUNKS]:
         try:
             response, _ = ai.complete(
                 prompt=prompt,
@@ -438,16 +577,117 @@ def _extract_and_persist_exercises(
             )
             if exercise is None:
                 continue
+            exercise.source_section_id = section.id
             tagged = _resolve_competencies(item, by_code)
             exercise.competencies = tagged
             exercise.chapter_id = _chapter_for(db, source, tagged)
             db.add(exercise)
             created += 1
 
+    section.extracted_at = datetime.now(UTC)
+    section.extraction_notice = (
+        _section_cap_notice(MAX_SECTION_CHUNKS, len(chunk_rows))
+        if len(chunk_rows) > MAX_SECTION_CHUNKS
+        else None
+    )
     db.flush()
-    scanned = min(len(chunk_rows), MAX_EXTRACTION_CHUNKS)
-    notice = _chunk_cap_notice(scanned, len(chunk_rows)) if len(chunk_rows) > scanned else None
-    return created, notice
+    return created, section.extraction_notice
+
+
+def _existing_statements(db: Session, source: Source) -> set[str]:
+    """Statements already transcribed from this document.
+
+    De-duplication used to be per-run, which was enough while a document was
+    extracted exactly once. Sections are extracted separately and their page
+    ranges abut, so a chunk carrying the tail of one chapter and the head of the
+    next can offer the same exercise twice. Seeding from the database keeps the
+    guarantee across runs.
+    """
+    rows = db.scalars(
+        select(Exercise.statement).where(
+            Exercise.source_id == source.id,
+            Exercise.origin == ExerciseOrigin.TEXTBOOK,
+        )
+    )
+    return {" ".join(str(s).lower().split()) for s in rows}
+
+
+def extract_section(
+    db: Session, *, section_id: uuid.UUID, ai: AiClient | None = None
+) -> SectionExtractionResult:
+    """Read one section on demand. The worker's entry point.
+
+    Idempotent by short-circuit: a section already carrying ``extracted_at`` is
+    returned untouched rather than transcribed twice, so a double-click costs
+    nothing and cannot duplicate rows.
+    """
+    section = db.get(SourceSection, section_id)
+    if section is None:
+        raise ValueError(f"no source section {section_id}")
+    source = db.get(Source, section.source_id)
+    if source is None:
+        raise ValueError(f"section {section_id} points at a source that no longer exists")
+
+    if section.extracted_at is not None:
+        existing = db.scalar(
+            select(func.count())
+            .select_from(Exercise)
+            .where(Exercise.source_section_id == section.id)
+        )
+        return SectionExtractionResult(
+            section_id=section.id,
+            exercises_created=0,
+            exercises_total=int(existing or 0),
+            skipped=True,
+            notice=section.extraction_notice,
+        )
+
+    client = ai or AiClient()
+    if not client.chat_is_grounded:
+        # Do NOT stamp extracted_at: nothing was read, and the section must keep
+        # offering its button once a model is configured.
+        return SectionExtractionResult(
+            section_id=section.id,
+            exercises_created=0,
+            exercises_total=0,
+            skipped=True,
+            notice=NO_GROUNDED_MODEL_NOTICE,
+        )
+
+    chunk_rows = list(
+        db.scalars(
+            select(SourceChunk)
+            .where(
+                SourceChunk.source_id == source.id,
+                SourceChunk.page >= section.page_from,
+                SourceChunk.page <= section.page_to,
+            )
+            .order_by(SourceChunk.position)
+        )
+    )
+    created, notice = _extract_into_section(
+        db,
+        source=source,
+        section=section,
+        chunk_rows=chunk_rows,
+        language=source.language or DEFAULT_LANGUAGE,
+        ai=client,
+    )
+    record_calls(db, school_id=source.school_id, records=client.records)
+    db.commit()
+    log.info(
+        "ingest.section.extracted",
+        section_id=str(section.id),
+        source_id=str(source.id),
+        exercises=created,
+    )
+    return SectionExtractionResult(
+        section_id=section.id,
+        exercises_created=created,
+        exercises_total=created,
+        skipped=False,
+        notice=notice,
+    )
 
 
 def _build_exercise(
@@ -557,6 +797,10 @@ def _wipe(db: Session, source_id: uuid.UUID) -> None:
         )
     )
     db.execute(delete(SourceChunk).where(SourceChunk.source_id == source_id))
+    # Sections last: Exercise.source_section_id is ON DELETE SET NULL, so
+    # dropping them before the exercises would quietly detach rows we are about
+    # to delete anyway, and dropping them after keeps the order readable.
+    db.execute(delete(SourceSection).where(SourceSection.source_id == source_id))
     db.flush()
 
 
@@ -578,6 +822,35 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
     """Reuse an identical upload: same bytes, same chunks, zero model calls."""
     _wipe(db, source.id)
     chunk_map: dict[uuid.UUID, uuid.UUID] = {}
+    section_map: dict[uuid.UUID, uuid.UUID] = {}
+
+    # The outline is part of what makes the copy usable: without it the twin's
+    # exercises would land with a null section and vanish from the builder's
+    # primary filter, which is exactly the failure this axis exists to avoid.
+    twin_sections = list(
+        db.scalars(
+            select(SourceSection)
+            .where(SourceSection.source_id == twin.id)
+            .order_by(SourceSection.position)
+        )
+    )
+    for old_section in twin_sections:
+        new_id = uuid.uuid4()
+        section_map[old_section.id] = new_id
+        db.add(
+            SourceSection(
+                id=new_id,
+                school_id=source.school_id,
+                source_id=source.id,
+                title=old_section.title,
+                label=old_section.label,
+                page_from=old_section.page_from,
+                page_to=old_section.page_to,
+                position=old_section.position,
+                extracted_at=old_section.extracted_at,
+                extraction_notice=old_section.extraction_notice,
+            )
+        )
 
     twin_chunks = list(
         db.scalars(
@@ -618,6 +891,11 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
                 chapter_id=old_exercise.chapter_id,
                 source_id=source.id,
                 source_chunk_id=chunk_map.get(old_exercise.source_chunk_id) if old_exercise.source_chunk_id else None,
+                source_section_id=(
+                    section_map.get(old_exercise.source_section_id)
+                    if old_exercise.source_section_id
+                    else None
+                ),
                 source_page=old_exercise.source_page,
                 type=old_exercise.type,
                 origin=ExerciseOrigin.TEXTBOOK,

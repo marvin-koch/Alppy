@@ -29,6 +29,7 @@ from alppy.models import (
     SheetInstance,
     SheetItem,
     Source,
+    SourceSection,
     Student,
     Subject,
     Teacher,
@@ -47,6 +48,7 @@ from alppy.schemas import (
     SheetItemOut,
     SheetOut,
     SourceOut,
+    SourceSectionOut,
     StudentOut,
     SubjectOut,
     TeacherOut,
@@ -68,6 +70,7 @@ __all__ = [
     "sheet_item_out",
     "sheet_out",
     "source_out",
+    "source_section_out",
     "student_out",
     "subject_out",
     "teacher_out",
@@ -156,12 +159,29 @@ def exercise_out(exercise: Exercise) -> ExerciseOut:
         chapter_id=exercise.chapter_id,
         competency_ids=[c.id for c in exercise.competencies],
         source_id=exercise.source_id,
+        source_section_id=exercise.source_section_id,
         source_page=exercise.source_page,
         approved_at=exercise.approved_at,
     )
 
 
-def source_out(source: Source, *, exercise_count: int = 0) -> SourceOut:
+def source_section_out(section: SourceSection, *, exercise_count: int = 0) -> SourceSectionOut:
+    return SourceSectionOut(
+        id=section.id,
+        title=section.title,
+        label=section.label,
+        page_from=section.page_from,
+        page_to=section.page_to,
+        position=section.position,
+        exercise_count=exercise_count,
+        extracted_at=section.extracted_at,
+        extraction_notice=section.extraction_notice,
+    )
+
+
+def source_out(
+    source: Source, *, exercise_count: int = 0, section_count: int = 0
+) -> SourceOut:
     return SourceOut(
         id=source.id,
         filename=source.filename,
@@ -173,6 +193,7 @@ def source_out(source: Source, *, exercise_count: int = 0) -> SourceOut:
         error=source.error,
         notice=source.notice,
         exercise_count=exercise_count,
+        section_count=section_count,
         created_at=source.created_at,
     )
 

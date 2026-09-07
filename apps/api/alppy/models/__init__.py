@@ -256,6 +256,62 @@ class Source(Base, TimestampMixin, SchoolScopedMixin):
     chunks: Mapped[list[SourceChunk]] = relationship(
         back_populates="source", cascade="all, delete-orphan"
     )
+    sections: Mapped[list[SourceSection]] = relationship(
+        back_populates="source",
+        cascade="all, delete-orphan",
+        order_by="SourceSection.position",
+    )
+
+
+class SourceSection(Base, TimestampMixin, SchoolScopedMixin):
+    """A chapter of the uploaded document, as the document itself declares it.
+
+    This is deliberately *not* ``Chapter``. A ``Chapter`` is the teacher's own
+    grouping, mapped to curriculum competencies, and an exercise reaches one
+    only by inference (``ingest.pipeline._chapter_for`` picks the chapter whose
+    competencies overlap most, and returns ``None`` when the model tagged none).
+    That inference needs three things to hold at once — the teacher has created
+    chapters, those chapters carry competency codes, and the extraction tagged
+    the item — so on a real textbook a large minority of rows end up untagged
+    and unreachable by a chapter filter.
+
+    A section is a fact about the file: "4 · Les fractions, p. 112–131". It
+    needs no setup, it cannot be null for an exercise that came from a page, and
+    it is how a teacher actually navigates a 400-page book. Both axes are
+    offered in the builder; this one is the primary.
+
+    ``extracted_at`` is the on-demand marker: ingestion maps every section and
+    indexes every chunk, but a section's exercises are transcribed by the model
+    only when a teacher first opens it. A book nobody teaches from costs nothing.
+    """
+
+    __tablename__ = "source_section"
+    __table_args__ = (
+        UniqueConstraint("source_id", "position", name="uq_source_section_position"),
+        Index("ix_source_section_source", "source_id", "position"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    source_id: Mapped[uuid.UUID] = _fk("source.id")
+    title: Mapped[str] = mapped_column(String(300), nullable=False)
+    # The number the book prints ("4"), when one was found. Not the position:
+    # a preface or an un-numbered appendix has a position but no label.
+    label: Mapped[str | None] = mapped_column(String(20))
+    page_from: Mapped[int] = mapped_column(Integer, nullable=False)
+    page_to: Mapped[int] = mapped_column(Integer, nullable=False)
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    extracted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """When the model last read this section for exercises. ``None`` means
+    indexed and searchable but never transcribed — the state the builder offers
+    an "Extract" button for."""
+
+    extraction_notice: Mapped[str | None] = mapped_column(Text)
+    """A truthful caveat on an otherwise successful extraction of *this*
+    section, mirroring ``Source.notice`` at section scale (no model configured,
+    or the per-section chunk ceiling was hit)."""
+
+    source: Mapped[Source] = relationship(back_populates="sections")
 
 
 class SourceChunk(Base, TimestampMixin, SchoolScopedMixin):
@@ -277,6 +333,8 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
     __table_args__ = (
         CheckConstraint("difficulty BETWEEN 1 AND 5", name="difficulty_range"),
         Index("ix_exercise_subject_origin", "subject_id", "origin"),
+        # The builder's hot query: one section, ordered as the book prints it.
+        Index("ix_exercise_source_section", "source_section_id", "source_page"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -285,6 +343,12 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
     source_id: Mapped[uuid.UUID | None] = _fk("source.id", nullable=True, ondelete="SET NULL")
     source_chunk_id: Mapped[uuid.UUID | None] = _fk(
         "source_chunk.id", nullable=True, ondelete="SET NULL"
+    )
+    # The book's own chapter. Always set for an extracted exercise — the
+    # unrecognised tail of a document gets a catch-all section rather than a
+    # NULL, so no exercise is invisible to the builder's primary filter.
+    source_section_id: Mapped[uuid.UUID | None] = _fk(
+        "source_section.id", nullable=True, ondelete="SET NULL"
     )
     source_page: Mapped[int | None] = mapped_column(Integer)
 

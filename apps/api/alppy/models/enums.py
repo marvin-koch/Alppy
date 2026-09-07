@@ -31,6 +31,15 @@ class ExerciseType(StrEnum):
 class ExerciseOrigin(StrEnum):
     TEXTBOOK = "textbook"
     AI_GENERATED = "ai_generated"  # the one feature wearing the mandarin accent
+    TEACHER = "teacher"
+    """Written by the teacher in the sheet builder.
+
+    Neither a transcription nor a proposal, so it is neither of the other two.
+    Filing it under ``TEXTBOOK`` would claim a provenance it does not have — a
+    source filename and a page the teacher could check against the book on the
+    desk — and filing it under ``AI_GENERATED`` would put the mandarin accent on
+    a sentence a human wrote, which is the one thing that accent must never
+    mean. It needs no approval gate: the teacher approved it by writing it."""
 
 
 class SheetTarget(StrEnum):
@@ -72,6 +81,7 @@ class JobStatus(StrEnum):
 
 class JobKind(StrEnum):
     INGEST_SOURCE = "ingest_source"
+    EXTRACT_SECTION = "extract_section"
     RENDER_SHEET = "render_sheet"
     PROCESS_SCAN = "process_scan"
     GENERATE_ADAPTIVE = "generate_adaptive"
