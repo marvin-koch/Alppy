@@ -36,6 +36,20 @@ case "$ROLE" in
     # API from serving traffic. `python -m alppy.cli seed` already exits 0 when
     # alppy.seed.run_seed does not exist yet.
     python -m alppy.cli seed || echo "entrypoint: seed step failed, continuing to serve" >&2
+
+    # Reconstruct the agenda from timestamps that predate the event log.
+    # Without this the demo seed's three weeks of history are invisible on
+    # /timeline: the log only records what happens after it exists, so a
+    # database that plainly has a past would open on the empty state and read
+    # as a broken feature rather than an empty one.
+    #
+    # Idempotent, which is what makes it safe here rather than a one-off: it
+    # keys on (kind, subject) and adds nothing on a second run, so it costs one
+    # query per start once the history is in. Best-effort for the same reason
+    # as the seed — bookkeeping must never stop the API serving.
+    python -m alppy.cli backfill-events \
+      || echo "entrypoint: event backfill failed, continuing to serve" >&2
+
     exec uvicorn alppy.main:app --host 0.0.0.0 --port 8000
     ;;
   worker)
