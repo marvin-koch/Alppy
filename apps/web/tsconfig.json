@@ -22,5 +22,9 @@
     "paths": { "@/*": ["./src/*"] }
   },
   "include": ["next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts"],
-  "exclude": ["node_modules", ".next"]
+  // .open-next holds the generated Worker bundle and Cloudflare's own
+  // templates. Without it here, `**/*.ts` sweeps them into the project the
+  // moment anyone has run a local `build:cf`, and typecheck fails on code
+  // nobody wrote.
+  "exclude": ["node_modules", ".next", ".open-next", ".wrangler"]
 }

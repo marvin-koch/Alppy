@@ -124,3 +124,34 @@ Icons and illustrations are **generated** from the assets by
 hand, so refreshing the brand is a re-run and not a design exercise. The
 illustration generator maps the flat export hexes back onto tokens (so the
 drawings follow the theme) and **fails** if an asset introduces a fourth colour.
+
+### D25 · The web app is hosted on Cloudflare Workers; the API is not
+
+Hosting had to cost nothing for now, and Cloudflare's free plan can carry
+`apps/web` — measured at **1.03 MiB gzipped against a 3 MiB ceiling**, with
+static chunks served from Workers Assets without invoking the Worker at all.
+
+It cannot carry `apps/api`, and this is not a matter of effort. Workers' Python
+is Pyodide, so `opencv-python-headless`, `pymupdf` and `pillow-heif` have no
+wheels to load — `alppy/scan/` is native code. Chromium (`sheets/render.py`)
+does not fit a Worker. There is no Postgres, so no pgvector. Nothing on the free
+plan runs a persistent process, so the arq worker has nowhere to live. **The
+scanner is the reason the deployment is split**, and no amount of adapter work
+changes that. The API goes on a host that runs containers, at roughly $5–10/mo;
+R2 is the one Cloudflare piece the API does use, in MinIO's place.
+
+The Worker doubles as the reverse proxy `next.config.ts` had always assumed:
+`/api/v1/*` is rewritten to `ALPPY*API*ORIGIN`, so the browser sees one origin
+and the host-only `alppy*session` cookie keeps working with no CORS and no
+`SameSite=None`. The cost is that the API's address is compiled into the routes
+manifest — moving the API is a rebuild, not a variable edit — and that the
+origin cannot carry a port, because the route compiler reads `:8443` as a path
+parameter. Both are written down in
+[`deploy-cloudflare.md`](deploy-cloudflare.md) §4.
+
+**Revisit if** the Worker outgrows 3 MiB, if a screen starts rendering data on
+the server (there is deliberately no incremental cache configured, because
+nothing today would fill it), or if a school requires Swiss data residency —
+the Worker serves only the UI shell, but it proxies every API call, so
+[`privacy.md`](privacy.md) makes that a change to this decision and not just to
+the API's host.

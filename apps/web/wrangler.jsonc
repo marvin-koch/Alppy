@@ -1,0 +1,35 @@
+/**
+ * Cloudflare Workers deployment for the Alppy web app.
+ *
+ * This is the free-tier host (docs/deploy-cloudflare.md). Only `apps/web` runs
+ * here: the API needs OpenCV, PyMuPDF, headless Chromium, Postgres/pgvector and
+ * a long-running arq worker, none of which exist on Cloudflare's free plan.
+ *
+ * `main` and `assets.directory` point at the OpenNext build output, not at
+ * source — run `pnpm build:cf` (or let `deploy:cf` do it) before `wrangler`.
+ */
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "alppy-web",
+  "main": ".open-next/worker.js",
+
+  // Must not exceed the bundled workerd's own date, or wrangler warns and the
+  // local preview silently runs older semantics than production.
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": [
+    // Next's server code is written against Node built-ins.
+    "nodejs_compat",
+    // Without this, a fetch to a hostname on the same Cloudflare zone loops
+    // back into this Worker instead of leaving for the origin. The `/api/v1`
+    // rewrite (next.config.ts) is exactly such a fetch once the API sits on a
+    // subdomain of the same zone, so the loop would be the normal case.
+    "global_fetch_strictly_public"
+  ],
+
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+
+  "observability": { "enabled": true }
+}

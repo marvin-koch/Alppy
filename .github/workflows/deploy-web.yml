@@ -1,0 +1,41 @@
+# Ships apps/web to Cloudflare Workers. See docs/deploy-cloudflare.md.
+#
+# Opt-in: nothing happens until the repository variable CF_DEPLOY_WEB is set to
+# "true", so a fork or a fresh clone never fails a run for want of a token. The
+# API is not deployed here and cannot be — it needs OpenCV, Chromium, Postgres
+# and a persistent worker (decisions-log D25).
+name: Deploy web (Cloudflare)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Build and deploy to Workers
+    if: vars.CF_DEPLOY_WEB == 'true'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Deploy
+        run: pnpm deploy:cf
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # Compiled into the routes manifest by `next build`, not read at
+          # runtime — so it belongs to this step, not to the Worker's vars.
+          ALPPY_API_ORIGIN: ${{ vars.ALPPY_API_ORIGIN }}

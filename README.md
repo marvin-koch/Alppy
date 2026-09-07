@@ -101,6 +101,7 @@ a name in a prompt is a bug and must fail loudly. See
 | [`docs/sheet-layout.md`](docs/sheet-layout.md) | Layout v1 geometry and versioning |
 | [`docs/rag.md`](docs/rag.md) | Chunking, ranking, retrieve-then-generate |
 | [`docs/privacy.md`](docs/privacy.md) | Swiss FADP, data residency, the PII gate |
+| [`docs/deploy-cloudflare.md`](docs/deploy-cloudflare.md) | Free hosting for the web app, and why the API cannot join it |
 | [`docs/curriculum.md`](docs/curriculum.md) | LP21 and PER in one model |
 | [`docs/research/textbook-access-ch.md`](docs/research/textbook-access-ch.md) | Can Swiss textbooks be accessed programmatically? |
 | [`docs/decisions-log.md`](docs/decisions-log.md) | Every call made without asking |

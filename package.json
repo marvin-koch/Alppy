@@ -12,6 +12,9 @@
     "typecheck": "turbo run typecheck",
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @alppy/web test:e2e",
+    "build:cf": "turbo run build:cf",
+    "preview:cf": "turbo run preview:cf",
+    "deploy:cf": "turbo run deploy:cf",
     "i18n:check": "node scripts/check-i18n.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,css,json,md}\""
   },

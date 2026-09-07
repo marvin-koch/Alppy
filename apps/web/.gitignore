@@ -3,3 +3,8 @@ next-env.d.ts
 test-results/
 playwright-report/
 *.tsbuildinfo
+
+# Cloudflare (OpenNext build output + wrangler local state)
+.open-next/
+.wrangler/
+.dev.vars
