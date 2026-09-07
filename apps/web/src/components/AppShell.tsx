@@ -2,6 +2,7 @@
 
 import {
   AlppyLogo,
+  IconClock,
   IconHome,
   IconMatrix,
   IconAi,
@@ -23,7 +24,7 @@ import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 
 interface Destination {
   href: string;
-  labelKey: 'home' | 'classes' | 'sheets' | 'scans' | 'adaptive' | 'sources' | 'settings';
+  labelKey: 'home' | 'classes' | 'sheets' | 'scans' | 'adaptive' | 'sources' | 'settings' | 'timeline';
   icon: ReactNode;
   primary: boolean;
 }
@@ -33,6 +34,9 @@ const DESTINATIONS: Destination[] = [
   { href: '/classes', labelKey: 'classes', icon: <IconMatrix />, primary: true },
   { href: '/sheets', labelKey: 'sheets', icon: <IconSheet />, primary: true },
   { href: '/scans/new', labelKey: 'scans', icon: <IconScan />, primary: true },
+  // The agenda is where a teacher goes to find what they did last week, so it
+  // sits with the daily destinations rather than in the settings tail.
+  { href: '/timeline', labelKey: 'timeline', icon: <IconClock />, primary: false },
   { href: '/sources', labelKey: 'sources', icon: <IconBook />, primary: false },
   { href: '/adaptive', labelKey: 'adaptive', icon: <IconAi />, primary: false },
   { href: '/settings', labelKey: 'settings', icon: <IconSettings />, primary: false },

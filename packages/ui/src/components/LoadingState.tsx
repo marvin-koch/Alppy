@@ -6,7 +6,7 @@ import { Skeleton } from './Skeleton';
  * The shape of the page that is arriving. A lone spinner says nothing about
  * what is coming (DESIGN.md §6) — the skeleton is a promise about the layout.
  */
-export type LoadingShape = 'matrix' | 'list' | 'sheet' | 'cards' | 'profile';
+export type LoadingShape = 'matrix' | 'list' | 'sheet' | 'cards' | 'profile' | 'timeline';
 
 export interface LoadingStateProps extends HTMLAttributes<HTMLDivElement> {
   shape: LoadingShape;
@@ -37,6 +37,7 @@ export const LoadingState = forwardRef<HTMLDivElement, LoadingStateProps>(functi
       {shape === 'sheet' ? <SheetShape /> : null}
       {shape === 'cards' ? <CardsShape rows={rows} /> : null}
       {shape === 'profile' ? <ProfileShape /> : null}
+      {shape === 'timeline' ? <TimelineShape rows={rows} /> : null}
     </div>
   );
 });
@@ -80,6 +81,30 @@ function ListShape({ rows }: { rows: number }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+/* a dated feed: a day heading, then entries hanging off a rail */
+function TimelineShape({ rows }: { rows: number }) {
+  return (
+    <div className="flex flex-col gap-6">
+      {Array.from({ length: Math.max(1, Math.ceil(rows / 3)) }, (_, group) => (
+        <div key={group} className="flex flex-col gap-3">
+          <Skeleton width="8rem" height="0.9rem" />
+          <ul className="flex flex-col gap-3 border-l border-line pl-4">
+            {Array.from({ length: 3 }, (_, r) => (
+              <li key={r} className="flex items-center gap-3">
+                <Skeleton width={32} height={32} circle />
+                <div className="flex flex-1 flex-col gap-2">
+                  <Skeleton width="40%" height="0.9rem" />
+                  <Skeleton width="20%" height="0.75rem" />
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ))}
+    </div>
   );
 }
 

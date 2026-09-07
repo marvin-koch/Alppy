@@ -17,7 +17,7 @@ import { useTranslations } from 'next-intl';
 import { use, useEffect, useState } from 'react';
 
 import { API_BASE } from '@/lib/api/client';
-import { useJob, useRenderSheet, useSheet } from '@/lib/api/queries';
+import { useJob, useMarkPrinted, useRenderSheet, useSheet } from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
 
 export default function SheetPage({ params }: { params: Promise<{ sheetId: string }> }) {
@@ -31,6 +31,7 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   const render = useRenderSheet();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
+  const markPrinted = useMarkPrinted();
 
   // The PDF keys land on the sheet row, written by the worker — so the sheet
   // has to be re-read once the job finishes. Without this the render succeeded,
@@ -95,7 +96,16 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
         {s.blank_pdf_url || s.answer_key_pdf_url ? (
           <div className="mt-3 flex flex-wrap gap-2">
             {s.blank_pdf_url ? (
-              <a href={s.blank_pdf_url} className="no-underline">
+              <a
+                href={s.blank_pdf_url}
+                className="no-underline"
+                // Taking the blank sheet IS the print. `rendered_at` records
+                // when the PDF was built, which is often days earlier — a
+                // teacher renders on Sunday and prints on Tuesday — so this is
+                // the only moment the agenda can call "printed". Fire and
+                // forget: the download must not wait on the bookkeeping.
+                onClick={() => markPrinted.mutate(s.id)}
+              >
                 <Button variant="secondary" leadingIcon={<IconDownload />}>
                   {t('downloadBlank')}
                 </Button>
