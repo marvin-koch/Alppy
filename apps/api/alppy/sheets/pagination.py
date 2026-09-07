@@ -94,12 +94,59 @@ OPEN_LINE_PITCH_MM: float = 8.0
 DEFAULT_OPEN_LINES: int = 4
 OPEN_LINES_MARGIN_MM: float = 2.0
 
+FIGURE_GAP_MM: float = 1.0  # .sheet-figure { margin-top: 1mm }
+FIGURE_MAX_H_MM: float = 116.0
+"""The tallest a figure may print. A crop of the book is reproduced at its own
+size — the student reads the book's own type — and shrunk only to fit the
+column or this ceiling. The ceiling is the statement region less the item's
+own furniture (padding, the number line, the gap, the rules' margin), so a
+full-page exercise of the book still fits alone on one sheet."""
+
+FIGURE_MIN_SCALE: float = 0.65
+"""Below this a 10 pt textbook page is a 6.5 pt page, and past that it stops
+being readable on a photocopy. A figure that would need more shrinking than
+this is refused (``ItemTooTallError``) rather than printed unreadable."""
+
+# Ruled lines under a picture: none, and no rules block at all. A textbook
+# exercise is worked in the notebook, as the book intends, and two token rules
+# under a twelve-part exercise cost eighteen millimetres that keep a second
+# exercise off the page. A teacher who wants answer space on the sheet adds an
+# item of their own. ``html._item_context`` mirrors this by giving a figured
+# item ``open_lines = 0``, and the template draws no block for it.
+
 MCQ_LETTERS: str = L.OptionLetters.MCQ.value
 
 
 # --------------------------------------------------------------------------
 # The item
 # --------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class Figure:
+    """A crop of the textbook page, printed in place of the statement.
+
+    ``src`` is what the ``<img>`` gets — a ``data:`` URI, because the PDF
+    renderer loads the document from a string with no base URL and must not
+    reach the network. ``width_mm``/``height_mm`` is the physical size at 1:1,
+    the size the crop was cut at; the sheet never enlarges it."""
+
+    src: str
+    width_mm: float
+    height_mm: float
+    alt: str = ""
+    show_statement: bool = False
+    """Print the statement text above the picture as well. Set when the teacher
+    has written their own wording for the item: their words must reach the
+    paper, and the picture still carries the figure."""
+
+    def printed_size_mm(
+        self, *, max_width_mm: float = TEXT_W_MM, max_height_mm: float = FIGURE_MAX_H_MM
+    ) -> tuple[float, float, float]:
+        """``(width, height, scale)`` as it will print. Never scaled up."""
+        scale = min(1.0, max_width_mm / self.width_mm, max_height_mm / self.height_mm)
+        return self.width_mm * scale, self.height_mm * scale, scale
+
+
+
 @dataclass(frozen=True, slots=True)
 class Item:
     """One printable exercise, detached from the database.
@@ -119,6 +166,10 @@ class Item:
     language: str = "fr"
     ai_generated: bool = False
     open_lines: int = DEFAULT_OPEN_LINES
+    figure: Figure | None = None
+    """When set, the sheet prints the picture and not the statement text: the
+    picture *is* the statement, exactly as the book set it. The text stays as
+    the image's alt and for the answer key."""
 
     @property
     def option_count(self) -> int:
@@ -171,7 +222,17 @@ def estimate_item_height_mm(item: Item) -> float:
 
     Deliberately an over-estimate. See ``AVG_CHAR_EM``."""
     height = ITEM_PADDING_MM + ITEM_RULE_MM
-    height += wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
+    if item.figure is not None:
+        _, figure_h, _ = item.figure.printed_size_mm()
+        # The number sits on its own line above the picture, unless the
+        # teacher's wording is printed there instead.
+        if item.figure.show_statement:
+            height += wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
+        else:
+            height += LINE_H_MM
+        height += FIGURE_GAP_MM + figure_h
+    else:
+        height += wrapped_lines(item.statement, TEXT_W_MM) * LINE_H_MM
 
     if item.options:
         option_w = TEXT_W_MM - OPTION_INDENT_MM - OPTION_LETTER_W_MM
@@ -179,7 +240,7 @@ def estimate_item_height_mm(item: Item) -> float:
         for option in item.options:
             height += wrapped_lines(option, option_w) * LINE_H_MM
 
-    if item.type is ExerciseType.OPEN:
+    if item.type is ExerciseType.OPEN and item.figure is None:
         height += OPEN_LINES_MARGIN_MM + max(0, item.open_lines) * OPEN_LINE_PITCH_MM
 
     return height
@@ -313,6 +374,15 @@ def paginate(
         used = 0.0
 
     for item in items:
+        if item.figure is not None and not allow_overflow:
+            _, _, scale = item.figure.printed_size_mm()
+            if scale < FIGURE_MIN_SCALE:
+                raise ItemTooTallError(
+                    number=number + 1,
+                    height_mm=item.figure.height_mm,
+                    limit_mm=FIGURE_MAX_H_MM / FIGURE_MIN_SCALE,
+                    statement=item.statement,
+                )
         height = estimate_item_height_mm(item)
         if height > usable_height_mm and not allow_overflow:
             raise ItemTooTallError(

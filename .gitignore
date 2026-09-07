@@ -28,3 +28,6 @@ blob-report/
 apps/web/e2e/__screenshots__/*-actual.png
 storage/
 tmp/
+
+# Real textbooks used for local extraction tests: publisher-owned, tens of MB.
+docs/books/

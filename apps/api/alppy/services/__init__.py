@@ -55,7 +55,7 @@ from alppy.schemas import (
     TeacherPreferences,
 )
 from alppy.sheets.layout import OptionLetters, tf_letters
-from alppy.storage import Storage
+from alppy.storage import Storage, get_storage
 
 __all__ = [
     "chapter_out",
@@ -161,8 +161,25 @@ def exercise_out(exercise: Exercise) -> ExerciseOut:
         source_id=exercise.source_id,
         source_section_id=exercise.source_section_id,
         source_page=exercise.source_page,
+        label=exercise.label,
+        title=exercise.title,
+        figure_url=figure_url_for(exercise),
+        figure_width_mm=exercise.figure_width_mm,
+        figure_height_mm=exercise.figure_height_mm,
         approved_at=exercise.approved_at,
     )
+
+
+def figure_url_for(exercise: Exercise) -> str | None:
+    """Where the web app fetches the exercise's crop, or ``None``.
+
+    The local backend answers with the ``/api/v1/files/...`` route, which is
+    tenant-checked; the S3 backend hands out a presigned URL. Either way the
+    key itself never reaches the browser as something it could rewrite.
+    """
+    if not exercise.figure_key:
+        return None
+    return get_storage().url_for(exercise.figure_key)
 
 
 def source_section_out(section: SourceSection, *, exercise_count: int = 0) -> SourceSectionOut:

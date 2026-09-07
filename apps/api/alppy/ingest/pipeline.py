@@ -29,6 +29,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
@@ -38,7 +39,13 @@ from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
 from alppy.ingest.extract import ExtractedDocument, extract_pdf
-from alppy.ingest.sections import detect_sections
+from alppy.ingest.regions import (
+    ExerciseRegion,
+    detect_exercise_regions,
+    iter_region_images,
+    read_outline,
+)
+from alppy.ingest.sections import detect_sections, sections_from_outline
 from alppy.models import (
     Chapter,
     Competency,
@@ -49,6 +56,7 @@ from alppy.models import (
     chapter_competency,
 )
 from alppy.models.enums import ExerciseOrigin, ExerciseType, JobStatus
+from alppy.storage import Storage, get_storage, storage_key
 
 log = get_logger(__name__)
 
@@ -107,6 +115,28 @@ def _section_cap_notice(scanned: int, total: int) -> str:
     return (
         f"Only the first {scanned} of {total} sections of this chapter were read for "
         f"exercises (per-chapter limit). The rest stays searchable."
+    )
+
+
+REGIONS_UNTAGGED_NOTICE = (
+    "Exercises were read from the page layout, with a picture of each one. They "
+    "are not yet classified or tagged with competencies: this deployment has no "
+    "model configured that can read the document. Set ALPPY_AI_CHAT_PROVIDER and "
+    "an API key, then open a chapter in the sheet builder to tag it."
+)
+"""A region-based ingest without a grounded model. Unlike the chunk path this
+is *not* an empty result: every exercise exists, is searchable and prints with
+its figure. What is missing is the classification, so the section keeps
+offering its button and says why."""
+
+
+def _regions_cap_notice(tagged: int, total: int) -> str:
+    remaining = total - tagged
+    return (
+        f"Read every exercise from the page layout, with a picture of each one. "
+        f"{tagged} of {total} chapters were classified and tagged straight away; "
+        f"the remaining {remaining} are tagged the first time you open them in the "
+        f"sheet builder."
     )
 
 
@@ -187,6 +217,7 @@ def ingest_source(
     loader: BytesLoader | None = None,
     ai: AiClient | None = None,
     extract_exercises: bool = True,
+    storage: Storage | None = None,
 ) -> None:
     """Ingest one uploaded PDF. Safe to re-run.
 
@@ -200,6 +231,7 @@ def ingest_source(
         loader=loader,
         ai=ai,
         extract_exercises=extract_exercises,
+        storage=storage,
     )
 
 
@@ -210,6 +242,7 @@ def run_ingest(
     loader: BytesLoader | None = None,
     ai: AiClient | None = None,
     extract_exercises: bool = True,
+    storage: Storage | None = None,
 ) -> IngestResult:
     """``ingest_source`` with a return value. Same work, reportable."""
     source = db.get(Source, source_id)
@@ -244,6 +277,7 @@ def run_ingest(
                 loader=loader or default_loader,
                 ai=ai,
                 extract_exercises=extract_exercises,
+                storage=storage,
             )
     except Exception as exc:
         db.rollback()
@@ -276,8 +310,10 @@ def _ingest_fresh(
     loader: BytesLoader,
     ai: AiClient | None,
     extract_exercises: bool,
+    storage: Storage | None,
 ) -> IngestResult:
-    document = extract_pdf(loader(source))
+    data = loader(source)
+    document = extract_pdf(data)
     source.page_count = document.page_count
 
     if not document.has_text:
@@ -303,19 +339,37 @@ def _ingest_fresh(
     client = ai or AiClient()
     chunks = chunk_pages(document.pages)
     rows = _persist_chunks(db, source=source, chunks=chunks, ai=client)
-    sections = _persist_sections(db, source=source, document=document)
+    sections = _persist_sections(
+        db, source=source, document=document, outline=_outline_entries(data)
+    )
 
     created = 0
     notice: str | None = None
     if extract_exercises:
-        created, notice = _extract_eagerly(
-            db,
-            source=source,
-            sections=sections,
-            chunk_rows=rows,
-            document=document,
-            ai=client,
-        )
+        # The page layout first: a book that codes its exercises yields every
+        # one of them, with a picture, and no model in the loop. Only a book
+        # that does not is transcribed from its text layer.
+        regions = _safe_regions(data, source)
+        if regions:
+            created, notice = _extract_regions_eagerly(
+                db,
+                source=source,
+                sections=sections,
+                regions=regions,
+                data=data,
+                language=document.language or DEFAULT_LANGUAGE,
+                ai=client,
+                storage=storage or get_storage(),
+            )
+        else:
+            created, notice = _extract_eagerly(
+                db,
+                source=source,
+                sections=sections,
+                chunk_rows=rows,
+                document=document,
+                ai=client,
+            )
 
     source.status = JobStatus.SUCCEEDED
     source.error = None
@@ -335,18 +389,49 @@ def _ingest_fresh(
     )
 
 
+def _outline_entries(data: bytes) -> list[tuple[int, str, int]]:
+    return [(e.level, e.title, e.page) for e in read_outline(data)]
+
+
+def _safe_regions(data: bytes, source: Source) -> list[ExerciseRegion]:
+    """The coded exercises of the document, or none.
+
+    A failure here must not fail the ingest: the text path is a complete
+    fallback, and a book whose geometry the detector cannot read is still a
+    book worth indexing."""
+    try:
+        return detect_exercise_regions(data)
+    except Exception as exc:
+        log.warning("ingest.regions.failed", source_id=str(source.id), error=type(exc).__name__)
+        return []
+
+
 def _persist_sections(
-    db: Session, *, source: Source, document: ExtractedDocument
+    db: Session,
+    *,
+    source: Source,
+    document: ExtractedDocument,
+    outline: Sequence[tuple[int, str, int]] = (),
 ) -> list[SourceSection]:
     """Write the document's own outline. Always at least one row.
 
-    ``detect_sections`` guarantees the sections are contiguous and cover every
-    page, so an exercise extracted from any page has a section to belong to.
-    That is the whole point: the competency-derived ``chapter_id`` is allowed to
-    be NULL, and the builder's primary filter must never be.
+    The file's bookmarks win when it has them; ``detect_sections`` is the
+    heuristic for a file that has none. Both guarantee the sections are
+    contiguous and cover every page, so an exercise extracted from any page has
+    a section to belong to. That is the whole point: the competency-derived
+    ``chapter_id`` is allowed to be NULL, and the builder's primary filter must
+    never be.
     """
+    pages = list(document.pages)
+    detected = (
+        sections_from_outline(outline, first_page=pages[0].page, last_page=pages[-1].page)
+        if pages and outline
+        else []
+    )
+    if not detected:
+        detected = detect_sections(pages)
     rows: list[SourceSection] = []
-    for section in detect_sections(document.pages):
+    for section in detected:
         row = SourceSection(
             id=uuid.uuid4(),
             school_id=source.school_id,
@@ -594,6 +679,227 @@ def _extract_into_section(
     return created, section.extraction_notice
 
 
+# --------------------------------------------------------------------------
+# The layout path: coded exercises, cut from the page
+# --------------------------------------------------------------------------
+def _regions_in(regions: Sequence[ExerciseRegion], section: SourceSection) -> list[ExerciseRegion]:
+    return [r for r in regions if section.page_from <= r.page <= section.page_to]
+
+
+def _figure_key(source: Source, region: ExerciseRegion) -> str:
+    return storage_key("figures", source.school_id, source.id, f"p{region.page:03d}-{region.label}.png")
+
+
+def _extract_regions_eagerly(
+    db: Session,
+    *,
+    source: Source,
+    sections: Sequence[SourceSection],
+    regions: Sequence[ExerciseRegion],
+    data: bytes,
+    language: str,
+    ai: AiClient,
+    storage: Storage,
+) -> tuple[int, str | None]:
+    """Every coded exercise becomes a row now; the model runs while the budget lasts.
+
+    Cutting a region out of the page costs nothing a teacher would notice, so
+    all of them land at import — searchable, printable with their figure —
+    whatever the model situation. Classification and competency tagging are the
+    model's part, and they follow the same per-import budget and the same
+    "whole chapters only" rule as the text path. A chapter past the budget keeps
+    its rows and its button.
+    """
+    created = 0
+    for section in sections:
+        created += _persist_regions_into_section(
+            db,
+            source=source,
+            section=section,
+            regions=_regions_in(regions, section),
+            data=data,
+            language=language,
+            storage=storage,
+        )
+    db.flush()
+
+    if not ai.chat_is_grounded:
+        log.info("ingest.regions.untagged", source_id=str(source.id), exercises=created)
+        for section in sections:
+            section.extraction_notice = REGIONS_UNTAGGED_NOTICE
+        return created, REGIONS_UNTAGGED_NOTICE
+
+    budget = MAX_EXTRACTION_CHUNKS
+    done = 0
+    for section in sections:
+        in_section = _regions_in(regions, section)
+        if done and len(in_section) > budget:
+            break
+        _enrich_section(db, source=source, section=section, language=language, ai=ai)
+        budget -= len(in_section)
+        done += 1
+        if budget <= 0:
+            break
+
+    notice = _regions_cap_notice(done, len(sections)) if done < len(sections) else None
+    return created, notice
+
+
+def _persist_regions_into_section(
+    db: Session,
+    *,
+    source: Source,
+    section: SourceSection,
+    regions: Sequence[ExerciseRegion],
+    data: bytes,
+    language: str,
+    storage: Storage,
+) -> int:
+    """One `Exercise` per region, with its crop in object storage.
+
+    The statement is the region's own text, so the builder's search and the
+    sheet's alt text say what the picture says. An exercise that is *only* a
+    figure keeps its title as the statement rather than an empty string.
+    """
+    if not regions:
+        return 0
+    created = 0
+    for region, image in iter_region_images(data, regions):
+        key = _figure_key(source, region)
+        storage.put_bytes(key, image.png, "image/png")
+        statement = region.text or region.title
+        db.add(
+            Exercise(
+                id=uuid.uuid4(),
+                school_id=source.school_id,
+                subject_id=source.subject_id,
+                source_id=source.id,
+                source_section_id=section.id,
+                source_page=region.page,
+                label=region.label[:16],
+                title=region.title[:200],
+                figure_key=key,
+                figure_width_mm=round(image.width_mm, 2),
+                figure_height_mm=round(image.height_mm, 2),
+                type=ExerciseType.OPEN,
+                origin=ExerciseOrigin.TEXTBOOK,
+                language=language,
+                statement=statement,
+                difficulty=3,
+                approved_at=None,
+            )
+        )
+        created += 1
+    log.info(
+        "ingest.regions.section",
+        source_id=str(source.id),
+        section=section.title,
+        exercises=created,
+    )
+    return created
+
+
+def _region_exercises(db: Session, section: SourceSection) -> list[Exercise]:
+    """The rows the layout path wrote for this section, in book order."""
+    return list(
+        db.scalars(
+            select(Exercise)
+            .where(
+                Exercise.source_section_id == section.id,
+                Exercise.origin == ExerciseOrigin.TEXTBOOK,
+                Exercise.label.is_not(None),
+            )
+            .order_by(Exercise.source_page, Exercise.label)
+        )
+    )
+
+
+def _enrich_section(
+    db: Session,
+    *,
+    source: Source,
+    section: SourceSection,
+    language: str,
+    ai: AiClient,
+) -> int:
+    """Ask the model what each exercise *is*, never what it says.
+
+    The statement, label, title and figure are facts read off the page and are
+    not the model's to change. What the model adds is the classification — is
+    this a choice, a true/false, an open question — the answer key if the page
+    states one, a difficulty, and the competency codes from the closed
+    catalogue. The prompt is the same transcription prompt as the text path,
+    fed one exercise at a time; a model that returns nothing for an exercise
+    leaves it as it was: open, untagged, still printable.
+    """
+    exercises = _region_exercises(db, section)
+    prompt = load_prompt("extract_exercises", version=EXTRACT_PROMPT_VERSION)
+    catalogue, by_code = _competency_catalogue(db, source)
+    tagged = 0
+
+    for exercise in exercises[:MAX_SECTION_CHUNKS]:
+        text = f"{exercise.label} {exercise.title}\n{exercise.statement}"
+        try:
+            response, _ = ai.complete(
+                prompt=prompt,
+                purpose="extract_exercises",
+                values={
+                    "language": language,
+                    "page": exercise.source_page,
+                    "chunk_text": text,
+                    "competency_catalogue": catalogue,
+                },
+                temperature=0.0,
+            )
+            payload = parse_json_response(response.text)
+        except Exception as exc:
+            log.info(
+                "ingest.enrich.failed",
+                source_id=str(source.id),
+                label=exercise.label,
+                error=type(exc).__name__,
+            )
+            continue
+        items = payload.get("exercises") or []
+        if not items:
+            continue
+        _apply_classification(exercise, items[0])
+        competencies = _resolve_competencies(items[0], by_code)
+        exercise.competencies = competencies
+        exercise.chapter_id = _chapter_for(db, source, competencies)
+        tagged += 1
+
+    section.extracted_at = datetime.now(UTC)
+    section.extraction_notice = (
+        _section_cap_notice(MAX_SECTION_CHUNKS, len(exercises))
+        if len(exercises) > MAX_SECTION_CHUNKS
+        else None
+    )
+    db.flush()
+    return tagged
+
+
+def _apply_classification(exercise: Exercise, item: object) -> None:
+    """Copy the model's type, options, key and difficulty onto a layout row.
+
+    Same validation as ``_build_exercise``, with one difference in outcome: a
+    text-path item that fails it is dropped, whereas a layout row already
+    exists and is worth keeping — it stays open and untagged.
+    """
+    if not isinstance(item, dict):
+        return
+    classified = _coerce_classification(item) or (ExerciseType.OPEN, None, None, None)
+    kind, options, answer_index, answer_bool = classified
+
+    exercise.type = kind
+    exercise.options = options
+    exercise.answer_index = answer_index
+    exercise.answer_bool = answer_bool
+    exercise.answer_text = _as_text(item.get("answer_text"))
+    exercise.explanation = _as_text(item.get("explanation"))
+    exercise.difficulty = _clamp_difficulty(item.get("difficulty"))
+
+
 def _existing_statements(db: Session, source: Source) -> set[str]:
     """Statements already transcribed from this document.
 
@@ -643,15 +949,43 @@ def extract_section(
         )
 
     client = ai or AiClient()
+    layout_rows = _region_exercises(db, section)
     if not client.chat_is_grounded:
         # Do NOT stamp extracted_at: nothing was read, and the section must keep
         # offering its button once a model is configured.
         return SectionExtractionResult(
             section_id=section.id,
             exercises_created=0,
-            exercises_total=0,
+            exercises_total=len(layout_rows),
             skipped=True,
-            notice=NO_GROUNDED_MODEL_NOTICE,
+            notice=REGIONS_UNTAGGED_NOTICE if layout_rows else NO_GROUNDED_MODEL_NOTICE,
+        )
+
+    if layout_rows:
+        # The exercises already exist — the layout path wrote them at import.
+        # What this section is waiting for is the model's classification.
+        tagged = _enrich_section(
+            db,
+            source=source,
+            section=section,
+            language=source.language or DEFAULT_LANGUAGE,
+            ai=client,
+        )
+        record_calls(db, school_id=source.school_id, records=client.records)
+        db.commit()
+        log.info(
+            "ingest.section.tagged",
+            section_id=str(section.id),
+            source_id=str(source.id),
+            tagged=tagged,
+            exercises=len(layout_rows),
+        )
+        return SectionExtractionResult(
+            section_id=section.id,
+            exercises_created=0,
+            exercises_total=len(layout_rows),
+            skipped=False,
+            notice=section.extraction_notice,
         )
 
     chunk_rows = list(
@@ -712,27 +1046,10 @@ def _build_exercise(
     if key in seen:
         return None
 
-    try:
-        kind = ExerciseType(str(item.get("type") or "open").strip().lower())
-    except ValueError:
-        kind = ExerciseType.OPEN
-
-    options = item.get("options")
-    options = [str(o) for o in options] if isinstance(options, list) and options else None
-    answer_index = item.get("answer_index")
-    answer_index = int(answer_index) if isinstance(answer_index, int) else None
-    if kind is ExerciseType.MCQ:
-        if not options or len(options) < 2:
-            return None
-        if answer_index is not None and not 0 <= answer_index < len(options):
-            answer_index = None
-    else:
-        options, answer_index = None, None
-
-    answer_bool = item.get("answer_bool")
-    answer_bool = answer_bool if isinstance(answer_bool, bool) else None
-    if kind is not ExerciseType.TRUE_FALSE:
-        answer_bool = None
+    classified = _coerce_classification(item)
+    if classified is None:
+        return None
+    kind, options, answer_index, answer_bool = classified
 
     seen.add(key)
     return Exercise(
@@ -755,6 +1072,39 @@ def _build_exercise(
         # Textbook exercises are transcriptions, not proposals: no approval gate.
         approved_at=None,
     )
+
+
+def _coerce_classification(
+    item: dict[str, Any],
+) -> tuple[ExerciseType, list[str] | None, int | None, bool | None] | None:
+    """``(type, options, answer_index, answer_bool)`` from model JSON, or ``None``.
+
+    An MCQ needs at least two options and an index inside them — without the
+    options it is not an MCQ at all, and ``None`` says so. A true/false keeps
+    its boolean and nothing else; an open item keeps neither.
+    """
+    try:
+        kind = ExerciseType(str(item.get("type") or "open").strip().lower())
+    except ValueError:
+        kind = ExerciseType.OPEN
+
+    raw_options = item.get("options")
+    options = (
+        [str(o) for o in raw_options] if isinstance(raw_options, list) and raw_options else None
+    )
+    raw_index = item.get("answer_index")
+    answer_index = int(raw_index) if isinstance(raw_index, int) else None
+    if kind is ExerciseType.MCQ:
+        if not options or len(options) < 2:
+            return None
+        if answer_index is not None and not 0 <= answer_index < len(options):
+            answer_index = None
+    else:
+        options, answer_index = None, None
+
+    raw_bool = item.get("answer_bool")
+    answer_bool = raw_bool if isinstance(raw_bool, bool) and kind is ExerciseType.TRUE_FALSE else None
+    return kind, options, answer_index, answer_bool
 
 
 def _as_text(value: object) -> str | None:
@@ -889,6 +1239,10 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
                 school_id=source.school_id,
                 subject_id=source.subject_id,
                 chapter_id=old_exercise.chapter_id,
+                # The tags travel with the chapter they derived: a copy with
+                # the chapter but no competencies reads as untagged to the
+                # mastery matrix and the competency filter.
+                competencies=list(old_exercise.competencies),
                 source_id=source.id,
                 source_chunk_id=chunk_map.get(old_exercise.source_chunk_id) if old_exercise.source_chunk_id else None,
                 source_section_id=(
@@ -897,6 +1251,13 @@ def _copy_from_twin(db: Session, *, source: Source, twin: Source) -> IngestResul
                     else None
                 ),
                 source_page=old_exercise.source_page,
+                label=old_exercise.label,
+                title=old_exercise.title,
+                # Same bytes, same crop. Keys are per school and nothing deletes
+                # an object, so sharing the figure between the twins is safe.
+                figure_key=old_exercise.figure_key,
+                figure_width_mm=old_exercise.figure_width_mm,
+                figure_height_mm=old_exercise.figure_height_mm,
                 type=old_exercise.type,
                 origin=ExerciseOrigin.TEXTBOOK,
                 language=old_exercise.language,

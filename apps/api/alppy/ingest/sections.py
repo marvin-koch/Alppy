@@ -255,3 +255,72 @@ def detect_sections(pages: Iterable[PageText]) -> list[Section]:
             )
         )
     return sections
+
+
+# --------------------------------------------------------------------------
+# The document's own bookmarks, when it has them
+# --------------------------------------------------------------------------
+MIN_OUTLINE_ENTRIES = 2
+"""One bookmark is a title page, not an outline."""
+
+
+def sections_from_outline(
+    entries: Sequence[tuple[int, str, int]], *, first_page: int, last_page: int
+) -> list[Section]:
+    """Build the outline from PDF bookmarks: ``(level, title, page)`` triples.
+
+    Preferred over :func:`detect_sections` whenever the file carries one. A
+    publisher's bookmarks name the chapters the way the book does, whereas the
+    heading heuristic — tuned for books with none — reads a running head such as
+    "Nombres relatifs | Nombres et opérations 10e" as forty-five two-page
+    chapters. Every level is used: a part title ("Nombres et opérations") opens
+    a short section of its own until the first chapter under it begins, so its
+    introduction pages stay reachable. Two bookmarks on the same page collapse
+    into the deeper one. Returns ``[]`` when there is nothing usable, and the
+    caller falls back to the heuristic.
+    """
+    cleaned: dict[int, tuple[int, str]] = {}
+    for level, title, page in entries:
+        text = " ".join(str(title).split())
+        if not text or not first_page <= page <= last_page:
+            continue
+        previous = cleaned.get(page)
+        if previous is None or level >= previous[0]:
+            cleaned[page] = (int(level), text)
+    if len(cleaned) < MIN_OUTLINE_ENTRIES:
+        return []
+
+    pages = sorted(cleaned)
+    sections: list[Section] = []
+    if pages[0] > first_page:
+        sections.append(
+            Section(
+                title=f"p. {first_page}–{pages[0] - 1}",
+                label=None,
+                page_from=first_page,
+                page_to=pages[0] - 1,
+                position=0,
+            )
+        )
+    for index, page in enumerate(pages):
+        page_to = pages[index + 1] - 1 if index + 1 < len(pages) else last_page
+        _, title = cleaned[page]
+        sections.append(
+            Section(
+                title=title,
+                label=_outline_label(title),
+                page_from=page,
+                page_to=max(page_to, page),
+                position=len(sections),
+            )
+        )
+    return sections
+
+
+_OUTLINE_LABEL_RE = re.compile(r"^\s*(?P<label>[A-Z]{1,3}|\d{1,2}|[IVXLC]{1,6})\s*[–—\-:.]\s+\S")
+
+
+def _outline_label(title: str) -> str | None:
+    """"NO – Nombres relatifs" → "NO"; "4. Les fractions" → "4"; else None."""
+    match = _OUTLINE_LABEL_RE.match(title)
+    return match.group("label") if match else None

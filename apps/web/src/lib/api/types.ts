@@ -182,6 +182,14 @@ export interface ExerciseOut {
   source_id: Uuid | null;
   source_section_id: Uuid | null;
   source_page: number | null;
+  /** The book's own code and title ("NO64", "Les quatre multiplications"),
+   *  and a picture of the exercise as the page prints it. Null for anything a
+   *  model or a teacher wrote. */
+  label: string | null;
+  title: string | null;
+  figure_url: string | null;
+  figure_width_mm: number | null;
+  figure_height_mm: number | null;
   approved_at: IsoDateTime | null;
 }
 

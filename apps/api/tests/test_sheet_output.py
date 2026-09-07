@@ -24,7 +24,13 @@ from test_api_fixtures import Tenant, login, make_exercise
 
 from alppy.models.enums import ExerciseType
 from alppy.sheets.pagination import (
+    FIGURE_GAP_MM,
+    FIGURE_MAX_H_MM,
+    FIGURE_MIN_SCALE,
+    OPEN_LINES_MARGIN_MM,
+    TEXT_W_MM,
     USABLE_H_MM,
+    Figure,
     Item,
     ItemTooTallError,
     estimate_item_height_mm,
@@ -200,3 +206,82 @@ def test_a_statement_override_reaches_the_printed_page(
     # a rewrite of the textbook.
     db.refresh(a)
     assert a.statement == "Original du manuel."
+
+
+# --------------------------------------------------------------------------
+# A picture of the exercise, at the book's own size
+# --------------------------------------------------------------------------
+def _figure(width_mm: float, height_mm: float) -> Figure:
+    return Figure(src="data:image/png;base64,iVBORw0KGgo=", width_mm=width_mm, height_mm=height_mm)
+
+
+def test_a_figure_prints_at_its_own_size_when_it_fits() -> None:
+    figure = _figure(150.0, 60.0)
+    width, height, scale = figure.printed_size_mm()
+    assert (width, height, scale) == (150.0, 60.0, 1.0)
+
+
+def test_a_figure_wider_than_the_column_is_shrunk_to_fit_and_never_enlarged() -> None:
+    wide = _figure(TEXT_W_MM * 2, 40.0)
+    width, height, scale = wide.printed_size_mm()
+    assert width == pytest.approx(TEXT_W_MM)
+    assert height == pytest.approx(20.0) and scale == pytest.approx(0.5)
+
+    tiny = _figure(40.0, 10.0)
+    assert tiny.printed_size_mm()[2] == 1.0
+
+
+def test_pagination_reserves_the_figures_printed_height() -> None:
+    text_only = Item(key="t", type=ExerciseType.OPEN, statement="Calcule.", open_lines=0)
+    with_figure = Item(
+        key="f", type=ExerciseType.OPEN, statement="Calcule.", open_lines=0, figure=_figure(150.0, 60.0)
+    )
+    # The picture and its gap are added; the rules block (even an empty one
+    # keeps its margin) is not drawn under a picture.
+    assert estimate_item_height_mm(with_figure) - estimate_item_height_mm(text_only) == pytest.approx(
+        60.0 + FIGURE_GAP_MM - OPEN_LINES_MARGIN_MM
+    )
+    # A full-page exercise of the book, shrunk to the ceiling, still fits a
+    # sheet on its own.
+    tall = Item(key="p", type=ExerciseType.OPEN, statement="Voir la figure.",
+                figure=_figure(165.0, 150.0))
+    pages = paginate([tall])
+    assert len(pages) == 1 and not pages[0].overflowing
+
+    # Two ordinary exercises of the book share a page: the ruled lines an open
+    # text item gets are not added under a picture.
+    two = [
+        Item(key="a", type=ExerciseType.OPEN, statement="a", figure=_figure(165.0, 55.0)),
+        Item(key="b", type=ExerciseType.OPEN, statement="b", figure=_figure(165.0, 46.0)),
+    ]
+    assert len(paginate(two)) == 1
+
+
+def test_a_figure_that_would_print_unreadably_small_is_refused() -> None:
+    """A three-page exercise cannot be a sheet item. Shrinking it to 40 %
+    would print 4 pt type; refusing names the item, like an over-long text."""
+    huge = Item(key="h", type=ExerciseType.OPEN, statement="NO113 Rectangle coloré",
+                figure=_figure(165.0, 300.0))
+    with pytest.raises(ItemTooTallError) as caught:
+        paginate([huge])
+    assert caught.value.number == 1
+    assert "Rectangle" in str(caught.value)
+    assert FIGURE_MAX_H_MM / FIGURE_MIN_SCALE < 300.0
+
+
+def test_the_markup_sizes_the_picture_to_what_pagination_reserved() -> None:
+    from alppy.sheets.html import Copy, SheetData, render_sheet_html
+
+    item = Item(key="f", type=ExerciseType.OPEN, statement="Prends les mesures nécessaires.",
+                open_lines=2, figure=_figure(200.0, 100.0))
+    data = SheetData(
+        title="Aires", class_code="10B", subject="Maths", language="fr",
+        copies=(Copy(uid="10B_01", items=(item,)),),
+    )
+    html = render_sheet_html(data)
+    width, height, _ = item.figure.printed_size_mm()  # type: ignore[union-attr]
+    assert f'style="width: {width:g}mm; height: {height:g}mm"' in html
+    assert 'alt="Prends les mesures nécessaires."' in html
+    # The statement is the alt, not a paragraph: printed once, as the picture.
+    assert html.count("Prends les mesures nécessaires.") == 1
+    assert '<span class="sheet-rule">' not in html, "no ruled lines under a picture"

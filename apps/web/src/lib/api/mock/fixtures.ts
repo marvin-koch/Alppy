@@ -332,6 +332,11 @@ function exercise(index: number, overrides: Partial<ExerciseOut> = {}): Exercise
     source_id: id(400),
     source_section_id: id(600),
     source_page: 84 + index,
+    label: null,
+    title: null,
+    figure_url: null,
+    figure_width_mm: null,
+    figure_height_mm: null,
     approved_at: null,
     ...overrides,
   };

@@ -190,6 +190,14 @@ class ExerciseOut(ApiModel):
     source_id: uuid.UUID | None = None
     source_section_id: uuid.UUID | None = None
     source_page: int | None = None
+    # The book's own code and title ("NO64", "Les quatre multiplications"),
+    # and a picture of the exercise as the page prints it. All three are
+    # null for anything a model or a teacher wrote.
+    label: str | None = None
+    title: str | None = None
+    figure_url: str | None = None
+    figure_width_mm: float | None = None
+    figure_height_mm: float | None = None
     approved_at: datetime | None = None
 
     @property

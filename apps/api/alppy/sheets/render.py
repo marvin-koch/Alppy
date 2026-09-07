@@ -19,6 +19,7 @@ that installs it. It is a distinct, catchable type precisely so a caller can tel
 
 from __future__ import annotations
 
+import base64
 import os
 from collections.abc import Sequence
 from datetime import UTC, datetime
@@ -38,7 +39,8 @@ from alppy.sheets.html import (
     render_feedback_html,
     render_sheet_html,
 )
-from alppy.sheets.pagination import Item
+from alppy.sheets.pagination import Figure, Item
+from alppy.storage import StorageError, get_storage
 
 log = get_logger(__name__)
 
@@ -217,6 +219,18 @@ def _item_from_exercise(
     else:
         answer_index = None
 
+    # A per-student variant is a rewording, and the book's picture would
+    # contradict it; the picture only prints with the exercise it was cut from.
+    figure = None if variant is not None else _figure_from_exercise(exercise, alt=text)
+    if figure is not None and statement:
+        figure = Figure(
+            src=figure.src,
+            width_mm=figure.width_mm,
+            height_mm=figure.height_mm,
+            alt=figure.alt,
+            show_statement=True,
+        )
+
     return Item(
         key=str(exercise.id),
         type=exercise.type,
@@ -226,6 +240,37 @@ def _item_from_exercise(
         answer_text=exercise.answer_text,
         language=exercise.language or language,
         ai_generated=exercise.origin is ExerciseOrigin.AI_GENERATED,
+        figure=figure,
+    )
+
+
+def _figure_from_exercise(exercise: Any, *, alt: str) -> Figure | None:
+    """The exercise's crop as a ``data:`` URI, or ``None`` when it has none.
+
+    Inlined rather than linked: ``html_to_pdf`` loads the document from a
+    string with no base URL, and the render worker has no business fetching
+    from the object store over HTTP while Chromium waits. A crop that cannot be
+    read is *logged and dropped*, and the item prints its text — a teacher gets
+    a sheet with a gap they can see rather than no sheet at all.
+    """
+    key = getattr(exercise, "figure_key", None)
+    width = getattr(exercise, "figure_width_mm", None)
+    height = getattr(exercise, "figure_height_mm", None)
+    if not key or not width or not height:
+        return None
+    try:
+        payload = get_storage().get_bytes(key)
+    except StorageError as exc:
+        log.warning(
+            "sheets.figure.unreadable", exercise_id=str(exercise.id), key=key, error=str(exc)
+        )
+        return None
+    encoded = base64.b64encode(payload).decode("ascii")
+    return Figure(
+        src=f"data:image/png;base64,{encoded}",
+        width_mm=float(width),
+        height_mm=float(height),
+        alt=alt,
     )
 
 

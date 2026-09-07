@@ -422,7 +422,8 @@
     "openNotGraded": "Free response — not automatically graded",
     "answer": "Answer",
     "explanation": "Explanation",
-    "difficultyLevel": "Level {level} of 5"
+    "difficultyLevel": "Level {level} of 5",
+    "figureAlt": "Exercise {label}, as printed in the book"
   },
   "common": {
     "back": "Back",

@@ -41,7 +41,9 @@ Source (uploaded PDF) ──< SourceChunk (text, page, embedding vector(1024))
                           page range, extracted_at — read on demand)
 Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
           statement, options, answer_key, difficulty, source_chunk_id,
-          source_section_id, page)
+          source_section_id, page,
+          label "NO64", title, figure_key + figure size in mm — a crop of
+          the page, cut by the region detector; see decisions-log D40)
         ──>< Competency                            (exercise_competency)
         ──< ExerciseVariant (per-student generated)
 Sheet (target class|student|group, layout_version, subject, chapter set,

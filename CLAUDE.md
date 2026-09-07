@@ -58,6 +58,7 @@ python -m alppy.cli backfill-events   # rebuild the agenda from existing timesta
 | `apps/api` | FastAPI, SQLAlchemy 2, Alembic, Pydantic |
 | `apps/api/alppy/sheets/layout.py` | **Print geometry — the single source of truth** |
 | `apps/api/alppy/scan/` | OpenCV registration, bubble detection, grading |
+| `apps/api/alppy/ingest/regions.py` | Exercise regions cut from the page geometry (label, crop, `SUITE ▶`) |
 | `apps/api/alppy/mastery/model.py` | The mastery model, pure functions |
 | `apps/api/alppy/ai/` | Provider-agnostic AI layer, versioned prompts, PII gate |
 | `packages/ui/src/design/` | Tokens, base, motion, print, recipes |

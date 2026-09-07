@@ -87,4 +87,16 @@ def get_file(key: str, school_id: TenantDep, storage: StorageDep) -> Response:
         data = storage.get_bytes(key)
     except StorageError as exc:
         raise errors.not_found("file", key=key) from exc
-    return Response(content=data, media_type="application/octet-stream")
+    return Response(content=data, media_type=_media_type(key))
+
+
+_MEDIA_TYPES = {".png": "image/png", ".pdf": "application/pdf", ".jpg": "image/jpeg", ".jpeg": "image/jpeg"}
+
+
+def _media_type(key: str) -> str:
+    """By extension, for the two kinds of object this route actually serves.
+
+    An ``<img>`` given ``application/octet-stream`` under ``nosniff`` is a
+    broken image, which is how the exercise figures would have shown up."""
+    suffix = key[key.rfind(".") :].lower() if "." in key.rsplit("/", 1)[-1] else ""
+    return _MEDIA_TYPES.get(suffix, "application/octet-stream")

@@ -491,3 +491,52 @@ working index to satisfy a diff would be the wrong direction.
 `scripts/check-schema-drift.py` migrates a disposable Postgres from nothing and
 diffs the result against `Base.metadata`; it runs as its own CI job. It needs a
 real Postgres — SQLite cannot show this class of difference at all.
+
+### D40 · A textbook exercise is cut from the page, not transcribed from its text layer
+
+The first real book — *Mathématiques 10e* (MER), 228 pages, 504 exercises —
+made the text path untenable. The text layer of a page hands a model
+`3n²/n` as three tokens, a coloured rectangle as nothing, and the reading
+order of a two-column exercise as a shuffle. A "precise" transcription of that
+is not on offer. What the page does have is a **typographic contract**: every
+exercise opens with a bold, coloured, body-sized line carrying a code and a
+title (`NO64  Les quatre multiplications`), and the book marks a page overflow
+with `SUITE ▶`.
+
+`alppy.ingest.regions` reads that contract with PyMuPDF and cuts each exercise
+out as a PNG at 200 dpi, stacking the pages of a continued one. The region ends
+at the next header, at the book's own cross-reference line (`Fichier : …`), at
+a section title, or at the page's content. On the real book it finds all 504,
+each exactly once, and the nine continued ones (one over three pages) come back
+whole; `tests/test_regions_real_book.py` holds those numbers and skips when the
+47 MB file is absent.
+
+Consequences, all deliberate:
+
+* **The rows exist without a model.** Cutting costs nothing a teacher would
+  wait for, so every coded exercise is stored at import — label, title, text,
+  crop, size in millimetres — and is searchable and printable at once. A
+  grounded model, when configured, *classifies and tags* within the existing
+  per-import budget and the same whole-chapters rule; it never rewrites the
+  statement. Without a model the chapter keeps its button and its notice says
+  what is missing (`REGIONS_UNTAGGED_NOTICE`). A book with no coded headers
+  yields no regions and takes the old text path unchanged.
+* **Sections are the PDF's bookmarks when it has them.** The heading heuristic
+  read this book's running head as forty-five two-page chapters. The publisher's
+  outline gives the twenty it actually has.
+* **The sheet prints the crop in place of the statement**, at the book's own
+  size, shrunk only to fit the column or a 116 mm ceiling and never enlarged.
+  Below a 0.65 scale the item is refused with the same `ItemTooTallError` an
+  over-long text gets: a three-page exercise is not a sheet item. Under a
+  picture there are **no ruled lines** — the book's exercises are worked in
+  the notebook — because two token rules cost the millimetres that keep a
+  second exercise off the page. The text stays as the image's alt and for
+  search; a teacher's own wording prints above the picture.
+* **The body-l floor does not apply to the crop.** The rule governs text Alppy
+  sets; the crop reproduces the book's 10 pt Helvetica at 1:1, which is what
+  the student reads in the book. Shrinking is bounded for exactly this reason.
+* **The crop is inlined as a `data:` URI in the print document.** `html_to_pdf`
+  loads the document from a string with no base URL, and the render worker must
+  not fetch from the object store while Chromium waits. The web app gets an
+  ordinary `figure_url` (`/api/v1/files/…`, tenant-checked, served as
+  `image/png`).

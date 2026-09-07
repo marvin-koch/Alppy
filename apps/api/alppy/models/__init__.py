@@ -365,6 +365,20 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
         "source_section.id", nullable=True, ondelete="SET NULL"
     )
     source_page: Mapped[int | None] = mapped_column(Integer)
+    # The book's own code and title for the exercise ("NO64", "Les quatre
+    # multiplications"). Set by the region detector; NULL for anything a model
+    # or a teacher wrote. This is how a teacher recognises an exercise, so the
+    # builder shows it and the search matches it.
+    label: Mapped[str | None] = mapped_column(String(16))
+    title: Mapped[str | None] = mapped_column(String(200))
+    # A crop of the page, exactly as printed: the figure, the table, the
+    # fractions the text layer cannot carry. Stored in object storage under
+    # ``figures/<school>/<source>/…``; the sheet prints it in place of the
+    # statement and paginates on its physical size, which is why the size is
+    # kept here in millimetres rather than re-read from the image.
+    figure_key: Mapped[str | None] = mapped_column(String(500))
+    figure_width_mm: Mapped[float | None] = mapped_column(Float)
+    figure_height_mm: Mapped[float | None] = mapped_column(Float)
 
     type: Mapped[ExerciseType] = mapped_column(
         Enum(ExerciseType, name="exercise_type"), nullable=False

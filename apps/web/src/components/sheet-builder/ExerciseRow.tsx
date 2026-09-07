@@ -65,9 +65,29 @@ export function ExerciseRow({
               </Badge>
               {badges}
             </span>
-            {/* Student-facing: this is the wording that will be printed, and it
-                never drops below body-l. */}
-            <span data-student-facing>{exercise.statement}</span>
+            {exercise.label ? (
+              <span className="flex flex-wrap items-baseline gap-x-2 font-semibold">
+                <span className="mono text-ink-700">{exercise.label}</span>
+                {exercise.title ? <span>{exercise.title}</span> : null}
+              </span>
+            ) : null}
+            {exercise.figure_url ? (
+              /* The picture IS what the sheet prints: the figure, the table,
+                 the fractions, in the book's own setting. The wording stays as
+                 the alt, so the row still reads without images. */
+              <img
+                src={exercise.figure_url}
+                alt={tx('figureAlt', { label: exercise.label ?? '' })}
+                title={exercise.statement}
+                loading="lazy"
+                className="block max-w-full rounded-md border border-line bg-surface"
+                style={{ maxHeight: '18rem', width: 'auto' }}
+              />
+            ) : (
+              /* Student-facing: this is the wording that will be printed, and it
+                 never drops below body-l. */
+              <span data-student-facing>{exercise.statement}</span>
+            )}
             {exercise.options ? (
               <span className="flex flex-wrap gap-x-5 gap-y-1 text-body-s text-ink-700">
                 {exercise.options.map((option, index) => (

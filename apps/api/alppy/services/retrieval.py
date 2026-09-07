@@ -62,6 +62,7 @@ from alppy.core.logging import get_logger
 from alppy.models import Chapter, Competency, Exercise, Source, SourceChunk, chapter_competency
 from alppy.models.enums import ExerciseOrigin
 from alppy.schemas import ExerciseOut, ExerciseProposal, Provenance
+from alppy.services import figure_url_for
 
 log = get_logger(__name__)
 
@@ -413,7 +414,7 @@ def exercise_out(exercise: Exercise, competency_ids: Sequence[uuid.UUID] | None 
     """
     ids = list(competency_ids) if competency_ids is not None else [c.id for c in exercise.competencies]
     out = ExerciseOut.model_validate(exercise)
-    return out.model_copy(update={"competency_ids": ids})
+    return out.model_copy(update={"competency_ids": ids, "figure_url": figure_url_for(exercise)})
 
 
 def build_proposal(

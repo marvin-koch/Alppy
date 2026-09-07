@@ -213,7 +213,8 @@ function SourceRow({ source }: { source: SourceOut }) {
                 <ol className="mt-3 flex list-decimal flex-col gap-2 pl-5">
                   {(exercises.data?.items ?? []).map((ex) => (
                     <li key={ex.id} className="text-body-s">
-                      {ex.statement}
+                      {ex.label ? <span className="mono mr-1 text-ink-700">{ex.label}</span> : null}
+                      {ex.title ?? ex.statement}
                       {ex.source_page ? (
                         <span className="text-ink-500"> · p. {ex.source_page}</span>
                       ) : null}

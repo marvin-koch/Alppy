@@ -403,6 +403,18 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
             {"letter": letters[i] if i < len(letters) else "", "text": text}
             for i, text in enumerate(item.options)
         ]
+    figure: dict[str, Any] | None = None
+    if item.figure is not None:
+        width_mm, height_mm, _ = item.figure.printed_size_mm()
+        figure = {
+            "src": item.figure.src,
+            "alt": item.figure.alt or item.statement,
+            # The printed size is decided here, once, and written as an
+            # inline width: pagination reserved exactly this many millimetres.
+            "width_mm": _fmt(width_mm),
+            "height_mm": _fmt(height_mm),
+            "show_statement": item.figure.show_statement,
+        }
     return {
         "item_index": placed.item_index,
         "number": placed.number,
@@ -411,8 +423,10 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
         "ai_generated": item.ai_generated,
         "options": options,
         "is_open": item.type is ExerciseType.OPEN,
-        "open_lines": max(0, item.open_lines),
+        # No ruled lines under a picture; see pagination's note on the rules.
+        "open_lines": 0 if item.figure else max(0, item.open_lines),
         "answer_text": item.answer_text,
+        "figure": figure,
     }
 
 

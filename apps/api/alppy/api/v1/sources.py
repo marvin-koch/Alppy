@@ -14,7 +14,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
-from sqlalchemy import func, select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
@@ -331,7 +331,17 @@ def list_source_exercises(
         # `ilike` rather than a tsvector: the set is already narrowed to one
         # document and usually one chapter, so an index would buy nothing a
         # teacher could measure.
-        common.append(Exercise.statement.ilike(f"%{q.strip()}%"))
+        # ...and the book's own code and title as well as the statement: a
+        # teacher looks for "NO64" or "Rectangle coloré" far more often than
+        # for a phrase from the body.
+        needle = f"%{q.strip()}%"
+        common.append(
+            or_(
+                Exercise.statement.ilike(needle),
+                Exercise.label.ilike(needle),
+                Exercise.title.ilike(needle),
+            )
+        )
 
     # Facets deliberately exclude the type filter: a chip has to report what
     # selecting it would give, not what it gives once already selected.

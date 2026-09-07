@@ -359,6 +359,11 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
       source_id: null,
       source_section_id: null,
       source_page: null,
+      label: null,
+      title: null,
+      figure_url: null,
+      figure_width_mm: null,
+      figure_height_mm: null,
       approved_at: fx.NOW,
     };
     state.exercises = [...state.exercises, created];

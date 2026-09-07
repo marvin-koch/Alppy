@@ -183,6 +183,18 @@
   min-width: {{ g.option_letter_w }}mm;
 }
 
+/* A crop of the textbook page, printed at the book's own size and shrunk only
+   to fit. Its width and height are inline — pagination decided them — so this
+   rule only makes sure nothing else resizes it. Never a background image: a
+   browser printing without backgrounds would drop the exercise itself. */
+.sheet-figure {
+  display: block;
+  max-width: 100%;
+  margin-top: 1mm;
+  break-inside: avoid;
+  page-break-inside: avoid;
+}
+
 /* Free text: a ruled space, never a bubble. Printed, never auto-graded. */
 .sheet-rules {
   margin-top: {{ g.open_margin }}mm;

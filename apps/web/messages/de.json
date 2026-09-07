@@ -422,7 +422,8 @@
     "openNotGraded": "Freie Antwort — wird nicht automatisch korrigiert",
     "answer": "Antwort",
     "explanation": "Erklärung",
-    "difficultyLevel": "Stufe {level} von 5"
+    "difficultyLevel": "Stufe {level} von 5",
+    "figureAlt": "Aufgabe {label}, wie im Buch gedruckt"
   },
   "common": {
     "back": "Zurück",
