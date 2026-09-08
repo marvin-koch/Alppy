@@ -21,7 +21,10 @@ from __future__ import annotations
 
 import base64
 import os
-from collections.abc import Sequence
+import uuid
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Final
@@ -67,6 +70,37 @@ class BrowserUnavailableError(RuntimeError):
 # --------------------------------------------------------------------------
 # 1 · HTML -> PDF
 # --------------------------------------------------------------------------
+@contextmanager
+def _printed_page(html: str, *, timeout_ms: int) -> Iterator[Any]:
+    """A headless Chromium page with the document loaded in print media.
+
+    One place opens the browser, so the PDF and the measurement below see the
+    document exactly the same way: same media, same colour scheme, same fonts.
+    """
+    try:
+        from playwright.sync_api import sync_playwright
+    except ImportError as exc:  # pragma: no cover - depends on the environment
+        raise BrowserUnavailableError(
+            f"playwright is not installed: {exc}. Install with: {INSTALL_HINT}"
+        ) from exc
+
+    with sync_playwright() as p:
+        try:
+            browser = p.chromium.launch()
+        except Exception as exc:  # pragma: no cover - depends on the environment
+            raise BrowserUnavailableError(
+                f"could not start headless Chromium: {exc}. Install with: {INSTALL_HINT}"
+            ) from exc
+        try:
+            page = browser.new_page()
+            page.set_default_timeout(timeout_ms)
+            page.emulate_media(media="print", color_scheme="light")
+            page.set_content(html, wait_until="load")
+            yield page
+        finally:
+            browser.close()
+
+
 def html_to_pdf(html: str, *, timeout_ms: int = 60_000) -> bytes:
     """Render one standalone HTML document to an A4 PDF.
 
@@ -81,45 +115,124 @@ def html_to_pdf(html: str, *, timeout_ms: int = 60_000) -> bytes:
     in print.css (``layout.MARGIN_MM``) because Chromium's own default margin is
     0.4 in; a silent 10 mm would shift every fiducial and every bubble.
     """
-    try:
-        from playwright.sync_api import sync_playwright
-    except ImportError as exc:  # pragma: no cover - depends on the environment
-        raise BrowserUnavailableError(
-            f"playwright is not installed: {exc}. Install with: {INSTALL_HINT}"
-        ) from exc
-
     margin = f"{L.MARGIN_MM:g}mm"
     try:
-        with sync_playwright() as p:
-            try:
-                browser = p.chromium.launch()
-            except Exception as exc:  # pragma: no cover - depends on the environment
-                raise BrowserUnavailableError(
-                    f"could not start headless Chromium: {exc}. Install with: {INSTALL_HINT}"
-                ) from exc
-            try:
-                page = browser.new_page()
-                page.set_default_timeout(timeout_ms)
-                page.emulate_media(media="print", color_scheme="light")
-                page.set_content(html, wait_until="load")
-                return page.pdf(
-                    format="A4",
-                    print_background=False,
-                    prefer_css_page_size=True,
-                    display_header_footer=False,
-                    margin={
-                        "top": margin,
-                        "right": margin,
-                        "bottom": margin,
-                        "left": margin,
-                    },
-                )
-            finally:
-                browser.close()
+        with _printed_page(html, timeout_ms=timeout_ms) as page:
+            pdf: bytes = page.pdf(
+                format="A4",
+                print_background=False,
+                prefer_css_page_size=True,
+                display_header_footer=False,
+                margin={
+                    "top": margin,
+                    "right": margin,
+                    "bottom": margin,
+                    "left": margin,
+                },
+            )
+            return pdf
     except BrowserUnavailableError:
         raise
     except Exception as exc:  # pragma: no cover - a real browser failure
         raise SheetRenderError(f"Chromium failed to render the sheet: {exc}") from exc
+
+
+# --------------------------------------------------------------------------
+# 1b · where the written-answer boxes landed
+# --------------------------------------------------------------------------
+@dataclass(frozen=True, slots=True)
+class MeasuredBox:
+    """One answer box as Chromium laid it out: page millimetres of its border
+    box, on the ``number``-th page of the document (1-based, document-wide)."""
+
+    page_number: int
+    item_index: int
+    x_mm: float
+    y_mm: float
+    w_mm: float
+    h_mm: float
+
+
+_ANSWER_BOX_MARKER: Final = 'data-answer-box="true"'
+
+_MEASURE_JS: Final = """
+(pages) => {
+  const PX_PER_MM = 96 / 25.4;
+  const out = [];
+  pages.forEach((pg, i) => {
+    // .sheet-geometry spans the whole physical sheet in both media, so a
+    // rectangle relative to it is a rectangle in page millimetres.
+    const geometry = pg.querySelector('.sheet-geometry') || pg;
+    const origin = geometry.getBoundingClientRect();
+    for (const el of pg.querySelectorAll('[data-answer-box="true"]')) {
+      const r = el.getBoundingClientRect();
+      const item = el.closest('[data-item-index]');
+      out.push({
+        page_number: i + 1,
+        item_index: item ? Number(item.dataset.itemIndex) : -1,
+        x_mm: (r.left - origin.left) / PX_PER_MM,
+        y_mm: (r.top - origin.top) / PX_PER_MM,
+        w_mm: r.width / PX_PER_MM,
+        h_mm: r.height / PX_PER_MM,
+      });
+    }
+  });
+  return out;
+}
+"""
+
+
+def measure_answer_boxes(html: str, *, timeout_ms: int = 60_000) -> list[MeasuredBox]:
+    """Where every written-answer box sits on the printed page, measured from
+    the same document Chromium prints, in the same print media.
+
+    Measured rather than computed on purpose. A bubble sits where the layout
+    says; a box sits under text whose wrapping only the browser knows, and
+    pagination's estimate of that height is deliberately generous. The scan
+    job crops at these rectangles, so they have to be the rectangles that went
+    to the printer — which is why this is asked of the browser and stored,
+    never derived from the rows again.
+
+    A document with no box returns without opening a browser at all.
+    """
+    if _ANSWER_BOX_MARKER not in html:
+        return []
+    try:
+        with _printed_page(html, timeout_ms=timeout_ms) as page:
+            raw = page.eval_on_selector_all(".print-page", _MEASURE_JS)
+    except BrowserUnavailableError:
+        raise
+    except Exception as exc:  # pragma: no cover - a real browser failure
+        raise SheetRenderError(f"Chromium failed to measure the sheet: {exc}") from exc
+    boxes = [
+        MeasuredBox(
+            page_number=int(b["page_number"]),
+            item_index=int(b["item_index"]),
+            x_mm=round(float(b["x_mm"]), 3),
+            y_mm=round(float(b["y_mm"]), 3),
+            w_mm=round(float(b["w_mm"]), 3),
+            h_mm=round(float(b["h_mm"]), 3),
+        )
+        for b in raw
+    ]
+    for box in boxes:
+        _check_box_inside_statement_region(box)
+    return boxes
+
+
+def _check_box_inside_statement_region(box: MeasuredBox) -> None:
+    """A box outside the statement region is a geometry bug, and the crop cut
+    from it could carry the header — the one region of the page with a code
+    on it. Loud rather than quiet, for the same reason the PII gate raises."""
+    if box.item_index < 0:
+        raise SheetRenderError("an answer box was found outside any item")
+    top, bottom = box.y_mm, box.y_mm + box.h_mm
+    if top < L.ITEMS_TOP_MM - 0.5 or bottom > L.ITEMS_BOTTOM_MM + 0.5:
+        raise SheetRenderError(
+            f"answer box of item {box.item_index} on page {box.page_number} spans "
+            f"{top:.1f}-{bottom:.1f} mm, outside the statement region "
+            f"{L.ITEMS_TOP_MM:g}-{L.ITEMS_BOTTOM_MM:g} mm"
+        )
 
 
 def browser_available() -> bool:
@@ -503,6 +616,53 @@ def _stamp(sheet: Any, data: SheetData) -> None:
             instance.page_count = per_copy[instance.student_uid]
 
 
+def _persist_answer_box_placements(
+    db: Any, sheet: Any, data: SheetData, boxes: Sequence[MeasuredBox]
+) -> int:
+    """Record where every box printed, replacing whatever an earlier render
+    recorded for this sheet.
+
+    Delete-then-insert by sheet, never upsert by student: a re-render after a
+    roster change must lose the rows of a child who left as surely as it gains
+    the rows of one who arrived. Returns how many were written.
+    """
+    from sqlalchemy import delete
+
+    from alppy.models import AnswerBoxPlacement
+
+    db.execute(delete(AnswerBoxPlacement).where(AnswerBoxPlacement.sheet_id == sheet.id))
+    pages = physical_pages(data)
+    written = 0
+    for box in boxes:
+        physical = pages[box.page_number - 1]
+        placed = physical.page.items[box.item_index]
+        try:
+            exercise_id: uuid.UUID | None = UUID(placed.item.key)
+        except ValueError:
+            exercise_id = None
+        db.add(
+            AnswerBoxPlacement(
+                id=uuid.uuid4(),
+                school_id=sheet.school_id,
+                sheet_id=sheet.id,
+                exercise_id=exercise_id,
+                student_uid=physical.copy.uid,
+                copy_page=physical.copy_page,
+                item_index=box.item_index,
+                box_lines=placed.item.open_lines,
+                box_fill=placed.item.box_fill,
+                x_mm=box.x_mm,
+                y_mm=box.y_mm,
+                w_mm=box.w_mm,
+                h_mm=box.h_mm,
+                layout_version=L.LAYOUT_VERSION,
+            )
+        )
+        written += 1
+    db.flush()
+    return written
+
+
 # --------------------------------------------------------------------------
 # 4 · the two entry points the API layer calls
 # --------------------------------------------------------------------------
@@ -536,7 +696,8 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     _refuse_unapproved(sheet)
 
     data = build_sheet_data(db, sheet)
-    blank = html_to_pdf(render_sheet_html(data, kind=SheetKind.BLANK))
+    blank_html = render_sheet_html(data, kind=SheetKind.BLANK)
+    blank = html_to_pdf(blank_html)
     key = html_to_pdf(render_sheet_html(data, kind=SheetKind.ANSWER_KEY))
 
     blank_key = store_pdf(blank, storage_key(sheet.id, "blank.pdf"))
@@ -545,6 +706,9 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     sheet.blank_pdf_key = blank_key
     sheet.answer_key_pdf_key = answer_key
     _stamp(sheet, data)
+    # The blank is what the students write on, so its boxes are the ones the
+    # scanner will crop. Measured from the same document that became the PDF.
+    _persist_answer_box_placements(db, sheet, data, measure_answer_boxes(blank_html))
     db.flush()
     return (blank_key, answer_key)
 
@@ -646,7 +810,8 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     _refuse_unapproved(sheet)
 
     data = build_sheet_data(db, sheet, show_legend=True, require_instances=True)
-    blank = html_to_pdf(render_sheet_html(data, kind=SheetKind.BLANK))
+    blank_html = render_sheet_html(data, kind=SheetKind.BLANK)
+    blank = html_to_pdf(blank_html)
     key = html_to_pdf(render_sheet_html(data, kind=SheetKind.ANSWER_KEY))
 
     blank_key = store_pdf(blank, storage_key(sheet.id, "adaptive-batch.pdf"))
@@ -655,6 +820,7 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
     sheet.blank_pdf_key = blank_key
     sheet.answer_key_pdf_key = answer_key
     _stamp(sheet, data)
+    _persist_answer_box_placements(db, sheet, data, measure_answer_boxes(blank_html))
 
     # The feedback pages, as their own document. `_stamp` has already recorded
     # `page_count` from the graded pagination above, and this cannot touch it.
@@ -670,10 +836,12 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
 
 __all__ = [
     "BrowserUnavailableError",
+    "MeasuredBox",
     "SheetRenderError",
     "browser_available",
     "build_sheet_data",
     "html_to_pdf",
+    "measure_answer_boxes",
     "render_adaptive_batch",
     "render_dir",
     "render_sheet_pdfs",
