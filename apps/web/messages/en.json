@@ -321,7 +321,8 @@
       "verdictWrong": "wrong",
       "verdictNone": "none"
     },
-    "confirmTranscription": "Save the transcription"
+    "confirmTranscription": "Save the transcription",
+    "readingAnswers": "{count, plural, one {# written answer is still being read} other {# written answers are still being read}} — confirming waits for the reading to finish."
   },
   "adaptive": {
     "aiBadge": "AI",
@@ -492,7 +493,8 @@
       "fallback": "The upload failed. Try again.",
       "scan_pages_unassigned": "Some pages belong to nobody. Assign them or set them aside, then confirm.",
       "scan_matches_no_sheet": "None of these pages belong to the sheet you chose. Check that it is the right one.",
-      "scan_already_confirmed": "These results have already been saved."
+      "scan_already_confirmed": "These results have already been saved.",
+      "scan_open_grading_pending": "Written answers are still being read. Confirm once the reading is finished."
     },
     "unavailableTitle": "Data unavailable"
   },

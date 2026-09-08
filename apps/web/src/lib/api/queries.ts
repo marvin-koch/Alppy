@@ -436,8 +436,13 @@ export function useScan(scanId: Uuid | null): UseQueryResult<ScanOut> {
     queryFn: () => api.getScan(scanId as Uuid),
     enabled: Boolean(scanId),
     refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status === 'uploaded' || status === 'processing' ? 1000 : false;
+      const data = query.state.data;
+      const status = data?.status;
+      if (status === 'uploaded' || status === 'processing') return 1000;
+      // The verdicts on written answers arrive from a chained job after the
+      // marks are read; keep looking while any is still pending.
+      const reading = data?.pages.some((p) => p.detections.some((d) => d.outcome === 'pending'));
+      return reading ? 2000 : false;
     },
   });
 }

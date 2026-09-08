@@ -1038,3 +1038,111 @@ def test_the_teacher_corrects_a_written_answer_and_the_machine_keeps_its_story(
     db.commit()
     graded = {a.exercise_id: a.correct for a in _attempts(db, scan)}
     assert graded[exercises[1].id] is False
+
+
+def test_confirmation_waits_for_a_live_grader_and_settles_an_abandoned_one(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A pending row is a promise. While a grading job is queued or running the
+    pile cannot be confirmed — confirming would lock it with that child's
+    answer unrecorded, and there is no second confirmation. When no job is
+    coming, the promise is broken honestly: the row settles as not gradeable,
+    is counted as skipped, and the teacher is not held hostage by a dead
+    provider."""
+    from alppy.models import Job
+    from alppy.models.enums import JobKind, JobStatus
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+    assert _open_detection(db, scan).outcome is DetectionOutcome.PENDING
+
+    live = Job(
+        id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.GRADE_OPEN_ANSWERS,
+        status=JobStatus.RUNNING, progress=0.2, payload={"scan_id": str(scan.id)},
+    )
+    db.add(live)
+    db.commit()
+    with pytest.raises(ApiError) as refused:
+        scan_service.confirm_scan(db, tenant.scope, scan.id)
+    assert refused.value.code == "scan_open_grading_pending"
+    assert _open_detection(db, scan).outcome is DetectionOutcome.PENDING
+
+    live.status = JobStatus.FAILED
+    db.commit()
+    response = scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert response.items_skipped == 1
+    assert _open_detection(db, scan).outcome is DetectionOutcome.NOT_GRADEABLE
+
+
+def test_a_page_assigned_by_hand_gets_its_written_answers_a_grader(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Re-reading an assigned page can cut boxes no job was chained for."""
+    from alppy.models.enums import JobKind, JobStatus
+    from alppy.scan.detector import PX_PER_MM
+    from alppy.sheets import layout as L
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    student = tenant.students[0]
+    images = _written_copy(db, sheet, student.uid, rect, ink=True)
+    ox, oy = L.UID_GRID_ORIGIN_MM
+    w = L.UID_GRID_CELLS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
+    h = L.UID_GRID_ROWS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
+    cv2.rectangle(
+        images[0],
+        (int((ox - 1) * PX_PER_MM), int((oy - 1) * PX_PER_MM)),
+        (int((ox + w) * PX_PER_MM), int((oy + h) * PX_PER_MM)),
+        255,
+        -1,
+    )
+    scan = _run(db, storage, tenant, sheet, images, monkeypatch)
+    page = db.query(ScanPage).filter(ScanPage.scan_id == scan.id).one()
+    assert page.detected_uid is None
+    assert scan_service.queue_grading_if_pending(db, tenant.scope, scan.id) is None
+
+    scan_service.assign_page_student(db, tenant.scope, scan.id, page.id, student.id, storage=storage)
+    db.commit()
+    assert _open_detection(db, scan).outcome is DetectionOutcome.PENDING
+
+    job = scan_service.queue_grading_if_pending(db, tenant.scope, scan.id)
+    assert job is not None and job.kind is JobKind.GRADE_OPEN_ANSWERS
+    assert job.status is JobStatus.QUEUED and job.payload["scan_id"] == str(scan.id)
+    db.commit()
+    # Not twice: the job on its way is enough.
+    assert scan_service.queue_grading_if_pending(db, tenant.scope, scan.id) is None
+
+    # And the grader finds the fill through the instance, since the page
+    # decoded no UID.
+    from alppy.services.open_answer_grading import _fill_for
+
+    assert "8 mm" in _fill_for(db, _open_detection(db, scan))
+
+
+def test_the_fill_told_to_the_model_is_the_boxs_own_page(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Item indices restart on every physical page, so the placement of page 2
+    item 0 must never be confused with page 1 item 0."""
+    from alppy.models import AnswerBoxPlacement
+    from alppy.models.enums import AnswerBoxFill
+    from alppy.services.open_answer_grading import _fill_for
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+    detection = _open_detection(db, scan)
+    # A second-page placement at the same item index, with a different fill.
+    db.add(AnswerBoxPlacement(
+        id=uuid.uuid4(), school_id=sheet.school_id, sheet_id=sheet.id, exercise_id=None,
+        student_uid=uid, copy_page=2, item_index=detection.item_index, box_lines=3,
+        box_fill=AnswerBoxFill.GRID, x_mm=17, y_mm=100, w_mm=176, h_mm=24, layout_version="v1",
+    ))
+    db.commit()
+    assert "8 mm" in _fill_for(db, detection)
+    page = db.get(ScanPage, detection.scan_page_id)
+    assert page is not None
+    page.page_in_copy = 1
+    db.commit()
+    assert "grid" in _fill_for(db, detection)

@@ -70,15 +70,29 @@ def pending_detections(db: Session, scan_id: uuid.UUID) -> list[tuple[Detection,
 
 
 def _fill_for(db: Session, detection: Detection) -> str:
-    """Which guides the crop carried, told to the model so it ignores them."""
+    """Which guides the crop carried, told to the model so it ignores them.
+
+    The placement is keyed by copy page as well as item index — item indices
+    restart on every physical page — so the page's folio is part of the key.
+    A page assigned by hand carries no decoded UID; the student's UID is read
+    through the instance instead."""
+    page = db.get(ScanPage, detection.scan_page_id)
+    scan = db.get(Scan, page.scan_id) if page is not None else None
+    if page is None or scan is None or page.page_in_copy is None:
+        return _FILL_WORDS["lined"]
+    uid = page.detected_uid
+    if uid is None and page.sheet_instance_id is not None:
+        from alppy.models import SheetInstance
+
+        instance = db.get(SheetInstance, page.sheet_instance_id)
+        uid = instance.student_uid if instance is not None else None
     row = db.execute(
         select(AnswerBoxPlacement.box_fill)
-        .join(ScanPage, ScanPage.id == detection.scan_page_id)
-        .join(Scan, Scan.id == ScanPage.scan_id)
-        .where(AnswerBoxPlacement.sheet_id == Scan.sheet_id)
-        .where(AnswerBoxPlacement.student_uid == ScanPage.detected_uid)
+        .where(AnswerBoxPlacement.sheet_id == scan.sheet_id)
+        .where(AnswerBoxPlacement.student_uid == uid)
+        .where(AnswerBoxPlacement.copy_page == page.page_in_copy + 1)
         .where(AnswerBoxPlacement.item_index == detection.item_index)
-    ).scalars().first()
+    ).scalar_one_or_none()
     return _FILL_WORDS.get(row.value if row is not None else "lined", _FILL_WORDS["lined"])
 
 
@@ -224,6 +238,28 @@ def grade_open_answers(
     return {"pending": total, **counts}
 
 
+def queue_open_grading(
+    db: Session, *, school_id: uuid.UUID, scan_id: uuid.UUID, after_job_id: uuid.UUID | None = None
+) -> Job:
+    """The row for a grading job over one scan. Writes it; the caller enqueues
+    it (``start_job`` from a handler, ``enqueue`` from the worker)."""
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=school_id,
+        kind=JobKind.GRADE_OPEN_ANSWERS,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="reading the written answers",
+        payload={
+            "scan_id": str(scan_id),
+            **({"after_job_id": str(after_job_id)} if after_job_id else {}),
+        },
+    )
+    db.add(job)
+    db.flush()
+    return job
+
+
 def chain_open_grading(db: Session, job: Job) -> Job | None:
     """The follow-up job for a finished ``PROCESS_SCAN``, or ``None`` when
     nothing is pending. Writes the row; the caller enqueues it.
@@ -239,18 +275,39 @@ def chain_open_grading(db: Session, job: Job) -> Job | None:
     scan_id = (job.payload or {}).get("scan_id")
     if not scan_id:
         return None
-    follow_up = Job(
-        id=uuid.uuid4(),
-        school_id=job.school_id,
-        kind=JobKind.GRADE_OPEN_ANSWERS,
-        status=JobStatus.QUEUED,
-        progress=0.0,
-        message="reading the written answers",
-        payload={"scan_id": str(scan_id), "after_job_id": str(job.id)},
+    return queue_open_grading(
+        db, school_id=job.school_id, scan_id=uuid.UUID(str(scan_id)), after_job_id=job.id
     )
-    db.add(follow_up)
+
+
+def grading_in_progress(db: Session, scan_id: uuid.UUID) -> bool:
+    """Whether a grading job for this scan is queued or running — the one
+    case where a pending row is a promise somebody is still keeping."""
+    live = db.execute(
+        select(Job)
+        .where(Job.kind == JobKind.GRADE_OPEN_ANSWERS)
+        .where(Job.status.in_((JobStatus.QUEUED, JobStatus.RUNNING)))
+    ).scalars()
+    wanted = str(scan_id)
+    return any((job.payload or {}).get("scan_id") == wanted for job in live)
+
+
+def settle_abandoned(db: Session, scan_id: uuid.UUID) -> int:
+    """Turn every pending row of this scan into ``NOT_GRADEABLE``: no grader is
+    coming for them. Returns how many were settled."""
+    rows = pending_detections(db, scan_id)
+    for detection, _ in rows:
+        _ungradeable(detection)
     db.flush()
-    return follow_up
+    return len(rows)
 
 
-__all__ = ["chain_open_grading", "grade_one", "grade_open_answers", "pending_detections"]
+__all__ = [
+    "chain_open_grading",
+    "grade_one",
+    "grade_open_answers",
+    "grading_in_progress",
+    "pending_detections",
+    "queue_open_grading",
+    "settle_abandoned",
+]

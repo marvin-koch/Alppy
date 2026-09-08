@@ -37,6 +37,7 @@ import {
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
+import { badgeVariant } from '@/lib/detectionOutcome';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -95,6 +96,12 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
   const queue = useMemo(
     () => pages.flatMap((p) => p.detections).filter(needsAHuman),
+    [pages],
+  );
+  // Written answers still with the grader. Confirming now would lock the
+  // pile with those answers unrecorded, and there is no second confirmation.
+  const reading = useMemo(
+    () => pages.flatMap((p) => p.detections).filter((d) => d.outcome === 'pending').length,
     [pages],
   );
 
@@ -169,7 +176,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
             loading={confirm.isPending}
             busyLabel={t('confirming')}
             onClick={() => confirm.mutate()}
-            disabled={confirmed || processing}
+            disabled={confirmed || processing || reading > 0}
           >
             {t('confirm')}
           </Button>
@@ -185,8 +192,14 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
           </div>
         </Panel>
       ) : (
-        <Panel className="mb-4">
+        <Panel className="mb-4" role={reading > 0 ? 'status' : undefined}>
           <p className="text-body-s">{t('itemsToCheck', { count: queue.length })}</p>
+          {reading > 0 ? (
+            <p className="mt-1 flex items-center gap-3 text-body-s text-ink-700">
+              <ProgressRing value={0} label={t('readingAnswers', { count: reading })} size={28} />
+              {t('readingAnswers', { count: reading })}
+            </p>
+          ) : null}
         </Panel>
       )}
 
@@ -527,13 +540,6 @@ function queueRank(d: DetectionOut): number {
   if (d.outcome === 'corrected' || d.outcome === 'not_gradeable') return 2;
   if (d.outcome === 'pending') return 1.5;
   return d.confidence;
-}
-
-function badgeVariant(outcome: DetectionOut['outcome']) {
-  if (outcome === 'detected') return 'success' as const;
-  if (outcome === 'corrected') return 'primary' as const;
-  if (outcome === 'not_gradeable' || outcome === 'pending') return 'neutral' as const;
-  return 'warn' as const;
 }
 
 /**

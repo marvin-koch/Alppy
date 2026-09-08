@@ -321,7 +321,8 @@
       "verdictWrong": "falsch",
       "verdictNone": "keines"
     },
-    "confirmTranscription": "Abschrift speichern"
+    "confirmTranscription": "Abschrift speichern",
+    "readingAnswers": "{count, plural, one {# schriftliche Antwort wird noch gelesen} other {# schriftliche Antworten werden noch gelesen}} — die Bestätigung wartet auf das Ende des Lesens."
   },
   "adaptive": {
     "aiBadge": "KI",
@@ -492,7 +493,8 @@
       "fallback": "Das Hochladen ist fehlgeschlagen. Versuchen Sie es erneut.",
       "scan_pages_unassigned": "Einige Seiten sind niemandem zugeordnet. Ordnen Sie sie zu oder sortieren Sie sie aus, dann bestätigen Sie.",
       "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
-      "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert."
+      "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert.",
+      "scan_open_grading_pending": "Schriftliche Antworten werden noch gelesen. Bestätigen Sie, sobald das Lesen abgeschlossen ist."
     },
     "unavailableTitle": "Daten nicht verfügbar"
   },

@@ -597,10 +597,13 @@ verdict. Five choices were made without asking, and one with.
   stays a pure OpenCV pass that flips the pile to review the moment the marks
   are read; the worker then enqueues `GRADE_OPEN_ANSWERS`, which settles each
   row as it lands. A failed call, an ungrounded provider and an unreadable
-  answer all end as `NOT_GRADEABLE`; the grader treats a pending row as
-  ungradeable in any case; so a dead provider can delay verdicts but can never
-  block confirmation. The alternative — a confirm guard waiting on pending
-  rows — was rejected for exactly that reason.
+  answer all end as `NOT_GRADEABLE`. Confirmation waits **only while a
+  grading job is queued or running** — confirming then would lock the pile
+  with a child's answer unrecorded, and there is no second confirmation; when
+  no job is coming, the pending rows are settled as not gradeable at confirm
+  time and counted as skipped, so a dead provider delays verdicts but never
+  holds the teacher hostage. A page assigned by hand queues its own grading
+  job, since re-reading it can cut boxes the original chain never saw.
 * **Images ride on the existing chat request.** `ChatRequest.images`, empty
   for every text caller, rather than a second provider protocol: audit, cost
   estimate and the text-side PII gate come for free, and the typed verdict

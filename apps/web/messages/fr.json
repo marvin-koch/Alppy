@@ -321,7 +321,8 @@
       "verdictWrong": "faux",
       "verdictNone": "aucun"
     },
-    "confirmTranscription": "Enregistrer la transcription"
+    "confirmTranscription": "Enregistrer la transcription",
+    "readingAnswers": "{count, plural, one {# réponse écrite en cours de lecture} other {# réponses écrites en cours de lecture}} — la validation attend la fin de la lecture."
   },
   "adaptive": {
     "aiBadge": "IA",
@@ -492,7 +493,8 @@
       "fallback": "L'envoi a échoué. Réessayez.",
       "scan_pages_unassigned": "Certaines pages ne sont attribuées à personne. Attribuez-les ou écartez-les, puis validez.",
       "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
-      "scan_already_confirmed": "Ces résultats ont déjà été enregistrés."
+      "scan_already_confirmed": "Ces résultats ont déjà été enregistrés.",
+      "scan_open_grading_pending": "Des réponses écrites sont encore en cours de lecture. Validez quand la lecture est terminée."
     },
     "unavailableTitle": "Données indisponibles"
   },

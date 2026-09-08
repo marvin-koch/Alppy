@@ -371,6 +371,27 @@ def confirm_scan(
             page_ids=unassigned,
         )
 
+    # A written answer still with the grader is a promise. While a grading job
+    # is queued or running the promise is being kept, and confirming now would
+    # lock the pile with that child's answer unrecorded — so wait. When no job
+    # is coming (a dead provider, a job that never chained), the promise is
+    # broken honestly: the rows become NOT_GRADEABLE and are counted as
+    # skipped, and the teacher can still confirm.
+    from alppy.services.open_answer_grading import (
+        grading_in_progress,
+        pending_detections,
+        settle_abandoned,
+    )
+
+    if pending_detections(db, scan.id):
+        if grading_in_progress(db, scan.id):
+            raise errors.conflict(
+                "written answers are still being read; confirm once the reading is done",
+                code="scan_open_grading_pending",
+                scan_id=str(scan_id),
+            )
+        settle_abandoned(db, scan.id)
+
     answered_at = _answered_at(scan, at)
     attempts_created = 0
     attempts_superseded = 0
@@ -583,6 +604,23 @@ def assign_page_student(
         redetect_page(db, storage, page=page, student=student)
         db.flush()
     return page
+
+
+def queue_grading_if_pending(db: Session, scope: Scope, scan_id: uuid.UUID) -> Job | None:
+    """A grading job for this scan's pending written answers, unless one is
+    already on its way. Called after a page is assigned by hand: re-reading
+    the page may have cut boxes that no job was ever chained for, and a
+    pending row nobody is coming for is a promise nobody keeps."""
+    from alppy.services.open_answer_grading import (
+        grading_in_progress,
+        pending_detections,
+        queue_open_grading,
+    )
+
+    scan = get_scan(db, scope, scan_id)
+    if not pending_detections(db, scan.id) or grading_in_progress(db, scan.id):
+        return None
+    return queue_open_grading(db, school_id=scope.school_id, scan_id=scan.id)
 
 
 def set_page_discarded(

@@ -169,7 +169,12 @@ def assign_page(
     page = svc.assign_page_student(
         db, scope, scan_id, page_id, payload.student_id, storage=storage
     )
+    # Re-reading the page may have cut written answers no job was chained
+    # for; they get their grader now.
+    follow_up = svc.queue_grading_if_pending(db, scope, scan_id)
     db.commit()
+    if follow_up is not None:
+        start_job(db, follow_up)
     db.refresh(page)
     return scan_page_out(page, storage=storage)
 

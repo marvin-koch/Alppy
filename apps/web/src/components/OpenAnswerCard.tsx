@@ -16,6 +16,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import type { DetectionCorrection, DetectionOut } from '@/lib/api/types';
+import { badgeVariant } from '@/lib/detectionOutcome';
 
 type Verdict = 'correct' | 'wrong' | 'unsure';
 
@@ -23,13 +24,6 @@ function verdictOf(d: DetectionOut): Verdict {
   if (d.verdict_correct === true) return 'correct';
   if (d.verdict_correct === false) return 'wrong';
   return 'unsure';
-}
-
-function badgeVariant(outcome: DetectionOut['outcome']) {
-  if (outcome === 'detected') return 'success' as const;
-  if (outcome === 'corrected') return 'primary' as const;
-  if (outcome === 'not_gradeable' || outcome === 'pending') return 'neutral' as const;
-  return 'warn' as const;
 }
 
 export interface OpenAnswerCardProps {
