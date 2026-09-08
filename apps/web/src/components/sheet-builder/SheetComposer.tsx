@@ -278,19 +278,24 @@ function AnswerBoxControl({
       <span className="text-label uppercase text-ink-700">
         {t('boxTitle')}
       </span>
+      {/* Wrapping on purpose: with the preview open this column is narrow,
+          and a control that spills out of its panel is worse than one that
+          takes two rows. */}
       <SegmentedControl<`${AnswerBoxLines}`>
         label={t('boxLines')}
         block
+        className="flex-wrap"
         value={`${box.lines}`}
         onValueChange={(value) => onChange(exerciseId, { lines: Number(value) as AnswerBoxLines })}
         options={ANSWER_BOX_LINES.map((lines) => ({
           value: `${lines}` as `${AnswerBoxLines}`,
-          label: t('boxLinesOption', { count: lines }),
+          label: lines === 0 ? t('boxNone') : t('boxLinesOption', { count: lines }),
         }))}
       />
       <SegmentedControl<AnswerBoxFill>
         label={t('boxFill')}
         block
+        className="flex-wrap"
         value={box.fill}
         onValueChange={(fill) => onChange(exerciseId, { fill })}
         options={ANSWER_BOX_FILLS.map((fill) => ({ value: fill, label: fillLabel[fill] }))}

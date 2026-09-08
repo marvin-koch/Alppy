@@ -442,7 +442,7 @@
     },
     "true": "Vrai",
     "false": "Faux",
-    "openNotGraded": "Réponse libre — non corrigée automatiquement",
+    "openNotGraded": "Réponse libre — lue par l'IA au scan, validée par vous",
     "answer": "Réponse",
     "explanation": "Explication",
     "difficultyLevel": "Niveau {level} sur 5",
@@ -568,13 +568,14 @@
     "sourceFailed": "Ce document n'a pas pu être indexé.",
     "sourceNoExercises": "Indexé, mais aucun exercice trouvé.",
     "boxTitle": "Cadre de réponse",
-    "boxLines": "Hauteur",
-    "boxLinesOption": "{count} lignes",
+    "boxLines": "Hauteur, en lignes",
+    "boxLinesOption": "{count}",
     "boxFill": "Fond",
     "boxFillLined": "Lignes",
     "boxFillGrid": "Quadrillage",
     "boxFillBlank": "Vide",
-    "boxHelp": "L'élève écrit dans le cadre. Au scan, Alppy le découpe, lit l'écriture et propose une correction que vous validez."
+    "boxHelp": "L'élève écrit dans le cadre. Au scan, Alppy le découpe, lit l'écriture et propose une correction que vous validez.",
+    "boxNone": "Sans cadre"
   },
   "newExercise": {
     "title": "Ajouter un exercice",

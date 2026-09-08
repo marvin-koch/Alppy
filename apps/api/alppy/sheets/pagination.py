@@ -118,12 +118,12 @@ sheet with a message about one item. The crop is a raster at print
 resolution, so it stays sharp when small; a teacher who finds it too small on
 paper can see that in the preview, which is what the preview is for."""
 
-# An answer box under a picture: none. A textbook exercise is worked in the
-# notebook, as the book intends, and a token box under a twelve-part exercise
-# costs the millimetres that keep a second exercise off the page. A teacher
-# who wants answer space on the sheet adds an item of their own.
-# ``html._item_context`` mirrors this by giving a figured item
-# ``open_lines = 0``, and the template draws no box for it.
+# An answer box under a picture prints like any other: the box is what the
+# scanner crops and the model reads, and a textbook exercise is the common
+# case, not the exception. ``figure_room_mm`` gives the picture whatever the
+# box leaves, so the item still fits a page on its own. A teacher who wants
+# the exercise worked in the notebook, as the book intends, picks "no box"
+# (``open_lines = 0``) and the picture gets the whole room back.
 
 MCQ_LETTERS: str = L.OptionLetters.MCQ.value
 
@@ -255,6 +255,9 @@ def figure_room_mm(item: Item) -> float:
     Never below a millimetre: a degenerate item still prints *something*."""
     room = USABLE_H_MM - ITEM_PADDING_MM - ITEM_RULE_MM - FIGURE_GAP_MM
     room -= _text_above_figure_mm(item) + _options_height_mm(item)
+    box = box_height_mm(item)
+    if box is not None:
+        room -= OPEN_LINES_MARGIN_MM + box + BOX_MARGIN_BOTTOM_MM
     return max(1.0, min(FIGURE_MAX_H_MM, room))
 
 
@@ -293,10 +296,8 @@ def estimate_item_height_mm(item: Item) -> float:
 
 def box_height_mm(item: Item) -> float | None:
     """The printed height of this item's written-answer box, or ``None`` when
-    it prints none: a bubble item, a figured item, or zero lines."""
-    if item.type is not ExerciseType.OPEN or item.figure is not None:
-        return None
-    if item.open_lines <= 0:
+    it prints none: a bubble item, or an open item set to zero lines."""
+    if item.type is not ExerciseType.OPEN or item.open_lines <= 0:
         return None
     return item.open_lines * OPEN_LINE_PITCH_MM
 

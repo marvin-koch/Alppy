@@ -11,7 +11,10 @@ import type { AnswerBoxFill, AnswerBoxLines, ExerciseOut, SheetItemIn, Uuid } fr
 export const MAX_SHEET_ITEMS = 64;
 
 /** The box heights the paper reserves room for, straight from `layout.py`. */
-export const ANSWER_BOX_LINES = SHEET_LAYOUT.answerBox.linePresets as readonly AnswerBoxLines[];
+export const ANSWER_BOX_LINES: readonly AnswerBoxLines[] = [
+  0,
+  ...(SHEET_LAYOUT.answerBox.linePresets as readonly AnswerBoxLines[]),
+];
 export const DEFAULT_ANSWER_BOX_LINES = SHEET_LAYOUT.answerBox.defaultLines as AnswerBoxLines;
 export const ANSWER_BOX_FILLS: readonly AnswerBoxFill[] = ['lined', 'grid', 'blank'];
 export const DEFAULT_ANSWER_BOX_FILL: AnswerBoxFill = 'lined';

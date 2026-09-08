@@ -249,13 +249,20 @@ def test_pagination_reserves_the_figures_printed_height() -> None:
     pages = paginate([tall])
     assert len(pages) == 1 and not pages[0].overflowing
 
-    # Two ordinary exercises of the book share a page: the ruled lines an open
-    # text item gets are not added under a picture.
+    # Two ordinary exercises of the book worked in the notebook (no box)
+    # share a page; give each a box and the boxes need a second page.
     two = [
+        Item(key="a", type=ExerciseType.OPEN, statement="a", open_lines=0,
+             figure=_figure(165.0, 55.0)),
+        Item(key="b", type=ExerciseType.OPEN, statement="b", open_lines=0,
+             figure=_figure(165.0, 46.0)),
+    ]
+    assert len(paginate(two)) == 1
+    boxed = [
         Item(key="a", type=ExerciseType.OPEN, statement="a", figure=_figure(165.0, 55.0)),
         Item(key="b", type=ExerciseType.OPEN, statement="b", figure=_figure(165.0, 46.0)),
     ]
-    assert len(paginate(two)) == 1
+    assert len(paginate(boxed)) == 2
 
 
 def test_a_figure_taller_than_the_page_is_shrunk_to_fit_never_refused() -> None:
@@ -287,7 +294,8 @@ def test_the_figure_makes_room_for_the_text_printed_above_it() -> None:
     # An MCQ with a picture pays for its options the same way.
     mcq = Item(key="m", type=ExerciseType.MCQ, statement="Quelle aire ?",
                options=("12 cm²", "24 cm²", "36 cm²", "48 cm²"), figure=_figure(165.0, 150.0))
-    plain = Item(key="x", type=ExerciseType.OPEN, statement="x", figure=_figure(165.0, 150.0))
+    plain = Item(key="x", type=ExerciseType.OPEN, statement="x", open_lines=0,
+                 figure=_figure(165.0, 150.0))
     assert figure_room_mm(mcq) < figure_room_mm(plain)
     assert len(paginate([mcq])) == 1
 
@@ -307,7 +315,7 @@ def test_the_markup_sizes_the_picture_to_what_pagination_reserved() -> None:
     assert 'alt="Prends les mesures nécessaires."' in html
     # The statement is the alt, not a paragraph: printed once, as the picture.
     assert html.count("Prends les mesures nécessaires.") == 1
-    assert 'class="sheet-answer-box"' not in html, "no answer box under a picture"
+    assert 'data-lines="2"' in html, "the box prints under a picture too"
 
 
 # --------------------------------------------------------------------------
@@ -361,3 +369,35 @@ def test_the_box_prints_its_height_inline_with_four_ticks_and_the_chosen_fill() 
     assert 'data-fill="blank"' in blank and "<pattern" not in blank
 
     assert 'class="sheet-answer-box"' not in html_for(_open(0))
+
+
+def test_a_picture_gives_the_box_its_room_and_gets_it_back_without_one() -> None:
+    """A textbook exercise is the common case for a written answer: the box
+    prints under the crop, and the crop is sized to what the box leaves so
+    the item still fits a page on its own. Zero lines is the teacher saying
+    "worked in the notebook", and the picture gets the whole room back."""
+    from alppy.sheets.pagination import (
+        BOX_MARGIN_BOTTOM_MM,
+        OPEN_LINE_PITCH_MM,
+        box_height_mm,
+        figure_room_mm,
+    )
+
+    boxed = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=5,
+                 figure=_figure(165.0, 150.0))
+    bare = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=0,
+                figure=_figure(165.0, 150.0))
+    assert box_height_mm(boxed) == pytest.approx(5 * OPEN_LINE_PITCH_MM)
+    assert box_height_mm(bare) is None
+    # Without a box the picture hits the ceiling; with one it gets exactly
+    # the room the page has left once the box and its margins are paid for.
+    from alppy.sheets.pagination import ITEM_PADDING_MM, ITEM_RULE_MM, LINE_H_MM
+
+    assert figure_room_mm(bare) == pytest.approx(FIGURE_MAX_H_MM)
+    assert figure_room_mm(boxed) == pytest.approx(
+        USABLE_H_MM - ITEM_PADDING_MM - ITEM_RULE_MM - FIGURE_GAP_MM - LINE_H_MM
+        - (OPEN_LINES_MARGIN_MM + 5 * OPEN_LINE_PITCH_MM + BOX_MARGIN_BOTTOM_MM)
+    )
+    for item in (boxed, bare):
+        pages = paginate([item])
+        assert len(pages) == 1 and not pages[0].overflowing

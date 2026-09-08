@@ -292,8 +292,8 @@ export interface SheetProposeResponse {
 /** What is printed inside a written-answer box, under the student's ink. */
 export type AnswerBoxFill = 'lined' | 'grid' | 'blank';
 
-/** The heights the paper reserves room for, in 8 mm lines. */
-export type AnswerBoxLines = 3 | 5 | 8 | 12;
+/** The heights the paper reserves room for, in 8 mm lines; 0 prints no box. */
+export type AnswerBoxLines = 0 | 3 | 5 | 8 | 12;
 
 export interface SheetItemIn {
   exercise_id: Uuid;

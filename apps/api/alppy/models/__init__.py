@@ -496,7 +496,7 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
         # The four presets the builder offers. A value outside them would print
         # a box the pagination estimate never reserved.
         CheckConstraint(
-            "answer_box_lines IS NULL OR answer_box_lines IN (3, 5, 8, 12)",
+            "answer_box_lines IS NULL OR answer_box_lines IN (0, 3, 5, 8, 12)",
             name="ck_sheet_item_answer_box_lines",
         ),
     )
@@ -508,7 +508,7 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     # The teacher may edit the printed wording without mutating the corpus.
     statement_override: Mapped[str | None] = mapped_column(Text)
     # The written-answer box under an `open` item: its height in 8 mm lines
-    # (3, 5, 8 or 12) and what is printed inside it. Per sheet item, not per
+    # (3, 5, 8 or 12; 0 prints none) and what is printed inside it. Per sheet item, not per
     # exercise, for the same reason as the wording: the same exercise may want
     # three lines on a quiz and twelve on a test. NULL means the default, and
     # both are meaningless on an MCQ or a true/false item.

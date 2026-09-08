@@ -445,8 +445,7 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
         "ai_generated": item.ai_generated,
         "options": options,
         "is_open": item.type is ExerciseType.OPEN,
-        # No box under a picture; see pagination's note on the box.
-        "open_lines": 0 if item.figure else max(0, item.open_lines),
+        "open_lines": max(0, item.open_lines),
         "box_fill": item.box_fill.value,
         # The height is decided once, here, and written inline: pagination
         # reserved exactly this many millimetres.

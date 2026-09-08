@@ -350,8 +350,8 @@ class SheetItemIn(BaseModel):
     statement_override: str | None = None
     # The written-answer box under an open item: height in 8 mm lines, one of
     # the four presets the paper reserves room for, and what is printed inside.
-    # Ignored on a bubble item. None means the default.
-    answer_box_lines: Literal[3, 5, 8, 12] | None = None
+    # Ignored on a bubble item. None means the default; 0 prints no box.
+    answer_box_lines: Literal[0, 3, 5, 8, 12] | None = None
     answer_box_fill: AnswerBoxFill | None = None
 
 

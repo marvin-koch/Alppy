@@ -442,7 +442,7 @@
     },
     "true": "True",
     "false": "False",
-    "openNotGraded": "Free response — not automatically graded",
+    "openNotGraded": "Free response — read by AI on scanning, confirmed by you",
     "answer": "Answer",
     "explanation": "Explanation",
     "difficultyLevel": "Level {level} of 5",
@@ -568,13 +568,14 @@
     "sourceFailed": "This document could not be indexed.",
     "sourceNoExercises": "Indexed, but no exercises found.",
     "boxTitle": "Answer box",
-    "boxLines": "Height",
-    "boxLinesOption": "{count} lines",
+    "boxLines": "Height, in lines",
+    "boxLinesOption": "{count}",
     "boxFill": "Fill",
     "boxFillLined": "Lines",
     "boxFillGrid": "Grid",
     "boxFillBlank": "Blank",
-    "boxHelp": "The student writes inside the box. On scanning, Alppy cuts it out, reads the handwriting and proposes a mark for you to confirm."
+    "boxHelp": "The student writes inside the box. On scanning, Alppy cuts it out, reads the handwriting and proposes a mark for you to confirm.",
+    "boxNone": "No box"
   },
   "newExercise": {
     "title": "Add an exercise",

@@ -97,6 +97,7 @@ ANSWER_BOX_GRID_MM: Final = 5.0  # the square of a Swiss maths notebook
 ANSWER_BOX_BORDER_MM: Final = 0.35  # 1 pt
 ANSWER_BOX_TICK_MM: Final = 3.0  # arm of the L-shaped corner tick, outside the box
 ANSWER_BOX_LINE_PRESETS: Final[tuple[int, ...]] = (3, 5, 8, 12)
+ANSWER_BOX_NO_BOX: Final = 0  # the teacher's "worked in the notebook"
 ANSWER_BOX_DEFAULT_LINES: Final = 5
 
 

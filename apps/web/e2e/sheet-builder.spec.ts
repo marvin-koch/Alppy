@@ -183,12 +183,12 @@ test.describe('sheet builder', () => {
 
     const height = page.getByRole('radiogroup', { name: /hauteur/i });
     await expect(height).toBeVisible();
-    await expect(height.getByRole('radio', { name: /5 lignes/ })).toHaveAttribute(
+    await expect(height.getByRole('radio', { name: /^5$/ })).toHaveAttribute(
       'aria-checked',
       'true',
     );
-    await height.getByRole('radio', { name: /12 lignes/ }).click();
-    await expect(height.getByRole('radio', { name: /12 lignes/ })).toHaveAttribute(
+    await height.getByRole('radio', { name: /^12$/ }).click();
+    await expect(height.getByRole('radio', { name: /^12$/ })).toHaveAttribute(
       'aria-checked',
       'true',
     );

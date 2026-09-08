@@ -442,7 +442,7 @@
     },
     "true": "Richtig",
     "false": "Falsch",
-    "openNotGraded": "Freie Antwort — wird nicht automatisch korrigiert",
+    "openNotGraded": "Freie Antwort — beim Scannen von der KI gelesen, von Ihnen bestätigt",
     "answer": "Antwort",
     "explanation": "Erklärung",
     "difficultyLevel": "Stufe {level} von 5",
@@ -568,13 +568,14 @@
     "sourceFailed": "Dieses Dokument konnte nicht indexiert werden.",
     "sourceNoExercises": "Indexiert, aber keine Aufgaben gefunden.",
     "boxTitle": "Antwortkasten",
-    "boxLines": "Höhe",
-    "boxLinesOption": "{count} Zeilen",
+    "boxLines": "Höhe, in Zeilen",
+    "boxLinesOption": "{count}",
     "boxFill": "Hintergrund",
     "boxFillLined": "Linien",
     "boxFillGrid": "Karo",
     "boxFillBlank": "Leer",
-    "boxHelp": "Die Schülerin oder der Schüler schreibt in den Kasten. Beim Scannen schneidet Alppy ihn aus, liest die Handschrift und schlägt eine Korrektur vor, die Sie bestätigen."
+    "boxHelp": "Die Schülerin oder der Schüler schreibt in den Kasten. Beim Scannen schneidet Alppy ihn aus, liest die Handschrift und schlägt eine Korrektur vor, die Sie bestätigen.",
+    "boxNone": "Kein Kasten"
   },
   "newExercise": {
     "title": "Aufgabe hinzufügen",

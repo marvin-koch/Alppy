@@ -578,10 +578,14 @@ The MVP printed four ruled lines under an open item and graded nothing. As of
 verdict. Five choices were made without asking, and one with.
 
 * **Height and fill are per sheet item, from presets.** 3, 5, 8 or 12 lines
-  of 8 mm, filled with lines, the 5 mm notebook grid, or nothing. Presets
-  rather than a free height because pagination reserves room for exactly
-  these; a fill choice because a drawing wants a grid and a sentence wants
-  lines. Chosen by the user; the fill was added at their request.
+  of 8 mm, filled with lines, the 5 mm notebook grid, or nothing — or no box
+  at all (0 lines). Presets rather than a free height because pagination
+  reserves room for exactly these; a fill choice because a drawing wants a
+  grid and a sentence wants lines. Chosen by the user; the fill was added at
+  their request. **The box prints under a textbook crop too** — D40's "no
+  rules under a picture" stood for lines nobody read; a box the scanner
+  crops is the common case, and the picture is sized to what the box leaves.
+  "No box" is how a teacher keeps an exercise in the notebook.
 * **Box geometry is measured, not computed.** A bubble sits where the layout
   says; a box sits under text the browser wraps, and the pagination estimate
   is deliberately generous. The alternative — pinning every item at its
