@@ -65,7 +65,20 @@ export const SHEET_LAYOUT = {
     "bubbleDMm": 5.0,
     "maxOptions": 4
   },
-  "itemsPerPage": 16
+  "itemsPerPage": 16,
+  "answerBox": {
+    "linePitchMm": 8.0,
+    "gridMm": 5.0,
+    "borderMm": 0.35,
+    "tickMm": 3.0,
+    "linePresets": [
+      3,
+      5,
+      8,
+      12
+    ],
+    "defaultLines": 5
+  }
 } as const;
 
 export type SheetLayout = typeof SHEET_LAYOUT;

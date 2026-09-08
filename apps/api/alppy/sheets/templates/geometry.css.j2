@@ -195,16 +195,50 @@
   page-break-inside: avoid;
 }
 
-/* Free text: a ruled space, never a bubble. Printed, never auto-graded. */
-.sheet-rules {
-  margin-top: {{ g.open_margin }}mm;
+/* Free text: a delimited box, never a bubble. The scan job crops it for the
+   vision grader, so everything printed inside it is either a border the crop
+   removes by geometry, or a guide light enough to suppress by luminance. The
+   box is inset so its corner ticks, which reach outside it, stay within the
+   column. */
+.sheet-answer-box {
+  position: relative;
+  box-sizing: border-box;
+  margin: {{ g.open_margin }}mm {{ g.box_inset }}mm {{ g.box_margin_bottom }}mm {{ g.box_inset }}mm;
+  border: {{ g.box_border }}mm solid var(--c-ink-900);
+  overflow: visible;
 }
 
-.sheet-rule {
+.sheet-answer-box-guides {
+  position: absolute;
+  inset: 0;
   display: block;
-  height: {{ g.open_pitch }}mm;
-  border-bottom: var(--print-rule) solid var(--c-line);
 }
+
+.sheet-answer-box-guide {
+  fill: none;
+  /* ink-300, not --c-line: dark enough to survive a photocopy, light enough
+     (luminance ~0.65 on paper) for the crop step to drop by luminance while
+     pen ink, at a third of that, stays. The crop step's threshold is tuned
+     against this token; see alppy/scan/answer_box.py. */
+  stroke: var(--c-ink-300);
+  stroke-width: var(--print-rule);
+}
+
+/* The four ticks: L-shapes drawn with two borders, meeting the box's own
+   corner from outside. Together with the border they give the crop step a
+   cross at every corner — a stronger anchor than a corner alone, for a box a
+   student may write straight across. */
+.sheet-answer-box-tick {
+  position: absolute;
+  width: {{ g.box_tick }}mm;
+  height: {{ g.box_tick }}mm;
+  border: 0 solid var(--c-ink-900);
+}
+
+.sheet-answer-box-tick[data-corner='tl'] { left: -{{ g.box_tick }}mm; top: -{{ g.box_tick }}mm; border-right-width: {{ g.box_border }}mm; border-bottom-width: {{ g.box_border }}mm; }
+.sheet-answer-box-tick[data-corner='tr'] { right: -{{ g.box_tick }}mm; top: -{{ g.box_tick }}mm; border-left-width: {{ g.box_border }}mm; border-bottom-width: {{ g.box_border }}mm; }
+.sheet-answer-box-tick[data-corner='bl'] { left: -{{ g.box_tick }}mm; bottom: -{{ g.box_tick }}mm; border-right-width: {{ g.box_border }}mm; border-top-width: {{ g.box_border }}mm; }
+.sheet-answer-box-tick[data-corner='br'] { right: -{{ g.box_tick }}mm; bottom: -{{ g.box_tick }}mm; border-left-width: {{ g.box_border }}mm; border-top-width: {{ g.box_border }}mm; }
 
 .sheet-key-answer {
   margin-top: 1mm;
@@ -294,6 +328,8 @@
   line-height: {{ g.bubble_d }}mm;
   font-size: var(--text-body-l);
   color: var(--c-ink-700);
+  /* One row is 5 mm tall; a second line would land on the next row's bubbles. */
+  white-space: nowrap;
 }
 
 /* -- Footer, kept clear of the two bottom fiducials ----------------------- */

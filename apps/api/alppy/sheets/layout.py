@@ -83,6 +83,22 @@ MAX_OPTIONS: Final = 4
 
 ITEMS_PER_PAGE: Final = GRID_ROWS * GRID_GROUPS
 
+# --- Written-answer boxes -----------------------------------------------
+# An `open` item prints a delimited box under its statement. Unlike a bubble,
+# the box's POSITION is not fixed here: it sits under text whose height the
+# browser decides, so the renderer measures it and records the rectangle per
+# printed copy (``AnswerBoxPlacement``). What the crop step must know a priori
+# is the furniture it removes — the border, the corner ticks, the guide pitch —
+# and that is what lives here. Adding these did not move a fiducial or a
+# bubble, so it is not a layout version bump; a placement carries the version
+# it was printed under all the same.
+ANSWER_BOX_LINE_PITCH_MM: Final = 8.0  # one guide line per written line
+ANSWER_BOX_GRID_MM: Final = 5.0  # the square of a Swiss maths notebook
+ANSWER_BOX_BORDER_MM: Final = 0.35  # 1 pt
+ANSWER_BOX_TICK_MM: Final = 3.0  # arm of the L-shaped corner tick, outside the box
+ANSWER_BOX_LINE_PRESETS: Final[tuple[int, ...]] = (3, 5, 8, 12)
+ANSWER_BOX_DEFAULT_LINES: Final = 5
+
 
 class OptionLetters(StrEnum):
     """Printed glyphs. Positions never change — only the glyph does."""
@@ -216,4 +232,12 @@ def as_dict() -> dict[str, object]:
             "maxOptions": MAX_OPTIONS,
         },
         "itemsPerPage": ITEMS_PER_PAGE,
+        "answerBox": {
+            "linePitchMm": ANSWER_BOX_LINE_PITCH_MM,
+            "gridMm": ANSWER_BOX_GRID_MM,
+            "borderMm": ANSWER_BOX_BORDER_MM,
+            "tickMm": ANSWER_BOX_TICK_MM,
+            "linePresets": list(ANSWER_BOX_LINE_PRESETS),
+            "defaultLines": ANSWER_BOX_DEFAULT_LINES,
+        },
     }

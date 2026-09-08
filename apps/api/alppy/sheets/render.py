@@ -28,7 +28,7 @@ from typing import Any, Final
 from uuid import UUID
 
 from alppy.core.logging import get_logger
-from alppy.models.enums import ExerciseOrigin, ExerciseType, SheetKind
+from alppy.models.enums import AnswerBoxFill, ExerciseOrigin, ExerciseType, SheetKind
 from alppy.sheets import layout as L
 from alppy.sheets.html import (
     Copy,
@@ -195,9 +195,11 @@ def _item_from_exercise(
     language: str,
     statement: str | None = None,
     variant: Any | None = None,
+    box_lines: int | None = None,
+    box_fill: AnswerBoxFill | str | None = None,
 ) -> Item:
     """One ``Exercise`` (optionally a per-student variant, optionally with the
-    teacher's printed wording) as a plain, database-free ``Item``."""
+    teacher's printed wording and answer box) as a plain, database-free ``Item``."""
     text = statement or (variant.statement if variant is not None else None) or exercise.statement
     options = None
     if variant is not None and variant.options:
@@ -240,6 +242,8 @@ def _item_from_exercise(
         answer_text=exercise.answer_text,
         language=exercise.language or language,
         ai_generated=exercise.origin is ExerciseOrigin.AI_GENERATED,
+        open_lines=box_lines if box_lines is not None else L.ANSWER_BOX_DEFAULT_LINES,
+        box_fill=AnswerBoxFill(box_fill) if box_fill else AnswerBoxFill.LINED,
         figure=figure,
     )
 
@@ -319,6 +323,8 @@ def build_draft_sheet_data(
                 exercise,
                 language=language,
                 statement=getattr(entry, "statement_override", None),
+                box_lines=getattr(entry, "answer_box_lines", None),
+                box_fill=getattr(entry, "answer_box_fill", None),
             )
         )
     if not built:
@@ -357,7 +363,11 @@ def _sheet_items(sheet: Any) -> list[Item]:
     """The class-wide item list, in the teacher's order."""
     return [
         _item_from_exercise(
-            si.exercise, language=sheet.language, statement=si.statement_override
+            si.exercise,
+            language=sheet.language,
+            statement=si.statement_override,
+            box_lines=si.answer_box_lines,
+            box_fill=si.answer_box_fill,
         )
         for si in sorted(sheet.items, key=lambda si: si.position)
     ]
@@ -381,6 +391,9 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
         for si in sheet.items
         if si.statement_override
     }
+    # The answer box is the teacher's choice too, and a variant is a rewording
+    # of the same question: the box follows the sheet item either way.
+    boxes = {str(si.exercise_id): si for si in sheet.items}
 
     items: list[Item] = []
     for entry in sorted(plan, key=lambda e: e.get("position", 0)):
@@ -404,6 +417,8 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
                 # the teacher's edit applies.
                 statement=None if variant is not None else overrides.get(str(exercise_id)),
                 variant=variant,
+                box_lines=getattr(boxes.get(str(exercise_id)), "answer_box_lines", None),
+                box_fill=getattr(boxes.get(str(exercise_id)), "answer_box_fill", None),
             )
         )
     return items

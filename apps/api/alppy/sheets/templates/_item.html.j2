@@ -3,8 +3,11 @@
   fixed coordinates in the answer grid at the foot of the page. What the student
   reads and what the machine reads are deliberately separate.
 
-  `open` items get a ruled answer space and no bubbles at all — printable,
-  never auto-graded.
+  `open` items get a delimited answer box and no bubbles at all. The box is what
+  the scan job crops for the vision grader: its border and corner ticks are
+  drawn as borders, its guide pattern as inline SVG, so all of it prints with
+  background graphics off. Its height is decided by pagination and written
+  inline; its printed position is measured at render time, never assumed.
 
   An item with a figure prints the crop of the textbook page instead of its
   statement text. The crop is sized by pagination, not by CSS, so the height
@@ -29,8 +32,27 @@
   {%- endif %}
   {%- if item.is_open %}
   {%- if item.open_lines > 0 %}
-  <div class="sheet-rules" aria-hidden="true">
-    {%- for _ in range(item.open_lines) %}<span class="sheet-rule"></span>{% endfor %}
+  <div class="sheet-answer-box" data-answer-box="true" data-fill="{{ item.box_fill }}" data-lines="{{ item.open_lines }}" style="height: {{ item.box_height_mm }}mm" aria-hidden="true">
+    {%- if item.box_fill != 'blank' %}
+    <svg class="sheet-answer-box-guides" xmlns="http://www.w3.org/2000/svg" width="100%" height="100%">
+      <defs>
+        {%- if item.box_fill == 'grid' %}
+        <pattern id="box-guides-{{ page.number }}-{{ item.item_index }}" patternUnits="userSpaceOnUse" width="{{ g.box_grid_px }}" height="{{ g.box_grid_px }}">
+          <path d="M {{ g.box_grid_px }} 0 L 0 0 0 {{ g.box_grid_px }}" class="sheet-answer-box-guide"/>
+        </pattern>
+        {%- else %}
+        <pattern id="box-guides-{{ page.number }}-{{ item.item_index }}" patternUnits="userSpaceOnUse" width="8" height="{{ g.box_line_px }}">
+          <path d="M 0 {{ g.box_line_px }} L 8 {{ g.box_line_px }}" class="sheet-answer-box-guide"/>
+        </pattern>
+        {%- endif %}
+      </defs>
+      <rect width="100%" height="100%" fill="url(#box-guides-{{ page.number }}-{{ item.item_index }})"/>
+    </svg>
+    {%- endif %}
+    <span class="sheet-answer-box-tick" data-corner="tl"></span>
+    <span class="sheet-answer-box-tick" data-corner="tr"></span>
+    <span class="sheet-answer-box-tick" data-corner="bl"></span>
+    <span class="sheet-answer-box-tick" data-corner="br"></span>
   </div>
   {%- endif %}
   {%- if is_key and item.answer_text %}

@@ -237,10 +237,10 @@ def test_pagination_reserves_the_figures_printed_height() -> None:
     with_figure = Item(
         key="f", type=ExerciseType.OPEN, statement="Calcule.", open_lines=0, figure=_figure(150.0, 60.0)
     )
-    # The picture and its gap are added; the rules block (even an empty one
-    # keeps its margin) is not drawn under a picture.
+    # The picture and its gap are added; neither item draws an answer box, so
+    # neither pays its margins.
     assert estimate_item_height_mm(with_figure) - estimate_item_height_mm(text_only) == pytest.approx(
-        60.0 + FIGURE_GAP_MM - OPEN_LINES_MARGIN_MM
+        60.0 + FIGURE_GAP_MM
     )
     # A full-page exercise of the book, shrunk to the ceiling, still fits a
     # sheet on its own.
@@ -307,4 +307,57 @@ def test_the_markup_sizes_the_picture_to_what_pagination_reserved() -> None:
     assert 'alt="Prends les mesures nécessaires."' in html
     # The statement is the alt, not a paragraph: printed once, as the picture.
     assert html.count("Prends les mesures nécessaires.") == 1
-    assert '<span class="sheet-rule">' not in html, "no ruled lines under a picture"
+    assert 'class="sheet-answer-box"' not in html, "no answer box under a picture"
+
+
+# --------------------------------------------------------------------------
+# The written-answer box
+# --------------------------------------------------------------------------
+def _open(lines: int, fill: str = "lined") -> Item:
+    from alppy.models.enums import AnswerBoxFill
+
+    return Item(
+        key="o", type=ExerciseType.OPEN, statement="Explique.",
+        open_lines=lines, box_fill=AnswerBoxFill(fill),
+    )
+
+
+def test_pagination_reserves_the_box_and_its_tick_room() -> None:
+    from alppy.sheets.pagination import BOX_MARGIN_BOTTOM_MM, OPEN_LINE_PITCH_MM, box_height_mm
+
+    none = _open(0)
+    five = _open(5)
+    assert box_height_mm(none) is None
+    assert box_height_mm(five) == pytest.approx(5 * OPEN_LINE_PITCH_MM)
+    assert estimate_item_height_mm(five) - estimate_item_height_mm(none) == pytest.approx(
+        OPEN_LINES_MARGIN_MM + 5 * OPEN_LINE_PITCH_MM + BOX_MARGIN_BOTTOM_MM
+    )
+
+
+def test_the_box_prints_its_height_inline_with_four_ticks_and_the_chosen_fill() -> None:
+    """The height pagination reserved is the height the paper gets, and the
+    furniture the crop step removes — border, ticks — is markup, not
+    background, so it survives printing with backgrounds off."""
+    from alppy.sheets.html import Copy, SheetData, render_sheet_html
+
+    def html_for(item: Item) -> str:
+        data = SheetData(
+            title="t", class_code="7B", subject="Maths", language="fr",
+            copies=(Copy(uid="7B_01", items=(item,)),),
+        )
+        return render_sheet_html(data)
+
+    lined = html_for(_open(5))
+    assert 'class="sheet-answer-box" data-answer-box="true" data-fill="lined" data-lines="5"' in lined
+    assert 'style="height: 40mm"' in lined
+    assert lined.count('class="sheet-answer-box-tick"') == 4
+    assert "<pattern" in lined and 'class="sheet-answer-box-guide"' in lined
+    assert "sheet-rule" not in lined
+
+    grid = html_for(_open(3, "grid"))
+    assert 'data-fill="grid"' in grid and 'style="height: 24mm"' in grid
+
+    blank = html_for(_open(8, "blank"))
+    assert 'data-fill="blank"' in blank and "<pattern" not in blank
+
+    assert 'class="sheet-answer-box"' not in html_for(_open(0))

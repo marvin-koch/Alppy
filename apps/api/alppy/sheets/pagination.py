@@ -31,7 +31,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from math import ceil
 
-from alppy.models.enums import ExerciseType
+from alppy.models.enums import AnswerBoxFill, ExerciseType
 from alppy.sheets import layout as L
 
 # --------------------------------------------------------------------------
@@ -90,9 +90,15 @@ ITEM_PADDING_MM: float = 6.0  # .print-item { padding: 3mm 0 }
 ITEM_RULE_MM: float = 0.2  # its 0.5pt bottom rule
 OPTIONS_GAP_MM: float = 1.0
 
-OPEN_LINE_PITCH_MM: float = 8.0
-DEFAULT_OPEN_LINES: int = 4
-OPEN_LINES_MARGIN_MM: float = 2.0
+OPEN_LINE_PITCH_MM: float = L.ANSWER_BOX_LINE_PITCH_MM
+DEFAULT_OPEN_LINES: int = L.ANSWER_BOX_DEFAULT_LINES
+OPEN_LINES_MARGIN_MM: float = 4.0
+"""Above the box: room for the corner ticks, which reach ``ANSWER_BOX_TICK_MM``
+outside it, plus a hair so they never touch the statement's descenders."""
+BOX_MARGIN_BOTTOM_MM: float = L.ANSWER_BOX_TICK_MM + 0.5
+BOX_INSET_MM: float = L.ANSWER_BOX_TICK_MM
+"""Horizontal inset of the box inside the column, so the ticks stay inside it."""
+BOX_W_MM: float = COLUMN_W_MM - 2 * BOX_INSET_MM
 
 FIGURE_GAP_MM: float = 1.0  # .sheet-figure { margin-top: 1mm }
 FIGURE_MAX_H_MM: float = 116.0
@@ -112,12 +118,12 @@ sheet with a message about one item. The crop is a raster at print
 resolution, so it stays sharp when small; a teacher who finds it too small on
 paper can see that in the preview, which is what the preview is for."""
 
-# Ruled lines under a picture: none, and no rules block at all. A textbook
-# exercise is worked in the notebook, as the book intends, and two token rules
-# under a twelve-part exercise cost eighteen millimetres that keep a second
-# exercise off the page. A teacher who wants answer space on the sheet adds an
-# item of their own. ``html._item_context`` mirrors this by giving a figured
-# item ``open_lines = 0``, and the template draws no block for it.
+# An answer box under a picture: none. A textbook exercise is worked in the
+# notebook, as the book intends, and a token box under a twelve-part exercise
+# costs the millimetres that keep a second exercise off the page. A teacher
+# who wants answer space on the sheet adds an item of their own.
+# ``html._item_context`` mirrors this by giving a figured item
+# ``open_lines = 0``, and the template draws no box for it.
 
 MCQ_LETTERS: str = L.OptionLetters.MCQ.value
 
@@ -171,6 +177,10 @@ class Item:
     language: str = "fr"
     ai_generated: bool = False
     open_lines: int = DEFAULT_OPEN_LINES
+    """Height of the written-answer box, in ``OPEN_LINE_PITCH_MM`` lines. One
+    of ``layout.ANSWER_BOX_LINE_PRESETS`` when the teacher chose; 0 prints no
+    box at all."""
+    box_fill: AnswerBoxFill = AnswerBoxFill.LINED
     figure: Figure | None = None
     """When set, the sheet prints the picture and not the statement text: the
     picture *is* the statement, exactly as the book set it. The text stays as
@@ -274,10 +284,21 @@ def estimate_item_height_mm(item: Item) -> float:
 
     height += _options_height_mm(item)
 
-    if item.type is ExerciseType.OPEN and item.figure is None:
-        height += OPEN_LINES_MARGIN_MM + max(0, item.open_lines) * OPEN_LINE_PITCH_MM
+    box = box_height_mm(item)
+    if box is not None:
+        height += OPEN_LINES_MARGIN_MM + box + BOX_MARGIN_BOTTOM_MM
 
     return height
+
+
+def box_height_mm(item: Item) -> float | None:
+    """The printed height of this item's written-answer box, or ``None`` when
+    it prints none: a bubble item, a figured item, or zero lines."""
+    if item.type is not ExerciseType.OPEN or item.figure is not None:
+        return None
+    if item.open_lines <= 0:
+        return None
+    return item.open_lines * OPEN_LINE_PITCH_MM
 
 
 # --------------------------------------------------------------------------

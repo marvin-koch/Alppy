@@ -119,6 +119,8 @@ def _replace_items(
                 exercise_id=exercises[entry.exercise_id].id,
                 position=entry.position,
                 statement_override=entry.statement_override,
+                answer_box_lines=entry.answer_box_lines,
+                answer_box_fill=entry.answer_box_fill,
             )
         )
     db.flush()

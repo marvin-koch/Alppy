@@ -14,6 +14,7 @@ from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, mo
 
 from alppy.core.uid import InvalidUidError, parse_uid
 from alppy.models.enums import (
+    AnswerBoxFill,
     CurriculumKind,
     DetectionOutcome,
     EventKind,
@@ -347,6 +348,11 @@ class SheetItemIn(BaseModel):
     exercise_id: uuid.UUID
     position: int
     statement_override: str | None = None
+    # The written-answer box under an open item: height in 8 mm lines, one of
+    # the four presets the paper reserves room for, and what is printed inside.
+    # Ignored on a bubble item. None means the default.
+    answer_box_lines: Literal[3, 5, 8, 12] | None = None
+    answer_box_fill: AnswerBoxFill | None = None
 
 
 class SheetCreate(BaseModel):
@@ -391,6 +397,8 @@ class SheetItemOut(ApiModel):
     id: uuid.UUID
     position: int
     statement_override: str | None
+    answer_box_lines: int | None = None
+    answer_box_fill: AnswerBoxFill | None = None
     exercise: ExerciseOut
 
 

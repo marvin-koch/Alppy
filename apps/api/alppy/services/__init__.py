@@ -220,6 +220,8 @@ def sheet_item_out(item: SheetItem) -> SheetItemOut:
         id=item.id,
         position=item.position,
         statement_override=item.statement_override,
+        answer_box_lines=item.answer_box_lines,
+        answer_box_fill=item.answer_box_fill,
         exercise=exercise_out(item.exercise),
     )
 

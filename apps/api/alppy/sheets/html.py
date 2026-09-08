@@ -16,8 +16,10 @@ Three rules from DESIGN.md §9 are structural here, not stylistic:
 * **Always two documents**: the blank sheet and the answer key. The key is the
   same document with ``data-key="true"`` on the correct bubble, and a badge in the
   header so a teacher can tell them apart at arm's length.
-* **Free text is printed, never auto-graded.** An ``open`` item gets a ruled answer
-  space and no bubbles at all, so it claims no row on the answer grid.
+* **Free text gets a box, never a bubble.** An ``open`` item prints a delimited
+  answer box under its statement and claims no row on the answer grid. The box
+  is what the scan job crops for the vision grader; its printed position is
+  measured at render time, not computed here.
 """
 
 from __future__ import annotations
@@ -32,7 +34,16 @@ from markupsafe import Markup
 
 from alppy.models.enums import BAND_ORDER, ExerciseType, SheetKind
 from alppy.sheets import layout as L
-from alppy.sheets.pagination import Item, Page, paginate, printed_figure_size_mm
+from alppy.sheets.pagination import (
+    BOX_INSET_MM,
+    BOX_MARGIN_BOTTOM_MM,
+    OPEN_LINES_MARGIN_MM,
+    Item,
+    Page,
+    box_height_mm,
+    paginate,
+    printed_figure_size_mm,
+)
 from alppy.sheets.uid_code import bits_to_cells, encode_uid
 
 TEMPLATE_DIR: Final = Path(__file__).resolve().parent / "templates"
@@ -102,10 +113,11 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
     "fr": {
         "code": "Code élève",
         "instructions": (
-            "Remplis une seule bulle par ligne dans la grille de réponses en bas de page."
+            "Remplis une seule bulle par ligne dans la grille de réponses en bas de page. "
+            "Pour une réponse écrite, écris dans le cadre."
         ),
         "answers": "Grille de réponses",
-        "written": "réponse écrite",
+        "written": "dans le cadre",
         "expected": "Réponse attendue :",
         "page": "Page",
         "layout": "mise en page",
@@ -125,10 +137,11 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
     "de": {
         "code": "Schülercode",
         "instructions": (
-            "Fülle pro Zeile genau ein Feld im Antwortraster unten auf der Seite aus."
+            "Fülle pro Zeile genau ein Feld im Antwortraster unten auf der Seite aus. "
+            "Eine schriftliche Antwort schreibst du in den Kasten."
         ),
         "answers": "Antwortraster",
-        "written": "schriftliche Antwort",
+        "written": "im Kasten",
         "expected": "Erwartete Antwort:",
         "page": "Seite",
         "layout": "Layout",
@@ -148,10 +161,11 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
     "en": {
         "code": "Student code",
         "instructions": (
-            "Fill in exactly one bubble per row in the answer grid at the foot of the page."
+            "Fill in exactly one bubble per row in the answer grid at the foot of the page. "
+            "Write a written answer inside its box."
         ),
         "answers": "Answer grid",
-        "written": "written answer",
+        "written": "in the box",
         "expected": "Expected answer:",
         "page": "Page",
         "layout": "layout",
@@ -332,8 +346,16 @@ def geometry_context() -> dict[str, Any]:
         "letter_line": _fmt(min(3.2, L.GRID_ROW_PITCH_MM - L.BUBBLE_D_MM - 0.3)),
         "option_indent": 8,
         "option_letter_w": 6,
-        "open_pitch": 8,
-        "open_margin": 2,
+        "open_pitch": _fmt(L.ANSWER_BOX_LINE_PITCH_MM),
+        "open_margin": _fmt(OPEN_LINES_MARGIN_MM),
+        "box_margin_bottom": _fmt(BOX_MARGIN_BOTTOM_MM),
+        "box_inset": _fmt(BOX_INSET_MM),
+        "box_border": _fmt(L.ANSWER_BOX_BORDER_MM),
+        "box_tick": _fmt(L.ANSWER_BOX_TICK_MM),
+        # The guide patterns are SVG, so they print with backgrounds off; SVG
+        # user units are CSS px, hence the conversion here and nowhere else.
+        "box_line_px": _fmt(L.ANSWER_BOX_LINE_PITCH_MM * 96.0 / 25.4),
+        "box_grid_px": _fmt(L.ANSWER_BOX_GRID_MM * 96.0 / 25.4),
         "footer_x": _fmt(footer_x),
         "footer_w": _fmt(L.PAGE_W_MM - 2 * footer_x),
         "footer_top": _fmt(grid_bottom + 2.5),
@@ -423,8 +445,12 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
         "ai_generated": item.ai_generated,
         "options": options,
         "is_open": item.type is ExerciseType.OPEN,
-        # No ruled lines under a picture; see pagination's note on the rules.
+        # No box under a picture; see pagination's note on the box.
         "open_lines": 0 if item.figure else max(0, item.open_lines),
+        "box_fill": item.box_fill.value,
+        # The height is decided once, here, and written inline: pagination
+        # reserved exactly this many millimetres.
+        "box_height_mm": _fmt(box_height_mm(item) or 0.0),
         "answer_text": item.answer_text,
         "figure": figure,
     }
@@ -511,6 +537,9 @@ def render_sheet_html(sheet_data: SheetData, *, kind: str | SheetKind = SheetKin
             "print": Markup(css["print"]),
             "geometry": Markup(render_geometry_css()),
         },
+        # The answer-box guide patterns are inline SVG and need the pitch in
+        # user units; everything else positional stays in the generated CSS.
+        "g": geometry_context(),
         "pages": [_page_context(p, sheet_data, is_key=is_key) for p in pages],
     }
     return _html_env().get_template("sheet.html.j2").render(**context)
