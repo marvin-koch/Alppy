@@ -126,7 +126,11 @@ was wrong was the meaning, and only running the thing end to end showed it.
   on this machine. Compose, Dockerfiles and entrypoints parse and are internally
   consistent, and the migration was diffed against the models — but the one
   command the README leads with is unproven. **Run it first.**
-- **Free-text grading**, by design. The seam is `_GRADERS` in `scan/grading.py`.
+- ~~**Free-text grading**, by design.~~ **Closed** on 2026-09-08: a written
+  answer prints in a measured box, is cropped at scan time and graded by a
+  vision model through the `_GRADERS` seam; see decisions-log D42. **Not yet
+  run against a real provider** — every test drives a stub or the echo
+  provider, and the prompt's behaviour on real handwriting is unmeasured.
 - **The feedback PDF has never been executed**, for the same reason the other
   two have not: no Chromium here. `render_feedback_html` is tested at the HTML
   level (no fiducials, no UID grid, no bubbles, one page per student); the PDF

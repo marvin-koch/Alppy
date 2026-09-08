@@ -570,3 +570,56 @@ Three corrections from using the builder with a real book, 2026-09-07.
   text the item prints above it (the teacher's own wording, MCQ options), so a
   figured item always fits a page on its own; `ItemTooTallError` is still
   raised for text, where shrinking is not an option.
+
+### D42 · A written answer prints in a box that is measured, cropped, and graded on a verdict
+
+The MVP printed four ruled lines under an open item and graded nothing. As of
+2026-09-08 the item prints a delimited box and a vision model proposes a
+verdict. Five choices were made without asking, and one with.
+
+* **Height and fill are per sheet item, from presets.** 3, 5, 8 or 12 lines
+  of 8 mm, filled with lines, the 5 mm notebook grid, or nothing. Presets
+  rather than a free height because pagination reserves room for exactly
+  these; a fill choice because a drawing wants a grid and a sentence wants
+  lines. Chosen by the user; the fill was added at their request.
+* **Box geometry is measured, not computed.** A bubble sits where the layout
+  says; a box sits under text the browser wraps, and the pagination estimate
+  is deliberately generous. The alternative — pinning every item at its
+  estimated top — would put uneven gaps on every printed sheet, including ones
+  with no box. So the render job asks Chromium, in print media, for the border
+  box of every answer box and writes one `AnswerBoxPlacement` per copy and
+  page, keyed the way a detection is resolved (UID, folio, item index). The
+  scan job reads those rows and never re-derives a box from `SheetItem`, or an
+  edit after printing would move what the scanner crops (the D34 hazard for a
+  rectangle). Re-rendering replaces the sheet's rows wholesale. Fiducials,
+  UID grid and bubble grid did not move, so this is not a layout version bump.
+* **Grading is a chained job, and nothing stays pending.** `PROCESS_SCAN`
+  stays a pure OpenCV pass that flips the pile to review the moment the marks
+  are read; the worker then enqueues `GRADE_OPEN_ANSWERS`, which settles each
+  row as it lands. A failed call, an ungrounded provider and an unreadable
+  answer all end as `NOT_GRADEABLE`; the grader treats a pending row as
+  ungradeable in any case; so a dead provider can delay verdicts but can never
+  block confirmation. The alternative — a confirm guard waiting on pending
+  rows — was rejected for exactly that reason.
+* **Images ride on the existing chat request.** `ChatRequest.images`, empty
+  for every text caller, rather than a second provider protocol: audit, cost
+  estimate and the text-side PII gate come for free, and the typed verdict
+  lives in the scan layer where it is interpreted. The echo provider answers
+  the grading purpose with a null verdict, never a grade drawn from a hash.
+* **Template subtraction is geometric first, luminance second.** The border
+  and corner ticks are painted out by position; the guides are painted out
+  only inside their own bands, and only where the pixel is lighter than heavy
+  ink, so pen crossing a guide survives. A light pencil stroke loses a
+  millimetre where it crosses a guide; the model is told which guides the box
+  carried. A box with no ink is `BLANK` without a model call.
+* **The PII gate stays a text gate.** It cannot read pixels; what keeps a
+  name out of a crop is that the crop is cut from the statement region only,
+  and the renderer refuses to record a box outside it. The residual risk — a
+  student writing their name in the box — is named in `docs/privacy.md`
+  rather than pretended away.
+
+Not done: cost. A class of 28 with three written items is 84 vision calls per
+pile. The audit log prices them; nothing budgets them yet. Batching several
+crops of one copy into one call is the obvious next step and is deliberately
+not in this change.
+

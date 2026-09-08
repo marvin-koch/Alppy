@@ -48,20 +48,28 @@ Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
         ──< ExerciseVariant (per-student generated)
 Sheet (target class|student|group, layout_version, subject, chapter set,
        derived_from_id -> the COMMON sheet this one answers)
-     ──< SheetItem (ordered exercise ref, position)
+     ──< SheetItem (ordered exercise ref, position, statement_override,
+                    answer_box_lines 3|5|8|12, answer_box_fill lined|grid|blank)
+     ──< AnswerBoxPlacement (student_uid × copy_page × item_index -> x/y/w/h mm,
+                             measured at render time, replaced on re-render)
      ──< SheetInstance (bound to a student uid, its own item order/variants,
                         group_label, feedback_id)
 MisconceptionNote (student × common sheet, notes[], approved_at — the gate)
 Event (append-only: kind, occurred_at, actor, subject_type/subject_id, summary)
-Scan (uploaded page images) ──< ScanPage ──< Detection (item, detected answer, confidence)
+Scan (uploaded page images) ──< ScanPage ──< Detection (item, detected answer, confidence,
+                                              crop_key, transcription, verdict_correct + machine_*)
 Attempt (student × exercise × sheet_instance, correct, score, answered_at)
 MasterySnapshot (student × competency × computed_at, score [0,1], band)
 ModelCall (audit: provider, model, prompt hash, tokens, latency, cost, no PII)
 ```
 
-`open` exercises are stored and printable but never auto-graded — the grader dispatches by type
-and has an explicit `NotGradeable` path so a free-text grader can be added without touching the
-pipeline.
+`open` exercises print a delimited **answer box** (height and fill chosen per `SheetItem`).
+The render job measures where every box landed and writes one `AnswerBoxPlacement` per copy and
+page; the scan job crops there, stores the crop beside the page image and leaves the detection
+`PENDING`; a chained `GRADE_OPEN_ANSWERS` job sends each crop to a vision model, which returns a
+transcription and a verdict against `Exercise.answer_text`. The grader scores only a verdict —
+the model's or the teacher's — and nothing reaches mastery before the teacher confirms the pile.
+Without a key the echo provider returns no verdict and the item is reported as skipped.
 
 ## 4. API surface (FastAPI, `/api/v1`)
 

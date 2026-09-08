@@ -59,6 +59,8 @@ python -m alppy.cli backfill-events   # rebuild the agenda from existing timesta
 | `apps/api/alppy/sheets/layout.py` | **Print geometry — the single source of truth** |
 | `apps/api/alppy/scan/` | OpenCV registration, bubble detection, grading |
 | `apps/api/alppy/ingest/regions.py` | Exercise regions cut from the page geometry (label, crop, `SUITE ▶`) |
+| `apps/api/alppy/scan/answer_box.py` | A written-answer box cut from the registered page, Alppy's own ink removed |
+| `apps/api/alppy/services/open_answer_grading.py` | The vision grader job: one call per crop, nothing left pending |
 | `apps/api/alppy/mastery/model.py` | The mastery model, pure functions |
 | `apps/api/alppy/ai/` | Provider-agnostic AI layer, versioned prompts, PII gate |
 | `packages/ui/src/design/` | Tokens, base, motion, print, recipes |
@@ -109,8 +111,20 @@ because a leak is a caller bug. See [`docs/privacy.md`](docs/privacy.md).
 **AI-generated exercises are never printed without teacher approval**
 (`Exercise.approved_at`).
 
-**Free-text grading is out of scope.** The grader dispatches on exercise type and
-returns `NOT_GRADEABLE` for `open`. Keep that seam; do not add a heuristic.
+**A written answer is graded on a verdict, never on a heuristic.** The vision
+grader (`alppy/scan/open_grading.py`, installed through `register_grader`)
+scores only what carries a verdict — the model's or the teacher's. Pending,
+unreadable and offline all produce no attempt and are counted as skipped. Do
+not add text matching, and never let a missing verdict become a zero.
+
+**An answer box is cut where it printed, never where it was estimated.** The
+render job measures every box in Chromium and writes `AnswerBoxPlacement`;
+the scan job crops at those rows. Never recompute a box from the current
+`SheetItem` rows: an edit after printing would move what the scanner crops.
+
+**A crop never leaves the statement region.** The PII gate reads text only;
+what keeps a name out of an image is geometry. `measure_answer_boxes` refuses
+a box outside `ITEMS_TOP_MM..ITEMS_BOTTOM_MM`. Keep it that way.
 
 ---
 

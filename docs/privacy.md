@@ -79,6 +79,26 @@ Inside `apps/api/alppy/ai/`:
 - This test is part of the default CI run, not an optional/slow suite — a regression here is a
   release blocker, not a follow-up ticket.
 
+### Images: the one payload the text gate cannot read
+
+The vision grader (F2, written answers) sends a model an **image**: the inside of one answer
+box, cut from the registered scan page. `scrub.py` reads strings and cannot inspect pixels, so
+the guarantee for images is made by geometry rather than by inspection:
+
+- A box is cropped at the rectangle the renderer *measured* for that copy and page
+  (`AnswerBoxPlacement`), and the renderer refuses to record a box outside the statement region
+  (`layout.ITEMS_TOP_MM..ITEMS_BOTTOM_MM`). The header, the student code and the UID grid sit
+  above that region, so a crop cannot carry them.
+- The printed sheet carries no student name anywhere — only the UID — so nothing Alppy printed
+  can leak a roster through a crop.
+- The text half of the request (question, expected answer, the fill the box carried) still goes
+  through `assert_no_pii` like every other prompt.
+- The residual risk is a student writing their own name inside the box. It is not guarded
+  against, because there is no roster to match pixels against; it is recorded here rather than
+  left implicit. The prompt instructs the model never to infer or invent a name.
+- The crop is stored beside the scan page image and shares its retention (§4). The audit row
+  (`ModelCall`) hashes the image into the prompt hash and stores neither.
+
 ### What is explicitly *not* restricted this way
 
 Textbook/curriculum content indexed for RAG (source PDFs, chunks, competency text) is not student
@@ -156,6 +176,7 @@ expose actual prompts.
 | `Exercise` / `ExerciseVariant` | No (may reference a student UID for a variant, not a name) | Postgres | Tied to parent sheet/source | Teacher(s) of the class |
 | `Sheet` / `SheetItem` / `SheetInstance` | Indirect (SheetInstance binds to a student UID) | Postgres | Tied to class; export/delete with class | Teacher(s) of the class |
 | `Scan` / `ScanPage` (image) | Yes (handwriting, potentially name if visible on the page) | S3-compatible storage | Bounded window (see §4), then deleted | Teacher(s) of the class; Alppy ops during active job processing only |
+| `Detection.crop_key` (the answer box, cut) | Handwriting; a name only if the student wrote one inside the box | S3-compatible storage, beside the page image | Same window as the page image | Teacher(s) of the class; the configured vision provider during the grading call |
 | `Detection` | Indirect (tied to a scan/student) | Postgres | Tied to parent scan | Teacher(s) of the class |
 | `Attempt` | Indirect (student UID + competency + score, no name) | Postgres | Retained for mastery history beyond scan deletion | Teacher(s) of the class |
 | `MasterySnapshot` | Indirect (student UID) | Postgres | Retained per-class history | Teacher(s) of the class; the student's later teachers on class handover |
