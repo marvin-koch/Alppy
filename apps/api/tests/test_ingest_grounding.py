@@ -46,9 +46,11 @@ def test_the_offline_provider_returns_nothing_for_grounded_purposes() -> None:
 
     Every grounded purpose gets an empty payload rather than invented content.
     The shape differs by purpose — an extraction caller reads `exercises`, a
-    feedback caller reads `notes` — because handing one the other's envelope
-    would be reported to the teacher as "the model did not return usable JSON",
-    which blames the provider for a refusal that is correct.
+    feedback caller reads `notes`, the vision grader reads a verdict — because
+    handing one the other's envelope would be reported to the teacher as "the
+    model did not return usable JSON", which blames the provider for a refusal
+    that is correct. Empty means: every value is a null, a zero or an empty
+    list. Nothing a caller could mistake for content.
     """
     provider = EchoChatProvider()
     assert provider.grounded is False
@@ -57,8 +59,8 @@ def test_the_offline_provider_returns_nothing_for_grounded_purposes() -> None:
             ChatRequest(system="s", user="a page of a real textbook", purpose=purpose)
         )
         payload = json.loads(response.text)
-        assert len(payload) == 1, purpose
-        assert next(iter(payload.values())) == [], purpose
+        assert payload, purpose
+        assert all(value in (None, 0.0) or value == [] for value in payload.values()), purpose
 
 
 def test_the_offline_provider_still_generates_when_asked_to_author() -> None:

@@ -12,6 +12,19 @@ from typing import Protocol
 
 
 @dataclass(frozen=True, slots=True)
+class ImagePart:
+    """One image shown to the model alongside the user text.
+
+    Bytes, not a URL: the crop never leaves the process by any other route,
+    and a provider that cannot look at pixels (the offline stand-in) simply
+    ignores it. The text gate cannot inspect these; what keeps a name out of
+    them is geometry — a crop is cut from the statement region only."""
+
+    data: bytes
+    media_type: str = "image/png"
+
+
+@dataclass(frozen=True, slots=True)
 class ChatRequest:
     system: str
     user: str
@@ -22,6 +35,9 @@ class ChatRequest:
     """What the call is for, e.g. ``extract_exercises``. A provider that cannot
     actually read the prompt needs this to refuse the jobs where inventing an
     answer would be a lie rather than a demo."""
+    images: tuple[ImagePart, ...] = ()
+    """Empty for every text-only caller, which is all of them but the vision
+    grader — so no existing provider or test needs to know the field exists."""
 
 
 @dataclass(frozen=True, slots=True)

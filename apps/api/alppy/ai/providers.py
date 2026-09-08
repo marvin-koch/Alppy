@@ -8,6 +8,7 @@ deterministic, so tests and the demo seed are reproducible.
 
 from __future__ import annotations
 
+import base64
 import hashlib
 import json
 import math
@@ -27,7 +28,27 @@ from alppy.core.config import get_settings
 #: about how one named child thinks, printed and handed to that child — and the
 #: echo provider cannot read the prompt, so anything it said about a student's
 #: mistakes would be fiction with a UID attached. Better an honest empty note.
-TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset({"extract_exercises", "adaptive_feedback"})
+#:
+#: ``grade_open_answer`` is the strongest case of the three. It reads a child's
+#: handwriting and says whether the answer is right; a stand-in that cannot see
+#: the image and answered anyway would be a verdict on a real student drawn
+#: from a hash. It returns the empty shape, and the caller records "no verdict".
+TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset(
+    {"extract_exercises", "adaptive_feedback", "grade_open_answer"}
+)
+
+#: What an ungrounded provider answers for each transcription purpose: the
+#: shape the caller parses, with nothing in it.
+_EMPTY_SHAPES: dict[str, dict[str, object]] = {
+    "extract_exercises": {"exercises": []},
+    "adaptive_feedback": {"notes": []},
+    "grade_open_answer": {
+        "transcription": None,
+        "written": None,
+        "correct": None,
+        "confidence": 0.0,
+    },
+}
 
 
 class EchoChatProvider:
@@ -48,10 +69,7 @@ class EchoChatProvider:
             # Empty, in the shape the caller parses. A feedback caller reading
             # `{"exercises": []}` would report "the model did not return usable
             # JSON", which blames the provider for a refusal that is correct.
-            empty: dict[str, list[str]] = (
-                {"notes": []} if request.purpose == "adaptive_feedback" else {"exercises": []}
-            )
-            text = json.dumps(empty)
+            text = json.dumps(_EMPTY_SHAPES[request.purpose])
             return ChatResponse(
                 text=text,
                 input_tokens=len(request.user) // 4,
@@ -135,7 +153,7 @@ class AnthropicChatProvider:
             max_tokens=request.max_tokens,
             temperature=request.temperature,
             system=request.system,
-            messages=[{"role": "user", "content": request.user}],
+            messages=[{"role": "user", "content": _user_content(request)}],
             **({"stop_sequences": list(request.stop)} if request.stop else {}),
         )
         text = "".join(
@@ -147,6 +165,27 @@ class AnthropicChatProvider:
             output_tokens=message.usage.output_tokens,
             model=self._model,
         )
+
+
+def _user_content(request: ChatRequest) -> str | list[dict[str, object]]:
+    """The user turn: a plain string for text, content blocks with the images
+    first when there are any. Images before the text is the order the model
+    reads best — it looks, then it is told what to do with what it saw."""
+    if not request.images:
+        return request.user
+    blocks: list[dict[str, object]] = [
+        {
+            "type": "image",
+            "source": {
+                "type": "base64",
+                "media_type": image.media_type,
+                "data": base64.b64encode(image.data).decode("ascii"),
+            },
+        }
+        for image in request.images
+    ]
+    blocks.append({"type": "text", "text": request.user})
+    return blocks
 
 
 _TOKEN_RE = re.compile(r"\w+", re.UNICODE)

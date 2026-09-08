@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from alppy.ai.base import ChatRequest, ChatResponse
+from alppy.ai.base import ChatRequest, ChatResponse, ImagePart
 from alppy.ai.providers import build_chat_provider, build_embeddings_provider
 from alppy.ai.scrub import assert_no_pii
 from alppy.core.config import get_settings
@@ -128,9 +128,20 @@ class AiClient:
         student_names: list[str] | None = None,
         max_tokens: int | None = None,
         temperature: float = 0.4,
+        images: tuple[ImagePart, ...] = (),
     ) -> tuple[ChatResponse, CallRecord]:
+        """One model call, gated and audited.
+
+        ``images`` ride along for a vision purpose. The PII gate below reads
+        text and only text; an image is kept clean by where it was cut from,
+        not by inspection here — see ``ImagePart`` and docs/privacy.md."""
         system, user = prompt.render(**values)
-        digest = hashlib.sha256(f"{system}\n{user}".encode()).hexdigest()
+        hasher = hashlib.sha256(f"{system}\n{user}".encode())
+        for image in images:
+            # The audit hash covers the image too: the same crop and the same
+            # prompt are the same call, and a different crop is a different one.
+            hasher.update(hashlib.sha256(image.data).digest())
+        digest = hasher.hexdigest()
         started = time.perf_counter()
         try:
             # The gate, inside the try so a rejection is *audited* like any
@@ -148,6 +159,7 @@ class AiClient:
                     max_tokens=max_tokens or self._settings.ai_max_output_tokens,
                     temperature=temperature,
                     purpose=purpose,
+                    images=images,
                 )
             )
         except Exception as exc:
