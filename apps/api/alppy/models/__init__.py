@@ -35,6 +35,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from alppy.core.config import get_settings
 from alppy.db.base import Base, SchoolScopedMixin, TimestampMixin
 from alppy.models.enums import (
+    AnswerBoxFill,
     CurriculumKind,
     DetectionOutcome,
     EventKind,
@@ -490,7 +491,15 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
 
 class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "sheet_item"
-    __table_args__ = (UniqueConstraint("sheet_id", "position", name="uq_sheet_item_position"),)
+    __table_args__ = (
+        UniqueConstraint("sheet_id", "position", name="uq_sheet_item_position"),
+        # The four presets the builder offers. A value outside them would print
+        # a box the pagination estimate never reserved.
+        CheckConstraint(
+            "answer_box_lines IS NULL OR answer_box_lines IN (3, 5, 8, 12)",
+            name="ck_sheet_item_answer_box_lines",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
@@ -498,6 +507,15 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     # The teacher may edit the printed wording without mutating the corpus.
     statement_override: Mapped[str | None] = mapped_column(Text)
+    # The written-answer box under an `open` item: its height in 8 mm lines
+    # (3, 5, 8 or 12) and what is printed inside it. Per sheet item, not per
+    # exercise, for the same reason as the wording: the same exercise may want
+    # three lines on a quiz and twelve on a test. NULL means the default, and
+    # both are meaningless on an MCQ or a true/false item.
+    answer_box_lines: Mapped[int | None] = mapped_column(Integer)
+    answer_box_fill: Mapped[AnswerBoxFill | None] = mapped_column(
+        Enum(AnswerBoxFill, name="answer_box_fill")
+    )
 
     sheet: Mapped[Sheet] = relationship(back_populates="items")
     exercise: Mapped[Exercise] = relationship()
@@ -537,6 +555,50 @@ class SheetInstance(Base, TimestampMixin, SchoolScopedMixin):
     sheet: Mapped[Sheet] = relationship(back_populates="instances")
     feedback: Mapped[MisconceptionNote | None] = relationship()
 
+
+
+class AnswerBoxPlacement(Base, TimestampMixin, SchoolScopedMixin):
+    """Where one written-answer box actually printed, in page millimetres.
+
+    Measured from the rendered document — never recomputed from the rows. A
+    bubble sits at a coordinate the layout fixes, so the detector can derive it
+    from the item index alone; a box sits under a statement whose height the
+    browser decides, so the only honest source of its position is the render
+    that went to the printer. Written wholesale when a sheet is rendered and
+    replaced on every re-render, so an exercise edited after the pile was
+    printed cannot move the rectangle the scanner crops.
+
+    Keyed the way a detection is resolved: the student's UID, which page of
+    their copy, and the page-local item index.
+    """
+
+    __tablename__ = "answer_box_placement"
+    __table_args__ = (
+        UniqueConstraint(
+            "sheet_id", "student_uid", "copy_page", "item_index",
+            name="uq_answer_box_placement_slot",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
+    exercise_id: Mapped[uuid.UUID | None] = _fk(
+        "exercise.id", nullable=True, ondelete="SET NULL"
+    )
+    student_uid: Mapped[str] = mapped_column(String(20), nullable=False)
+    #: 1-based, the student's own folio — the same number the page footer prints.
+    copy_page: Mapped[int] = mapped_column(Integer, nullable=False)
+    #: Page-local, 0..15 — what ``Detection.item_index`` carries.
+    item_index: Mapped[int] = mapped_column(Integer, nullable=False)
+    box_lines: Mapped[int] = mapped_column(Integer, nullable=False)
+    box_fill: Mapped[AnswerBoxFill] = mapped_column(
+        Enum(AnswerBoxFill, name="answer_box_fill"), nullable=False
+    )
+    x_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    y_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    w_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    h_mm: Mapped[float] = mapped_column(Float, nullable=False)
+    layout_version: Mapped[str] = mapped_column(String(10), nullable=False)
 
 class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
     """What one student got wrong on one common sheet, written for the student.
@@ -738,6 +800,17 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     fill_ratios: Mapped[list[float] | None] = mapped_column(JSONB)
     # Normalised [0,1] frame coords so the overlay scales to any rendered size.
     bubble_boxes: Mapped[list[dict[str, float]] | None] = mapped_column(JSONB)
+    # A written answer. ``crop_key`` is the box cut from the registered page
+    # with the printed furniture removed, stored beside the page image. The
+    # transcription and the verdict follow the same split as the bubbles: the
+    # current value the teacher may overwrite, and the machine's, written once.
+    crop_key: Mapped[str | None] = mapped_column(String(500))
+    transcription: Mapped[str | None] = mapped_column(Text)
+    machine_transcription: Mapped[str | None] = mapped_column(Text)
+    verdict_correct: Mapped[bool | None] = mapped_column(Boolean)
+    machine_verdict_correct: Mapped[bool | None] = mapped_column(Boolean)
+    # Which model read it, for the audit trail; never the prompt or the image.
+    vision_model: Mapped[str | None] = mapped_column(String(80))
     corrected_by_id: Mapped[uuid.UUID | None] = _fk(
         "teacher.id", nullable=True, ondelete="SET NULL"
     )
@@ -847,6 +920,7 @@ class Job(Base, TimestampMixin, SchoolScopedMixin):
 
 
 __all__ = [
+    "AnswerBoxPlacement",
     "Attempt",
     "Base",
     "Chapter",

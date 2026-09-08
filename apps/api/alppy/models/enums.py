@@ -42,6 +42,17 @@ class ExerciseOrigin(StrEnum):
     mean. It needs no approval gate: the teacher approved it by writing it."""
 
 
+class AnswerBoxFill(StrEnum):
+    """What is printed inside a written-answer box, under the student's ink.
+
+    Every fill prints lighter than pen so the crop step can suppress it by
+    luminance; the border and the corner ticks are removed by geometry."""
+
+    LINED = "lined"  # a guide line every 8 mm
+    GRID = "grid"  # the 5 mm square of a Swiss maths notebook
+    BLANK = "blank"  # nothing but the border
+
+
 class SheetTarget(StrEnum):
     CLASS = "class"
     STUDENT = "student"
@@ -91,6 +102,10 @@ class JobKind(StrEnum):
     PROCESS_SCAN = "process_scan"
     GENERATE_ADAPTIVE = "generate_adaptive"
     GENERATE_FEEDBACK = "generate_feedback"
+    #: The vision grader over a scan's written answers. Chained after
+    #: PROCESS_SCAN by the worker so the review opens as soon as the marks are
+    #: read, and grades arrive while the teacher is already looking.
+    GRADE_OPEN_ANSWERS = "grade_open_answers"
 
 
 class ScanStatus(StrEnum):
@@ -109,7 +124,8 @@ class DetectionOutcome(StrEnum):
     BLANK = "blank"                # no mark found
     MULTIPLE = "multiple"          # more than one bubble filled
     CORRECTED = "corrected"        # teacher overrode the detection
-    NOT_GRADEABLE = "not_gradeable"  # free-text; printed, never auto-graded
+    NOT_GRADEABLE = "not_gradeable"  # free-text with no verdict: printed, not auto-graded
+    PENDING = "pending"            # a written answer cropped, awaiting the vision grader
 
 
 class EventKind(StrEnum):
