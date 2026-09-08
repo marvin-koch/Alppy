@@ -244,7 +244,8 @@
       "blank": "No answer",
       "multiple": "Multiple marks",
       "corrected": "Corrected by you",
-      "not_gradeable": "Not automatically gradeable"
+      "not_gradeable": "Not automatically gradeable",
+      "pending": "Being read"
     },
     "itemsToCheck": "{count, plural, =0 {nothing to check} one {# answer to check} other {# answers to check}}",
     "confirm": "Confirm results",
@@ -299,7 +300,28 @@
       "needs_review": "Needs review",
       "confirmed": "Confirmed",
       "failed": "Failed"
-    }
+    },
+    "openAnswer": {
+      "crop": "Box cut from the page",
+      "cropAlt": "Handwritten answer, box {number}",
+      "readByAi": "Read by AI",
+      "transcription": "Transcription",
+      "editTranscription": "Correct the transcription",
+      "expected": "Expected answer: {answer}",
+      "noExpected": "No expected answer is recorded for this exercise.",
+      "verdict": "Verdict",
+      "correct": "Correct",
+      "wrong": "Wrong",
+      "unsure": "Cannot tell",
+      "pendingHelp": "The box has been cut out. The model is reading the handwriting; the verdict lands here.",
+      "ungradeableHelp": "No verdict: judge the answer yourself, or it will not be counted.",
+      "blankHelp": "Nothing was written in the box: counts as a wrong answer.",
+      "machineVerdict": "The machine’s verdict: {verdict} · {transcription}",
+      "verdictCorrect": "correct",
+      "verdictWrong": "wrong",
+      "verdictNone": "none"
+    },
+    "confirmTranscription": "Save the transcription"
   },
   "adaptive": {
     "aiBadge": "AI",

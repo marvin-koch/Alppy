@@ -462,12 +462,12 @@ export const sheet: SheetOut = {
 };
 
 const detections: DetectionOut[] = [
-  { index: 0, detected: 0, confidence: 0.97, outcome: 'detected' as const, tf: false },
-  { index: 1, detected: 2, confidence: 0.41, outcome: 'low_confidence' as const, tf: false },
-  { index: 2, detected: null, confidence: 0.12, outcome: 'blank' as const, tf: false },
-  { index: 3, detected: 3, confidence: 0.93, outcome: 'detected' as const, tf: false },
-  { index: 4, detected: 1, confidence: 0.55, outcome: 'multiple' as const, tf: true },
-  { index: 5, detected: null, confidence: 0, outcome: 'not_gradeable' as const, tf: false },
+  { index: 0, detected: 0, confidence: 0.97, outcome: 'detected' as const, tf: false, open: false },
+  { index: 1, detected: 2, confidence: 0.41, outcome: 'low_confidence' as const, tf: false, open: false },
+  { index: 2, detected: null, confidence: 0.12, outcome: 'blank' as const, tf: false, open: false },
+  { index: 3, detected: 3, confidence: 0.93, outcome: 'detected' as const, tf: false, open: false },
+  { index: 4, detected: 1, confidence: 0.55, outcome: 'multiple' as const, tf: true, open: false },
+  { index: 5, detected: null, confidence: 0.91, outcome: 'detected' as const, tf: false, open: true },
 ].map((raw) => ({
   id: id(700 + raw.index),
   item_index: raw.index,
@@ -489,12 +489,26 @@ const detections: DetectionOut[] = [
   machine_index: raw.detected,
   machine_outcome: raw.outcome,
   machine_confidence: raw.confidence,
-  statement: `Question ${raw.index + 1} — une fraction a simplifier`,
-  options: raw.tf ? null : ['1/2', '2/4', '3/6', '4/8'],
-  option_letters: raw.tf ? 'VF' : 'ABCD',
-  exercise_type: raw.tf ? ('true_false' as const) : ('mcq' as const),
+  statement: raw.open
+    ? 'Calcule 3/4 + 1/8 et donne le résultat sous forme de fraction irréductible.'
+    : `Question ${raw.index + 1} — une fraction a simplifier`,
+  options: raw.tf || raw.open ? null : ['1/2', '2/4', '3/6', '4/8'],
+  option_letters: raw.open ? null : raw.tf ? 'VF' : 'ABCD',
+  exercise_type: raw.open
+    ? ('open' as const)
+    : raw.tf
+      ? ('true_false' as const)
+      : ('mcq' as const),
   ai_generated: false,
-  answer_index: raw.tf ? 0 : 1,
+  answer_index: raw.open ? null : raw.tf ? 0 : 1,
+  // The written answer: the box cut from the page and what the model read.
+  crop_url: raw.open ? '/mock/answer-box.svg' : null,
+  transcription: raw.open ? '3/4 + 1/8 = 6/8 + 1/8 = 7/8' : null,
+  verdict_correct: raw.open ? true : null,
+  machine_transcription: raw.open ? '3/4 + 1/8 = 6/8 + 1/8 = 7/8' : null,
+  machine_verdict_correct: raw.open ? true : null,
+  vision_model: raw.open ? 'claude-sonnet-5' : null,
+  answer_text: raw.open ? '7/8' : null,
 }));
 
 /** Every page the mock scan carries, minus the bits each one overrides. */

@@ -29,7 +29,9 @@ export type JobKind =
   | 'extract_section'
   | 'render_sheet'
   | 'process_scan'
-  | 'generate_adaptive';
+  | 'generate_adaptive'
+  | 'generate_feedback'
+  | 'grade_open_answers';
 export type ScanStatus = 'uploaded' | 'processing' | 'needs_review' | 'confirmed' | 'failed';
 export type DetectionOutcome =
   | 'detected'
@@ -37,7 +39,9 @@ export type DetectionOutcome =
   | 'blank'
   | 'multiple'
   | 'corrected'
-  | 'not_gradeable';
+  | 'not_gradeable'
+  /** A written answer, cut from the page and waiting for the vision grader. */
+  | 'pending';
 
 /** UUIDs and datetimes both arrive as strings over JSON. */
 export type Uuid = string;
@@ -402,10 +406,25 @@ export interface DetectionOut {
   ai_generated: boolean;
   /** The correct option, as an index into `option_letters`. */
   answer_index: number | null;
+  /** A written answer: the box cut from the page, what was read in it, and
+   *  the verdict — current beside machine, as for the bubbles. */
+  crop_url: string | null;
+  transcription: string | null;
+  verdict_correct: boolean | null;
+  machine_transcription: string | null;
+  machine_verdict_correct: boolean | null;
+  vision_model: string | null;
+  /** The expected answer of an open item, for the teacher adjudicating it. */
+  answer_text: string | null;
 }
 
+/** A bubble correction carries `detected_index`; a written-answer correction
+ *  carries a verdict and/or a transcription. `verdict_correct: null` sent
+ *  explicitly means "I cannot tell either". */
 export interface DetectionCorrection {
-  detected_index: number | null;
+  detected_index?: number | null;
+  verdict_correct?: boolean | null;
+  transcription?: string | null;
 }
 
 export interface ScanPageOut {

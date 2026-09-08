@@ -244,7 +244,8 @@
       "blank": "Sans réponse",
       "multiple": "Plusieurs marques",
       "corrected": "Corrigé par vous",
-      "not_gradeable": "Non corrigible automatiquement"
+      "not_gradeable": "Non corrigible automatiquement",
+      "pending": "Lecture en cours"
     },
     "itemsToCheck": "{count, plural, =0 {rien à vérifier} one {# réponse à vérifier} other {# réponses à vérifier}}",
     "confirm": "Valider les résultats",
@@ -299,7 +300,28 @@
       "needs_review": "À vérifier",
       "confirmed": "Validé",
       "failed": "Échec"
-    }
+    },
+    "openAnswer": {
+      "crop": "Cadre découpé",
+      "cropAlt": "Réponse écrite de l'élève, cadre {number}",
+      "readByAi": "Lu par l'IA",
+      "transcription": "Transcription",
+      "editTranscription": "Corriger la transcription",
+      "expected": "Réponse attendue : {answer}",
+      "noExpected": "Aucune réponse attendue n'est enregistrée pour cet exercice.",
+      "verdict": "Verdict",
+      "correct": "Juste",
+      "wrong": "Faux",
+      "unsure": "Je ne sais pas",
+      "pendingHelp": "Le cadre a été découpé. Le modèle lit l'écriture ; le verdict arrive ici.",
+      "ungradeableHelp": "Aucun verdict : jugez la réponse vous-même, ou elle ne sera pas comptée.",
+      "blankHelp": "Rien n'a été écrit dans le cadre : compte comme une réponse fausse.",
+      "machineVerdict": "Verdict de la machine : {verdict} · {transcription}",
+      "verdictCorrect": "juste",
+      "verdictWrong": "faux",
+      "verdictNone": "aucun"
+    },
+    "confirmTranscription": "Enregistrer la transcription"
   },
   "adaptive": {
     "aiBadge": "IA",

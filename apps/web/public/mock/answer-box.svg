@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1330" height="302" viewBox="0 0 1330 302">
+  <rect width="1330" height="302" fill="#ffffff"/>
+  <text font-family="Caveat, 'Segoe Script', 'Bradley Hand', cursive" font-size="88" fill="#1f2a5a">
+    <tspan x="48" y="120">3/4 + 1/8 = 6/8 + 1/8</tspan>
+    <tspan x="48" y="240">= 7/8</tspan>
+  </text>
+  <path d="M 700 220 q 80 -20 160 0" stroke="#1f2a5a" stroke-width="6" fill="none" stroke-linecap="round"/>
+</svg>

@@ -35,7 +35,8 @@ import {
   useScanStudents,
 } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import type { DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
+import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
+import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -235,9 +236,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
               if (el) rowRefs.current.set(id, el);
               else rowRefs.current.delete(id);
             }}
-            onCorrect={(detectionId, index) =>
-              correct.mutate({ detectionId, body: { detected_index: index } })
-            }
+            onCorrect={(detectionId, body) => correct.mutate({ detectionId, body })}
             students={students.data ?? []}
           />
         ))}
@@ -263,7 +262,7 @@ function PageCard({
   confirmed: boolean;
   selected: Uuid | null;
   onSelect: (id: Uuid) => void;
-  onCorrect: (detectionId: Uuid, index: number | null) => void;
+  onCorrect: (detectionId: Uuid, body: DetectionCorrection) => void;
   registerRow: (id: Uuid, el: HTMLLIElement | null) => void;
   students: { id: Uuid; uid: string; first_name: string; last_name: string }[];
 }) {
@@ -368,13 +367,26 @@ function PageCard({
           <ul className="flex list-none flex-col gap-3 p-0">
             {page.detections.map((d) => (
               <li key={d.id} ref={(el) => registerRow(d.id, el)}>
-                <DetectionRow
-                  detection={d}
-                  selected={selected === d.id}
-                  readOnly={confirmed || page.discarded}
-                  onSelect={() => onSelect(d.id)}
-                  onCorrect={(index) => onCorrect(d.id, index)}
-                />
+                {d.exercise_type === 'open' ? (
+                  // A written answer: the box, what was read in it, and a
+                  // verdict to confirm or overrule. No bubbles to pick from.
+                  <OpenAnswerCard
+                    detection={d}
+                    selected={selected === d.id}
+                    readOnly={confirmed || page.discarded}
+                    lowConfidence={LOW_CONFIDENCE}
+                    onSelect={() => onSelect(d.id)}
+                    onCorrect={(body) => onCorrect(d.id, body)}
+                  />
+                ) : (
+                  <DetectionRow
+                    detection={d}
+                    selected={selected === d.id}
+                    readOnly={confirmed || page.discarded}
+                    onSelect={() => onSelect(d.id)}
+                    onCorrect={(index) => onCorrect(d.id, { detected_index: index })}
+                  />
+                )}
               </li>
             ))}
           </ul>
@@ -500,6 +512,8 @@ function DetectionRow({
 /** An item the teacher has to look at before anything is written down. */
 function needsAHuman(d: DetectionOut): boolean {
   if (d.outcome === 'not_gradeable' || d.outcome === 'corrected') return false;
+  // Pending is the grader's, not the teacher's — nothing to check yet.
+  if (d.outcome === 'pending') return false;
   return d.outcome === 'multiple' || d.confidence < LOW_CONFIDENCE;
 }
 
@@ -511,13 +525,14 @@ function needsAHuman(d: DetectionOut): boolean {
 function queueRank(d: DetectionOut): number {
   if (d.outcome === 'multiple') return -1;
   if (d.outcome === 'corrected' || d.outcome === 'not_gradeable') return 2;
+  if (d.outcome === 'pending') return 1.5;
   return d.confidence;
 }
 
 function badgeVariant(outcome: DetectionOut['outcome']) {
   if (outcome === 'detected') return 'success' as const;
   if (outcome === 'corrected') return 'primary' as const;
-  if (outcome === 'not_gradeable') return 'neutral' as const;
+  if (outcome === 'not_gradeable' || outcome === 'pending') return 'neutral' as const;
   return 'warn' as const;
 }
 

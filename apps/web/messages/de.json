@@ -244,7 +244,8 @@
       "blank": "Keine Antwort",
       "multiple": "Mehrere Markierungen",
       "corrected": "Von Ihnen korrigiert",
-      "not_gradeable": "Nicht automatisch korrigierbar"
+      "not_gradeable": "Nicht automatisch korrigierbar",
+      "pending": "Wird gelesen"
     },
     "itemsToCheck": "{count, plural, =0 {nichts zu prüfen} one {# Antwort zu prüfen} other {# Antworten zu prüfen}}",
     "confirm": "Ergebnisse bestätigen",
@@ -299,7 +300,28 @@
       "needs_review": "Zu prüfen",
       "confirmed": "Bestätigt",
       "failed": "Fehlgeschlagen"
-    }
+    },
+    "openAnswer": {
+      "crop": "Ausgeschnittener Kasten",
+      "cropAlt": "Handschriftliche Antwort, Kasten {number}",
+      "readByAi": "Von der KI gelesen",
+      "transcription": "Abschrift",
+      "editTranscription": "Abschrift korrigieren",
+      "expected": "Erwartete Antwort: {answer}",
+      "noExpected": "Für diese Aufgabe ist keine erwartete Antwort hinterlegt.",
+      "verdict": "Urteil",
+      "correct": "Richtig",
+      "wrong": "Falsch",
+      "unsure": "Weiss ich nicht",
+      "pendingHelp": "Der Kasten ist ausgeschnitten. Das Modell liest die Handschrift; das Urteil erscheint hier.",
+      "ungradeableHelp": "Kein Urteil: beurteilen Sie die Antwort selbst, sonst wird sie nicht gezählt.",
+      "blankHelp": "Im Kasten steht nichts: zählt als falsche Antwort.",
+      "machineVerdict": "Urteil der Maschine: {verdict} · {transcription}",
+      "verdictCorrect": "richtig",
+      "verdictWrong": "falsch",
+      "verdictNone": "keines"
+    },
+    "confirmTranscription": "Abschrift speichern"
   },
   "adaptive": {
     "aiBadge": "KI",

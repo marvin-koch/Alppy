@@ -453,7 +453,15 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     for (const page of target.pages) {
       for (const detection of page.detections) {
         if (detection.id !== detectionId) continue;
-        detection.detected_index = (body as DetectionCorrection).detected_index;
+        const correction = body as DetectionCorrection;
+        if (detection.exercise_type === 'open') {
+          if ('verdict_correct' in correction) {
+            detection.verdict_correct = correction.verdict_correct ?? null;
+          }
+          if (correction.transcription != null) detection.transcription = correction.transcription;
+        } else {
+          detection.detected_index = correction.detected_index ?? null;
+        }
         detection.outcome = 'corrected';
         detection.corrected_at = fx.NOW;
         detection.confidence = 1;
