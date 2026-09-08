@@ -441,6 +441,8 @@ export const sheet: SheetOut = {
     id: id(610 + index),
     position: index,
     statement_override: null,
+    answer_box_lines: null,
+    answer_box_fill: null,
     exercise: ex as ExerciseOut,
   })),
   instances: students.slice(0, 3).map((student, index) => ({

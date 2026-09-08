@@ -172,4 +172,27 @@ test.describe('sheet builder', () => {
     const after = await sheet.locator('[data-student-facing]').first().innerText();
     expect(after).not.toBe(before);
   });
+
+  test('an open exercise gets an answer box the teacher sizes', async ({ page }) => {
+    await openDocument(page);
+
+    // Only the free-response item offers a box; a bubble item has nothing to
+    // write in, so it must not grow the control.
+    await page.getByRole('button', { name: /^réponse libre/i }).click();
+    await page.getByRole('checkbox').first().check();
+
+    const height = page.getByRole('radiogroup', { name: /hauteur/i });
+    await expect(height).toBeVisible();
+    await expect(height.getByRole('radio', { name: /5 lignes/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await height.getByRole('radio', { name: /12 lignes/ }).click();
+    await expect(height.getByRole('radio', { name: /12 lignes/ })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    await page.getByRole('radiogroup', { name: /fond/i }).getByRole('radio', { name: /quadrillage/i }).click();
+    await expect(page.locator('[data-answer-box-control]')).toHaveCount(1);
+  });
 });

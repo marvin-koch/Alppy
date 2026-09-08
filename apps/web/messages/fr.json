@@ -542,7 +542,15 @@
     "generate": "Générer la feuille",
     "previewFailed": "L'aperçu n'a pas pu être calculé.",
     "sourceFailed": "Ce document n'a pas pu être indexé.",
-    "sourceNoExercises": "Indexé, mais aucun exercice trouvé."
+    "sourceNoExercises": "Indexé, mais aucun exercice trouvé.",
+    "boxTitle": "Cadre de réponse",
+    "boxLines": "Hauteur",
+    "boxLinesOption": "{count} lignes",
+    "boxFill": "Fond",
+    "boxFillLined": "Lignes",
+    "boxFillGrid": "Quadrillage",
+    "boxFillBlank": "Vide",
+    "boxHelp": "L'élève écrit dans le cadre. Au scan, Alppy le découpe, lit l'écriture et propose une correction que vous validez."
   },
   "newExercise": {
     "title": "Ajouter un exercice",

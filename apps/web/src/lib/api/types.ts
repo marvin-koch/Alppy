@@ -285,10 +285,19 @@ export interface SheetProposeResponse {
   language: string;
 }
 
+/** What is printed inside a written-answer box, under the student's ink. */
+export type AnswerBoxFill = 'lined' | 'grid' | 'blank';
+
+/** The heights the paper reserves room for, in 8 mm lines. */
+export type AnswerBoxLines = 3 | 5 | 8 | 12;
+
 export interface SheetItemIn {
   exercise_id: Uuid;
   position: number;
   statement_override?: string | null;
+  /** The written-answer box under an open item; ignored on a bubble item. */
+  answer_box_lines?: AnswerBoxLines | null;
+  answer_box_fill?: AnswerBoxFill | null;
 }
 
 export interface SheetCreate {
@@ -322,6 +331,8 @@ export interface SheetItemOut {
   id: Uuid;
   position: number;
   statement_override: string | null;
+  answer_box_lines: AnswerBoxLines | null;
+  answer_box_fill: AnswerBoxFill | null;
   exercise: ExerciseOut;
 }
 

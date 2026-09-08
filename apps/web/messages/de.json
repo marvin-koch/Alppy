@@ -542,7 +542,15 @@
     "generate": "Blatt erzeugen",
     "previewFailed": "Die Vorschau konnte nicht berechnet werden.",
     "sourceFailed": "Dieses Dokument konnte nicht indexiert werden.",
-    "sourceNoExercises": "Indexiert, aber keine Aufgaben gefunden."
+    "sourceNoExercises": "Indexiert, aber keine Aufgaben gefunden.",
+    "boxTitle": "Antwortkasten",
+    "boxLines": "Höhe",
+    "boxLinesOption": "{count} Zeilen",
+    "boxFill": "Hintergrund",
+    "boxFillLined": "Linien",
+    "boxFillGrid": "Karo",
+    "boxFillBlank": "Leer",
+    "boxHelp": "Die Schülerin oder der Schüler schreibt in den Kasten. Beim Scannen schneidet Alppy ihn aus, liest die Handschrift und schlägt eine Korrektur vor, die Sie bestätigen."
   },
   "newExercise": {
     "title": "Aufgabe hinzufügen",

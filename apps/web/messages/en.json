@@ -542,7 +542,15 @@
     "generate": "Generate the sheet",
     "previewFailed": "The preview could not be computed.",
     "sourceFailed": "This document could not be indexed.",
-    "sourceNoExercises": "Indexed, but no exercises found."
+    "sourceNoExercises": "Indexed, but no exercises found.",
+    "boxTitle": "Answer box",
+    "boxLines": "Height",
+    "boxLinesOption": "{count} lines",
+    "boxFill": "Fill",
+    "boxFillLined": "Lines",
+    "boxFillGrid": "Grid",
+    "boxFillBlank": "Blank",
+    "boxHelp": "The student writes inside the box. On scanning, Alppy cuts it out, reads the handwriting and proposes a mark for you to confirm."
   },
   "newExercise": {
     "title": "Add an exercise",

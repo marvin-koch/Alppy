@@ -16,6 +16,7 @@ import {
   IconSheet,
   IconWarning,
   Panel,
+  SegmentedControl,
   Textarea,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
@@ -23,7 +24,15 @@ import { useState } from 'react';
 
 import { ITEMS_PER_PAGE } from '@/lib/optionLetters';
 import { TYPE_VARIANT } from './ExerciseRow';
-import { MAX_SHEET_ITEMS, type DraftSheet } from './useDraftSheet';
+import type { AnswerBoxFill, AnswerBoxLines, Uuid } from '@/lib/api/types';
+import {
+  ANSWER_BOX_FILLS,
+  ANSWER_BOX_LINES,
+  MAX_SHEET_ITEMS,
+  answerBoxOf,
+  type AnswerBox,
+  type DraftSheet,
+} from './useDraftSheet';
 
 interface Props {
   draft: DraftSheet;
@@ -176,6 +185,14 @@ export function SheetComposer({ draft, onAdd, footer }: Props) {
                       </p>
                     )}
 
+                    {exercise.type === 'open' ? (
+                      <AnswerBoxControl
+                        exerciseId={exercise.id}
+                        box={answerBoxOf(item)}
+                        onChange={draft.setAnswerBox}
+                      />
+                    ) : null}
+
                     <div className="mt-1 flex justify-end">
                       <IconButton
                         label={ts('editStatement')}
@@ -232,6 +249,54 @@ export function SheetComposer({ draft, onAdd, footer }: Props) {
       <SheetBudget draft={draft} />
       {footer}
     </Card>
+  );
+}
+
+/**
+ * The written-answer box under an open item: its height, and what is printed
+ * inside it. Two segmented controls rather than a free number — the paper
+ * reserves room for exactly these heights, and a box the pagination did not
+ * plan for is a box the scanner cannot find.
+ */
+function AnswerBoxControl({
+  exerciseId,
+  box,
+  onChange,
+}: {
+  exerciseId: Uuid;
+  box: AnswerBox;
+  onChange: (id: Uuid, box: Partial<AnswerBox>) => void;
+}) {
+  const t = useTranslations('builder');
+  const fillLabel: Record<AnswerBoxFill, string> = {
+    lined: t('boxFillLined'),
+    grid: t('boxFillGrid'),
+    blank: t('boxFillBlank'),
+  };
+  return (
+    <Panel sunken className="mt-2 ml-7 flex flex-col gap-2" data-answer-box-control>
+      <span className="text-label uppercase text-ink-700">
+        {t('boxTitle')}
+      </span>
+      <SegmentedControl<`${AnswerBoxLines}`>
+        label={t('boxLines')}
+        block
+        value={`${box.lines}`}
+        onValueChange={(value) => onChange(exerciseId, { lines: Number(value) as AnswerBoxLines })}
+        options={ANSWER_BOX_LINES.map((lines) => ({
+          value: `${lines}` as `${AnswerBoxLines}`,
+          label: t('boxLinesOption', { count: lines }),
+        }))}
+      />
+      <SegmentedControl<AnswerBoxFill>
+        label={t('boxFill')}
+        block
+        value={box.fill}
+        onValueChange={(fill) => onChange(exerciseId, { fill })}
+        options={ANSWER_BOX_FILLS.map((fill) => ({ value: fill, label: fillLabel[fill] }))}
+      />
+      <p className="text-body-s text-ink-500">{t('boxHelp')}</p>
+    </Panel>
   );
 }
 

@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { previewSheetDraft } from '@/lib/api/endpoints';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { ApiLocale, Uuid } from '@/lib/api/types';
-import type { DraftItem } from './useDraftSheet';
+import { toSheetItemIn, type DraftItem } from './useDraftSheet';
 
 interface Props {
   classId: Uuid;
@@ -90,11 +90,7 @@ export function DraftPreview({ classId, subjectId, title, language, items }: Pro
         subject_id: subjectId,
         title,
         language,
-        items: items.map((item, index) => ({
-          exercise_id: item.exercise.id,
-          position: index,
-          ...(item.override ? { statement_override: item.override } : {}),
-        })),
+        items: items.map((item, index) => toSheetItemIn(item, index)),
       })
         .then((document) => {
           if (controller.signal.aborted) return;

@@ -27,6 +27,7 @@ import { SheetComposer } from '@/components/sheet-builder/SheetComposer';
 import {
   draftHasMixedLanguages,
   draftLanguage,
+  toSheetItemIn,
   useDraftSheet,
 } from '@/components/sheet-builder/useDraftSheet';
 import { useRouter } from '@/i18n/navigation';
@@ -119,11 +120,7 @@ export default function SheetBuilderPage() {
         language: sheetLanguage,
         target: 'class',
         intent: null,
-        items: draft.items.map((item, index) => ({
-          exercise_id: item.exercise.id,
-          position: index,
-          ...(item.override ? { statement_override: item.override } : {}),
-        })),
+        items: draft.items.map((item, index) => toSheetItemIn(item, index)),
       },
       { onSuccess: (sheet) => router.push(`/sheets/${sheet.id}`) },
     );
