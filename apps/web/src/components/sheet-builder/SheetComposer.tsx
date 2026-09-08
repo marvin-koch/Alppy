@@ -15,8 +15,9 @@ import {
   IconPlus,
   IconSheet,
   IconWarning,
+  Field,
   Panel,
-  SegmentedControl,
+  Select,
   Textarea,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
@@ -254,9 +255,9 @@ export function SheetComposer({ draft, onAdd, footer }: Props) {
 
 /**
  * The written-answer box under an open item: its height, and what is printed
- * inside it. Two segmented controls rather than a free number — the paper
- * reserves room for exactly these heights, and a box the pagination did not
- * plan for is a box the scanner cannot find.
+ * inside it. Two selects rather than segmented controls — the paper reserves
+ * room for exactly these heights, and with the preview open this column is
+ * too narrow for five buttons in a row without wrapping into a ragged stack.
  */
 function AnswerBoxControl({
   exerciseId,
@@ -275,31 +276,37 @@ function AnswerBoxControl({
   };
   return (
     <Panel sunken className="mt-2 ml-7 flex flex-col gap-2" data-answer-box-control>
-      <span className="text-label uppercase text-ink-700">
-        {t('boxTitle')}
-      </span>
-      {/* Wrapping on purpose: with the preview open this column is narrow,
-          and a control that spills out of its panel is worse than one that
-          takes two rows. */}
-      <SegmentedControl<`${AnswerBoxLines}`>
-        label={t('boxLines')}
-        block
-        className="flex-wrap"
-        value={`${box.lines}`}
-        onValueChange={(value) => onChange(exerciseId, { lines: Number(value) as AnswerBoxLines })}
-        options={ANSWER_BOX_LINES.map((lines) => ({
-          value: `${lines}` as `${AnswerBoxLines}`,
-          label: lines === 0 ? t('boxNone') : t('boxLinesOption', { count: lines }),
-        }))}
-      />
-      <SegmentedControl<AnswerBoxFill>
-        label={t('boxFill')}
-        block
-        className="flex-wrap"
-        value={box.fill}
-        onValueChange={(fill) => onChange(exerciseId, { fill })}
-        options={ANSWER_BOX_FILLS.map((fill) => ({ value: fill, label: fillLabel[fill] }))}
-      />
+      <span className="text-label uppercase text-ink-700">{t('boxTitle')}</span>
+      <div className="flex flex-col gap-2">
+        <Field label={t('boxLines')}>
+          <Select
+            value={`${box.lines}`}
+            onChange={(event) =>
+              onChange(exerciseId, { lines: Number(event.currentTarget.value) as AnswerBoxLines })
+            }
+          >
+            {ANSWER_BOX_LINES.map((lines) => (
+              <option key={lines} value={lines}>
+                {lines === 0 ? t('boxNone') : t('boxLinesOption', { count: lines })}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <Field label={t('boxFill')}>
+          <Select
+            value={box.fill}
+            onChange={(event) =>
+              onChange(exerciseId, { fill: event.currentTarget.value as AnswerBoxFill })
+            }
+          >
+            {ANSWER_BOX_FILLS.map((fill) => (
+              <option key={fill} value={fill}>
+                {fillLabel[fill]}
+              </option>
+            ))}
+          </Select>
+        </Field>
+      </div>
       <p className="text-body-s text-ink-500">{t('boxHelp')}</p>
     </Panel>
   );

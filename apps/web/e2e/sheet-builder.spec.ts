@@ -181,18 +181,14 @@ test.describe('sheet builder', () => {
     await page.getByRole('button', { name: /^réponse libre/i }).click();
     await page.getByRole('checkbox').first().check();
 
-    const height = page.getByRole('radiogroup', { name: /hauteur/i });
+    const control = page.locator('[data-answer-box-control]');
+    const height = control.getByLabel(/hauteur/i);
     await expect(height).toBeVisible();
-    await expect(height.getByRole('radio', { name: /^5$/ })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await height.getByRole('radio', { name: /^12$/ }).click();
-    await expect(height.getByRole('radio', { name: /^12$/ })).toHaveAttribute(
-      'aria-checked',
-      'true',
-    );
-    await page.getByRole('radiogroup', { name: /fond/i }).getByRole('radio', { name: /quadrillage/i }).click();
+    await expect(height).toHaveValue('5');
+    await height.selectOption('12');
+    await expect(height).toHaveValue('12');
+    await control.getByLabel(/fond/i).selectOption('grid');
+    await expect(control.getByLabel(/fond/i)).toHaveValue('grid');
     await expect(page.locator('[data-answer-box-control]')).toHaveCount(1);
   });
 });
