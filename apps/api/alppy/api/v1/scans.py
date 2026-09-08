@@ -92,10 +92,13 @@ def get_scan(
 
 @router.get("/scans/{scan_id}/detections", response_model=list[DetectionOut])
 def list_detections(
-    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep
+    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
 ) -> list[DetectionOut]:
     svc.get_scan(db, scope, scan_id)
-    return [detection_out(d) for d in svc.list_detections(db, scope.school_id, scan_id)]
+    return [
+        detection_out(d, storage=storage)
+        for d in svc.list_detections(db, scope.school_id, scan_id)
+    ]
 
 
 @router.patch("/scans/{scan_id}/detections/{detection_id}", response_model=DetectionOut)
@@ -106,6 +109,7 @@ def correct_detection(
     teacher: TeacherDep,
     scope: ScopeDep,
     db: DbDep,
+    storage: StorageDep,
 ) -> DetectionOut:
     """A teacher overriding the machine. Always allowed, always recorded."""
     svc.get_scan(db, scope, scan_id)
@@ -114,7 +118,7 @@ def correct_detection(
     )
     db.commit()
     db.refresh(detection)
-    return detection_out(detection)
+    return detection_out(detection, storage=storage)
 
 
 @router.get("/scans/{scan_id}/students", response_model=list[StudentOut])

@@ -461,3 +461,46 @@ def test_home_counts_a_pending_scan(client: TestClient, tenant: Tenant, db: Sess
     summary = client.get("/api/v1/home").json()["classes"][0]
     assert summary["pending_scans"] == 1
     assert summary["last_sheet_title"] == "Fractions"
+
+
+def test_a_written_answer_is_corrected_with_a_verdict_not_a_bubble(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The review screen sends a verdict and a transcription for a box; the
+    response carries what the machine read beside what the teacher decided."""
+    login(client, tenant.teacher.email)
+    ctx = _build_scanned_sheet(client, tenant, db)
+    detection_id = list(ctx["detection_ids"])[-1]  # type: ignore[arg-type]  # the free-text item
+    detection = db.get(Detection, uuid.UUID(str(detection_id)))
+    assert detection is not None
+    from alppy.models import SheetItem
+
+    item = db.get(SheetItem, detection.sheet_item_id)
+    assert item is not None
+    # The builder above predates exercise_id; the pipeline always writes it.
+    detection.exercise = item.exercise
+    detection.crop_key = "scans/x/box.png"
+    detection.transcription = detection.machine_transcription = "7/9"
+    detection.verdict_correct = detection.machine_verdict_correct = False
+    db.commit()
+
+    listed = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections").json()
+    row = next(d for d in listed if d["id"] == detection_id)
+    assert row["exercise_type"] == "open"
+    assert row["transcription"] == "7/9" and row["verdict_correct"] is False
+    assert row["crop_url"], "the crop is served, not its storage key"
+
+    refused = client.patch(
+        f"/api/v1/scans/{ctx['scan_id']}/detections/{detection_id}",
+        json={"detected_index": 1},
+    )
+    assert refused.status_code == 422
+
+    corrected = client.patch(
+        f"/api/v1/scans/{ctx['scan_id']}/detections/{detection_id}",
+        json={"verdict_correct": True, "transcription": "7/8"},
+    ).json()
+    assert corrected["outcome"] == "corrected"
+    assert corrected["verdict_correct"] is True and corrected["transcription"] == "7/8"
+    assert corrected["machine_verdict_correct"] is False
+    assert corrected["machine_transcription"] == "7/9"

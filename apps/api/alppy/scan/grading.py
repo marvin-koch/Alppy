@@ -1,10 +1,11 @@
 """Grading.
 
-The MVP auto-grades MCQ and true/false only. Free-text is explicitly out of
-scope — but the shape here is what makes adding it later a plug-in rather than
-a rewrite: ``grade_item`` dispatches on exercise type, and every type that has
-no automatic grader returns ``NOT_GRADEABLE`` instead of guessing. A future
-free-text grader registers itself in ``_GRADERS`` and nothing else changes.
+``grade_item`` dispatches on exercise type, and every type that has no
+automatic grader returns ``NOT_GRADEABLE`` instead of guessing. This module
+ships the two bubble graders and a stub for ``open``; the free-text grader
+lives in ``alppy.scan.open_grading`` and installs itself through
+``register_grader`` when the ``alppy.scan`` package is imported — the plug-in
+D13 promised, arriving through the seam it named.
 """
 
 from __future__ import annotations
@@ -27,11 +28,14 @@ class AnswerKey:
 
 @dataclass(frozen=True, slots=True)
 class DetectedAnswer:
-    """What the scan pipeline believes the student marked."""
+    """What the scan pipeline believes the student marked — or, for a written
+    answer, what the vision grader (or the teacher after it) concluded."""
 
     outcome: DetectionOutcome
     index: int | None = None
     confidence: float = 0.0
+    transcription: str | None = None
+    verdict_correct: bool | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +52,9 @@ class ItemGrader(Protocol):
     def __call__(self, key: AnswerKey, detected: DetectedAnswer) -> GradedItem: ...
 
 
-def _ungradeable(outcome: DetectionOutcome, confidence: float, reason: str) -> GradedItem:
+def ungradeable(outcome: DetectionOutcome, confidence: float, reason: str) -> GradedItem:
+    """A graded item that produces no attempt. Public: the open grader in
+    ``open_grading`` builds the same refusal."""
     return GradedItem(
         correct=False,
         score=0.0,
@@ -74,13 +80,13 @@ def _grade_choice(key: AnswerKey, detected: DetectedAnswer, expected: int | None
         )
     if detected.outcome is DetectionOutcome.MULTIPLE:
         # Two bubbles filled is ambiguous. We never guess; the teacher decides.
-        return _ungradeable(
+        return ungradeable(
             DetectionOutcome.MULTIPLE, detected.confidence, "more than one bubble marked"
         )
     if detected.index is None:
-        return _ungradeable(detected.outcome, detected.confidence, "no answer index")
+        return ungradeable(detected.outcome, detected.confidence, "no answer index")
     if expected is None:
-        return _ungradeable(
+        return ungradeable(
             DetectionOutcome.NOT_GRADEABLE, detected.confidence, "exercise has no answer key"
         )
 
@@ -107,11 +113,13 @@ def _grade_true_false(key: AnswerKey, detected: DetectedAnswer) -> GradedItem:
 
 
 def _grade_open(key: AnswerKey, detected: DetectedAnswer) -> GradedItem:
-    """Free-text is printed and never auto-graded. This is the extension point."""
-    return _ungradeable(
+    """The stub ``open_grading.install`` replaces. Kept so that importing this
+    module alone still grades a written answer as nothing rather than as
+    something."""
+    return ungradeable(
         DetectionOutcome.NOT_GRADEABLE,
         detected.confidence,
-        "free-text grading is out of scope for the MVP",
+        "no free-text grader installed",
     )
 
 
@@ -126,9 +134,8 @@ def register_grader(exercise_type: ExerciseType, grader: ItemGrader) -> None:
     """Install a grader for one exercise type.
 
     This is the seam a free-text grader arrives through, and it is public so
-    that arriving through it does not mean reaching into a private name. The
-    MVP ships ``open`` mapped to ``_grade_open``, which returns
-    ``NOT_GRADEABLE`` — replacing that mapping is the whole change.
+    that arriving through it does not mean reaching into a private name.
+    ``open_grading.install`` replaces the ``open`` stub this way.
     """
     _GRADERS[exercise_type] = grader
 
@@ -142,7 +149,7 @@ def grade_item(key: AnswerKey, detected: DetectedAnswer) -> GradedItem:
     """Grade one item. Never raises: an unknown type is simply not gradeable."""
     grader = _GRADERS.get(key.type)
     if grader is None:  # pragma: no cover - defensive
-        return _ungradeable(DetectionOutcome.NOT_GRADEABLE, detected.confidence, "unknown type")
+        return ungradeable(DetectionOutcome.NOT_GRADEABLE, detected.confidence, "unknown type")
     return grader(key, detected)
 
 

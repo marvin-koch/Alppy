@@ -247,6 +247,9 @@ def correct_detection(
     detection = get_detection(db, school_id, scan_id, detection_id)
     exercise = _exercise_for_detection(db, school_id, detection)
 
+    if exercise is not None and exercise.type is ExerciseType.OPEN:
+        return _correct_written_answer(detection, payload, teacher_id=teacher_id, now=now)
+
     # Bound the override by the options this item actually printed. A global
     # 0..3 let a two-bubble true/false item be "corrected" to option 3, which
     # then graded the child wrong against an answer they could not have given.
@@ -274,6 +277,33 @@ def correct_detection(
     return detection
 
 
+def _correct_written_answer(
+    detection: Detection,
+    payload: DetectionCorrection,
+    *,
+    teacher_id: uuid.UUID,
+    now: datetime | None,
+) -> Detection:
+    """The teacher's word on a written answer: a verdict, a transcription, or
+    both. The machine's stay where they were.
+
+    ``verdict_correct`` may be set to ``None`` on purpose — "I cannot tell
+    either" — and that is recorded as a correction too, so the row no longer
+    looks like something the machine decided. A bare transcription fix keeps
+    the verdict as it was."""
+    if payload.detected_index is not None:
+        raise errors.unprocessable("a written answer has no bubble to correct")
+    if "verdict_correct" in payload.model_fields_set:
+        detection.verdict_correct = payload.verdict_correct
+    if payload.transcription is not None:
+        detection.transcription = payload.transcription.strip() or None
+    detection.outcome = DetectionOutcome.CORRECTED
+    detection.confidence = 1.0
+    detection.corrected_by_id = teacher_id
+    detection.corrected_at = now or datetime.now(UTC)
+    return detection
+
+
 def _answer_key(exercise: Exercise) -> AnswerKey:
     return AnswerKey(
         type=exercise.type,
@@ -288,7 +318,11 @@ def _detected_answer(detection: Detection) -> DetectedAnswer:
     if index is None and detection.detected_bool is not None:
         index = 0 if detection.detected_bool else 1
     return DetectedAnswer(
-        outcome=detection.outcome, index=index, confidence=detection.confidence
+        outcome=detection.outcome,
+        index=index,
+        confidence=detection.confidence,
+        transcription=detection.transcription,
+        verdict_correct=detection.verdict_correct,
     )
 
 

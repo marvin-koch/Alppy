@@ -1,5 +1,11 @@
-"""Scan registration, mark detection and grading."""
+"""Scan registration, mark detection and grading.
 
+Importing the package installs the free-text grader over the ``open`` stub in
+``grading``: every caller reaches grading through this package, so the seam is
+closed the moment anything asks to grade.
+"""
+
+from alppy.scan import open_grading
 from alppy.scan.detector import PageResult, process_page
 from alppy.scan.grading import (
     AnswerKey,
@@ -11,6 +17,8 @@ from alppy.scan.grading import (
     grader_for,
     register_grader,
 )
+
+open_grading.install()
 
 __all__ = [
     "AnswerKey",

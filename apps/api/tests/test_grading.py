@@ -1,4 +1,5 @@
-"""Grading. Free-text is out of scope, and the tests pin that boundary in place."""
+"""Grading. A written answer is graded on a verdict and on nothing else; the tests
+pin that boundary in place."""
 
 from __future__ import annotations
 
@@ -52,11 +53,16 @@ def test_multiple_marks_are_never_guessed() -> None:
     assert g.outcome is DetectionOutcome.MULTIPLE
 
 
-def test_free_text_is_never_auto_graded() -> None:
+def test_free_text_without_a_verdict_is_never_auto_graded() -> None:
+    """A written answer is graded only on a verdict — the vision model's or
+    the teacher's. A reading with none, whatever its confidence claims, is
+    not a score, and a bubble index means nothing for a box."""
     g = grade_item(OPEN, detected(0))
     assert not g.gradeable
     assert g.outcome is DetectionOutcome.NOT_GRADEABLE
-    assert "out of scope" in g.reason
+    pending = DetectedAnswer(outcome=DetectionOutcome.PENDING, confidence=0.0)
+    assert not grade_item(OPEN, pending).gradeable
+    assert grade_item(OPEN, pending).outcome is DetectionOutcome.PENDING
 
 
 def test_missing_answer_key_is_not_gradeable() -> None:

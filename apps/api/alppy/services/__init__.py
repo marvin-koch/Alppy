@@ -264,7 +264,9 @@ def sheet_out(sheet: Sheet, *, storage: Storage | None = None) -> SheetOut:
     )
 
 
-def detection_out(detection: Detection, *, language: str = "fr") -> DetectionOut:
+def detection_out(
+    detection: Detection, *, language: str = "fr", storage: Storage | None = None
+) -> DetectionOut:
     """One reading, with the question it is a reading *of*.
 
     The statement and the option letters travel with the detection because the
@@ -313,6 +315,17 @@ def detection_out(detection: Detection, *, language: str = "fr") -> DetectionOut
             exercise is not None and exercise.origin is ExerciseOrigin.AI_GENERATED
         ),
         answer_index=answer_index,
+        crop_url=_url(storage, detection.crop_key),
+        transcription=detection.transcription,
+        verdict_correct=detection.verdict_correct,
+        machine_transcription=detection.machine_transcription,
+        machine_verdict_correct=detection.machine_verdict_correct,
+        vision_model=detection.vision_model,
+        answer_text=(
+            exercise.answer_text
+            if exercise is not None and exercise.type is ExerciseType.OPEN
+            else None
+        ),
     )
 
 
@@ -332,7 +345,8 @@ def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPage
         page_in_copy=page.page_in_copy,
         registration_error=meta.get("error"),
         detections=[
-            detection_out(d) for d in sorted(page.detections, key=lambda d: d.item_index)
+            detection_out(d, storage=storage)
+            for d in sorted(page.detections, key=lambda d: d.item_index)
         ],
     )
 

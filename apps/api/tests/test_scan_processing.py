@@ -764,3 +764,277 @@ def test_a_whole_class_set_grades_correctly(
     assert result.attempts_created == 4 * len(tenant.students)
     assert all(a.correct for a in attempts)
     assert not any(a.exercise_id == exercises[4].id for a in attempts)
+
+
+# --------------------------------------------------------------------------
+# Written answers: cut where they printed, graded on a verdict, never guessed
+# --------------------------------------------------------------------------
+def _place_boxes(
+    db: Session, sheet: Sheet, exercise_id: uuid.UUID, *, item_index: int, fill: str = "lined"
+) -> tuple[float, float, float, float]:
+    """The rows the render job would have written: one box per copy, at a
+    rectangle inside the statement region."""
+    from alppy.models import AnswerBoxPlacement
+    from alppy.models.enums import AnswerBoxFill
+
+    rect = (17.0, 100.0, 176.0, 40.0)
+    for instance in sheet.instances:
+        db.add(
+            AnswerBoxPlacement(
+                id=uuid.uuid4(),
+                school_id=sheet.school_id,
+                sheet_id=sheet.id,
+                exercise_id=exercise_id,
+                student_uid=instance.student_uid,
+                copy_page=1,
+                item_index=item_index,
+                box_lines=5,
+                box_fill=AnswerBoxFill(fill),
+                x_mm=rect[0],
+                y_mm=rect[1],
+                w_mm=rect[2],
+                h_mm=rect[3],
+                layout_version="v1",
+            )
+        )
+    db.commit()
+    return rect
+
+
+def _open_sheet(db: Session, tenant: Tenant) -> tuple[Sheet, list, tuple[float, float, float, float]]:
+    """One MCQ then one written answer, with the box placed for every copy."""
+    sheet, exercises = _sheet(
+        db, tenant, answers=[1, 0], kinds=[ExerciseType.MCQ, ExerciseType.OPEN]
+    )
+    exercises[1].answer_text = "7/8"
+    db.commit()
+    rect = _place_boxes(db, sheet, exercises[1].id, item_index=1)
+    return sheet, exercises, rect
+
+
+def _written_copy(
+    db: Session, sheet: Sheet, uid: str, rect: tuple[float, float, float, float], *, ink: bool
+) -> list[np.ndarray]:
+    from alppy.scan.synthetic import draw_answer_box, scribble
+
+    images = _render_copy(db, sheet, uid)
+    draw_answer_box(images[0], *rect, fill="lined")
+    if ink:
+        scribble(images[0], *rect)
+    return images
+
+
+def _open_detection(db: Session, scan: Scan) -> Detection:
+    rows = (
+        db.query(Detection)
+        .join(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .filter(ScanPage.scan_id == scan.id)
+        .order_by(Detection.item_index)
+        .all()
+    )
+    assert len(rows) == 2
+    return rows[1]
+
+
+class _Verdict:
+    """A grounded provider that has an opinion."""
+
+    name = "stub"
+    grounded = True
+
+    def __init__(self, text: str) -> None:
+        self.text = text
+        self.calls = 0
+
+    def complete(self, request):  # type: ignore[no-untyped-def]
+        from alppy.ai.base import ChatResponse
+
+        self.calls += 1
+        assert request.images, "the grader must send the crop"
+        return ChatResponse(text=self.text, model="stub")
+
+
+def _ai_with(provider):  # type: ignore[no-untyped-def]
+    from alppy.ai.client import AiClient
+
+    ai = AiClient()
+    ai._chat = provider
+    return ai
+
+
+def test_a_written_answer_is_cut_and_left_pending_for_the_grader(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.PENDING
+    assert detection.machine_outcome is DetectionOutcome.PENDING
+    assert detection.crop_key and storage.exists(detection.crop_key)
+    assert storage.get_bytes(detection.crop_key)[:4] == b"\x89PNG"
+
+    # The job reports what the worker must chain.
+    from alppy.models import Job
+    from alppy.models.enums import JobKind, JobStatus
+    from alppy.services.open_answer_grading import chain_open_grading
+
+    done = Job(
+        id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.PROCESS_SCAN,
+        status=JobStatus.SUCCEEDED, progress=1.0,
+        payload={"scan_id": str(scan.id)}, result={"pending_open_answers": 1},
+    )
+    db.add(done)
+    db.flush()
+    follow_up = chain_open_grading(db, done)
+    assert follow_up is not None and follow_up.kind is JobKind.GRADE_OPEN_ANSWERS
+    assert follow_up.payload["scan_id"] == str(scan.id)
+    done.result = {"pending_open_answers": 0}
+    assert chain_open_grading(db, done) is None
+
+
+def test_an_empty_box_is_blank_without_asking_a_model(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=False), monkeypatch)
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.BLANK
+    assert detection.crop_key
+
+
+def test_a_sheet_printed_before_boxes_existed_stays_ungradeable(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _ = _sheet(db, tenant, answers=[1, 0], kinds=[ExerciseType.MCQ, ExerciseType.OPEN])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.NOT_GRADEABLE
+    assert detection.crop_key is None
+
+
+def test_the_offline_provider_grades_nothing_and_leaves_nothing_pending(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.ai.client import AiClient
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    from alppy.ai.providers import EchoChatProvider
+
+    monkeypatch.setattr("alppy.ai.client.build_chat_provider", EchoChatProvider)
+    result = grade_open_answers(db, storage, AiClient(), scan_id=scan.id)
+    assert result == {"pending": 1, "graded": 0, "blank": 0, "ungradeable": 1}
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.NOT_GRADEABLE
+    assert detection.verdict_correct is None
+
+    # Confirming still works: the item is reported, not scored.
+    response = scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert response.items_skipped == 1
+    assert {a.exercise_id for a in _attempts(db, scan)} == {sheet.items[0].exercise_id}
+
+
+def test_a_verdict_reaches_the_attempt_only_through_confirmation(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict('{"transcription": "6/8 + 1/8 = 7/8", "written": true, "correct": true, "confidence": 0.93}')
+    result = grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+    assert provider.calls == 1
+    assert result["graded"] == 1
+
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.DETECTED
+    assert detection.transcription == "6/8 + 1/8 = 7/8"
+    assert detection.machine_transcription == detection.transcription
+    assert detection.verdict_correct is True and detection.machine_verdict_correct is True
+    assert detection.confidence == pytest.approx(0.93)
+    assert detection.vision_model == "stub"
+    assert not _attempts(db, scan), "nothing reaches the record unsigned"
+
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    graded = {a.exercise_id: a.correct for a in _attempts(db, scan)}
+    assert graded[exercises[1].id] is True
+
+
+def test_a_shaky_or_unreadable_verdict_is_surfaced_not_scored(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    shaky = _Verdict('{"transcription": "7/9?", "written": true, "correct": false, "confidence": 0.3}')
+    grade_open_answers(db, storage, _ai_with(shaky), scan_id=scan.id)
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.LOW_CONFIDENCE
+    assert detection.verdict_correct is False
+
+    # Reset and try a model that cannot tell.
+    detection.outcome = detection.machine_outcome = DetectionOutcome.PENDING
+    db.commit()
+    unsure = _Verdict('{"transcription": "", "written": true, "correct": null, "confidence": 0.2}')
+    grade_open_answers(db, storage, _ai_with(unsure), scan_id=scan.id)
+    db.refresh(detection)
+    assert detection.outcome is DetectionOutcome.NOT_GRADEABLE
+
+    # And one that breaks: the row settles as ungradeable, never pending.
+    detection.outcome = detection.machine_outcome = DetectionOutcome.PENDING
+    db.commit()
+    broken = _Verdict("this is not json")
+    result = grade_open_answers(db, storage, _ai_with(broken), scan_id=scan.id)
+    db.refresh(detection)
+    assert detection.outcome is DetectionOutcome.NOT_GRADEABLE
+    assert result["ungradeable"] == 1
+
+
+def test_the_teacher_corrects_a_written_answer_and_the_machine_keeps_its_story(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+    provider = _Verdict('{"transcription": "7/8", "written": true, "correct": true, "confidence": 0.9}')
+    grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+    detection = _open_detection(db, scan)
+
+    scan_service.correct_detection(
+        db, tenant.school.id, tenant.teacher.id, scan.id, detection.id,
+        DetectionCorrection(verdict_correct=False, transcription="7/9"),
+    )
+    db.commit()
+    db.refresh(detection)
+    assert detection.outcome is DetectionOutcome.CORRECTED
+    assert detection.verdict_correct is False and detection.transcription == "7/9"
+    assert detection.machine_verdict_correct is True and detection.machine_transcription == "7/8"
+    assert detection.corrected_by_id == tenant.teacher.id
+
+    # A bubble index means nothing for a box.
+    with pytest.raises(ApiError):
+        scan_service.correct_detection(
+            db, tenant.school.id, tenant.teacher.id, scan.id, detection.id,
+            DetectionCorrection(detected_index=1),
+        )
+
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    graded = {a.exercise_id: a.correct for a in _attempts(db, scan)}
+    assert graded[exercises[1].id] is False

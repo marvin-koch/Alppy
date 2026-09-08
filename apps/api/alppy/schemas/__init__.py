@@ -465,6 +465,15 @@ class DetectionOut(ApiModel):
     # different question from "were they right" — but both are asked of the
     # same row, and the key is already on the answer-key sheet in their hand.
     answer_index: int | None = None
+    # A written answer: the box cut from the page, what was read in it, and
+    # the verdict — current beside machine, as for the bubbles.
+    crop_url: str | None = None
+    transcription: str | None = None
+    verdict_correct: bool | None = None
+    machine_transcription: str | None = None
+    machine_verdict_correct: bool | None = None
+    vision_model: str | None = None
+    answer_text: str | None = None
 
 
 class DetectionCorrection(BaseModel):
@@ -473,9 +482,15 @@ class DetectionCorrection(BaseModel):
     ``le=3`` is the layout's hard ceiling (``MAX_OPTIONS``); the item's own
     option count is checked in the service, which is the only place that knows
     it — a two-bubble true/false item must not accept option 3.
+
+    For a written answer the correction is a verdict and/or a transcription.
+    Sending ``verdict_correct: null`` explicitly means "I cannot tell either";
+    leaving it out keeps the verdict as it was.
     """
 
     detected_index: Annotated[int, Field(ge=0, le=3)] | None = None
+    verdict_correct: bool | None = None
+    transcription: Annotated[str, Field(max_length=4000)] | None = None
 
 
 class ScanPageOut(ApiModel):
