@@ -98,6 +98,61 @@ def render_page(
 
 
 # --------------------------------------------------------------------------
+# Written-answer boxes — the furniture the renderer prints, and a student's ink
+# --------------------------------------------------------------------------
+def draw_answer_box(
+    img: Image, x_mm: float, y_mm: float, w_mm: float, h_mm: float, *, fill: str = "lined"
+) -> None:
+    """Exactly what the print markup draws: the border, the four corner ticks
+    crossing it from outside, and the guides — lines every 8 mm or the 5 mm
+    grid — in the light grey the paper gets for ``--c-ink-300``."""
+    x0, y0, x1, y1 = _mm(x_mm), _mm(y_mm), _mm(x_mm + w_mm), _mm(y_mm + h_mm)
+    border = max(1, _mm(L.ANSWER_BOX_BORDER_MM))
+    guide_grey = 170
+    if fill == "lined":
+        pitch = L.ANSWER_BOX_LINE_PITCH_MM
+        for k in range(1, int(h_mm / pitch) + 1):
+            y = y0 + _mm(k * pitch)
+            if y < y1:
+                cv2.line(img, (x0, y), (x1, y), guide_grey, 1)
+    elif fill == "grid":
+        pitch = L.ANSWER_BOX_GRID_MM
+        for k in range(1, int(h_mm / pitch) + 1):
+            y = y0 + _mm(k * pitch)
+            if y < y1:
+                cv2.line(img, (x0, y), (x1, y), guide_grey, 1)
+        for k in range(1, int(w_mm / pitch) + 1):
+            x = x0 + _mm(k * pitch)
+            if x < x1:
+                cv2.line(img, (x, y0), (x, y1), guide_grey, 1)
+    cv2.rectangle(img, (x0, y0), (x1, y1), INK, thickness=border)
+    tick = _mm(L.ANSWER_BOX_TICK_MM)
+    for cx, cy, sx, sy in ((x0, y0, -1, -1), (x1, y0, 1, -1), (x0, y1, -1, 1), (x1, y1, 1, 1)):
+        cv2.line(img, (cx, cy), (cx + sx * tick, cy), INK, border)
+        cv2.line(img, (cx, cy), (cx, cy + sy * tick), INK, border)
+
+
+def scribble(
+    img: Image, x_mm: float, y_mm: float, w_mm: float, h_mm: float, *, seed: int = 0,
+    shade: int = INK, strokes: int = 6,
+) -> None:
+    """A student's writing: a few thick wavy strokes across the box, well
+    inside it. Not letters — the detector never reads them — but enough ink,
+    in the right place, for the crop to be plainly not blank."""
+    rng = np.random.default_rng(seed)
+    x0, y0 = _mm(x_mm + 6), _mm(y_mm + 5)
+    x1, y1 = _mm(x_mm + w_mm - 6), _mm(y_mm + h_mm - 5)
+    if x1 <= x0 or y1 <= y0:
+        return
+    for _ in range(strokes):
+        y = int(rng.integers(y0, y1))
+        xs = np.linspace(x0, x1, 40)
+        ys = y + (np.sin(xs / 25.0) * 12).astype(int)
+        pts = np.stack([xs.astype(int), ys], axis=1).reshape(-1, 1, 2)
+        cv2.polylines(img, [pts], False, shade, thickness=max(2, _mm(0.8)))
+
+
+# --------------------------------------------------------------------------
 # Degradations — what the classroom does to a sheet on its way back
 # --------------------------------------------------------------------------
 def rotate(img: Image, degrees: float, *, border: int = PAPER) -> Image:

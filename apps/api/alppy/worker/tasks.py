@@ -1,7 +1,7 @@
 """arq task functions — the only place a slow pipeline (model call, OpenCV,
 Chromium render) runs. See ``docs/architecture.md`` §3: a FastAPI handler
 never awaits one of these directly; it writes a ``Job`` row and enqueues one
-of the five functions below by name, then the client polls ``GET /jobs/{id}``.
+of the functions below by name, then the client polls ``GET /jobs/{id}``.
 
 Each task:
 
@@ -183,7 +183,11 @@ async def render_sheet(ctx: dict[str, Any], job_id: str) -> None:
 async def process_scan(ctx: dict[str, Any], job_id: str) -> None:
     """``JobKind.PROCESS_SCAN`` — OpenCV fiducial registration, deskew, UID
     read, bubble/mark detection with per-item confidence. See
-    ``docs/architecture.md`` Flow 3."""
+    ``docs/architecture.md`` Flow 3.
+
+    When the pile carries written answers, a ``GRADE_OPEN_ANSWERS`` job is
+    chained afterwards: the review opens now, on the marks, and the verdicts
+    arrive while the teacher is already looking."""
 
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
         from alppy.services.scan_processing import process_scan as run_process_scan
@@ -192,6 +196,56 @@ async def process_scan(ctx: dict[str, Any], job_id: str) -> None:
         return run_process_scan(
             db,
             get_storage(),
+            scan_id=_uuid_from(job, "scan_id"),
+            on_progress=on_progress,
+        )
+
+    await asyncio.to_thread(_run_job, job_id, _call)
+    await asyncio.to_thread(_chain_after, job_id)
+
+
+def _chain_after(job_id: str) -> None:
+    """Enqueue whatever a finished job asks for next. Its own session: the
+    finished job's transaction is closed, and the follow-up must be committed
+    before the worker can be handed it."""
+    from alppy.services.open_answer_grading import chain_open_grading
+    from alppy.worker.queue import QueueUnavailableError, enqueue
+
+    db = SessionLocal()
+    try:
+        job = db.get(Job, UUID(job_id))
+        if job is None:
+            return
+        follow_up = chain_open_grading(db, job)
+        if follow_up is None:
+            return
+        db.commit()
+        try:
+            enqueue(follow_up.kind, follow_up.id)
+        except QueueUnavailableError as exc:
+            follow_up.status = JobStatus.FAILED
+            follow_up.error = str(exc)[:500]
+            follow_up.finished_at = datetime.now(UTC)
+            db.commit()
+            log.warning("job.chain_failed", job_id=job_id, kind=follow_up.kind.value)
+    finally:
+        db.close()
+
+
+async def grade_open_answers(ctx: dict[str, Any], job_id: str) -> None:
+    """``JobKind.GRADE_OPEN_ANSWERS`` — one vision-model call per written
+    answer cropped by ``PROCESS_SCAN``, each row settled as it lands. Nothing
+    is left pending: a failed call is recorded as not gradeable."""
+
+    def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
+        from alppy.ai.client import AiClient
+        from alppy.services.open_answer_grading import grade_open_answers as run
+        from alppy.storage import get_storage
+
+        return run(
+            db,
+            get_storage(),
+            AiClient(),
             scan_id=_uuid_from(job, "scan_id"),
             on_progress=on_progress,
         )

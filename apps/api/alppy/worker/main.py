@@ -6,7 +6,7 @@ Run with either::
     arq alppy.worker.main.WorkerSettings
 
 Both start the same worker: it connects to Redis (``ALPPY_REDIS_URL``),
-listens on the default arq queue, and dispatches the four job kinds in
+listens on the default arq queue, and dispatches every job kind in
 ``alppy.worker.tasks``. The Docker image's worker service (see
 ``docker-compose.yml``) runs the ``arq`` CLI form.
 """
@@ -23,6 +23,7 @@ from alppy.worker.tasks import (
     extract_section,
     generate_adaptive,
     generate_feedback,
+    grade_open_answers,
     ingest_source,
     process_scan,
     render_sheet,
@@ -54,6 +55,7 @@ class WorkerSettings:
         process_scan,
         generate_adaptive,
         generate_feedback,
+        grade_open_answers,
     ]
     redis_settings = _redis_settings()
     on_startup = on_startup

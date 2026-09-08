@@ -24,6 +24,13 @@ Three things here are load-bearing and were each got wrong once:
   sheet's class-wide list.
 * **The machine's reading is written once.** ``machine_*`` is what the detector
   saw; a teacher override later goes into ``detected_*`` beside it.
+
+A written answer is not read here either. Its box is *cut* from the registered
+page at the rectangle the renderer measured for this copy — never recomputed
+from the rows — stored beside the page image, and the detection is left
+``PENDING`` for the vision grader that the worker chains after this job. A box
+with no ink in it is a ``BLANK`` straight away; a sheet printed before boxes
+existed has no placements and its open items stay ``NOT_GRADEABLE`` as before.
 """
 
 from __future__ import annotations
@@ -39,6 +46,7 @@ from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
 from alppy.models import (
+    AnswerBoxPlacement,
     Detection,
     Scan,
     ScanPage,
@@ -47,7 +55,8 @@ from alppy.models import (
     SheetItem,
     Student,
 )
-from alppy.models.enums import ExerciseType, ScanStatus
+from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus
+from alppy.scan.answer_box import BoxCrop, BoxRect, crop_answer_box, encode_png
 from alppy.scan.detector import PageResult, process_page
 from alppy.sheets import layout as L
 from alppy.sheets.pagination import Page, paginate
@@ -186,6 +195,63 @@ def _copies_by_uid(db: Session, sheet: Sheet | None) -> dict[str, list[Page]]:
     return {copy.uid: list(paginate(list(copy.items))) for copy in data.copies}
 
 
+Placements = dict[str, dict[int, dict[int, AnswerBoxPlacement]]]
+
+
+def _placements_by_uid(db: Session, sheet: Sheet | None) -> Placements:
+    """uid -> page of the copy (1-based) -> page-local item index -> placement.
+
+    Read straight off the rows the render job wrote, never recomputed: the box
+    sits under text the browser wrapped, and the only honest source of where it
+    printed is the render that went to the printer (decisions-log D42)."""
+    if sheet is None:
+        return {}
+    out: Placements = {}
+    for row in db.execute(
+        select(AnswerBoxPlacement).where(AnswerBoxPlacement.sheet_id == sheet.id)
+    ).scalars():
+        out.setdefault(row.student_uid, {}).setdefault(row.copy_page, {})[row.item_index] = row
+    return out
+
+
+def _crop_answer_boxes(
+    storage: Storage,
+    *,
+    scan: Scan,
+    page_index: int,
+    result: PageResult,
+    placements: dict[int, AnswerBoxPlacement],
+) -> dict[int, tuple[str, BoxCrop]]:
+    """Cut every placed box out of the registered page and store the crops.
+
+    Returns ``item_index -> (storage key, crop)``. A box that cannot be cut —
+    a placement off the page, a storage hiccup — is logged and skipped: that
+    item then stays ``NOT_GRADEABLE``, which is honest, rather than failing
+    the whole pile."""
+    if result.canonical is None or not placements:
+        return {}
+    out: dict[int, tuple[str, BoxCrop]] = {}
+    for item_index, placement in placements.items():
+        rect = BoxRect(placement.x_mm, placement.y_mm, placement.w_mm, placement.h_mm)
+        try:
+            crop = crop_answer_box(result.canonical, rect, fill=placement.box_fill)
+            key = storage_key(
+                "scan-pages", scan.school_id, scan.id, f"page-{page_index:03d}-box-{item_index:02d}.png"
+            )
+            storage.put_bytes(key, encode_png(crop.image), "image/png")
+        except Exception as exc:
+            log.warning(
+                "scan.box_crop_failed",
+                scan_id=str(scan.id),
+                page_index=page_index,
+                item_index=item_index,
+                error=str(exc),
+            )
+            continue
+        out[item_index] = (key, crop)
+    return out
+
+
 def _resolve_student(
     db: Session, *, school_id: uuid.UUID, uid: str | None
 ) -> Student | None:
@@ -215,6 +281,7 @@ def _persist_page(
     printed_page: Page | None,
     page_in_copy: int | None,
     sheet_items: dict[uuid.UUID, SheetItem],
+    crops: dict[int, tuple[str, BoxCrop]] | None = None,
 ) -> ScanPage:
     instance: SheetInstance | None = None
     if sheet is not None and student is not None and not wrong_class:
@@ -247,7 +314,7 @@ def _persist_page(
     db.flush()
     _persist_detections(
         db, scan=scan, page=page, result=result,
-        printed_page=printed_page, sheet_items=sheet_items,
+        printed_page=printed_page, sheet_items=sheet_items, crops=crops,
     )
     return page
 
@@ -260,17 +327,38 @@ def _persist_detections(
     result: PageResult,
     printed_page: Page | None,
     sheet_items: dict[uuid.UUID, SheetItem],
-) -> None:
-    """One ``Detection`` per item read on this page.
+    crops: dict[int, tuple[str, BoxCrop]] | None = None,
+) -> int:
+    """One ``Detection`` per item read on this page. Returns how many were left
+    ``PENDING`` for the vision grader.
 
     Pair each with the exercise printed at that position ON THIS COPY.
     ``printed_page`` is this student's own pagination, so a differentiated copy
     resolves to its own questions rather than to whatever sits at the same index
     of the class-wide list.
+
+    A written answer whose box was cut (``crops``) is stored with its crop and
+    left ``PENDING`` — or ``BLANK`` when the crop holds no ink, which needs no
+    model to say. Without a crop it stays ``NOT_GRADEABLE``, exactly as before.
     """
     placed = {p.item_index: p for p in printed_page.items} if printed_page else {}
+    pending = 0
 
     for detection in result.detections:
+        outcome = detection.outcome
+        confidence = detection.confidence
+        crop_key: str | None = None
+        cropped = (crops or {}).get(detection.item_index)
+        if cropped is not None and outcome is DetectionOutcome.NOT_GRADEABLE:
+            crop_key, crop = cropped
+            if crop.blank:
+                outcome = DetectionOutcome.BLANK
+                confidence = crop.blank_confidence
+            else:
+                outcome = DetectionOutcome.PENDING
+                confidence = 0.0
+                pending += 1
+
         exercise_id: uuid.UUID | None = None
         sheet_item_id: uuid.UUID | None = None
         placed_item = placed.get(detection.item_index)
@@ -294,17 +382,19 @@ def _persist_detections(
                 printed_number=placed_item.number if placed_item else None,
                 detected_index=detection.detected_index,
                 detected_bool=_detected_bool(placed_item, detection.detected_index),
-                confidence=detection.confidence,
-                outcome=detection.outcome,
+                confidence=confidence,
+                outcome=outcome,
                 # Written once. A teacher override later changes the columns
                 # above and leaves these three alone.
                 machine_index=detection.detected_index,
-                machine_outcome=detection.outcome,
-                machine_confidence=detection.confidence,
+                machine_outcome=outcome,
+                machine_confidence=confidence,
                 fill_ratios=detection.fill_ratios or None,
                 bubble_boxes=detection.bubble_boxes or None,
+                crop_key=crop_key,
             )
         )
+    return pending
 
 
 def _detected_bool(placed_item: Any, detected_index: int | None) -> bool | None:
@@ -357,6 +447,7 @@ def process_scan(
     layout_version = layout_version or L.LAYOUT_VERSION
 
     copies = _copies_by_uid(db, sheet)
+    placements = _placements_by_uid(db, sheet)
     sheet_items = _sheet_items_by_exercise(sheet)
     default_counts = [L.MAX_OPTIONS] * L.ITEMS_PER_PAGE
 
@@ -367,6 +458,7 @@ def process_scan(
     registered = 0
     identified = 0
     foreign = 0
+    pending = 0
     for index, image in enumerate(images):
         # Pass 1: register and read the printed UID against a full grid. We
         # cannot know which bubbles were printed until we know whose copy this
@@ -407,7 +499,20 @@ def process_scan(
         # original so the teacher can see what went wrong.
         _store_page_image(storage, key, result.canonical if result.registered else image)
 
-        _persist_page(
+        # The written answers: cut where this copy's boxes were measured to
+        # have printed. `page_in_copy` counts from 0; the placement's folio
+        # counts from 1, as the paper does.
+        crops: dict[int, tuple[str, BoxCrop]] = {}
+        if result.registered and result.uid and page_in_copy is not None:
+            crops = _crop_answer_boxes(
+                storage,
+                scan=scan,
+                page_index=index,
+                result=result,
+                placements=placements.get(result.uid, {}).get(page_in_copy + 1, {}),
+            )
+
+        page = _persist_page(
             db,
             scan=scan,
             page_index=index,
@@ -419,7 +524,9 @@ def process_scan(
             printed_page=printed_page,
             page_in_copy=page_in_copy,
             sheet_items=sheet_items,
+            crops=crops,
         )
+        pending += sum(1 for d in page.detections if d.outcome is DetectionOutcome.PENDING)
         registered += 1 if result.registered else 0
         identified += 1 if result.uid else 0
         foreign += 1 if wrong_class else 0
@@ -443,12 +550,15 @@ def process_scan(
         registered=registered,
         identified=identified,
         wrong_class=foreign,
+        pending_open_answers=pending,
     )
     return {
         "pages": len(images),
         "registered": registered,
         "identified": identified,
         "wrong_class": foreign,
+        # What the worker chains a grading job for. Zero means no job.
+        "pending_open_answers": pending,
     }
 
 
@@ -509,6 +619,13 @@ def redetect_page(
     db.flush()
 
     page.page_in_copy = index
+    crops = _crop_answer_boxes(
+        storage,
+        scan=scan,
+        page_index=page.page_index,
+        result=result,
+        placements=_placements_by_uid(db, sheet).get(student.uid, {}).get(index + 1, {}),
+    )
     _persist_detections(
         db,
         scan=scan,
@@ -516,6 +633,7 @@ def redetect_page(
         result=result,
         printed_page=printed_page,
         sheet_items=_sheet_items_by_exercise(sheet),
+        crops=crops,
     )
     return len(result.detections)
 
