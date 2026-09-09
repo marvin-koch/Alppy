@@ -445,6 +445,40 @@ def test_a_page_with_no_student_blocks_confirmation_until_assigned(
     assert client.post(f"/api/v1/scans/{ctx['scan_id']}/confirm").status_code == 200
 
 
+def test_a_detached_scan_offers_nobody_rather_than_the_whole_school(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Deleting a sheet nulls its scans' ``sheet_id`` (ondelete="SET NULL").
+
+    The pile then has no class to scope the picker to, and the one answer that
+    must never be given is "every student in the school": assigning a page to a
+    child from another class files one pupil's answers under another's name.
+    Offer nobody instead.
+    """
+    login(client, tenant.teacher.email)
+    ctx = _build_scanned_sheet(client, tenant, db)
+
+    offered = client.get(f"/api/v1/scans/{ctx['scan_id']}/students")
+    assert offered.status_code == 200
+    assert {s["uid"] for s in offered.json()} == {s.uid for s in tenant.students}
+
+    scan = db.get(Scan, uuid.UUID(str(ctx["scan_id"])))
+    assert scan is not None
+    scan.sheet_id = None
+    db.commit()
+
+    detached = client.get(f"/api/v1/scans/{ctx['scan_id']}/students")
+    assert detached.status_code == 200
+    assert detached.json() == []
+
+    # And the assignment itself is refused, not merely hidden from the picker.
+    page = client.patch(
+        f"/api/v1/scans/{ctx['scan_id']}/pages/{ctx['page_id']}",
+        json={"student_id": str(ctx["student_id"])},
+    )
+    assert page.status_code == 422
+
+
 def test_detections_are_listed_in_page_and_item_order(
     client: TestClient, tenant: Tenant, db: Session
 ) -> None:

@@ -863,15 +863,22 @@ def assignable_students(
     """
     school_id = scope.school_id
     scan = get_scan(db, scope, scan_id)
-    stmt = select(Student).where(Student.school_id == school_id)
-    if scan.sheet_id is not None:
-        sheet = db.execute(
-            select(Sheet).where(Sheet.id == scan.sheet_id).where(Sheet.school_id == school_id)
-        ).scalar_one_or_none()
-        if sheet is not None:
-            stmt = stmt.where(
-                Student.id.in_(enrolled_student_ids(sheet.class_id))
-            )
+    if scan.sheet_id is None:
+        # `Scan.sheet_id` is nullable and detaches on ondelete="SET NULL":
+        # deleting the sheet leaves the pile with no class to scope to. There
+        # is no safe answer here, and "everyone in the school" is the least
+        # safe one — offer nobody rather than the whole roster.
+        return []
+    sheet = db.execute(
+        select(Sheet).where(Sheet.id == scan.sheet_id).where(Sheet.school_id == school_id)
+    ).scalar_one_or_none()
+    if sheet is None:
+        return []
+    stmt = (
+        select(Student)
+        .where(Student.school_id == school_id)
+        .where(Student.id.in_(enrolled_student_ids(sheet.class_id)))
+    )
     return list(db.execute(stmt.order_by(Student.uid.asc())).scalars())
 
 
