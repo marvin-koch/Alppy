@@ -475,3 +475,90 @@ def test_a_discarded_exercise_does_not_hold_a_textbook_hostage(
 
     login(client, tenant.teacher.email)
     assert client.delete(f"/api/v1/sources/{source.id}").status_code == 204  # type: ignore[attr-defined]
+
+
+# --------------------------------------------------------------------------
+# A second establishment, created from the product
+# --------------------------------------------------------------------------
+def test_creating_a_school_joins_it_but_does_not_switch_to_it(
+    client: TestClient, tenant: Tenant
+) -> None:
+    """Two decisions, kept apart.
+
+    Creating a school and acting for it are different intentions, and doing
+    both at once would move the tenant out from under a teacher who was only
+    setting things up. The creator is a MEMBER immediately, though — a school
+    nobody can act for is not a school, and `get_membership` would refuse the
+    very next request.
+    """
+    login(client, tenant.teacher.email)
+    created = client.post(
+        "/api/v1/schools",
+        json={"name": "Oberstufe Chur", "canton": "gr", "default_curriculum": "LP21"},
+    )
+    assert created.status_code == 201
+    assert created.json()["canton"] == "GR"
+    new_id = created.json()["id"]
+
+    me = client.get("/api/v1/auth/me").json()
+    assert new_id in {s["id"] for s in me["schools"]}, "the creator joined it"
+    assert me["school_id"] == str(tenant.school.id), "but the session did not move"
+
+    # And it is real: switching lands there.
+    assert client.post(f"/api/v1/auth/school/{new_id}").status_code == 200
+
+
+def test_a_colleague_can_be_added_to_a_staffroom_you_work_in(
+    client: TestClient, tenant: Tenant, colleague: Tenant
+) -> None:
+    login(client, tenant.teacher.email)
+    created = client.post("/api/v1/schools", json={"name": "Oberstufe Chur"})
+    new_id = created.json()["id"]
+
+    added = client.post(f"/api/v1/schools/{new_id}/teachers/{colleague.teacher.id}")
+    assert added.status_code == 201
+    assert str(colleague.teacher.id) in {row["id"] for row in added.json()}
+
+    # The colleague can now act for it.
+    login(client, colleague.teacher.email)
+    assert client.post(f"/api/v1/auth/school/{new_id}").status_code == 200
+
+
+def test_you_cannot_add_a_colleague_to_a_school_you_do_not_work_in(
+    client: TestClient, tenant: Tenant, other_tenant: Tenant
+) -> None:
+    """Missing, not forbidden — so this cannot be used to discover which
+    school ids are real."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        f"/api/v1/schools/{other_tenant.school.id}/teachers/{tenant.teacher.id}"
+    )
+    assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# The shelf's bibliographic facts
+# --------------------------------------------------------------------------
+def test_a_textbook_carries_the_facts_that_identify_it(
+    client: TestClient, db: Session, tenant: Tenant
+) -> None:
+    """Publisher, ISBN and URL are for a HUMAN deciding whether two shelves
+    hold the same book. Nothing parses them, which is why the ISBN is stored
+    as typed rather than normalised."""
+    source = _make_source(db, tenant)
+    db.commit()
+    login(client, tenant.teacher.email)
+    response = client.patch(
+        f"/api/v1/sources/{source.id}",  # type: ignore[attr-defined]
+        json={
+            "title": "Algèbre 9e",
+            "publisher": "Éditions LEP",
+            "isbn": "978-2-606-01234-5",
+            "url": "https://example.ch/algebre",
+        },
+    )
+    assert response.status_code == 200
+    body = response.json()
+    assert body["publisher"] == "Éditions LEP"
+    assert body["isbn"] == "978-2-606-01234-5", "stored as typed, not normalised"
+    assert body["url"] == "https://example.ch/algebre"

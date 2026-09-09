@@ -1613,3 +1613,50 @@ schema, which matters because the honest long-term answer is a `role` column on
 `teacher_school`: that is the same question as who may assign a colleague to a branch
 (D75) and who may rename the school (D76), and it deserves one decision rather than three.
 Until then, "you teach it" is the narrowest defensible rule that already exists in data.
+
+### D78 · The branch curve is a cache, and a separate table
+
+A Branch-level history needs stored points: the score decays, so yesterday's number cannot be
+derived from today's attempts. History is the one question recomputation cannot answer, and it
+is the only reason this table exists.
+
+**A nullable `competency_id` on `MasterySnapshot` was rejected.** It would turn every
+`(student, competency)` key in `latest_snapshots` into an optional and let I-mastery-07's "one
+row per student, competency, day" silently admit two kinds of row. `mastery_branch_snapshot`
+is its own table, with its own unit-interval check.
+
+**Nothing reads it to answer a band.** Every read path recomputes (`data-model.md` §4), which
+is what D72 already established when it refused a `SheetMastery` table.
+`test_no_read_path_answers_a_band_from_the_cache` poisons the cache with a perfect score for a
+failing child and asserts the tree ignores it — the contract is tested, not merely documented.
+
+It is rolled up with `roll_up_mastery` over the same `MasteryResult`s the tree uses, never by
+pooling raw attempts across competencies: that would derive one recency from a mixture, so a
+competency practised last week would launder the staleness of one last touched in June
+(I-mastery-10). It stores `child_count` and `assessed_child_count` beside the score, because a
+band over one assessed competency and one over three are different claims, and a cached number
+that dropped the denominator is exactly the dishonesty DC-content-07 forbids on screen.
+
+**The branch is resolved through `exercise_competency` → `Exercise.subject_id`, not through
+`chapter_competency`.** A competency is assessed by *exercises*, and an exercise always has a
+subject; a Theme crediting that competency may simply not exist yet. Resolving through chapters
+left every curve empty until somebody had filed a Theme — D57's circularity in a third costume,
+and a failing test is what found it. It is also the more faithful edge: `exercise_competency` is
+what mastery itself reads through, so the curve groups by the same relation that produced the
+numbers.
+
+### D79 · A second school is created from the product, and joining it is not switching to it
+
+`POST /schools` creates an establishment and makes the creator a member in the same breath — a
+school nobody can act for is not a school, and `get_membership` would refuse the very next
+request. It deliberately does **not** move the session: creating a school and acting for it are
+two decisions, and doing both at once would move the tenant out from under a teacher who was
+only setting things up. `POST /auth/school/{id}` is the deliberate move (D74).
+
+`default_curriculum` is settable here and nowhere else. It is resolved into every
+`Chapter.primary_competency_id` the moment the school gets chapters (D56), so the one safe time
+to choose it is before any exist.
+
+Adding a colleague is gated on the **caller's** membership, and a school they do not work at
+reads as missing — so the endpoint cannot be used to discover which school ids are real.
+

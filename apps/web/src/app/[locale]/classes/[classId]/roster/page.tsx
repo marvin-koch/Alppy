@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Card, Field, RosterInput, parseRoster } from '@alppy/ui';
+import { Button, Card, Field, Input, RosterInput, parseRoster } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
 import { use, useState } from 'react';
 
@@ -37,6 +37,8 @@ export default function RosterPage({
 
   const [roster, setRoster] = useState('');
   const [editing, setEditing] = useState<string | null>(null);
+  const [oneFirst, setOneFirst] = useState('');
+  const [oneLast, setOneLast] = useState('');
   const [error, setError] = useState<string | null>(null);
   const parsed = parseRoster(roster);
 
@@ -101,6 +103,45 @@ export default function RosterPage({
           </ul>
         </section>
       ) : null}
+
+      {/* One pupil, without pasting a list. Not a second write path: it posts
+          the same roster route with a single entry, because the uid/number
+          arithmetic is the one piece of arithmetic here that gets printed on
+          paper and must have exactly one implementation (D76). */}
+      <section className="mt-10">
+        <h2 className="mb-1 text-h3">{tstud('addOne')}</h2>
+        <p className="mb-3 text-body-s text-ink-500">{tstud('addOneHelp')}</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label={tstud('firstName')} className="min-w-[10rem] flex-1">
+            <Input value={oneFirst} onChange={(e) => setOneFirst(e.target.value)} />
+          </Field>
+          <Field label={tstud('lastName')} className="min-w-[10rem] flex-1">
+            <Input value={oneLast} onChange={(e) => setOneLast(e.target.value)} />
+          </Field>
+          <Button
+            variant="secondary"
+            disabled={addStudents.isPending || !oneFirst.trim() || !oneLast.trim()}
+            onClick={() => {
+              setError(null);
+              addStudents.mutate(
+                {
+                  classId: classId as Uuid,
+                  body: { students: [{ first_name: oneFirst, last_name: oneLast }] },
+                },
+                {
+                  onSuccess: () => {
+                    setOneFirst('');
+                    setOneLast('');
+                  },
+                  onError: (caught) => setError(apiErrorMessage(caught, tcode)),
+                },
+              );
+            }}
+          >
+            {tstud('addOne')}
+          </Button>
+        </div>
+      </section>
 
       <h2 className="mb-3 mt-10 text-h3">{t('addStudents')}</h2>
       <form onSubmit={submit} noValidate>

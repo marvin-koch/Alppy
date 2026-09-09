@@ -490,6 +490,14 @@ class Source(Base, TimestampMixin, SchoolScopedMixin):
     # upload ("scan 3 (copy).pdf"), which is provenance, not a name — and it
     # is the only thing the shelf could show before this column.
     title: Mapped[str | None] = mapped_column(String(200))
+    # The bibliographic facts. All optional, and deliberately not validated
+    # beyond length: a teacher typing what is on the cover of a cantonal
+    # workbook should not be told their ISBN is malformed. Alppy never
+    # redistributes the file, so these identify the book for a HUMAN deciding
+    # whether two shelves hold the same one.
+    publisher: Mapped[str | None] = mapped_column(String(200))
+    isbn: Mapped[str | None] = mapped_column(String(20))
+    url: Mapped[str | None] = mapped_column(String(500))
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -1260,6 +1268,49 @@ class MasterySnapshot(Base, TimestampMixin, SchoolScopedMixin):
     last_attempt_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class MasteryBranchSnapshot(Base, TimestampMixin, SchoolScopedMixin):
+    """student x branch x time — a CACHE for the history curve, never a truth.
+
+    A SEPARATE table, not a nullable `competency_id` on `MasterySnapshot`:
+    making that column optional would turn every `(student, competency)` key in
+    `latest_snapshots` into an optional and let I-mastery-07's "one row per
+    student, competency, day" silently admit two kinds of row.
+
+    **Nothing reads this to answer "what is this child's band".** Every read
+    path recomputes from `Attempt`s, because the score decays with time — a
+    matrix opened on Friday must not show Monday's numbers (`data-model.md`
+    §4). This exists so a *curve* has points to draw and a dashboard has
+    something cheap to sort by; both are historical questions, and history is
+    the one thing recomputation cannot give you.
+
+    It carries its own coverage. A branch band over one assessed competency
+    and one over three are different claims, and a cached number that dropped
+    the denominator would be the exact dishonesty DC-content-07 forbids on
+    screen (I-mastery-12).
+    """
+
+    __tablename__ = "mastery_branch_snapshot"
+    __table_args__ = (
+        Index("ix_mastery_branch_student", "student_id", "subject_id", "computed_at"),
+        CheckConstraint(
+            "score >= 0 AND score <= 1", name="branch_score_unit_interval"
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    score: Mapped[float] = mapped_column(Float, nullable=False)
+    band: Mapped[MasteryBand] = mapped_column(
+        Enum(MasteryBand, name="mastery_band"), nullable=False
+    )
+    #: How much of the branch this number stands on. Never rendered without
+    #: both, and never stored without both.
+    child_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    assessed_child_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
+
 # --------------------------------------------------------------------------
 # Operations
 # --------------------------------------------------------------------------
@@ -1404,6 +1455,7 @@ __all__ = [
     "Exercise",
     "ExerciseVariant",
     "Job",
+    "MasteryBranchSnapshot",
     "MasterySnapshot",
     "MisconceptionNote",
     "ModelCall",

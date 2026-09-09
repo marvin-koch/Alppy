@@ -9,7 +9,7 @@ from fastapi import APIRouter, Query, status
 
 from alppy.api import errors
 from alppy.api.deps import DbDep, ScopeDep, TeacherDep, TenantDep, scoped_get
-from alppy.models import School, Subject
+from alppy.models import School, Subject, Teacher
 from alppy.schemas import (
     BranchOrder,
     ClassCreate,
@@ -19,6 +19,7 @@ from alppy.schemas import (
     ColleagueOut,
     HomeOut,
     RosterCreate,
+    SchoolCreate,
     SchoolOut,
     SchoolUpdate,
     StudentOut,
@@ -332,3 +333,63 @@ def delete_student(
     student = svc.get_student(db, scope, student_id)
     nouns.delete_student(db, scope, student, confirm_uid=confirm)
     db.commit()
+
+
+@router.post("/schools", response_model=SchoolOut, status_code=status.HTTP_201_CREATED)
+def create_school(
+    payload: SchoolCreate, teacher: TeacherDep, db: DbDep
+) -> SchoolOut:
+    """Create a second establishment, and join it.
+
+    The creator becomes a member in the same breath, because a school nobody
+    can act for is not a school — and `get_membership` would refuse the very
+    next request if they had to be added separately.
+
+    It does NOT switch the session. Creating a school and acting for it are two
+    decisions, and doing both at once would move the tenant out from under a
+    teacher who was only setting things up; `POST /auth/school/{id}` is the
+    deliberate move.
+
+    `default_curriculum` is settable here and nowhere else: it is resolved into
+    every chapter's primary competency (D56), so the one safe time to choose it
+    is before any chapters exist.
+    """
+    school = School(
+        id=uuid.uuid4(),
+        name=payload.name.strip(),
+        canton=(payload.canton or "").strip().upper() or None,
+        default_curriculum=payload.default_curriculum,
+    )
+    db.add(school)
+    db.flush()
+    svc.join_school(db, teacher.id, school.id)
+    db.commit()
+    return school_out(school)
+
+
+@router.post(
+    "/schools/{school_id}/teachers/{teacher_id}",
+    response_model=list[ColleagueOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def add_teacher_to_school(
+    school_id: uuid.UUID, teacher_id: uuid.UUID, teacher: TeacherDep, db: DbDep
+) -> list[ColleagueOut]:
+    """Add a colleague to a staffroom this teacher works in. Idempotent.
+
+    Gated on the CALLER's own membership, not on the school existing: a school
+    you do not work at reads as missing, so this cannot be used to discover
+    which school ids are real.
+    """
+    mine = {s.id for s in svc.schools_for_teacher(db, teacher.id)}
+    if school_id not in mine:
+        raise errors.not_found("school", id=str(school_id))
+    joining = db.get(Teacher, teacher_id)
+    if joining is None:
+        raise errors.not_found("teacher", id=str(teacher_id))
+    svc.join_school(db, joining.id, school_id)
+    db.commit()
+    return [
+        ColleagueOut(id=t.id, first_name=t.first_name, last_name=t.last_name)
+        for t in svc.list_colleagues(db, school_id)
+    ]

@@ -530,7 +530,10 @@
     "deleteTextbookBody": "Le manuel disparaît de l'étagère. Les exercices qui en proviennent perdraient la trace de leur origine, c'est pourquoi la suppression est refusée tant qu'il en reste.",
     "noTitle": "Sans titre",
     "fileLabel": "Fichier",
-    "bookTitle": "Titre"
+    "bookTitle": "Titre",
+    "publisher": "Éditeur",
+    "isbn": "ISBN",
+    "sourceUrl": "Lien"
   },
   "exercise": {
     "type": {
@@ -860,7 +863,9 @@
     "deleteConfirm": "Supprimer définitivement",
     "edit": "Modifier",
     "delete": "Supprimer",
-    "uid": "Identifiant"
+    "uid": "Identifiant",
+    "addOne": "Ajouter un élève",
+    "addOneHelp": "Un seul élève, sans coller de liste. Son numéro suit le dernier attribué."
   },
   "curriculum": {
     "themes": "Thèmes",

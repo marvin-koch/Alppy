@@ -530,7 +530,10 @@
     "deleteTextbookBody": "The textbook leaves the shelf. Exercises drawn from it would lose the record of where they came from, which is why deleting is refused while any remain.",
     "noTitle": "Untitled",
     "fileLabel": "File",
-    "bookTitle": "Title"
+    "bookTitle": "Title",
+    "publisher": "Publisher",
+    "isbn": "ISBN",
+    "sourceUrl": "Link"
   },
   "exercise": {
     "type": {
@@ -860,7 +863,9 @@
     "deleteConfirm": "Delete permanently",
     "edit": "Edit",
     "delete": "Delete",
-    "uid": "Identifier"
+    "uid": "Identifier",
+    "addOne": "Add one pupil",
+    "addOneHelp": "A single pupil, without pasting a list. Their number follows the last one given."
   },
   "curriculum": {
     "themes": "Themes",

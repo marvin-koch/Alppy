@@ -256,6 +256,9 @@ export interface SourceOut {
   filename: string;
   /** What the teacher calls it; `filename` is what they uploaded. */
   title: string | null;
+  publisher?: string | null;
+  isbn?: string | null;
+  url?: string | null;
   content_type: string;
   size_bytes: number;
   language: string | null;

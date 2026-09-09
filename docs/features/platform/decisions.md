@@ -163,6 +163,88 @@ an `AttributeError`.
 provenance and costs nothing; a temporal column makes every roster read a point-in-time
 query.
 
+## D73 · A teacher is assigned a branch in a class, and ownership is a union
+
+**Affected invariant:** I-platform-11, I-platform-13 (new); I-platform-03 (reworded)
+
+`class.teacher_id` carried two facts that only looked like one while a class had a single
+teacher: *who may read this class* and *who is its maître de classe*. Split the way D69 split
+`Student` — `head_teacher_id` is the column, `class_teacher_subject` is the join table.
+
+**Considered alternatives.** (A) Put `teacher_id` on `class_subject`: rejected, because
+`position` is the class's nav order and a table grained by teacher gives two co-teachers'
+rows nothing forcing their order to agree. (B) Derive the branch list from staffing:
+rejected, D57's circularity in a new costume — a Branch would vanish from the navigation the
+moment its teacher was unassigned. **(C) A join table beside `class_subject`, with a
+composite FK onto it** — chosen; the FK makes "you cannot teach a branch this class does not
+study" a database fact.
+
+**Ownership is a union**, head teacher OR any assignment. The head-teacher arm keeps a class
+with no declared branches visible to its own teacher, and is what makes the 0021 backfill
+provably behaviour-preserving.
+
+✅ One rule, in one place (`enrollment.owned_class_ids`), which is what I-platform-03 claimed
+and did not deliver. ❌ Two grains to keep straight; the module docstring names them.
+
+## D74 · One teacher, several staffrooms; the tenant comes from the session
+
+**Affected invariant:** I-platform-14 (new), I-platform-02 (second documented exception)
+
+`teacher.school_id` was the tenant boundary. A teacher splitting their load between two
+establishments belongs to both, so the fact moved to `teacher_school` and the column became
+`home_school_id` — where the account is based, and what `login` mints the first cookie for.
+
+**Considered alternatives.** (A) Keep one school and duplicate the account: rejected, two
+password hashes and two preference sets for one person, and `login` looks up by email alone.
+(B) Drop `home_school_id` entirely: purer by §2's own test, but takes `Teacher` out of
+`SchoolScopedMixin` *and* leaves `login` with no default school. **(C) Column plus join** —
+chosen, the shape D56 and D69 already established.
+
+✅ Every service query is untouched: they filter on `scope.school_id`, which simply stops
+coming from a row. ❌ `Teacher` becomes the second documented exception to I-platform-02
+after the curriculum (D11) — honest, since a teacher at two schools no longer belongs to one
+tenant.
+
+## D75 · A teacher sees only what they teach
+
+**Affected invariant:** I-platform-15 (new)
+
+Reads narrow to the branches a teacher takes, wherever a branch exists. Two carve-outs, both
+because a branch does not exist there even in principle: the **roster** (names and UIDs a
+co-teacher already knows by standing in the room) and an **unmatched pile** (no subject at
+all until a sheet is attached).
+
+**The carve-out that nearly sank it.** A pile gaining a subject later would change visibility
+mid-workflow. Closed structurally rather than special-cased: the sheet is attached through the
+now pair-grained `get_sheet`, so a teacher can only ever attach a sheet they already teach.
+
+**Rejected: narrowing the student profile.** `_owned_student` is D69's widening, and a maths
+teacher noticing a child sinking across every branch is a feature of this product.
+
+## D76 · The teacher edits their own school's nouns
+
+**Affected invariant:** I-platform-17 (new)
+
+Renaming is not re-identifying: a label always, a `key`/`code`/`uid` never once paper has been
+printed from it. `Class.code` is editable only before a roster exists.
+`School.default_curriculum` is not editable at all (D56).
+
+Deleting a Student is the only operation allowed to destroy evidence, takes the pupil's uid
+typed back, and is restricted to the head teacher of their home class. **The first
+implementation gated on `get_class`, which is class-grained, so a co-teacher passed — the
+test written for it is what caught that.**
+
+## D77 · The corpus is shared for reading, not for deleting
+
+**Affected invariant:** I-platform-18 (new)
+
+`delete_chapter` and `delete_source` refuse a caller who does not hold that branch anywhere in
+the school. Reads stay school-wide, which is what makes the staffroom a staffroom.
+
+**Revisit when** a `role` column lands on `teacher_school`: this is the same question as who
+may assign a colleague (D75) and who may rename the school (D76), and it deserves one
+decision rather than three. "You teach it" is the narrowest rule that already exists in data.
+
 ---
 
 ## When policy changes

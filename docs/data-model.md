@@ -73,6 +73,9 @@ Sheet  ──> Class, Subject
 Scan ──> Sheet ──< ScanPage ──< Detection ──> SheetItem, Exercise
 Attempt ──> Student, Exercise, Sheet, SheetInstance, Detection, Scan
 MasterySnapshot ──> Student, Competency                one row per (student, comp, DAY)
+MasteryBranchSnapshot ──> Student, Subject             one row per (student, BRANCH, day).
+                                                       A CACHE for the curve: no read path
+                                                       answers a band from it        (D78)
 ```
 
 ---
@@ -153,6 +156,7 @@ across *students* is fine and is what `pool_by_competency` does.
 | What does this sheet cover? | `SheetItem → Exercise → exercise_competency` | A stored set is rewritten on every item edit, and between the edit and the rewrite it describes a sheet that no longer exists (D71) |
 | Which pupils are in this class? | `class_student` | — |
 | How did the class do on this sheet? | `roll_up_mastery` over the sheet's competencies | It decays; see §4 |
+| What was this child's Branch band in June? | `mastery_branch_snapshot` | The only question recomputation cannot answer — the score decays, so yesterday's number is not derivable from today's attempts (D78) |
 | Is this pile corrected? | `Scan.confirmed_at` / `confirmation_count` | A fourth `ScanStatus` member would turn every `is CONFIRMED` check into a two-member test, and each one missed is a silently unlocked pile (D48) |
 
 ---

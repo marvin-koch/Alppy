@@ -175,6 +175,19 @@ class ClassUpdate(BaseModel):
     code: Annotated[str, Field(min_length=2, max_length=10)] | None = None
 
 
+class SchoolCreate(BaseModel):
+    """A second establishment, created from the product rather than the seed.
+
+    `default_curriculum` IS settable here and nowhere else: it is resolved into
+    every `Chapter.primary_competency_id` the moment the school gets chapters
+    (D56), so the one safe time to choose it is before any exist.
+    """
+
+    name: Annotated[str, Field(min_length=2, max_length=200)]
+    canton: Annotated[str, Field(max_length=2)] | None = None
+    default_curriculum: CurriculumKind = CurriculumKind.PER
+
+
 class SchoolUpdate(BaseModel):
     name: Annotated[str, Field(min_length=2, max_length=200)] | None = None
     canton: Annotated[str, Field(max_length=2)] | None = None
@@ -190,6 +203,11 @@ class StudentUpdate(BaseModel):
 class SourceUpdate(BaseModel):
     title: Annotated[str, Field(max_length=200)] | None = None
     language: Annotated[str, Field(max_length=5)] | None = None
+    publisher: Annotated[str, Field(max_length=200)] | None = None
+    # Unvalidated beyond length on purpose: a teacher copying what is on the
+    # cover of a cantonal workbook must not be told their ISBN is malformed.
+    isbn: Annotated[str, Field(max_length=20)] | None = None
+    url: Annotated[str, Field(max_length=500)] | None = None
 
 
 class BranchOrder(BaseModel):
@@ -258,6 +276,9 @@ class SourceOut(ApiModel):
     filename: str
     # What the teacher calls this book; `filename` is what they uploaded.
     title: str | None = None
+    publisher: str | None = None
+    isbn: str | None = None
+    url: str | None = None
     content_type: str
     size_bytes: int
     language: str | None

@@ -274,6 +274,9 @@ def update_source(
     *,
     title: str | None = None,
     language: str | None = None,
+    publisher: str | None = None,
+    isbn: str | None = None,
+    url: str | None = None,
 ) -> Source:
     """Edit a textbook's own metadata.
 
@@ -285,6 +288,15 @@ def update_source(
         source.title = title.strip() or None
     if language is not None:
         source.language = language.strip() or None
+    if publisher is not None:
+        source.publisher = publisher.strip() or None
+    if isbn is not None:
+        # Stored as typed, minus surrounding space. Alppy never resolves an
+        # ISBN against anything, so normalising hyphens would be a rule with
+        # no beneficiary and one more way to reject a correct entry.
+        source.isbn = isbn.strip() or None
+    if url is not None:
+        source.url = url.strip() or None
     db.flush()
     return source
 

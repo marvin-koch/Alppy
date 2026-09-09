@@ -146,3 +146,31 @@ re-litigating.
 **Revisit** if a Theme's competencies ever need explicit weights (a chapter where
 one competency is the point and two are incidental). Today every child is weighted
 purely by the evidence behind it.
+
+## D78 · The branch curve is a cache, and a separate table
+
+**Affected invariant:** I-mastery-12 (new)
+
+A Branch-level history needs stored points: the score decays, so yesterday's number cannot be
+derived from today's attempts. History is the one question recomputation cannot answer.
+
+**Considered alternatives.** (A) A nullable `competency_id` on `MasterySnapshot`: rejected —
+it turns every `(student, competency)` key in `latest_snapshots` into an optional and lets
+I-mastery-07's "one row per student, competency, day" silently admit two kinds of row.
+(B) Compute the curve on read by replaying attempts at N past dates: correct but O(N) full
+recomputes for one chart. **(C) A separate `mastery_branch_snapshot`** — chosen.
+
+**Nothing reads it to answer a band.** Every read path recomputes (`data-model.md` §4), and
+`test_no_read_path_answers_a_band_from_the_cache` poisons the cache with a perfect score to
+prove the tree ignores it.
+
+It is rolled up with `roll_up_mastery` over the same `MasteryResult`s the tree uses, never by
+pooling raw attempts across competencies — that would derive one recency from a mixture
+(I-mastery-10). It stores `child_count` and `assessed_child_count` beside the score, because a
+band over one assessed competency and one over three are different claims (DC-content-07).
+
+**The branch is resolved through `exercise_competency` → `Exercise.subject_id`, not through
+`chapter_competency`.** A competency is assessed by exercises, and an exercise always has a
+subject; a Theme crediting it may not exist yet. Resolving through chapters left every curve
+empty until somebody filed a Theme — D57's circularity again, and a failing test is what
+found it.

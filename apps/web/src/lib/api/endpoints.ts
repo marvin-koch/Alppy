@@ -127,7 +127,10 @@ export const updateChapter = (
 export const deleteChapter = (id: Uuid) =>
   apiRequest<void>(`/chapters/${id}`, { method: 'DELETE' });
 
-export const updateSource = (id: Uuid, body: { title?: string; language?: string }) =>
+export const updateSource = (
+  id: Uuid,
+  body: { title?: string; language?: string; publisher?: string; isbn?: string; url?: string },
+) =>
   apiRequest<SourceOut>(`/sources/${id}`, { method: 'PATCH', body });
 
 export const deleteSource = (id: Uuid) =>

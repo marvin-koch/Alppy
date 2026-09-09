@@ -14,7 +14,7 @@ import {
   type ReactNode,
 } from 'react';
 
-import { useClasses, useSubjects } from '@/lib/api/queries';
+import { useClasses, useMe, useSubjects } from '@/lib/api/queries';
 import type { ClassOut, SubjectOut, Uuid } from '@/lib/api/types';
 
 /**
@@ -61,6 +61,12 @@ export interface ScopeValue {
    * a Branch you do not teach here lands on an empty tree with nothing to say
    * why. Falls back to the school list only before a class has resolved.
    */
+  /**
+   * The school this session acts for. Read-only here: switching is a server
+   * round-trip that re-issues the cookie (D74), so it lives in
+   * `useSwitchSchool`, not in a setter that only moved a query param.
+   */
+  schoolId: Uuid | null;
   subjects: SubjectOut[];
   currentClass: ClassOut | null;
   currentSubject: SubjectOut | null;
@@ -125,6 +131,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const enabled = pathname !== '/login';
   const classesQuery = useClasses(enabled);
   const subjectsQuery = useSubjects(enabled);
+  const me = useMe(enabled);
   const classes = useMemo(() => classesQuery.data ?? [], [classesQuery.data]);
   const subjects = useMemo(() => subjectsQuery.data ?? [], [subjectsQuery.data]);
 
@@ -164,6 +171,11 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     searchParams.get('subject'),
     stored.subjectId,
   );
+  // The tenant, for anything that needs to key a cache or a link by it. It is
+  // NOT resolved the way class and subject are: the server decides it, and a
+  // `?school=` that disagreed with the cookie would be a lie the client told
+  // itself.
+  const schoolId = (me.data?.school_id ?? null) as Uuid | null;
   // Plain reads: no resolve(), no storage, no "first one" fallback. See the
   // note on ScopeValue for why these two are different from the pair above.
   const competencyId = searchParams.get('competency');
@@ -254,6 +266,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<ScopeValue>(
     () => ({
+      schoolId,
       classId: currentClass?.id ?? null,
       subjectId: currentSubject?.id ?? null,
       competencyId,
@@ -269,6 +282,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       isLoading: classesQuery.isLoading || subjectsQuery.isLoading,
     }),
     [
+      schoolId,
       classes,
       classSubjects,
       currentClass,
@@ -302,6 +316,7 @@ export function useScope(): ScopeValue {
     competencyId: null,
     chapterId: null,
     classes: [],
+    schoolId: null,
     subjects: [],
     currentClass: null,
     currentSubject: null,

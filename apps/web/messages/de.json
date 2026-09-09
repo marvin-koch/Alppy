@@ -530,7 +530,10 @@
     "deleteTextbookBody": "Das Lehrmittel verschwindet aus dem Regal. Aufgaben daraus würden ihre Herkunft verlieren — deshalb wird das Löschen verweigert, solange es noch welche gibt.",
     "noTitle": "Ohne Titel",
     "fileLabel": "Datei",
-    "bookTitle": "Titel"
+    "bookTitle": "Titel",
+    "publisher": "Verlag",
+    "isbn": "ISBN",
+    "sourceUrl": "Link"
   },
   "exercise": {
     "type": {
@@ -860,7 +863,9 @@
     "deleteConfirm": "Endgültig löschen",
     "edit": "Bearbeiten",
     "delete": "Löschen",
-    "uid": "Kennung"
+    "uid": "Kennung",
+    "addOne": "Eine Schülerin hinzufügen",
+    "addOneHelp": "Nur eine Person, ohne Liste. Die Nummer folgt auf die zuletzt vergebene."
   },
   "curriculum": {
     "themes": "Themen",

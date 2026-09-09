@@ -153,8 +153,11 @@ export const queryKeys = {
 };
 
 /* --------------------------------------------------------------- auth --- */
-export function useMe(): UseQueryResult<TeacherOut> {
-  return useQuery({ queryKey: queryKeys.me, queryFn: api.getMe, retry: false });
+export function useMe(enabled = true): UseQueryResult<TeacherOut> {
+  // `enabled` because the scope provider reads this too, and the login screen
+  // is outside the session: asking there produces a 401 for every visitor who
+  // has not signed in yet.
+  return useQuery({ queryKey: queryKeys.me, queryFn: api.getMe, retry: false, enabled });
 }
 
 export function useLogin(): UseMutationResult<TeacherOut, Error, { email: string; password: string }> {
@@ -374,7 +377,10 @@ export function useDeleteChapter(): UseMutationResult<
 export function useUpdateSource(): UseMutationResult<
   SourceOut,
   Error,
-  { sourceId: Uuid; body: { title?: string; language?: string } }
+  {
+    sourceId: Uuid;
+    body: { title?: string; language?: string; publisher?: string; isbn?: string; url?: string };
+  }
 > {
   const client = useQueryClient();
   return useMutation({

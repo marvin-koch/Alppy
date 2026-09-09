@@ -511,7 +511,16 @@ def update_source(
     re-filing the book would leave every exercise behind under the old Branch.
     """
     source = scoped_get(db, Source, source_id, scope.school_id, label="source")
-    row = nouns.update_source(db, scope, source, title=payload.title, language=payload.language)
+    row = nouns.update_source(
+        db,
+        scope,
+        source,
+        title=payload.title,
+        language=payload.language,
+        publisher=payload.publisher,
+        isbn=payload.isbn,
+        url=payload.url,
+    )
     db.commit()
     return source_out(row)
 

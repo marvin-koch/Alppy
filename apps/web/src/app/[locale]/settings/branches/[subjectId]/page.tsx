@@ -57,6 +57,9 @@ export default function BranchSettingsPage({
   const [deletingTheme, setDeletingTheme] = useState<ChapterOut | null>(null);
   const [editingBook, setEditingBook] = useState<Uuid | null>(null);
   const [bookTitle, setBookTitle] = useState('');
+  const [bookPublisher, setBookPublisher] = useState('');
+  const [bookIsbn, setBookIsbn] = useState('');
+  const [bookUrl, setBookUrl] = useState('');
   const [deletingBook, setDeletingBook] = useState<SourceOut | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -183,6 +186,30 @@ export default function BranchSettingsPage({
                         onChange={(e) => setBookTitle(e.target.value)}
                       />
                     </Field>
+                    <Field label={t('publisher')}>
+                      <Input
+                        value={bookPublisher}
+                        onChange={(e) => setBookPublisher(e.target.value)}
+                      />
+                    </Field>
+                    <Field label={t('isbn')}>
+                      {/* Stored as typed. Alppy never resolves an ISBN against
+                          anything, so normalising hyphens would be a rule with
+                          no beneficiary and one more way to reject a correct
+                          entry. */}
+                      <Input
+                        value={bookIsbn}
+                        onChange={(e) => setBookIsbn(e.target.value)}
+                        spellCheck={false}
+                      />
+                    </Field>
+                    <Field label={t('sourceUrl')}>
+                      <Input
+                        value={bookUrl}
+                        onChange={(e) => setBookUrl(e.target.value)}
+                        spellCheck={false}
+                      />
+                    </Field>
                     <Field label={t('fileLabel')}>
                       {/* The upload's own name is provenance, not a title. */}
                       <LockedValue>{book.filename}</LockedValue>
@@ -196,7 +223,15 @@ export default function BranchSettingsPage({
                         onClick={() => {
                           setError(null);
                           updateSource.mutate(
-                            { sourceId: book.id, body: { title: bookTitle } },
+                            {
+                              sourceId: book.id,
+                              body: {
+                                title: bookTitle,
+                                publisher: bookPublisher,
+                                isbn: bookIsbn,
+                                url: bookUrl,
+                              },
+                            },
                             { onSuccess: () => setEditingBook(null), onError: report },
                           );
                         }}
@@ -220,6 +255,9 @@ export default function BranchSettingsPage({
                       onClick={() => {
                         setEditingBook(book.id);
                         setBookTitle(book.title ?? '');
+                        setBookPublisher(book.publisher ?? '');
+                        setBookIsbn(book.isbn ?? '');
+                        setBookUrl(book.url ?? '');
                       }}
                     >
                       {t('rename')}

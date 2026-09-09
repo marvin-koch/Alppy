@@ -462,3 +462,87 @@ def test_the_profile_lists_the_sheets_the_student_sat(
     assert sheets[0]["correct_count"] == 1
     assert sheets[0]["scan_id"] == str(scan.id)
     assert profile.json()["sheets_taken"] == 1
+
+
+# --------------------------------------------------------------------------
+# The branch-level curve cache (D78, I-mastery-12)
+# --------------------------------------------------------------------------
+def test_recomputing_stamps_a_branch_point_for_the_curve(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """A cache for history, written by recompute and by nothing else.
+
+    The competency-level rows answer "how is this child doing"; a curve needs
+    points, and history is the one question recomputation cannot answer —
+    yesterday's number cannot be derived from today's attempts, because the
+    score decays.
+    """
+    from alppy.models import MasteryBranchSnapshot
+
+    _seed_history(db, tenant)
+    rows = db.execute(
+        select(MasteryBranchSnapshot).where(
+            MasteryBranchSnapshot.student_id == tenant.students[0].id
+        )
+    ).scalars().all()
+
+    assert len(rows) == 1, "one point per (student, branch, day)"
+    assert rows[0].subject_id == tenant.subject.id
+    assert 0.0 <= rows[0].score <= 1.0
+    # It carries its own coverage, because a band over one assessed competency
+    # and one over three are different claims (DC-content-07).
+    assert rows[0].child_count == 2
+    assert rows[0].assessed_child_count == 2
+
+
+def test_a_second_recompute_the_same_day_corrects_the_point_rather_than_doubling(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """One row per day, like `MasterySnapshot`.
+
+    Confirming a second pile this afternoon must correct this morning's point,
+    not draw the curve twice — a doubled point is a curve that jumps for a
+    reason nobody can see.
+    """
+    from alppy.models import MasteryBranchSnapshot
+
+    _seed_history(db, tenant)
+    recompute_for_students(db, tenant.school.id, [tenant.students[0].id])
+    db.commit()
+
+    rows = db.execute(
+        select(MasteryBranchSnapshot).where(
+            MasteryBranchSnapshot.student_id == tenant.students[0].id
+        )
+    ).scalars().all()
+    assert len(rows) == 1
+
+
+def test_no_read_path_answers_a_band_from_the_cache(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The contract, asserted rather than trusted to a docstring.
+
+    The cache is deliberately falsified here — a perfect score stamped on a
+    child who has been failing. Every read must ignore it and recompute, or a
+    matrix opened on Friday shows Monday's numbers (`data-model.md` §4).
+    """
+    from alppy.models import MasteryBranchSnapshot
+    from alppy.models.enums import MasteryBand
+
+    _seed_history(db, tenant)
+    row = db.execute(
+        select(MasteryBranchSnapshot).where(
+            MasteryBranchSnapshot.student_id == tenant.students[0].id
+        )
+    ).scalars().one()
+    row.score = 1.0
+    row.band = MasteryBand.SOLID
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    tree = client.get(f"/api/v1/classes/{tenant.school_class.id}/tree").json()
+    branch = tree["branches"][0]
+    assert branch["mastery"]["band"] != "solid", (
+        "the tree recomputed instead of reading the poisoned cache"
+    )

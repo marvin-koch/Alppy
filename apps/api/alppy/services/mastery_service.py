@@ -38,6 +38,7 @@ from alppy.models import (
     Competency,
     Detection,
     Exercise,
+    MasteryBranchSnapshot,
     MasterySnapshot,
     Scan,
     ScanPage,
@@ -353,8 +354,128 @@ def recompute_for_students(
             )
         written += 1
 
+    _write_branch_snapshots(db, school_id, grouped, at)
     db.flush()
     return written
+
+
+def _write_branch_snapshots(
+    db: Session,
+    school_id: uuid.UUID,
+    grouped: dict[tuple[uuid.UUID, uuid.UUID], list[AttemptInput]],
+    at: datetime,
+) -> None:
+    """Stamp one branch-level row per (student, subject) for the curve.
+
+    A CACHE, and the docstring on `MasteryBranchSnapshot` is the contract: no
+    read path may answer "what is this child's band" from here. Every one
+    recomputes, because the score decays and yesterday's number is wrong.
+
+    What it buys is the one question recomputation cannot answer — *history*.
+    A curve needs points, and there is nowhere else they could come from.
+
+    Rolled up with `roll_up_mastery` over the SAME `MasteryResult`s the tree
+    uses, never by pooling the raw attempts across competencies: that would
+    derive one recency from a mixture, so a competency practised last week
+    would launder the staleness of one last touched in June (I-mastery-10).
+
+    Coverage is stored beside the score. A branch band over one assessed
+    competency and one over three are different claims, and a cached number
+    that dropped the denominator is the dishonesty DC-content-07 forbids.
+    """
+    if not grouped:
+        return
+
+    competency_ids = {competency_id for (_student, competency_id) in grouped}
+    subject_of = _subject_by_competency(db, school_id, competency_ids)
+    if not subject_of:
+        return
+
+    day = at.date()
+    per_branch: dict[tuple[uuid.UUID, uuid.UUID], list[MasteryResult]] = defaultdict(list)
+    for (student_id, competency_id), attempts in grouped.items():
+        subject_id = subject_of.get(competency_id)
+        if subject_id is None:
+            # A competency no Theme in this school credits. It still counts
+            # toward the child's own mastery; it simply belongs to no Branch,
+            # so there is no curve for it to join.
+            continue
+        per_branch[(student_id, subject_id)].append(compute_mastery(attempts, at))
+
+    existing = {
+        (row.student_id, row.subject_id): row
+        for row in db.execute(
+            select(MasteryBranchSnapshot)
+            .where(MasteryBranchSnapshot.school_id == school_id)
+            .where(
+                MasteryBranchSnapshot.student_id.in_(
+                    {student_id for (student_id, _subject) in per_branch}
+                )
+            )
+        ).scalars()
+        if (stamped := _aware(row.computed_at)) is not None and stamped.date() == day
+    }
+
+    for (student_id, subject_id), results in per_branch.items():
+        rolled = roll_up_mastery(results)
+        assessed = sum(1 for r in results if r.attempts_count > 0)
+        row = existing.get((student_id, subject_id))
+        if row is not None:
+            # One row per day, like `MasterySnapshot`: a second confirmation
+            # this afternoon corrects this morning's point rather than drawing
+            # the curve twice.
+            row.computed_at = at
+            row.score = rolled.score
+            row.band = rolled.band
+            row.child_count = len(results)
+            row.assessed_child_count = assessed
+        else:
+            db.add(
+                MasteryBranchSnapshot(
+                    id=uuid.uuid4(),
+                    school_id=school_id,
+                    student_id=student_id,
+                    subject_id=subject_id,
+                    computed_at=at,
+                    score=rolled.score,
+                    band=rolled.band,
+                    child_count=len(results),
+                    assessed_child_count=assessed,
+                )
+            )
+
+
+def _subject_by_competency(
+    db: Session, school_id: uuid.UUID, competency_ids: set[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """Which Branch each competency is assessed in, for this school.
+
+    Through `exercise_competency` and `Exercise.subject_id` — NOT through
+    `chapter_competency`. The distinction matters and cost a failing test to
+    find: a competency is assessed by EXERCISES, and an exercise always has a
+    subject, while a Theme crediting that competency may simply not exist yet.
+    Resolving through chapters left every curve empty until somebody had
+    filed a Theme, which is the same circularity D57 removed from the Branch
+    nav.
+
+    It is also the more faithful edge: `exercise_competency` is what mastery
+    itself reads through, so the curve is grouped by the same relation that
+    produced the numbers.
+
+    A competency assessed by exercises in two Branches resolves to whichever
+    the join returns. The curve is a cache, and a tie is not worth a second
+    table to break.
+    """
+    if not competency_ids:
+        return {}
+    rows = db.execute(
+        select(exercise_competency.c.competency_id, Exercise.subject_id)
+        .join(Exercise, Exercise.id == exercise_competency.c.exercise_id)
+        .where(Exercise.school_id == school_id)
+        .where(exercise_competency.c.competency_id.in_(competency_ids))
+        .distinct()
+    ).all()
+    return dict(rows)  # type: ignore[arg-type]  # SQLAlchemy Row pairs
 
 
 # --------------------------------------------------------------------------
