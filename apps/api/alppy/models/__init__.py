@@ -1,7 +1,10 @@
 """SQLAlchemy models for Alppy.
 
-Tenancy: every domain table carries ``school_id``. A teacher belongs to exactly
-one school, and every read path filters on the school resolved from the session.
+Tenancy: every domain table carries ``school_id`` — except ``School`` itself,
+the curriculum (shared reference data, D11) and ``Teacher``, who may work at
+more than one school and whose membership therefore lives in ``teacher_school``.
+Every read path filters on the school resolved from the SESSION, never from a
+teacher's row.
 """
 
 from __future__ import annotations
@@ -20,6 +23,7 @@ from sqlalchemy import (
     Enum,
     Float,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     String,
@@ -81,14 +85,56 @@ class School(Base, TimestampMixin):
         Enum(CurriculumKind, name="curriculum_kind"), default=CurriculumKind.PER
     )
 
-    teachers: Mapped[list[Teacher]] = relationship(back_populates="school")
+    # The teachers BASED here. Not "the teachers who work here" — that is
+    # `teacher_school`, and a teacher may appear in one school's staffroom
+    # while being homed in another.
+    home_teachers: Mapped[list[Teacher]] = relationship(back_populates="home_school")
 
 
-class Teacher(Base, TimestampMixin, SchoolScopedMixin):
+teacher_school = Table(
+    "teacher_school",
+    Base.metadata,
+    Column("teacher_id", PgUUID(as_uuid=True), ForeignKey("teacher.id", ondelete="CASCADE"), primary_key=True),
+    Column("school_id", PgUUID(as_uuid=True), ForeignKey("school.id", ondelete="CASCADE"), primary_key=True),
+    # Provenance, not a state machine — no `left_at`, for the reason
+    # `class_student` has none: the moment one exists, the membership check
+    # that runs on EVERY request grows a temporal predicate. Leaving a school
+    # is a deleted row.
+    Column("joined_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # "Who is in this staffroom" — the reverse of the composite PK's btree,
+    # and the direction a colleague picker reads.
+    Index("ix_teacher_school_school", "school_id", "teacher_id"),
+)
+
+
+class Teacher(Base, TimestampMixin):
+    """A teacher, who may work at more than one school.
+
+    The ONLY table that is not ``SchoolScopedMixin`` besides ``School`` itself
+    and the curriculum (D11) — and it is the second deliberate exception to
+    I-platform-02, not an oversight. A row that carries one ``school_id`` is a
+    row that belongs to one tenant; a teacher splitting their load between two
+    establishments belongs to both, so the fact moved to ``teacher_school``
+    and the column that stayed answers a different question (see below).
+
+    Tenancy for a REQUEST therefore comes from the session, never from this
+    row — ``deps.get_membership`` is the one place the cookie's school is
+    checked against ``teacher_school`` (I-platform-14).
+    """
+
     __tablename__ = "teacher"
     __table_args__ = (UniqueConstraint("email", name="uq_teacher_email"),)
 
     id: Mapped[uuid.UUID] = _pk()
+    # WHERE THIS ACCOUNT IS BASED: the school it was created in, and the one
+    # `login` mints the first cookie for. NOT "the school this request is
+    # acting for" — that is `Scope.school_id`, and it comes from the session.
+    #
+    # Renamed from `school_id` rather than kept, on D69's reasoning: the old
+    # name carried two facts that only looked like one while a teacher had a
+    # single school, and under the old name every read site nobody reviewed
+    # would have gone on compiling with the tenant meaning.
+    home_school_id: Mapped[uuid.UUID] = _fk("school.id")
     email: Mapped[str] = mapped_column(String(320), nullable=False, index=True)
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
@@ -104,7 +150,11 @@ class Teacher(Base, TimestampMixin, SchoolScopedMixin):
     motion: Mapped[str | None] = mapped_column(String(10))  # None | off
     calm: Mapped[str | None] = mapped_column(String(10))  # None | on
 
-    school: Mapped[School] = relationship(back_populates="teachers")
+    home_school: Mapped[School] = relationship(back_populates="home_teachers")
+    # Every school this teacher works at. viewonly: appending cannot re-issue
+    # the session cookie, and a membership the cookie does not know about is a
+    # membership no request can act on.
+    schools: Mapped[list[School]] = relationship(secondary=teacher_school, viewonly=True)
 
 
 class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
@@ -135,6 +185,54 @@ class_subject = Table(
     # path goes through ``class_service.declare_subject``, which computes the
     # next free position, the same convention ``SheetItem.position`` follows.
     Column("position", Integer, nullable=False),
+)
+
+
+class_teacher_subject = Table(
+    "class_teacher_subject",
+    Base.metadata,
+    Column("class_id", PgUUID(as_uuid=True), primary_key=True),
+    Column("teacher_id", PgUUID(as_uuid=True), ForeignKey("teacher.id", ondelete="RESTRICT"), primary_key=True),
+    Column("subject_id", PgUUID(as_uuid=True), primary_key=True),
+    # Provenance. No `ended_at`, for the reason `class_student` has no
+    # `left_at`: unassigning is a deleted row.
+    Column("assigned_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # WHO TEACHES WHAT HERE. `class_subject` is the other half and they are
+    # not interchangeable: that one is what the class STUDIES (a fact about
+    # the class, carrying the Branch nav order), this one is who TEACHES it
+    # (a fact about a teacher). Deriving the branch list from this table
+    # instead would re-create the circularity D57 removed in a new costume —
+    # a Branch would vanish from the navigation the moment its teacher was
+    # unassigned, taking its Themes, its sheets and its bands with it.
+    #
+    # The composite FK is what makes "you cannot be assigned a branch this
+    # class does not study" a constraint rather than a convention, and so
+    # makes `class_subject` provably the superset the tree may trust. It is
+    # only ENFORCED on Postgres — the test suite's SQLite does not turn on
+    # `PRAGMA foreign_keys` — which is why `class_service.assign_branch`
+    # declares the subject first rather than relying on it.
+    ForeignKeyConstraint(
+        ["class_id", "subject_id"],
+        ["class_subject.class_id", "class_subject.subject_id"],
+        name="fk_class_teacher_subject_class_subject",
+        ondelete="CASCADE",
+    ),
+    # RESTRICT, not the module's usual CASCADE: ownership is assignment-based
+    # now, so cascading here would let deleting an account strip a class of
+    # its last owner — a roster of named children nobody can open, with no
+    # error anywhere. `Class.head_teacher_id` is RESTRICT for the same reason.
+    #
+    # NOT school-scoped, like `class_subject` and `class_student`: every read
+    # joins through a Class already filtered on the session's school. But
+    # unlike those two this table has an end — the teacher — that CAN belong
+    # to another school, so `assign_branch` asserts the membership the column
+    # does not (I-platform-12).
+    #
+    # The composite PK's btree only answers class-first lookups. The reverse —
+    # "which classes does this teacher hold a branch in" — is the TENANCY
+    # query (`enrollment.owned_class_ids`), which runs on nearly every
+    # request, so it gets its own index.
+    Index("ix_class_teacher_subject_teacher", "teacher_id", "class_id"),
 )
 
 
@@ -170,7 +268,23 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
 
     id: Mapped[uuid.UUID] = _pk()
     school_year_id: Mapped[uuid.UUID] = _fk("school_year.id")
-    teacher_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="RESTRICT")
+    # WHO THIS CLASS BELONGS TO: the maître de classe / Klassenlehrperson —
+    # the one who pastes the roster, mints the UIDs and is accountable for the
+    # group. Exactly one, NOT NULL, RESTRICT.
+    #
+    # It is NO LONGER the ownership axis. Who may read this class is
+    # `enrollment.owned_class_ids`: the head teacher OR anyone holding a
+    # `class_teacher_subject` row in it. Renamed from `teacher_id` on D69's
+    # reasoning — under the old name every read site nobody reviewed would
+    # have gone on compiling with "the owner" when it now means "the head
+    # teacher", and `mastery_service._owned_student` is this change's
+    # `scan_processing.wrong_class`.
+    #
+    # NOT NULL is load-bearing twice: it is what makes the 0021 backfill
+    # provably behaviour-preserving for a class with no declared branches, and
+    # it is why `unassign_branch` needs no "you cannot remove the last owner"
+    # guard — a class can never become unowned.
+    head_teacher_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="RESTRICT")
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     label: Mapped[str | None] = mapped_column(String(120))
 
@@ -1300,6 +1414,8 @@ __all__ = [
     "chapter_competency",
     "class_student",
     "class_subject",
+    "class_teacher_subject",
     "exercise_competency",
     "sheet_source",
+    "teacher_school",
 ]

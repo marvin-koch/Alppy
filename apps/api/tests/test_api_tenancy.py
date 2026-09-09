@@ -236,7 +236,7 @@ def test_enrollment_never_crosses_a_school_year(db: Session, tenant: Tenant) -> 
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=next_year.id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code="8B",
         label="L'an prochain",
     )

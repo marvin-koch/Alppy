@@ -1,9 +1,13 @@
 """Request dependencies.
 
-Two of these carry the security model:
+One of these carries the security model:
 
-``get_current_teacher``  resolves the signed cookie to a ``Teacher`` row.
-``get_tenant``           yields that teacher's ``school_id``.
+``get_membership``  resolves the signed cookie to a ``Teacher`` **and** the
+                    school that cookie is entitled to act for, checking the
+                    pair against ``teacher_school``. ``get_current_teacher``,
+                    ``get_tenant`` and ``get_scope`` all derive from it, so the
+                    entitlement is answered once per request and in one place
+                    (I-platform-14).
 
 Everything below the router takes ``school_id`` as a required argument, so a
 handler that forgets the tenant does not type-check rather than leaking rows —
@@ -27,7 +31,7 @@ from alppy.api import errors
 from alppy.core.config import Settings, get_settings
 from alppy.core.security import read_session
 from alppy.db.base import SchoolScopedMixin
-from alppy.models import Teacher
+from alppy.models import Teacher, teacher_school
 from alppy.storage import Storage, get_storage
 
 
@@ -80,31 +84,67 @@ def _demo_teacher(db: Session, settings: Settings) -> Teacher:
     return teacher
 
 
-def get_current_teacher(request: Request, db: DbDep, settings: SettingsDep) -> Teacher:
+@dataclass(frozen=True, slots=True)
+class Membership:
+    """The teacher, and the school this request is acting for.
+
+    The two are resolved together, once, because they are one question:
+    *is this cookie still entitled to this tenant?* Since D74 a teacher may
+    work at several schools, so the tenant comes from the **session** and
+    never from ``Teacher.home_school_id`` — which answers where the account is
+    based, not what it is doing (I-platform-14).
+    """
+
+    teacher: Teacher
+    school_id: uuid.UUID
+
+
+def get_membership(request: Request, db: DbDep, settings: SettingsDep) -> Membership:
     token = request.cookies.get(settings.session_cookie)
     if not token:
         # The one bypass, and it stays behind an explicit flag that defaults to
         # False (`Settings.demo_mode`). Everything below this line — the roster,
         # every child's real name — is what the cookie exists to protect.
         if settings.demo_mode:
-            return _demo_teacher(db, settings)
+            teacher = _demo_teacher(db, settings)
+            return Membership(teacher=teacher, school_id=teacher.home_school_id)
         raise errors.unauthorized("no session cookie")
     session = read_session(token, settings=settings)
     if session is None:
         raise errors.unauthorized("session cookie is invalid or expired")
-    teacher = db.get(Teacher, session.teacher_id)
-    if teacher is None or teacher.school_id != session.school_id:
-        # The cookie signature was valid but the world moved on (teacher
-        # deleted, or moved school). Treat it as no session at all.
+    row = db.get(Teacher, session.teacher_id)
+    if row is None:
+        # The cookie signature was valid but the world moved on. Treat it as
+        # no session at all.
         raise errors.unauthorized("session no longer valid")
-    return teacher
+    teacher = row
+    # A SELECT, deliberately — not `session.school_id in teacher.schools`. A
+    # relationship read can be answered from a stale identity map, and this is
+    # the single line standing between a cookie and another school's roster.
+    member = db.execute(
+        select(teacher_school.c.school_id)
+        .where(teacher_school.c.teacher_id == teacher.id)
+        .where(teacher_school.c.school_id == session.school_id)
+    ).scalar_one_or_none()
+    if member is None:
+        # Valid signature, but this teacher no longer works at the school the
+        # cookie names — they left, or it was never theirs.
+        raise errors.unauthorized("session no longer valid")
+    return Membership(teacher=teacher, school_id=session.school_id)
+
+
+MembershipDep = Annotated[Membership, Depends(get_membership)]
+
+
+def get_current_teacher(membership: MembershipDep) -> Teacher:
+    return membership.teacher
 
 
 TeacherDep = Annotated[Teacher, Depends(get_current_teacher)]
 
 
-def get_tenant(teacher: TeacherDep) -> uuid.UUID:
-    return teacher.school_id
+def get_tenant(membership: MembershipDep) -> uuid.UUID:
+    return membership.school_id
 
 
 TenantDep = Annotated[uuid.UUID, Depends(get_tenant)]
@@ -123,10 +163,12 @@ class Scope:
 
     ``teacher_id`` is the **ownership** boundary. A class is personal: its
     roster of named children, its mastery matrix, its sheets and its scans
-    belong to the teacher who teaches it. ``Class.teacher_id`` has always been
-    ``NOT NULL`` and indexed; until now nothing read it, so every teacher in a
-    school could list and open every other teacher's class. See decisions-log
-    D23.
+    belong to the teachers who teach it. Since D73 that is a set: ownership is
+    ``Class.head_teacher_id`` OR a ``class_teacher_subject`` row, resolved in
+    ``services.enrollment``. See decisions-log D23 and D73.
+
+    ``school_id`` comes from the SESSION, not from the teacher's row: since D74
+    a teacher may work at several schools (D74, I-platform-14).
 
     Handlers that touch a class take ``ScopeDep`` rather than ``TenantDep``, so
     forgetting the owner is a type error and not a leak.
@@ -136,8 +178,8 @@ class Scope:
     teacher_id: uuid.UUID
 
 
-def get_scope(teacher: TeacherDep) -> Scope:
-    return Scope(school_id=teacher.school_id, teacher_id=teacher.id)
+def get_scope(membership: MembershipDep) -> Scope:
+    return Scope(school_id=membership.school_id, teacher_id=membership.teacher.id)
 
 
 ScopeDep = Annotated[Scope, Depends(get_scope)]

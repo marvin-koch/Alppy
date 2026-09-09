@@ -3,11 +3,12 @@
 **Status:** describes `main` as of 2026-09-10 · **Authority:** `apps/api/alppy/models/__init__.py`
 
 Every table in Alppy, what it means, and — the part that is easy to get wrong —
-**which of two similar-looking facts each column carries.** Three times in this
+**which of two similar-looking facts each column carries.** Five times in this
 schema a row both *sits* somewhere and *belongs to* several things, and each
 time the two are a column and a join table. Confusing them is how a chapter's
-evidence leaks into a curriculum branch it never belonged to, or a child's
-answers get thrown away as another class's paper.
+evidence leaks into a curriculum branch it never belonged to, how a child's
+answers get thrown away as another class's paper, or how a co-teacher is locked
+out of the class they teach.
 
 For the rules a reviewer has to enforce by reading, see the `§2 Invariants`
 table of each [`docs/features/`](features/) folder. For *why* a shape is what it
@@ -18,7 +19,13 @@ is, see [`decisions-log.md`](decisions-log.md).
 ## 1 · The shape, in one picture
 
 ```
-School ──< Teacher                                    the only human who logs in
+School ──< Teacher        home_school_id              WHERE AN ACCOUNT IS BASED: the
+                                                      school `login` mints its first
+                                                      cookie for. One, NOT NULL   (D74)
+School ──>< Teacher       teacher_school              WHERE THEY MAY WORK: every
+                                                      staffroom. The TENANT of a
+                                                      request comes from the SESSION,
+                                                      checked against this        (D74)
        ──< SchoolYear ──< Class ──< Student
        ──< Subject                                    "Branch" in the UI
 
@@ -31,6 +38,12 @@ Class ──>< Student        class_student               WHO SITS WHERE: every 
                                                       pile all mean THIS set   (D69)
 Class ──>< Subject        class_subject               the Branches a class DECLARES
                                                       it studies, ordered      (D57)
+Class ──> Teacher         head_teacher_id             WHO THE CLASS BELONGS TO: the
+                                                      maître de classe. One, NOT NULL,
+                                                      RESTRICT                 (D73)
+Class ──>< Teacher×Subject class_teacher_subject      WHO TEACHES WHAT HERE. Ownership
+                                                      is head teacher OR any row here
+                                                      (`owned_class_ids`)      (D73)
 
 Curriculum (LP21 | PER) ──< Competency                hierarchical, shared, not
                                                       school-scoped            (D11)
@@ -64,7 +77,7 @@ MasterySnapshot ──> Student, Competency                one row per (student,
 
 ---
 
-## 2 · The three "sits vs belongs" splits
+## 2 · The five "sits vs belongs" splits
 
 This is the shape the schema repeats, and the single most important thing to
 understand before changing it. Each time: **a column answers "which one", a join
@@ -75,10 +88,13 @@ table answers "which ones", and they are different questions.**
 | `Chapter` | `primary_competency_id` — one node, resolved per school from `School.default_curriculum` | `chapter_competency` — every code it credits, across curricula | Rolling mastery up through the m2m leaks a chapter's evidence into a Branch its primary never belongs to (D56) |
 | `Student` | `home_class_id` — the class that minted `uid` and `number` | `class_student` — every class they attend | Reading the column where enrollment is meant flags a co-enrolled pupil's paper as foreign, and `scan_processing` then **discards every detection on it**, silently (D69) |
 | `Sheet` | `derived_from_id` — the principal source, printed on the feedback page | `sheet_source` — the whole evidence set | A sheet whose feedback page names one parent while its lineage draws another (D70) |
+| `Class` | `head_teacher_id` — the maître de classe, who pastes the roster and mints the UIDs | `class_teacher_subject` — every teacher×branch taught here | Deriving the Branch nav from staffing makes a branch vanish the moment its teacher is unassigned, and makes its order depend on who is looking (D73) |
+| `Teacher` | `home_school_id` — where the account is based, and what `login` mints a cookie for | `teacher_school` — every staffroom they work in | Reading the column where the tenant is meant makes a teacher who switched school go on reading the old one (D74) |
 
 **Why not the join table alone?** Because something always needs exactly one
 answer: the navigation tree needs one parent per Theme, the UID needs one class,
-the feedback page needs one source. "The row with position 0" is a worse way to
+the feedback page needs one source, a class needs one maître de classe, and
+`login` needs one school to mint a cookie for. "The row with position 0" is a worse way to
 ask for that than a foreign key — it demotes a constraint to a convention.
 
 ---
@@ -149,7 +165,10 @@ protect evidence, and each is deliberate:
 | Column | Action | Because |
 |---|---|---|
 | `Student.home_class_id` | **RESTRICT** | Deleting a class used to delete its students, and `Attempt`, `MasterySnapshot` and `SheetInstance` all cascade from there — a term of evidence gone for a child who also sat in another class (D69) |
-| `Class.teacher_id` | RESTRICT | A class must not evaporate with an account |
+| `Class.head_teacher_id` | RESTRICT | A class must not evaporate with an account |
+| `class_teacher_subject.teacher_id` | **RESTRICT** | Ownership is assignment-based, so cascading would strip a class of its last owner — a roster of named children nobody can open, with no error anywhere (D73) |
+| `class_teacher_subject` → `class_subject` | CASCADE | An assignment must not outlive the declaration it hangs from; the composite FK is what makes `class_subject` provably the superset (D73) |
+| `teacher_school` (both ends) | CASCADE | The row is only the *fact* of a membership |
 | `Sheet.chapter_id`, `SheetItem.exercise_id`, `Attempt.exercise_id` | RESTRICT | Printed sheets, scans and attempts must survive a chapter or exercise being deleted |
 | `class_student` (both ends) | CASCADE | The row is only the *fact* of an enrollment; removing it removes nothing else |
 

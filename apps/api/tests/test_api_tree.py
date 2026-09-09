@@ -299,7 +299,7 @@ def test_branches_are_declared_not_derived_from_sheets(
 ) -> None:
     """The old read was `SELECT DISTINCT sheet.subject_id`, which meant a new
     class had no Branch level until somebody built it a sheet."""
-    assert class_service.subject_ids_for_class(
+    assert class_service.declared_subject_ids_for_class(
         db, tenant.scope, tenant.school_class.id
     ) == []
 
@@ -310,7 +310,7 @@ def test_branches_are_declared_not_derived_from_sheets(
 
     # No Sheet row exists at all, and the Branch is still there.
     assert db.execute(select(Sheet)).all() == []
-    assert class_service.subject_ids_for_class(
+    assert class_service.declared_subject_ids_for_class(
         db, tenant.scope, tenant.school_class.id
     ) == [tenant.subject.id]
 
@@ -347,7 +347,7 @@ def test_branches_keep_the_order_the_class_met_them(
     class_service.declare_subject(db, tenant.scope, tenant.school_class.id, german.id)
     db.flush()
 
-    assert class_service.subject_ids_for_class(
+    assert class_service.declared_subject_ids_for_class(
         db, tenant.scope, tenant.school_class.id
     ) == [tenant.subject.id, german.id]
     positions = sorted(r.position for r in db.execute(select(class_subject)).all())
@@ -362,7 +362,7 @@ def test_a_colleague_cannot_read_another_classs_branches(
     )
     db.flush()
     assert (
-        class_service.subject_ids_for_class(
+        class_service.declared_subject_ids_for_class(
             db, colleague.scope, tenant.school_class.id
         )
         == []

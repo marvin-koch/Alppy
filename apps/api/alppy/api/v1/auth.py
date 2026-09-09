@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 
 from alppy.api import errors
-from alppy.api.deps import DbDep, SettingsDep, TeacherDep
+from alppy.api.deps import DbDep, SettingsDep, TeacherDep, TenantDep
 from alppy.core.security import hash_password, issue_session, needs_rehash, verify_password
 from alppy.models import Teacher
 from alppy.models.enums import Locale
@@ -33,7 +33,7 @@ def login(
         teacher.password_hash = hash_password(payload.password)
         db.flush()
 
-    token = issue_session(teacher.id, teacher.school_id, settings=settings)
+    token = issue_session(teacher.id, teacher.home_school_id, settings=settings)
     response.set_cookie(
         settings.session_cookie,
         token,
@@ -44,7 +44,7 @@ def login(
         path="/",
     )
     db.commit()
-    return teacher_out(teacher)
+    return teacher_out(teacher, teacher.home_school_id)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -53,13 +53,13 @@ def logout(response: Response, settings: SettingsDep) -> None:
 
 
 @router.get("/auth/me", response_model=TeacherOut)
-def me(teacher: TeacherDep) -> TeacherOut:
-    return teacher_out(teacher)
+def me(teacher: TeacherDep, tenant: TenantDep) -> TeacherOut:
+    return teacher_out(teacher, tenant)
 
 
 @router.patch("/teachers/me/preferences", response_model=TeacherOut)
 def update_preferences(
-    payload: TeacherPreferences, teacher: TeacherDep, db: DbDep
+    payload: TeacherPreferences, teacher: TeacherDep, tenant: TenantDep, db: DbDep
 ) -> TeacherOut:
     """The four display switches plus the locale.
 
@@ -74,4 +74,4 @@ def update_preferences(
     teacher.calm = payload.calm
     db.commit()
     db.refresh(teacher)
-    return teacher_out(teacher)
+    return teacher_out(teacher, tenant)

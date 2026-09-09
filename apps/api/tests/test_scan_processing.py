@@ -304,7 +304,7 @@ def test_a_page_from_another_class_is_flagged_and_not_graded(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=tenant.school_class.school_year_id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code="9A",
         label="Autre",
     )
@@ -589,7 +589,7 @@ def test_manual_assignment_is_limited_to_the_sheets_own_class(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=tenant.school_class.school_year_id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code="9A",
         label="Autre",
     )
@@ -1580,7 +1580,7 @@ def test_a_co_enrolled_students_page_is_graded_not_flagged(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=tenant.school_class.school_year_id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code="9A",
         label="Autre",
     )
@@ -1634,7 +1634,7 @@ def test_a_co_enrolled_student_is_offered_for_manual_assignment(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=tenant.school_class.school_year_id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code="9A",
         label="Autre",
     )

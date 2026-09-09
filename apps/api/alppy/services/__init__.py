@@ -96,13 +96,21 @@ __all__ = [
 ]
 
 
-def teacher_out(teacher: Teacher) -> TeacherOut:
+def teacher_out(teacher: Teacher, school_id: uuid.UUID) -> TeacherOut:
+    """The signed-in teacher, reported for ONE school.
+
+    ``school_id`` is passed rather than read off the row because since D74 a
+    teacher may work at several and the row only knows where they are based.
+    The client switches tenants on this field, so reporting
+    ``home_school_id`` here would have every screen quietly describe the wrong
+    school the moment somebody switched (I-platform-14).
+    """
     return TeacherOut(
         id=teacher.id,
         email=teacher.email,
         first_name=teacher.first_name,
         last_name=teacher.last_name,
-        school_id=teacher.school_id,
+        school_id=school_id,
         preferences=TeacherPreferences(
             locale=str(teacher.locale),
             theme=teacher.theme,

@@ -44,7 +44,7 @@ def list_classes(scope: ScopeDep, db: DbDep) -> list[ClassOut]:
         class_out(
             c,
             student_count=counts.get(c.id, 0),
-            subject_ids=svc.subject_ids_for_class(db, scope, c.id),
+            subject_ids=svc.taught_subject_ids_for_class(db, scope, c.id),
         )
         for c in svc.list_classes(db, scope)
     ]

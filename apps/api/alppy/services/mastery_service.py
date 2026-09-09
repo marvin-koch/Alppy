@@ -61,7 +61,7 @@ from alppy.schemas import (
     TreeMasteryOut,
 )
 from alppy.services import competency_out, student_out
-from alppy.services.enrollment import enrolled_student_ids
+from alppy.services.enrollment import enrolled_student_ids, owned_class_ids
 
 ATTENTION_BANDS: Final[frozenset[MasteryBand]] = frozenset(
     {MasteryBand.WEAK, MasteryBand.FADING}
@@ -412,10 +412,7 @@ def class_matrix(
     # The matrix is a roster of named children: it follows class ownership, not
     # just the school boundary (decisions-log D23).
     school_class = db.execute(
-        select(Class)
-        .where(Class.id == class_id)
-        .where(Class.school_id == school_id)
-        .where(Class.teacher_id == scope.teacher_id)
+        select(Class).where(Class.id == class_id).where(Class.id.in_(owned_class_ids(scope)))
     ).scalar_one_or_none()
     if school_class is None:
         raise errors.not_found("class", id=str(class_id))
@@ -473,7 +470,7 @@ def _owned_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
         .join(Class, Class.id == class_student.c.class_id)
         .where(Student.id == student_id)
         .where(Student.school_id == scope.school_id)
-        .where(Class.teacher_id == scope.teacher_id)
+        .where(Class.id.in_(owned_class_ids(scope)))
         .limit(1)
     ).scalar_one_or_none()
     if student is None:

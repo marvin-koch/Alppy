@@ -1398,3 +1398,95 @@ from the first.
 **Computed, not stored.** No `SheetMastery` table, for the reason `api/v1/mastery.py`
 already gives about the matrix: the score decays with time, so a sheet opened on Friday
 must not show Monday's numbers.
+
+### D73 · A teacher is assigned a branch in a class, and ownership is a union
+
+`class.teacher_id` carried two facts that only looked like one while a class had a single
+teacher: **who may read this class** and **who is its maître de classe**. Mme Martin takes
+French *and* maths in 5A while M. Lambert takes history in the same 5A, and none of that was
+expressible — the schema could say "Martin owns 5A" and, separately, "5A studies French and
+maths", which is indistinguishable from "Martin owns 5A and teaches everything in it".
+
+Split the way D56 split `Chapter` and D69 split `Student`: where a row *sits* is a column,
+what it *belongs to* is a join table. `class.head_teacher_id` is the maître de classe;
+`class_teacher_subject` is who teaches which branch here.
+
+**`class_subject` stays.** It is what the class STUDIES and it carries the Branch nav order,
+one value per (class, subject); `class_teacher_subject` is who TEACHES it. Moving `position`
+into a table grained by teacher would leave two co-teachers' rows for one branch with nothing
+forcing their order to agree — a nav that depends on who is looking. And deriving the branch
+list from staffing is D57's circularity in a new costume: a Branch would vanish the moment
+its teacher was unassigned, taking its Themes, sheets and bands with it. The composite FK
+makes `class_subject` provably the superset.
+
+**Ownership is a union, not a lookup.** Head teacher **or** any assignment. The head-teacher
+arm is not decoration: it is what keeps a class with no declared branches visible to its own
+teacher, and it is what makes the 0021 backfill provably behaviour-preserving — afterwards
+every class's assignment set is exactly {head teacher} × {declared branches}, so the union
+selects exactly what the old single predicate did. `test_migration_0021.py` asserts that
+rather than trusting it.
+
+**Two grains, and the names carry which is which.** `owned_*` is class-grained — may I know
+this class and these children exist. `taught_*` is pair-grained — may I see this teaching
+artefact and this evidence. *Who you may name is class-grained; what you may see about them
+is pair-grained.* The new failure mode is the mirror of the old one: a laxer rule leaks a
+roster, a **stricter** rule invented in a new read path locks a co-teacher out of the class
+they teach.
+
+**Rejected: narrowing the roster and the student profile by branch.** A co-teacher already
+knows who is in the room, and `_owned_student` is D69's widening — narrowed by subject, a
+child the history teacher actually teaches would 404 for them. `Attempt` also reaches subject
+only through `Exercise`, so it would mean a subject predicate across the whole mastery module
+to produce a partial child. Revisit if a school ever asks for a confidentiality wall between
+colleagues; it is then a policy flag over one predicate, not a schema change.
+
+**Both columns renamed, not kept.** D69's reasoning: there were five read sites to judge one
+at a time as "ownership" or "the class's own teacher", and under the old name every site
+nobody reviewed would have gone on compiling with the old meaning.
+`mastery_service._owned_student` is this change's `scan_processing.wrong_class`.
+
+`class_teacher_subject.teacher_id` is **RESTRICT**, not the module's usual CASCADE: deleting
+an account must not strip a class of its last owner and leave a roster of named children
+nobody can open. No `ended_at` — unassigning is a deleted row (D69's rejected alternative).
+
+**Also rejected: the ~12 stored `*Mastery` tables** the incoming spec asked for, and
+`points_earned` driving mastery. The score decays, so a stored 78% is wrong the next morning
+(D72 already refused a `SheetMastery` table for this); and `Attempt.score` is the teacher's
+barème while `Attempt.correct` is what the model reads — a marking scheme must not rewrite
+what the model believes a child knows.
+
+### D74 · One teacher, several staffrooms; the tenant comes from the session
+
+`teacher.school_id` was the tenant boundary every query filters on. A teacher who splits
+their load between two establishments belongs to both, so the fact moved to `teacher_school`
+and the column that stayed — `home_school_id` — answers where the account is based and which
+school `login` mints the first cookie for.
+
+**The session already carried it.** `core/security.py` has serialised
+`{"t": teacher_id, "s": school_id}` since 0001, and `SessionData.school_id` already existed;
+`get_tenant` simply ignored it and returned the teacher's row instead. So this is not an auth
+reshape. `get_membership` resolves the teacher and the school together — they are one
+question, *is this cookie still entitled to this tenant* — and every other dependency derives
+from it, so the entitlement is answered once per request and in one place.
+
+The membership check is a **`SELECT`**, deliberately, not `session.school_id in
+teacher.schools`: a relationship read can be answered from a stale identity map, and this is
+the single line standing between a cookie and another school's roster.
+
+**No live session is logged out by the deploy.** The backfill gives every teacher exactly the
+school their cookie already names, so `session.school_id` still resolves to what
+`teacher.school_id` used to return. `SESSION_SALT` is deliberately not bumped for the same
+reason: the payload is byte-identical and its meaning is a strict widening.
+
+`Teacher` therefore leaves `SchoolScopedMixin` and becomes the **second** documented
+exception to I-platform-02, after the curriculum (D11). That is honest rather than
+regrettable: a row carrying one `school_id` is a row belonging to one tenant, which a teacher
+working at two no longer does. `uq_teacher_email` stays global — one human, one account,
+several schools; a per-school email would mean two password hashes for one person and would
+make `login`, which looks up by email alone, ambiguous. `uq_student_uid` is unaffected:
+`SchoolYear` is itself school-scoped, so two schools hold distinct year rows and therefore
+distinct UID namespaces.
+
+**Rejected: dropping `home_school_id` entirely.** Purer by §2's own test — once the tenant
+comes from the session, nothing needs exactly one answer — but it takes `Teacher` out of the
+mixin *and* leaves `login` with no default school to mint a cookie for.

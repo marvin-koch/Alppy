@@ -25,6 +25,7 @@ from fastapi.testclient import TestClient
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, object_session, sessionmaker
@@ -62,6 +63,8 @@ from alppy.models import (  # noqa: E402
     Subject,
     Teacher,
     class_student,
+    class_subject,
+    class_teacher_subject,
 )
 from alppy.models.enums import (  # noqa: E402
     CurriculumKind,
@@ -72,6 +75,7 @@ from alppy.models.enums import (  # noqa: E402
     ScanStatus,
     SheetTarget,
 )
+from alppy.services import class_service  # noqa: E402
 from alppy.storage import LocalStorage  # noqa: E402
 
 PASSWORD = "correct-horse-battery"
@@ -265,7 +269,7 @@ def make_tenant(
 
     teacher = Teacher(
         id=uuid.uuid4(),
-        school_id=school.id,
+        home_school_id=school.id,
         email=email,
         password_hash=hash_password(PASSWORD),
         first_name="Anne",
@@ -288,12 +292,13 @@ def make_tenant(
     )
     db.add_all([teacher, year, subject])
     db.flush()
+    class_service.join_school(db, teacher.id, school.id)
 
     school_class = Class(
         id=uuid.uuid4(),
         school_id=school.id,
         school_year_id=year.id,
-        teacher_id=teacher.id,
+        head_teacher_id=teacher.id,
         code=class_code,
         label="Groupe A",
     )
@@ -515,7 +520,7 @@ def make_colleague(
     """
     teacher = Teacher(
         id=uuid.uuid4(),
-        school_id=host.school.id,
+        home_school_id=host.school.id,
         email=email,
         password_hash=hash_password(PASSWORD),
         first_name="Beatrice",
@@ -524,12 +529,13 @@ def make_colleague(
     )
     db.add(teacher)
     db.flush()
+    class_service.join_school(db, teacher.id, host.school.id)
 
     school_class = Class(
         id=uuid.uuid4(),
         school_id=host.school.id,
         school_year_id=host.school_class.school_year_id,
-        teacher_id=teacher.id,
+        head_teacher_id=teacher.id,
         code=class_code,
         label="Groupe B",
     )
@@ -552,6 +558,46 @@ def make_colleague(
         students=students,
         competency=host.competency,
     )
+
+
+def assign_branch(
+    db: Session,
+    school_class: Class,
+    teacher: Teacher,
+    subject: Subject,
+    *,
+    position: int = 0,
+) -> None:
+    """Record that ``teacher`` takes ``subject`` in ``school_class``.
+
+    Writes BOTH facts, in order, because they are two facts and the second
+    has a composite FK onto the first: `class_subject` is what the class
+    studies, `class_teacher_subject` is who teaches it (D73).
+
+    A fixture that set only one of them would build a state the product
+    cannot reach — a branch in the nav that nobody teaches, or an assignment
+    to a branch the class does not study — and the failure would surface
+    three layers away as an empty tree. Same reason `seat_students` exists
+    rather than tests inserting `class_student` rows by hand.
+    """
+    db.execute(
+        pg_insert(class_subject)
+        .values(class_id=school_class.id, subject_id=subject.id, position=position)
+        .on_conflict_do_nothing(index_elements=["class_id", "subject_id"])
+    )
+    db.execute(
+        pg_insert(class_teacher_subject)
+        .values(class_id=school_class.id, teacher_id=teacher.id, subject_id=subject.id)
+        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
+    )
+    db.flush()
+
+
+def make_subject(db: Session, school: School, key: str) -> Subject:
+    row = Subject(id=uuid.uuid4(), school_id=school.id, key=key, labels={"fr": key})
+    db.add(row)
+    db.flush()
+    return row
 
 
 @pytest.fixture

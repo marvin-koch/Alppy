@@ -145,7 +145,7 @@ def _visiting_class(db: Session, tenant: Tenant, code: str = "9A") -> Class:
         id=uuid.uuid4(),
         school_id=tenant.school.id,
         school_year_id=tenant.school_class.school_year_id,
-        teacher_id=tenant.teacher.id,
+        head_teacher_id=tenant.teacher.id,
         code=code,
         label="Soutien",
     )

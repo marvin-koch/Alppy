@@ -74,7 +74,7 @@ def class_tree(
     else:
         student_ids = [s.id for s in class_service.list_students(db, scope, school_class.id)]
 
-    branch_ids = class_service.subject_ids_for_class(db, scope, school_class.id)
+    branch_ids = class_service.taught_subject_ids_for_class(db, scope, school_class.id)
     if subject_id is not None:
         branch_ids = [b for b in branch_ids if b == subject_id]
     if not branch_ids:

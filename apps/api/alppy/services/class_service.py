@@ -30,6 +30,8 @@ from alppy.models import (
     Teacher,
     class_student,
     class_subject,
+    class_teacher_subject,
+    teacher_school,
 )
 from alppy.models.enums import ScanStatus
 from alppy.schemas import ClassCreate, ClassOut, ClassSummary, HomeOut, RosterCreate
@@ -38,6 +40,7 @@ from alppy.services.enrollment import (
     enrolled_in_owned_classes,
     enrolled_student_ids,
     owned_class_ids,
+    taught_subject_ids,
 )
 
 __all__ = [
@@ -47,6 +50,7 @@ __all__ = [
     "create_class",
     "current_school_year",
     "declare_subject",
+    "declared_subject_ids_for_class",
     "enroll",
     "enrolled_in_owned_classes",
     "enrolled_student_ids",
@@ -54,12 +58,13 @@ __all__ = [
     "get_student",
     "home",
     "home_students",
+    "join_school",
     "list_classes",
     "list_students",
     "list_subjects",
     "owned_class_ids",
     "student_counts",
-    "subject_ids_for_class",
+    "taught_subject_ids_for_class",
     "unenroll",
 ]
 from alppy.services.mastery_service import band_summary
@@ -132,24 +137,24 @@ def list_classes(db: Session, scope: Scope) -> list[Class]:
     return list(
         db.execute(
             select(Class)
-            .where(Class.school_id == scope.school_id)
-            .where(Class.teacher_id == scope.teacher_id)
+            .where(Class.id.in_(owned_class_ids(scope)))
             .order_by(Class.code.asc())
         ).scalars()
     )
 
 
 def get_class(db: Session, scope: Scope, class_id: uuid.UUID) -> Class:
-    """One class the caller owns, or 404.
+    """One class the caller has a footing in, or 404.
 
     A colleague's class reads as missing rather than forbidden, for the same
     reason another school's does: the response must not confirm the id exists.
+
+    CLASS-GRAINED (D73): the head teacher, or anyone holding a branch here.
+    That a teacher may open the class says nothing about which of its sheets,
+    piles or bands they may see — those are ``taught_here``.
     """
     row = db.execute(
-        select(Class)
-        .where(Class.id == class_id)
-        .where(Class.school_id == scope.school_id)
-        .where(Class.teacher_id == scope.teacher_id)
+        select(Class).where(Class.id == class_id).where(Class.id.in_(owned_class_ids(scope)))
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("class", id=str(class_id))
@@ -167,8 +172,57 @@ def student_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
     return {class_id: int(count) for class_id, count in rows}
 
 
-def subject_ids_for_class(db: Session, scope: Scope, class_id: uuid.UUID) -> list[uuid.UUID]:
-    """The Branches this class studies, in the order it met them.
+def _branch_ids(
+    db: Session, scope: Scope, class_id: uuid.UUID, *, mine: bool
+) -> list[uuid.UUID]:
+    """The shared body of the two branch-list reads below.
+
+    Order always comes from ``class_subject.position`` — the CLASS's nav
+    order — even when the rows are narrowed to one teacher, so two co-teachers
+    never see the same branches in different orders.
+
+    The ownership filter is joined in here rather than trusting the caller's
+    ``class_id``, the same as every other read in this module.
+    """
+    stmt = (
+        select(class_subject.c.subject_id)
+        .join(Class, Class.id == class_subject.c.class_id)
+        .where(Class.id == class_id)
+        .where(Class.id.in_(owned_class_ids(scope)))
+        # `subject_id` breaks a tie: two subjects first taught in the same
+        # instant can be assigned the same position (the PK is
+        # (class_id, subject_id), so ON CONFLICT cannot serialise that), and a
+        # branch list whose order wobbles between requests is worse than one
+        # whose tie is resolved arbitrarily but consistently.
+        .order_by(class_subject.c.position.asc(), class_subject.c.subject_id.asc())
+    )
+    if mine:
+        stmt = stmt.where(
+            class_subject.c.subject_id.in_(taught_subject_ids(scope, class_id))
+        )
+    return list(db.execute(stmt).scalars())
+
+
+def taught_subject_ids_for_class(
+    db: Session, scope: Scope, class_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The Branches THIS TEACHER takes in this class, in the class's order.
+
+    What the Branch nav shows and what the tree walks (D73). Renamed from
+    ``subject_ids_for_class`` rather than narrowed in place: the old name had
+    two possible meanings after co-teaching, and under it every call site
+    nobody reviewed would have gone on compiling with the other one.
+
+    May be empty — a maître de classe who teaches nothing gets a roster and an
+    empty tree. That is the honest answer, not a 404.
+    """
+    return _branch_ids(db, scope, class_id, mine=True)
+
+
+def declared_subject_ids_for_class(
+    db: Session, scope: Scope, class_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The Branches THE CLASS studies, in the order it met them.
 
     Declared in ``class_subject``, not derived. Until D57 this was
     `SELECT DISTINCT sheet.subject_id`, which was circular: the Branch level of
@@ -176,33 +230,31 @@ def subject_ids_for_class(db: Session, scope: Scope, class_id: uuid.UUID) -> lis
     one, so a new class opened onto nothing. ``declare_subject`` keeps the
     table current from the one place a class and a subject first meet.
 
-    The ownership filter is joined in here rather than trusting the caller's
-    ``class_id``, the same as every other read in this module.
+    This is the superset. Only branch management wants it; everything a
+    teacher reads wants ``taught_subject_ids_for_class``.
     """
-    rows = db.execute(
-        select(class_subject.c.subject_id)
-        .join(Class, Class.id == class_subject.c.class_id)
-        .where(Class.id == class_id)
-        .where(Class.school_id == scope.school_id)
-        .where(Class.teacher_id == scope.teacher_id)
-        # `subject_id` breaks a tie: two subjects first taught in the same
-        # instant can be assigned the same position (the PK is
-        # (class_id, subject_id), so ON CONFLICT cannot serialise that), and a
-        # branch list whose order wobbles between requests is worse than one
-        # whose tie is resolved arbitrarily but consistently.
-        .order_by(class_subject.c.position.asc(), class_subject.c.subject_id.asc())
-    ).scalars()
-    return list(rows)
+    return _branch_ids(db, scope, class_id, mine=False)
 
 
 def declare_subject(
     db: Session, scope: Scope, class_id: uuid.UUID, subject_id: uuid.UUID
 ) -> None:
-    """Record that this class studies this Branch. Idempotent.
+    """Record that this class studies this Branch, and that the caller takes
+    it. Idempotent in both halves.
 
     Called from ``sheet_service.create_sheet`` — the one place a class and a
     subject first come together — so the Branch list stays populated with no
     new step for the teacher, exactly as the old derived query did implicitly.
+
+    **It writes both facts because the Branch nav now reads the second one**
+    (``taught_subject_ids_for_class``, D73). A teacher who builds a French
+    sheet and is not recorded as teaching French would immediately lose the
+    sheet they just made: the branch would not be in their tree. Recording the
+    assignment here is D57's own argument for recording the declaration here.
+
+    The two writes are ordered, not merely grouped: ``class_teacher_subject``
+    carries a composite FK onto ``class_subject``, so the declaration must
+    land first or the assignment cannot.
 
     ``ON CONFLICT DO NOTHING`` rather than a read-then-write: two sheets
     created in the same new subject at once would otherwise race into a
@@ -217,6 +269,27 @@ def declare_subject(
         pg_insert(class_subject)
         .values(class_id=class_id, subject_id=subject_id, position=next_position)
         .on_conflict_do_nothing(index_elements=["class_id", "subject_id"])
+    )
+    db.execute(
+        pg_insert(class_teacher_subject)
+        .values(class_id=class_id, teacher_id=scope.teacher_id, subject_id=subject_id)
+        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
+    )
+
+
+def join_school(db: Session, teacher_id: uuid.UUID, school_id: uuid.UUID) -> None:
+    """Record that this teacher works at this school. Idempotent.
+
+    Membership is what ``deps.get_membership`` checks a cookie against, so a
+    teacher without a row here can hold a valid signature and still act on
+    nothing — which is the correct answer for someone who has left, and a
+    silent lockout for someone who was never added. Every path that mints a
+    teacher calls this: the seed, the migration's backfill, and the fixtures.
+    """
+    db.execute(
+        pg_insert(teacher_school)
+        .values(teacher_id=teacher_id, school_id=school_id)
+        .on_conflict_do_nothing(index_elements=["teacher_id", "school_id"])
     )
 
 
@@ -247,7 +320,7 @@ def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCrea
         id=uuid.uuid4(),
         school_id=scope.school_id,
         school_year_id=year.id,
-        teacher_id=teacher.id,
+        head_teacher_id=teacher.id,
         code=payload.code,
         label=payload.label,
     )
@@ -487,7 +560,7 @@ def home(db: Session, scope: Scope, teacher: Teacher) -> HomeOut:
     pending = _pending_scan_counts(db, scope)
     last_sheets = _last_sheets(db, scope)
     return HomeOut(
-        teacher=teacher_out(teacher),
+        teacher=teacher_out(teacher, scope.school_id),
         subjects=[subject_out(s) for s in list_subjects(db, scope.school_id)],
         classes=[
             class_summary(
@@ -507,5 +580,5 @@ def class_out_with_counts(db: Session, scope: Scope, school_class: Class) -> Cla
     return class_out(
         school_class,
         student_count=student_counts(db, scope).get(school_class.id, 0),
-        subject_ids=subject_ids_for_class(db, scope, school_class.id),
+        subject_ids=taught_subject_ids_for_class(db, scope, school_class.id),
     )

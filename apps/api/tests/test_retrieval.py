@@ -121,7 +121,7 @@ def build_world(db: Session | None = None) -> World:
     )
     teacher = Teacher(
         id=uuid.uuid4(),
-        school_id=school.id,
+        home_school_id=school.id,
         email="prof@example.ch",
         password_hash="x",
         first_name="Ariane",
@@ -134,7 +134,7 @@ def build_world(db: Session | None = None) -> World:
         id=uuid.uuid4(),
         school_id=school.id,
         school_year_id=year.id,
-        teacher_id=teacher.id,
+        head_teacher_id=teacher.id,
         code="7B",
     )
     db.add(school_class)

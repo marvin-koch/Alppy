@@ -57,6 +57,7 @@ from alppy.seed.demo import (
     simulate_attempts,
 )
 from alppy.seed.loader import load_demo_corpus, load_reference_data
+from alppy.services import class_service
 from alppy.services.mastery_service import recompute_for_students
 
 log = get_logger(__name__)
@@ -159,7 +160,7 @@ def _get_or_create_teacher(db: Session, school: School) -> Teacher:
     if teacher is None:
         teacher = Teacher(
             id=uuid.uuid4(),
-            school_id=school.id,
+            home_school_id=school.id,
             email=DEMO_TEACHER_EMAIL,
             password_hash=hash_password(DEMO_TEACHER_PASSWORD),
             first_name="Camille",
@@ -168,6 +169,7 @@ def _get_or_create_teacher(db: Session, school: School) -> Teacher:
         )
         db.add(teacher)
         db.flush()
+    class_service.join_school(db, teacher.id, school.id)
     return teacher
 
 
@@ -214,7 +216,7 @@ def _get_or_create_class(
             id=uuid.uuid4(),
             school_id=school.id,
             school_year_id=year.id,
-            teacher_id=teacher.id,
+            head_teacher_id=teacher.id,
             code=code,
             label=label,
         )
@@ -248,7 +250,7 @@ def _get_or_create_colleague(db: Session, school: School) -> Teacher:
     if teacher is None:
         teacher = Teacher(
             id=uuid.uuid4(),
-            school_id=school.id,
+            home_school_id=school.id,
             email=COLLEAGUE_EMAIL,
             password_hash=hash_password(COLLEAGUE_PASSWORD),
             first_name="Beatrice",
@@ -257,6 +259,7 @@ def _get_or_create_colleague(db: Session, school: School) -> Teacher:
         )
         db.add(teacher)
         db.flush()
+    class_service.join_school(db, teacher.id, school.id)
     return teacher
 
 
