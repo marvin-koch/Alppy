@@ -1,3 +1,5 @@
+export { BandHistogram } from './BandHistogram';
+export type { BandHistogramProps } from './BandHistogram';
 export { ProgressRing } from './ProgressRing';
 export type { ProgressRingProps } from './ProgressRing';
 export { MasteryMeter } from './MasteryMeter';

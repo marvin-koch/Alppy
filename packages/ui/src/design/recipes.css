@@ -354,3 +354,23 @@ textarea.ard-input { min-height: 96px; resize: vertical; }
     var(--c-surface-2) 63%
   );
 }
+
+/* ---------------------------------------------------------------- *
+ * 5 · BAND BAR. The histogram's segments and its legend glyphs.      *
+ * The full band colour, not the tint: at 10px high a tint over white *
+ * is too pale to separate one segment from its neighbour, and the    *
+ * bar's whole job is to show proportions at a glance.                *
+ * ---------------------------------------------------------------- */
+.ard-band-bar { background: var(--c-mastery-none); }
+.ard-band-bar[data-band='solid'] { background: var(--c-mastery-solid); }
+.ard-band-bar[data-band='ok'] { background: var(--c-mastery-ok); }
+.ard-band-bar[data-band='weak'] { background: var(--c-mastery-weak); }
+.ard-band-bar[data-band='fading'] { background: var(--c-mastery-fading); }
+
+/* The legend glyph keeps the SHIPPED glyph colour, calibrated to a constant
+   luminance so all five read with equal contrast (DC-colour-09). */
+.ard-band-ink { color: var(--c-mastery-none-glyph); display: inline-flex; }
+.ard-band-ink[data-band='solid'] { color: var(--c-mastery-solid-glyph); }
+.ard-band-ink[data-band='ok'] { color: var(--c-mastery-ok-glyph); }
+.ard-band-ink[data-band='weak'] { color: var(--c-mastery-weak-glyph); }
+.ard-band-ink[data-band='fading'] { color: var(--c-mastery-fading-glyph); }
