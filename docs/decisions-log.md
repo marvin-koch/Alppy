@@ -1698,3 +1698,37 @@ own nature when disabled, and ink alone carries the state.
 **The reorder arrows sit side by side, not stacked.** A stacked pair fits the panel header in
 44 px total and gives each arrow 22 — half the floor this product holds itself to, on a screen
 used on a phone. Two full-size targets spend width, which that row has, rather than height.
+
+
+### D81 · The grading call arms the PII gate, and a pile with no class is not graded
+
+`open_answer_grading.grade_one` called `ai.complete` without `student_names`, alone among the
+call sites. `assert_no_pii` then ran only its email/phone/AHV regexes: the roster comparison —
+the check that actually matters for this prompt — was skipped. What the prompt carries is
+`SheetItem.statement_override` and `SheetItem.expected_answer`, free text a teacher typed, so
+this was the call site most likely to receive a pupil's name by hand, and the one with no
+positive control asserting otherwise.
+
+**The roster is read once per pile, not once per box.** One scan is one sheet is one class;
+`roster_names` runs a single query in `grade_open_answers` and every box reuses the answer.
+
+**`roster` is a required keyword on `grade_one`, and `None` means "do not call".** `Scan.sheet_id`
+is nullable and detaches on `ondelete="SET NULL"` — the same detachment that had
+`assignable_students` offering the whole school — so a pile whose sheet was deleted has no class
+to check a prompt against. `None` is not an empty roster: `[]` is a class with nothing to forbid, `None` is a gate
+that cannot be armed. Sending anyway with the check off is the one option that is not available —
+an exercise's own statement is no safer than the teacher's wording, because a textbook's Léa is
+also in the class. The box settles `NOT_GRADEABLE`, which the teacher already sees and can
+correct by hand, and rule 1 of the module (nothing stays `PENDING`) still holds. Making the
+argument required rather than defaulting to `None` is what stops a future caller reintroducing
+the disarmed call by omission.
+
+**A blocked call is flushed to the audit log.** `flush_ai_log` ran only on the success path, so
+the `ModelCall` row proving the gate fired was discarded with the exception — the one row an
+auditor would ask for. It now runs in the `except` branch too; `flush` drains, so the success
+path having already run makes the second call a no-op rather than a duplicate. No content is
+written either way: the string that fired `PiiLeakError` is by definition the one carrying a name.
+
+Not fixed here: `docs/privacy.md` names `apps/api/tests/ai/test_scrub_no_pii.py` as the normative
+test parametrised over every call site. That file does not exist. The gate is tested per call
+site instead, which is why a missing positive control could hide here for as long as it did.

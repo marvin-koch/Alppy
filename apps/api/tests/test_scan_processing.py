@@ -1668,3 +1668,88 @@ def test_a_co_enrolled_student_is_offered_for_manual_assignment(
 
     offered = {s.uid for s in scan_service.assignable_students(db, tenant.scope, scan.id)}
     assert "9A_04" in offered
+
+
+# --------------------------------------------------------------------------
+# The PII gate on the grading call
+# --------------------------------------------------------------------------
+def test_a_students_name_in_the_teachers_wording_never_reaches_the_provider(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The positive control this call site had none of.
+
+    ``grade_one`` sends free text a teacher typed — ``statement_override`` and
+    ``expected_answer`` — and for a while it called ``ai.complete`` without
+    ``student_names``, so ``assert_no_pii`` ran its email/phone/AHV regexes and
+    skipped the roster comparison entirely. A pupil's name written into an
+    item's wording went to the provider unchecked.
+    """
+    from alppy.models import ModelCall, PromptLog
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    student = tenant.students[0]
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    item = next(si for si in sheet.items if si.exercise_id == exercises[1].id)
+    item.statement_override = f"{student.first_name} a mangé 3/4 d'une tarte. Combien reste-t-il ?"
+    db.commit()
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, student.uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict('{"transcription": "1/4", "written": true, "correct": true, "confidence": 0.9}')
+    result = grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+
+    assert provider.calls == 0, "the gate must fire before the provider is reached"
+    assert result["ungradeable"] == 1
+    detection = _open_detection(db, scan)
+    assert detection.outcome is DetectionOutcome.NOT_GRADEABLE
+    assert detection.verdict_correct is None
+
+    # The refusal is auditable, and carries no content: the string that fired
+    # the gate is by definition the one holding the name.
+    call = db.query(ModelCall).filter(ModelCall.purpose == "grade_open_answer").one()
+    assert call.ok is False and call.error == "PiiLeakError"
+    assert db.query(PromptLog).count() == 0
+
+
+def test_the_gate_still_lets_an_ordinary_wording_through(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The negative half of the control above: arming the gate with the roster
+    must not start refusing sheets that say nothing about a pupil."""
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    item = next(si for si in sheet.items if si.exercise_id == exercises[1].id)
+    item.statement_override = "Calcule 3/4 + 1/8 et simplifie."
+    db.commit()
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict('{"transcription": "7/8", "written": true, "correct": true, "confidence": 0.9}')
+    assert grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)["graded"] == 1
+    assert provider.calls == 1
+
+
+def test_a_pile_that_lost_its_sheet_is_never_graded_with_the_gate_disarmed(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """``Scan.sheet_id`` detaches on ``ondelete="SET NULL"``. With no sheet
+    there is no class, so there is no roster to check a prompt against — and
+    "no roster" must mean "do not call", not "call with the check off"."""
+    from alppy.services.open_answer_grading import grade_open_answers, roster_names
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+    assert set(roster_names(db, scan) or []) == {
+        part for s in tenant.students for part in (s.first_name, s.last_name)
+    }
+
+    scan.sheet_id = None
+    db.commit()
+    assert roster_names(db, scan) is None
+
+    provider = _Verdict('{"transcription": "7/8", "written": true, "correct": true, "confidence": 0.9}')
+    result = grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+    assert provider.calls == 0
+    assert result == {"pending": 1, "graded": 0, "blank": 0, "ungradeable": 1}
+    assert _open_detection(db, scan).outcome is DetectionOutcome.NOT_GRADEABLE

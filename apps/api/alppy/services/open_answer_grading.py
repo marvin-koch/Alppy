@@ -5,7 +5,7 @@ review opens the moment the marks are read and the verdicts arrive while the
 teacher is already looking. One model call per pending box; each row is
 committed as it lands, so a crash halfway keeps what was graded.
 
-Three rules, in order of importance:
+Four rules, in order of importance:
 
 1. **Nothing stays ``PENDING``.** A call that fails, a provider that cannot
    see, an answer the model cannot read — every one of those lands as
@@ -18,6 +18,12 @@ Three rules, in order of importance:
 3. **The machine's verdict is written once.** ``machine_transcription`` and
    ``machine_verdict_correct`` are set here and never again; a teacher's
    correction goes beside them.
+4. **The gate is armed, or the call is not made.** The statement and the
+   expected answer are free text a teacher typed, and an exercise's own
+   statement is no safer — a textbook's Léa is also in the class. So the
+   roster goes to ``AiClient.complete(student_names=...)`` like every other
+   call site, and a pile whose class cannot be resolved is settled
+   ungradeable rather than sent with the roster check switched off.
 """
 
 from __future__ import annotations
@@ -33,9 +39,20 @@ from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.base import ImagePart
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
-from alppy.models import AnswerBoxPlacement, Detection, Exercise, Job, Scan, ScanPage, SheetItem
+from alppy.models import (
+    AnswerBoxPlacement,
+    Detection,
+    Exercise,
+    Job,
+    Scan,
+    ScanPage,
+    Sheet,
+    SheetItem,
+    Student,
+)
 from alppy.models.enums import DetectionOutcome, JobKind, JobStatus
 from alppy.scan.detector import LOW_CONFIDENCE
+from alppy.services.enrollment import enrolled_student_ids
 from alppy.storage import Storage
 
 log = get_logger(__name__)
@@ -99,6 +116,39 @@ def _fill_for(db: Session, detection: Detection) -> str:
 NO_EXPECTED_ANSWER = "No expected answer was given. Work the question out yourself first."
 
 
+def roster_names(db: Session, scan: Scan) -> list[str] | None:
+    """Every name seated in the class this pile was printed for, read here for
+    the single purpose of *forbidding* it — ``assert_no_pii`` refuses a prompt
+    that contains one.
+
+    ``None`` is not an empty roster. ``Scan.sheet_id`` is nullable and detaches
+    on ``ondelete="SET NULL"``, so a pile whose sheet was deleted has no class
+    to check against; ``None`` says the gate cannot be armed, and ``[]`` says
+    there is nothing to arm it with. ``grade_one`` calls no provider in the
+    first case.
+    """
+    if scan.sheet_id is None:
+        return None
+    sheet = db.execute(
+        select(Sheet).where(Sheet.id == scan.sheet_id).where(Sheet.school_id == scan.school_id)
+    ).scalar_one_or_none()
+    if sheet is None:
+        return None
+    names: list[str] = []
+    for student in db.scalars(
+        select(Student).where(
+            Student.school_id == scan.school_id,
+            Student.id.in_(enrolled_student_ids(sheet.class_id)),
+        )
+    ):
+        names.extend(
+            part.strip()
+            for part in (student.first_name, student.last_name)
+            if part and len(part.strip()) > 1
+        )
+    return names
+
+
 def grading_context(
     db: Session, detection: Detection, exercise: Exercise
 ) -> tuple[str, str | None]:
@@ -149,9 +199,21 @@ def grade_one(
     *,
     detection: Detection,
     exercise: Exercise,
+    roster: list[str] | None,
 ) -> DetectionOutcome:
-    """One box, one call, one settled row. Never raises."""
+    """One box, one call, one settled row. Never raises.
+
+    ``roster`` is required, and ``None`` — the class could not be resolved —
+    means no call is made: see ``roster_names``.
+    """
     if not ai.chat_is_grounded or not detection.crop_key:
+        _ungradeable(detection)
+        return DetectionOutcome.NOT_GRADEABLE
+    if roster is None:
+        # The gate would run its email/phone/AHV regexes and nothing else, and
+        # the roster check is the one that matters here: everything this prompt
+        # carries is text a person wrote. Refuse rather than send unchecked.
+        log.warning("open_grading.no_roster", detection_id=str(detection.id))
         _ungradeable(detection)
         return DetectionOutcome.NOT_GRADEABLE
     statement, expected = grading_context(db, detection, exercise)
@@ -169,11 +231,21 @@ def grade_one(
                 "fill": _fill_for(db, detection),
             },
             images=(ImagePart(image),),
+            # The gate, armed with the real roster. `statement` and `expected`
+            # are free text — `SheetItem.statement_override` and
+            # `SheetItem.expected_answer` are typed by the teacher — so this is
+            # the call site where a name is most likely to arrive by hand.
+            student_names=roster,
             temperature=0.0,
         )
         flush_ai_log(db, school_id=detection.school_id, ai=ai)
         data = parse_json_response(response.text)
     except Exception as exc:
+        # The audit row too, and especially here: the commonest failure is the
+        # PII gate, and a refusal a school cannot see it happened is not a gate
+        # it can show an auditor. `flush` drains, so the success path above
+        # having already run makes this a no-op rather than a duplicate.
+        flush_ai_log(db, school_id=detection.school_id, ai=ai)
         log.warning(
             "open_grading.call_failed",
             detection_id=str(detection.id),
@@ -243,10 +315,13 @@ def grade_open_answers(
 ) -> dict[str, Any]:
     """Grade every pending written answer of one scan. The job's entry point."""
     pending = pending_detections(db, scan_id)
+    scan = db.get(Scan, scan_id)
+    # Read once for the whole pile: one class, one roster, one query.
+    roster = roster_names(db, scan) if scan is not None else None
     counts: dict[str, int] = {"graded": 0, "blank": 0, "ungradeable": 0}
     total = len(pending)
     for index, (detection, exercise) in enumerate(pending):
-        outcome = grade_one(db, storage, ai, detection=detection, exercise=exercise)
+        outcome = grade_one(db, storage, ai, detection=detection, exercise=exercise, roster=roster)
         if outcome is DetectionOutcome.BLANK:
             counts["blank"] += 1
         elif outcome is DetectionOutcome.NOT_GRADEABLE:
@@ -343,5 +418,6 @@ __all__ = [
     "grading_in_progress",
     "pending_detections",
     "queue_open_grading",
+    "roster_names",
     "settle_abandoned",
 ]
