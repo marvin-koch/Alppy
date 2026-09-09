@@ -6,22 +6,22 @@ four core data flows, the request/job lifecycle, and the tenancy model.
 
 ## 1. Stack
 
-| Layer | Choice | Notes |
-|---|---|---|
-| Monorepo | pnpm workspaces + Turborepo | `apps/*`, `packages/*`; `turbo.json` wires `build`/`typecheck`/`test` task graphs |
-| Web | `apps/web` — Next.js (App Router), TypeScript, Tailwind v4 | Server components for data-heavy screens, client components for interactive builders/review UIs |
-| i18n | `next-intl` | fr default, de, en — locale is a teacher preference (`Teacher.locale`), not a route the school configures once |
-| Client data | TanStack Query | Consumes `packages/shared`, a client generated from the API's served OpenAPI schema — never hand-written against assumptions |
-| API | `apps/api` — Python 3.12, FastAPI | Thin HTTP layer; business logic lives in `alppy/{sheets,mastery,ingest,scan,ai}` |
-| ORM / migrations | SQLAlchemy 2 (typed, `Mapped[...]`) + Alembic | One migration per schema change, no autogenerate-and-forget |
-| Validation | Pydantic v2 | Request/response schemas in `alppy/schemas`, separate from ORM models in `alppy/models` |
-| Background work | `arq` (Redis-backed) worker | Ingestion, PDF rendering, scan processing, adaptive batch generation — anything slower than a request/response cycle |
-| Broker/cache | Redis | `arq` queue + short-lived job status |
-| Database | PostgreSQL + `pgvector` | One relational store for domain data and vector search — no separate vector DB |
-| Object storage | S3-compatible (MinIO locally) | Source PDFs, rendered sheets/answer keys, scan images |
-| AI layer | `alppy/ai/` — provider-agnostic | Anthropic default for generation; embeddings self-hosted (see ADR 0001); every model call is logged (`ModelCall`) and PII-scrubbed (see `docs/privacy.md`) |
-| Scan pipeline | OpenCV | Fiducial detection, deskew, UID-grid read, bubble/mark detection |
-| PDF rendering | Headless Chromium over the app's own print markup | The PDF a teacher downloads is a screenshot-to-PDF of the same `print.css`-styled HTML the print-preview screen renders — one layout implementation, not two |
+| Layer            | Choice                                                     | Notes                                                                                                                                                        |
+| ---------------- | ---------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Monorepo         | pnpm workspaces + Turborepo                                | `apps/*`, `packages/*`; `turbo.json` wires `build`/`typecheck`/`test` task graphs                                                                            |
+| Web              | `apps/web` — Next.js (App Router), TypeScript, Tailwind v4 | Server components for data-heavy screens, client components for interactive builders/review UIs                                                              |
+| i18n             | `next-intl`                                                | fr default, de, en — locale is a teacher preference (`Teacher.locale`), not a route the school configures once                                               |
+| Client data      | TanStack Query                                             | Consumes `packages/shared`, a client generated from the API's served OpenAPI schema — never hand-written against assumptions                                 |
+| API              | `apps/api` — Python 3.12, FastAPI                          | Thin HTTP layer; business logic lives in `alppy/{sheets,mastery,ingest,scan,ai}`                                                                             |
+| ORM / migrations | SQLAlchemy 2 (typed, `Mapped[...]`) + Alembic              | One migration per schema change, no autogenerate-and-forget                                                                                                  |
+| Validation       | Pydantic v2                                                | Request/response schemas in `alppy/schemas`, separate from ORM models in `alppy/models`                                                                      |
+| Background work  | `arq` (Redis-backed) worker                                | Ingestion, PDF rendering, scan processing, adaptive batch generation — anything slower than a request/response cycle                                         |
+| Broker/cache     | Redis                                                      | `arq` queue + short-lived job status                                                                                                                         |
+| Database         | PostgreSQL + `pgvector`                                    | One relational store for domain data and vector search — no separate vector DB                                                                               |
+| Object storage   | S3-compatible (MinIO locally)                              | Source PDFs, rendered sheets/answer keys, scan images                                                                                                        |
+| AI layer         | `alppy/ai/` — provider-agnostic                            | Anthropic default for generation; embeddings self-hosted (see ADR 0001); every model call is logged (`ModelCall`) and PII-scrubbed (see `docs/privacy.md`)   |
+| Scan pipeline    | OpenCV                                                     | Fiducial detection, deskew, UID-grid read, bubble/mark detection                                                                                             |
+| PDF rendering    | Headless Chromium over the app's own print markup          | The PDF a teacher downloads is a screenshot-to-PDF of the same `print.css`-styled HTML the print-preview screen renders — one layout implementation, not two |
 
 ## 2. Component and data-flow diagram
 
@@ -105,6 +105,7 @@ flowchart TB
 ```
 
 ### Flow 1 — Ingestion
+
 Teacher uploads a PDF (`POST /sources`) → file lands in S3-compatible storage → an `arq` job chunks
 the document, calls the self-hosted embedding model (never a third-party vendor — see ADR 0001),
 extracts candidate exercises, and writes `Source`, `SourceChunk` (with `vector(1024)`), and
@@ -112,6 +113,7 @@ extracts candidate exercises, and writes `Source`, `SourceChunk` (with `vector(1
 `GET /sources/{id}/status`.
 
 ### Flow 2 — Sheet generation + PDF
+
 The sheet builder calls `POST /sheets/propose` with class/subject/chapters/intent; the API runs a
 `pgvector` similarity search plus ranking and returns exercises with provenance (source, page,
 chunk). The teacher assembles a `Sheet`. Rendering (`POST /sheets/{id}/render`) is a job: headless
@@ -120,6 +122,7 @@ Chromium renders the **same** print-styled HTML the in-app preview uses, produci
 preview and the PDF, so they cannot drift apart.
 
 ### Flow 3 — Scan → detection → grading
+
 A scanned/photographed sheet is uploaded (`POST /scans`) → job runs OpenCV: fiducial-based
 registration and deskew, UID-grid read (identifying the student without OCR of a name), and
 bubble/mark detection with a confidence score per item. Results land as `ScanPage`/`Detection` rows
@@ -129,6 +132,7 @@ triggers mastery recomputation — grading never happens purely automatically fo
 confidence threshold.
 
 ### Flow 4 — Mastery → adaptive generation
+
 Confirmed `Attempt` rows feed the mastery recompute (`docs/mastery-model.md`): a weighted,
 time-decayed accuracy score per (student, competency), banded into five levels. The adaptive screen
 reads that matrix to target gaps, then `POST /adaptive/propose` mixes retrieved (RAG) and
