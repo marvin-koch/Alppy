@@ -45,6 +45,7 @@ export default function ClassPage({
   const te = useTranslations('errors.generic');
   const ta = useTranslations('a11y');
   const tstud = useTranslations('students');
+  const tteach = useTranslations('teaching');
   const ts = useTranslations('sheets');
   const tn = useTranslations('nav');
   const ttree = useTranslations('tree');
@@ -179,6 +180,13 @@ export default function ClassPage({
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/classes/${classId}/students`}>
             <Button variant="secondary">{tstud('title')}</Button>
+          </Link>
+          {/* Reachable from the class it is about. It shows what the class
+              STUDIES, which is a superset of the branches in the switcher
+              above — so it is the one place a branch nobody teaches, or a
+              colleague who should be on one, can be seen (D75). */}
+          <Link href={`/classes/${classId}/teaching`}>
+            <Button variant="secondary">{tteach('title')}</Button>
           </Link>
           <Link href="/sheets/new">
             <Button variant="primary">{ts('new')}</Button>

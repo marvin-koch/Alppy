@@ -13,6 +13,8 @@ import type {
   ChapterOut,
   ClassCreate,
   ClassOut,
+  ClassTeacherOut,
+  ColleagueOut,
   ClassPointsOut,
   CompetencyAttemptsOut,
   CompetencyOut,
@@ -89,14 +91,6 @@ export const logout = () => apiRequest<void>('/auth/logout', { method: 'POST' })
 
 export const getMe = () => apiRequest<TeacherOut>('/auth/me');
 
-/**
- * Act for another of this teacher's schools from here on.
- *
- * The server re-issues the session cookie, so everything after this request
- * is already scoped to the new tenant — there is nothing for the client to
- * carry. Callers must drop every cached query afterwards: the ids in them
- * belong to the school we just left.
- */
 /* ------------------------------------------------- the editable nouns --- */
 export const createSubject = (body: { key: string; labels: LocalisedText }) =>
   apiRequest<SubjectOut>('/subjects', { method: 'POST', body });
@@ -136,6 +130,14 @@ export const updateSource = (
 export const deleteSource = (id: Uuid) =>
   apiRequest<void>(`/sources/${id}`, { method: 'DELETE' });
 
+/**
+ * Act for another of this teacher's schools from here on.
+ *
+ * The server re-issues the session cookie, so everything after this request
+ * is already scoped to the new tenant — there is nothing for the client to
+ * carry. Callers must drop every cached query afterwards: the ids in them
+ * belong to the school we just left.
+ */
 export const switchSchool = (schoolId: Uuid) =>
   apiRequest<TeacherOut>(`/auth/school/${schoolId}`, { method: 'POST' });
 
@@ -173,6 +175,53 @@ export const enrollStudent = (classId: Uuid, studentId: Uuid) =>
 export const unenrollStudent = (classId: Uuid, studentId: Uuid) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students/${studentId}/enrollment`, {
     method: 'DELETE',
+  });
+
+/* ---------------------------------------------- who teaches what (D75) --- */
+/**
+ * Two different questions, and the paths keep them apart.
+ *
+ * `/classes/{id}/teachers/.../branches/...` is who TEACHES a branch here;
+ * `/classes/{id}/subjects` is what the class STUDIES. Declaring a branch also
+ * assigns it to the caller server-side, so the two are never out of step for
+ * the person who just declared one.
+ *
+ * Each returns the list the caller wanted rather than the row it wrote, so a
+ * screen never has to guess what the write did to the rest of the set.
+ */
+export const listClassTeachers = (classId: Uuid) =>
+  apiRequest<ClassTeacherOut[]>(`/classes/${classId}/teachers`);
+
+export const listColleagues = () => apiRequest<ColleagueOut[]>('/colleagues');
+
+export const assignBranch = (classId: Uuid, teacherId: Uuid, subjectId: Uuid) =>
+  apiRequest<ClassTeacherOut[]>(
+    `/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`,
+    { method: 'POST' },
+  );
+
+export const unassignBranch = (classId: Uuid, teacherId: Uuid, subjectId: Uuid) =>
+  apiRequest<ClassTeacherOut[]>(
+    `/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`,
+    { method: 'DELETE' },
+  );
+
+/** Say the class studies this branch — and that the caller takes it. */
+export const declareBranch = (classId: Uuid, subjectId: Uuid) =>
+  apiRequest<ClassOut>(`/classes/${classId}/subjects/${subjectId}`, { method: 'POST' });
+
+/** Refused with a `sheet_count` while the branch still holds sheets here. */
+export const undeclareBranch = (classId: Uuid, subjectId: Uuid) =>
+  apiRequest<ClassOut>(`/classes/${classId}/subjects/${subjectId}`, { method: 'DELETE' });
+
+/**
+ * Set the branch nav order. Takes the WHOLE list, because the order belongs to
+ * the class: a partial update from one co-teacher must not renumber another's.
+ */
+export const reorderBranches = (classId: Uuid, subjectIds: Uuid[]) =>
+  apiRequest<ClassOut>(`/classes/${classId}/subjects`, {
+    method: 'PUT',
+    body: { subject_ids: subjectIds },
   });
 
 export const listSubjects = () => apiRequest<SubjectOut[]>('/subjects');

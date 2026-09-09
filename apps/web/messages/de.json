@@ -867,6 +867,43 @@
     "addOne": "Eine Schülerin hinzufügen",
     "addOneHelp": "Nur eine Person, ohne Liste. Die Nummer folgt auf die zuletzt vergebene."
   },
+  "teaching": {
+    "title": "Wer unterrichtet was",
+    "heading": "Wer unterrichtet was · {code}",
+    "summary": "{branches, plural, =0 {keine Fächer} one {# Fach} other {# Fächer}} · {teachers, plural, one {# Lehrperson} other {# Lehrpersonen}}",
+    "branchesTitle": "Fächer der Klasse",
+    "branchesHelp": "Die Reihenfolge gehört der Klasse: sie gilt auch für Ihre Kolleginnen und Kollegen.",
+    "headTeacher": "Klassenlehrperson",
+    "nobody": "Niemand",
+    "nobodyHelp": "Die Klasse hat dieses Fach, aber niemand unterrichtet es. Es bleibt im Lehrplan und erscheint in keinem Verlauf.",
+    "colleague": "Kollegin oder Kollege",
+    "choose": "Auswählen…",
+    "add": "Hinzufügen",
+    "remove": "Entfernen",
+    "moveUp": "Nach oben",
+    "moveDown": "Nach unten",
+    "removeTeacher": "{name} aus {branch} entfernen",
+    "removeBranch": "{branch} aus der Klasse entfernen",
+    "declareTitle": "Fach hinzufügen",
+    "declareHelp": "Hier erscheinen nur die Fächer Ihrer Schule. Wer eines hinzufügt, unterrichtet es auch.",
+    "declare": "Hinzufügen",
+    "allDeclared": "Die Klasse hat bereits alle Fächer der Schule.",
+    "confirmRemoveTitle": "{branch} aus der Klasse entfernen?",
+    "confirmRemoveBody": "Die {code} hat dieses Fach dann nicht mehr: es verlässt den Lehrplan der Klasse, und die Zuteilungen dazu verschwinden mit ihm. Kein Blatt wird gelöscht.",
+    "confirmRemoveAlternativeTitle": "Wollten Sie nur sich selbst entfernen?",
+    "confirmRemoveAlternativeBody": "Das Fach bleibt im Lehrplan der Klasse und Ihre Kolleginnen und Kollegen behalten es. Entfernen Sie dann Ihren Namen in der Liste, nicht hier.",
+    "confirmRemoveAction": "Fach entfernen",
+    "branchHoldsSheets": "{count, plural, one {Dieses Fach trägt in der {code} noch # Blatt. Ordnen Sie es anderswo zu, oder lassen Sie das Fach stehen.} other {Dieses Fach trägt in der {code} noch # Blätter. Ordnen Sie sie anderswo zu, oder lassen Sie das Fach stehen.}}",
+    "empty": {
+      "title": "Noch keine Fächer",
+      "body": "Sagen Sie, was die Klasse hat. Jedes Fach wird ein Strang im Lehrplan, und die, die Sie unterrichten, erscheinen in Ihren Blättern.",
+      "action": "Fach hinzufügen"
+    },
+    "error": {
+      "title": "Fächer können nicht angezeigt werden",
+      "body": "Die Liste konnte nicht geladen werden. Es wurde nichts geändert."
+    }
+  },
   "curriculum": {
     "themes": "Themen",
     "students": "Lernende",

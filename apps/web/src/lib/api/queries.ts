@@ -23,6 +23,8 @@ import type {
   ChapterOut,
   ClassCreate,
   ClassOut,
+  ClassTeacherOut,
+  ColleagueOut,
   ClassPointsOut,
   CompetencyAttemptsOut,
   CurriculumKind,
@@ -99,6 +101,11 @@ export const queryKeys = {
   classes: ['classes'] as const,
   klass: (id: Uuid) => ['classes', id] as const,
   students: (id: Uuid) => ['classes', id, 'students'] as const,
+  // Under the ['classes', id] prefix on purpose: who teaches a class is a fact
+  // about that class, and every write on the teaching screen invalidates it
+  // alongside the class itself.
+  classTeachers: (id: Uuid) => ['classes', id, 'teachers'] as const,
+  colleagues: ['colleagues'] as const,
   // The prefix ['classes', id, 'mastery'] is what confirming a scan
   // invalidates, so every filter/sort variant has to hang off it.
   classPoints: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid } = {}) =>
@@ -247,14 +254,87 @@ export function useStudents(classId: Uuid | null): UseQueryResult<StudentOut[]> 
   });
 }
 
+/* ---------------------------------------------- who teaches what (D75) --- */
+
 /**
- * Switch the tenant this session acts for.
+ * Every write on this screen changes what SOMEBODY can see, and the somebody is
+ * often the caller. So they all invalidate the same four things: the teacher
+ * list, this class, the class list, and every tree.
  *
- * `invalidateQueries` is not enough and `clear()` is not overkill: after the
- * cookie is re-issued, every cached id in the client belongs to the school we
- * just left. Keeping any of it would render one school's classes under
- * another's name until each query happened to refetch.
+ * The tree is the one that would be missed. Taking your own last branch away
+ * has to empty your own programme immediately — if it waits for a hard reload,
+ * the teacher is looking at a branch the API has already stopped serving them.
  */
+function invalidateTeaching(client: ReturnType<typeof useQueryClient>, classId: Uuid) {
+  void client.invalidateQueries({ queryKey: queryKeys.classTeachers(classId) });
+  void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
+  void client.invalidateQueries({ queryKey: queryKeys.classes });
+  void client.invalidateQueries({ queryKey: ['classes', classId, 'tree'] });
+}
+
+export function useClassTeachers(classId?: Uuid): UseQueryResult<ClassTeacherOut[]> {
+  return useQuery({
+    queryKey: queryKeys.classTeachers(classId ?? ''),
+    queryFn: () => api.listClassTeachers(classId as Uuid),
+    enabled: Boolean(classId),
+  });
+}
+
+export function useColleagues(enabled = true): UseQueryResult<ColleagueOut[]> {
+  return useQuery({ queryKey: queryKeys.colleagues, queryFn: api.listColleagues, enabled });
+}
+
+/** Give a colleague a branch here, or take it away. */
+export function useAssignBranch(): UseMutationResult<
+  ClassTeacherOut[],
+  Error,
+  { classId: Uuid; teacherId: Uuid; subjectId: Uuid; assign: boolean }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ classId, teacherId, subjectId, assign }) =>
+      assign
+        ? api.assignBranch(classId, teacherId, subjectId)
+        : api.unassignBranch(classId, teacherId, subjectId),
+    onSuccess: (_data, { classId }) => invalidateTeaching(client, classId),
+  });
+}
+
+/**
+ * Add a branch to what the class studies, or take it off the programme.
+ *
+ * Undeclaring is the one that can be refused: the API answers with a
+ * `sheet_count` while the branch still holds sheets here, so the caller has to
+ * be able to read the error rather than assume it worked.
+ */
+export function useDeclareBranch(): UseMutationResult<
+  ClassOut,
+  Error,
+  { classId: Uuid; subjectId: Uuid; declare: boolean }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ classId, subjectId, declare }) =>
+      declare
+        ? api.declareBranch(classId, subjectId)
+        : api.undeclareBranch(classId, subjectId),
+    onSuccess: (_data, { classId }) => invalidateTeaching(client, classId),
+  });
+}
+
+/** Move a branch in the class's nav order. The whole list goes every time. */
+export function useReorderBranches(): UseMutationResult<
+  ClassOut,
+  Error,
+  { classId: Uuid; subjectIds: Uuid[] }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ classId, subjectIds }) => api.reorderBranches(classId, subjectIds),
+    onSuccess: (_data, { classId }) => invalidateTeaching(client, classId),
+  });
+}
+
 /* --------------------------------------------------- editable nouns --- */
 export function useUpdateStudent(): UseMutationResult<
   StudentOut,
@@ -397,6 +477,14 @@ export function useDeleteSource(): UseMutationResult<void, Error, { sourceId: Uu
   });
 }
 
+/**
+ * Switch the tenant this session acts for.
+ *
+ * `invalidateQueries` is not enough and `clear()` is not overkill: after the
+ * cookie is re-issued, every cached id in the client belongs to the school we
+ * just left. Keeping any of it would render one school's classes under
+ * another's name until each query happened to refetch.
+ */
 export function useSwitchSchool() {
   const queryClient = useQueryClient();
   return useMutation({

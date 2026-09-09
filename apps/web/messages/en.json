@@ -867,6 +867,43 @@
     "addOne": "Add one pupil",
     "addOneHelp": "A single pupil, without pasting a list. Their number follows the last one given."
   },
+  "teaching": {
+    "title": "Who teaches what",
+    "heading": "Who teaches what · {code}",
+    "summary": "{branches, plural, =0 {no branches} one {# branch} other {# branches}} · {teachers, plural, one {# teacher} other {# teachers}}",
+    "branchesTitle": "Branches of the class",
+    "branchesHelp": "The order belongs to the class: it holds for your colleagues too.",
+    "headTeacher": "Head teacher",
+    "nobody": "Nobody",
+    "nobodyHelp": "The class studies it, but no teacher takes it. It stays on the programme and appears in nobody's timeline.",
+    "colleague": "Colleague",
+    "choose": "Choose…",
+    "add": "Add",
+    "remove": "Remove",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "removeTeacher": "Remove {name} from {branch}",
+    "removeBranch": "Remove {branch} from the class",
+    "declareTitle": "Declare a branch",
+    "declareHelp": "Only your school's branches appear here. Declaring one assigns it to you as well.",
+    "declare": "Declare",
+    "allDeclared": "The class already studies every branch the school has.",
+    "confirmRemoveTitle": "Remove {branch} from the class?",
+    "confirmRemoveBody": "{code} will no longer study this branch: it leaves the class's programme and the assignments that carry it go with it. No sheet is deleted.",
+    "confirmRemoveAlternativeTitle": "Did you only mean to remove yourself?",
+    "confirmRemoveAlternativeBody": "The branch stays on the class's programme and your colleagues keep it. Remove your own name in the list rather than here.",
+    "confirmRemoveAction": "Remove the branch",
+    "branchHoldsSheets": "{count, plural, one {This branch still holds # sheet in {code}. File it elsewhere, or leave the branch in place.} other {This branch still holds # sheets in {code}. File them elsewhere, or leave the branch in place.}}",
+    "empty": {
+      "title": "No branches declared",
+      "body": "Say what the class studies. Every branch declared becomes a strand of the programme, and the ones you take appear in your sheets.",
+      "action": "Declare a branch"
+    },
+    "error": {
+      "title": "Cannot show the branches",
+      "body": "The list could not be loaded. Nothing was changed."
+    }
+  },
   "curriculum": {
     "themes": "Themes",
     "students": "Students",

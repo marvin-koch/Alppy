@@ -10,6 +10,8 @@ import type {
   AdaptiveBatchRequest,
   AdaptiveDiscardRequest,
   AdaptiveRegenerateRequest,
+  ClassOut,
+  ClassTeacherOut,
   DetectionCorrection,
   ExerciseCreate,
   ExerciseOut,
@@ -41,6 +43,10 @@ interface MockState {
   jobs: Record<string, JobOut & { ticks: number }>;
   approvals: Set<string>;
   discards: Set<string>;
+  /** Classes live in state because the teaching screen writes to them: who
+   *  teaches what, and what the class studies, both change under the pointer. */
+  classes: ClassOut[];
+  classTeachers: Record<string, ClassTeacherOut[]>;
 }
 
 const state: MockState = {
@@ -57,6 +63,8 @@ const state: MockState = {
   jobs: {},
   approvals: new Set<string>(),
   discards: new Set<string>(),
+  classes: structuredClone(fx.classes),
+  classTeachers: structuredClone(fx.classTeachers),
 };
 
 let jobCounter = 0;
@@ -152,6 +160,66 @@ function requireAuth(): void {
   if (!state.authenticated) throw new ApiError(401, 'unauthorized', 'authentication required');
 }
 
+/* ------------------------------------------- who teaches what (D75) --- */
+
+function requireClass(classId: string): ClassOut {
+  const found = state.classes.find((c) => c.id === classId);
+  if (!found) throw new ApiError(404, 'not_found', 'class not found');
+  return found;
+}
+
+/**
+ * `subject_ids` is what THIS CALLER teaches, so it only moves when the row
+ * being written is the signed-in teacher's. Writing it for a colleague is how
+ * a mock would quietly tell the tree it had gained a branch it cannot open.
+ */
+function syncOwnBranches(klass: ClassOut): void {
+  const mine = (state.classTeachers[klass.id] ?? []).find(
+    (row) => row.teacher_id === state.teacher.id,
+  );
+  const declared = klass.declared_subject_ids ?? [];
+  klass.subject_ids = declared.filter((id) => (mine?.subject_ids ?? []).includes(id));
+}
+
+function assign(klass: ClassOut, teacherId: string, subjectId: string): void {
+  const rows = (state.classTeachers[klass.id] ??= []);
+  let row = rows.find((r) => r.teacher_id === teacherId);
+  if (!row) {
+    const who = fx.colleagues.find((c) => c.id === teacherId);
+    if (!who) throw new ApiError(422, 'unprocessable', 'no such colleague in this school');
+    row = {
+      teacher_id: teacherId,
+      first_name: who.first_name,
+      last_name: who.last_name,
+      subject_ids: [],
+      is_head: klass.head_teacher_id === teacherId,
+    };
+    rows.push(row);
+  }
+  // Idempotent, like the endpoint: assigning twice is not an error.
+  if (!row.subject_ids.includes(subjectId)) row.subject_ids = [...row.subject_ids, subjectId];
+  syncOwnBranches(klass);
+}
+
+function unassign(klass: ClassOut, teacherId: string, subjectId: string): void {
+  const rows = state.classTeachers[klass.id] ?? [];
+  const row = rows.find((r) => r.teacher_id === teacherId);
+  if (!row) return;
+  row.subject_ids = row.subject_ids.filter((id) => id !== subjectId);
+  // A head teacher keeps their footing with no branches at all — that is the
+  // union arm of `owned_class_ids`, and dropping the row here would make the
+  // fixture claim a class can become unowned.
+  if (row.subject_ids.length === 0 && !row.is_head) {
+    state.classTeachers[klass.id] = rows.filter((r) => r.teacher_id !== teacherId);
+  }
+  syncOwnBranches(klass);
+}
+
+/** How many sheets a branch holds, counted the way the API counts them. */
+function sheetsHeld(subjectId: string): number {
+  return Object.values(state.sheets).filter((s) => s.subject_id === subjectId).length;
+}
+
 /** Resets everything between tests. Exposed on `window` in mock builds only. */
 export function resetMockState(): void {
   state.authenticated = true;
@@ -165,6 +233,8 @@ export function resetMockState(): void {
   state.jobs = {};
   state.approvals = new Set<string>();
   state.discards = new Set<string>();
+  state.classes = structuredClone(fx.classes);
+  state.classTeachers = structuredClone(fx.classTeachers);
   globalThis.__alppyMockCalls = [];
   jobCounter = 0;
   regenerateCounter = 0;
@@ -271,7 +341,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
 
   /* ---------------------------------------------------------- home --- */
   if (method === 'GET' && path === '/home') return { ...fx.home, teacher: state.teacher };
-  if (method === 'GET' && path === '/classes') return fx.classes;
+  if (method === 'GET' && path === '/classes') return state.classes;
   if (method === 'GET' && path === '/subjects') return fx.subjects;
   if (method === 'GET' && path === '/chapters') return fx.chapters;
   if (method === 'GET' && path === '/timeline') return fx.timeline;
@@ -290,7 +360,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
 
   m = match(path, /^\/classes\/([^/]+)\/mastery$/);
   if (m && method === 'GET') {
-    if (m[1] === fx.classes[1]?.id) {
+    if (m[1] === state.classes[1]?.id) {
       return { ...fx.masteryMatrix, class_id: m[1], cells: [], competencies: [] };
     }
     return fx.classMastery(m[1] ?? '', query);
@@ -298,9 +368,81 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
 
   m = match(path, /^\/classes\/([^/]+)$/);
   if (m && method === 'GET') {
-    const found = fx.classes.find((c) => c.id === m?.[1]);
+    const found = state.classes.find((c) => c.id === m?.[1]);
     if (!found) throw new ApiError(404, 'not_found', 'class not found');
     return found;
+  }
+
+  /* --------------------------------------- who teaches what (D75) --- */
+  if (method === 'GET' && path === '/colleagues') return fx.colleagues;
+
+  m = match(path, /^\/classes\/([^/]+)\/teachers$/);
+  if (m && method === 'GET') return state.classTeachers[m[1] ?? ''] ?? [];
+
+  m = match(path, /^\/classes\/([^/]+)\/teachers\/([^/]+)\/branches\/([^/]+)$/);
+  if (m && (method === 'POST' || method === 'DELETE')) {
+    const [, classId = '', teacherId = '', subjectId = ''] = m;
+    const klass = requireClass(classId);
+    if (method === 'POST') {
+      // The API declares the branch first, so the composite FK can never
+      // fire. The fixture has to do the same or it would accept an assignment
+      // the real server refuses.
+      if (!(klass.declared_subject_ids ?? []).includes(subjectId)) {
+        throw new ApiError(422, 'unprocessable', 'this class does not study that branch');
+      }
+      assign(klass, teacherId, subjectId);
+    } else {
+      unassign(klass, teacherId, subjectId);
+    }
+    return state.classTeachers[classId] ?? [];
+  }
+
+  m = match(path, /^\/classes\/([^/]+)\/subjects\/([^/]+)$/);
+  if (m && (method === 'POST' || method === 'DELETE')) {
+    const [, classId = '', subjectId = ''] = m;
+    const klass = requireClass(classId);
+    if (method === 'POST') {
+      if (!(klass.declared_subject_ids ?? []).includes(subjectId)) {
+        klass.declared_subject_ids = [...(klass.declared_subject_ids ?? []), subjectId];
+      }
+      // Declaring assigns the caller too — otherwise a teacher would build a
+      // sheet in a branch nobody has recorded them teaching and lose it.
+      assign(klass, state.teacher.id, subjectId);
+    } else {
+      // Maths carries the fixture's sheets, so the refusal path is reachable
+      // in the browser and not only in a unit test.
+      const held = sheetsHeld(subjectId);
+      if (held > 0) {
+        throw new ApiError(
+          409,
+          'branch_holds_sheets',
+          'this branch still holds sheets in this class',
+          { sheet_count: String(held) },
+        );
+      }
+      klass.declared_subject_ids = (klass.declared_subject_ids ?? []).filter(
+        (id) => id !== subjectId,
+      );
+      for (const row of state.classTeachers[classId] ?? []) {
+        unassign(klass, row.teacher_id, subjectId);
+      }
+    }
+    return klass;
+  }
+
+  m = match(path, /^\/classes\/([^/]+)\/subjects$/);
+  if (m && method === 'PUT') {
+    const klass = requireClass(m[1] ?? '');
+    const asked = (body as { subject_ids?: string[] }).subject_ids ?? [];
+    const declared = klass.declared_subject_ids ?? [];
+    // Branches the caller did not name keep their place AFTER the ones they
+    // did: the order belongs to the class, so a partial list from one
+    // co-teacher must never drop another's branch.
+    klass.declared_subject_ids = [
+      ...asked.filter((id) => declared.includes(id)),
+      ...declared.filter((id) => !asked.includes(id)),
+    ];
+    return klass;
   }
 
   m = match(path, /^\/curricula\/([^/]+)\/competencies$/);

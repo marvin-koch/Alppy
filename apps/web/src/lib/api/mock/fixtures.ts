@@ -9,7 +9,9 @@ import type {
   ChapterOut,
   ClassOut,
   ClassPointsOut,
+  ClassTeacherOut,
   ClassTreeOut,
+  ColleagueOut,
   CompetencyAttemptsOut,
   CompetencyOut,
   DetectionOut,
@@ -55,11 +57,84 @@ export const teacher: TeacherOut = {
 export const subjects: SubjectOut[] = [
   { id: id(10), key: 'maths', labels: { fr: 'Mathématiques', de: 'Mathematik', en: 'Mathematics' } },
   { id: id(11), key: 'french', labels: { fr: 'Français', de: 'Französisch', en: 'French' } },
+  // History is declared by 7B and taught by NOBODY; German is not declared at
+  // all. The teaching screen needs both: one shows the gap a co-taught class
+  // can fall into, the other gives "Déclarer une branche" something to offer.
+  { id: id(12), key: 'history', labels: { fr: 'Histoire', de: 'Geschichte', en: 'History' } },
+  { id: id(13), key: 'german', labels: { fr: 'Allemand', de: 'Deutsch', en: 'German' } },
 ];
 
+/**
+ * The staffroom. `/colleagues` includes the signed-in teacher, because the
+ * server reads `teacher_school` and does not filter them out — the branch
+ * picker is what excludes whoever already holds the branch.
+ */
+export const colleagues: ColleagueOut[] = [
+  { id: id(4), first_name: 'Sandra', last_name: 'Bieri' },
+  { id: teacher.id, first_name: teacher.first_name, last_name: teacher.last_name },
+  { id: id(5), first_name: 'Olivier', last_name: 'Tissot' },
+];
+
+/**
+ * 7B is the case `Class.teacher_id` could not represent (D73): Claire holds two
+ * branches in it, Olivier holds one of the same two, and a third branch sits on
+ * the programme with nobody on it.
+ *
+ * `subject_ids` is what THIS CALLER teaches; `declared_subject_ids` is what the
+ * class studies. They differ here on purpose — history is in the second and not
+ * the first — because that difference is the whole subject of the screen.
+ */
+export const classTeachers: Record<string, ClassTeacherOut[]> = {
+  [id(20)]: [
+    {
+      teacher_id: teacher.id,
+      first_name: teacher.first_name,
+      last_name: teacher.last_name,
+      subject_ids: [id(10), id(11)],
+      is_head: true,
+    },
+    {
+      teacher_id: id(5),
+      first_name: 'Olivier',
+      last_name: 'Tissot',
+      subject_ids: [id(11)],
+      is_head: false,
+    },
+  ],
+  [id(21)]: [
+    {
+      teacher_id: teacher.id,
+      first_name: teacher.first_name,
+      last_name: teacher.last_name,
+      subject_ids: [id(10)],
+      is_head: true,
+    },
+  ],
+};
+
 export const classes: ClassOut[] = [
-  { id: id(20), code: '7B', label: 'Classe de Mme Fontaine', student_count: 18, subject_ids: [id(10), id(11)] },
-  { id: id(21), code: '9A', label: null, student_count: 21, subject_ids: [id(10)] },
+  {
+    id: id(20),
+    code: '7B',
+    label: 'Classe de Mme Fontaine',
+    student_count: 18,
+    subject_ids: [id(10), id(11)],
+    declared_subject_ids: [id(11), id(10), id(12)],
+    head_teacher_id: teacher.id,
+    is_head: true,
+    teachers: classTeachers[id(20)],
+  },
+  {
+    id: id(21),
+    code: '9A',
+    label: null,
+    student_count: 21,
+    subject_ids: [id(10)],
+    declared_subject_ids: [id(10)],
+    head_teacher_id: teacher.id,
+    is_head: true,
+    teachers: classTeachers[id(21)],
+  },
 ];
 
 const NAMES: Array<[string, string]> = [

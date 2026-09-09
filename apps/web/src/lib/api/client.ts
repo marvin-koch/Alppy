@@ -50,7 +50,9 @@ export function isMockEnabled(): boolean {
 }
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
+  /** `PUT` is here for the one route that replaces a whole list rather than
+   *  patching fields — the class's branch order (D75). */
+  method?: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE';
   body?: unknown;
   /** Multipart upload; `body` is ignored when this is set. */
   formData?: FormData;

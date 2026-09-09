@@ -867,6 +867,43 @@
     "addOne": "Ajouter un élève",
     "addOneHelp": "Un seul élève, sans coller de liste. Son numéro suit le dernier attribué."
   },
+  "teaching": {
+    "title": "Qui enseigne quoi",
+    "heading": "Qui enseigne quoi · {code}",
+    "summary": "{branches, plural, =0 {aucune branche} one {# branche} other {# branches}} · {teachers, plural, one {# enseignant} other {# enseignants}}",
+    "branchesTitle": "Branches de la classe",
+    "branchesHelp": "L'ordre est celui de la classe : il vaut pour vos collègues aussi.",
+    "headTeacher": "Maître de classe",
+    "nobody": "Personne",
+    "nobodyHelp": "La classe l'étudie, mais aucun enseignant ne la prend. Elle reste au programme et n'apparaît dans le fil de personne.",
+    "colleague": "Collègue",
+    "choose": "Choisir…",
+    "add": "Ajouter",
+    "remove": "Retirer",
+    "moveUp": "Monter",
+    "moveDown": "Descendre",
+    "removeTeacher": "Retirer {name} de {branch}",
+    "removeBranch": "Retirer {branch} de la classe",
+    "declareTitle": "Déclarer une branche",
+    "declareHelp": "Seules les branches de votre école apparaissent ici. En déclarer une vous l'attribue aussi.",
+    "declare": "Déclarer",
+    "allDeclared": "La classe étudie déjà toutes les branches de l'école.",
+    "confirmRemoveTitle": "Retirer {branch} de la classe ?",
+    "confirmRemoveBody": "La {code} n'étudiera plus cette branche : elle quitte le programme de la classe et les attributions qui la portent disparaissent avec elle. Aucune fiche n'est supprimée.",
+    "confirmRemoveAlternativeTitle": "Vous vouliez peut-être seulement vous retirer ?",
+    "confirmRemoveAlternativeBody": "La branche reste au programme de la classe et vos collègues la gardent. Retirez votre nom dans la liste plutôt qu'ici.",
+    "confirmRemoveAction": "Retirer la branche",
+    "branchHoldsSheets": "{count, plural, one {Cette branche porte encore # fiche dans la {code}. Rangez-la ailleurs, ou laissez la branche en place.} other {Cette branche porte encore # fiches dans la {code}. Rangez-les ailleurs, ou laissez la branche en place.}}",
+    "empty": {
+      "title": "Aucune branche déclarée",
+      "body": "Dites ce que la classe étudie. Chaque branche déclarée devient un fil du programme, et celles que vous prenez apparaissent dans vos fiches.",
+      "action": "Déclarer une branche"
+    },
+    "error": {
+      "title": "Impossible d'afficher les branches",
+      "body": "La liste n'a pas pu être chargée. Rien n'a été modifié."
+    }
+  },
   "curriculum": {
     "themes": "Thèmes",
     "students": "Élèves",

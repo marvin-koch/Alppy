@@ -581,6 +581,10 @@ def test_a_branch_still_holding_sheets_cannot_be_undeclared(
     )
     assert response.status_code == 409
     assert response.json()["error"]["details"]["sheet_count"] == "1"
+    # Its own code, because the screen has to say HOW MANY sheets stand in the
+    # way. Under the generic `conflict` the teacher was told only "no longer
+    # possible in the current state", which names nothing and suggests nothing.
+    assert response.json()["error"]["code"] == "branch_holds_sheets"
 
 
 def test_reordering_branches_keeps_the_ones_you_did_not_name(

@@ -766,6 +766,11 @@ def undeclare_subject(
     if held:
         raise errors.conflict(
             "this branch still holds sheets in this class",
+            # Its own code, not the generic `conflict`: this is a refusal the
+            # teacher resolves by moving the sheets, and the screen has to be
+            # able to say HOW MANY stand in the way. The generic sentence
+            # ("no longer possible in the current state") names nothing.
+            code="branch_holds_sheets",
             sheet_count=str(held),
         )
     db.execute(

@@ -117,6 +117,19 @@
   transform: none;
 }
 
+/* Ghost keeps its own nature when disabled: no face, no drop. The shared
+   :disabled rule paints --c-surface-2 and re-points --lift, which on an
+   edge-less button reads as a small grey box that appeared out of nowhere —
+   an end-of-list reorder arrow looked like a broken control rather than one
+   with nowhere to go. Ink alone carries the state, and the label or the
+   aria-label carries the meaning. */
+.ard-btn[data-variant='ghost']:disabled {
+  --lift: var(--lift-flat);
+
+  background: transparent;
+  color: var(--c-ink-300);
+}
+
 .ard-btn[data-size='sm'] {
   min-height: 36px;
   padding: var(--s-8) var(--s-12);

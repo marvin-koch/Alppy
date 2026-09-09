@@ -1,6 +1,6 @@
 'use client';
 
-import { Button, Field, Input, Modal } from '@alppy/ui';
+import { Button, Field, IconWarning, Input, Modal } from '@alppy/ui';
 import { useState } from 'react';
 
 export interface ConfirmDestructiveProps {
@@ -93,7 +93,21 @@ export function ConfirmDestructive({
               spellCheck={false}
             />
           </Field>
-        ) : null}
+        ) : (
+          /* Without a typed confirmation there is no Field to carry `error`,
+             and the message had nowhere to render at all — a refusal the
+             server had already explained went silently missing. Not colour
+             alone: the warning glyph and the sentence are the message. */
+          error ? (
+            <p
+              role="alert"
+              className="flex items-start gap-2 text-body-s font-semibold text-danger-600"
+            >
+              <IconWarning size={20} className="mt-0.5 shrink-0" aria-hidden="true" />
+              <span>{error}</span>
+            </p>
+          ) : null
+        )}
       </div>
     </Modal>
   );

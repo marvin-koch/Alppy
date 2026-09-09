@@ -1660,3 +1660,41 @@ to choose it is before any exist.
 Adding a colleague is gated on the **caller's** membership, and a school they do not work at
 reads as missing — so the endpoint cannot be used to discover which school ids are real.
 
+
+### D80 · The teaching screen, and the refusal it has to be able to say out loud
+
+D75 shipped the endpoints for who teaches what. This is the screen, and three decisions came
+out of building it rather than out of planning it.
+
+**`undeclare_subject` gets its own error code, `branch_holds_sheets`.** `api/errors.py` already
+says a conflict the teacher can resolve — and each is resolved differently — deserves a name
+rather than sharing the generic one. This one is resolved by moving the sheets, and the count
+is the whole message: the catalogue's generic `conflict` sentence ("cette action n'est plus
+possible dans l'état actuel") names nothing and suggests nothing. The count reaches the screen
+in `details.sheet_count`, which the API was already sending and nothing could read.
+
+**The count is told in the dialog, after the attempt, and the confirm then goes cold.** It
+cannot be shown on the branch panel: the API returns it on the refusal and `ClassOut` does not
+carry it, and a number invented client-side would be a promise the read path cannot keep. Going
+cold is specific to *this* refusal — pressing again cannot get past it until the sheets move,
+whereas a network blip is worth another press and leaves the button live.
+
+**The screen reads `declared_subject_ids`, and it is the only one that does.** Everywhere else
+narrows to the reader's own branches, which is the whole point of strict isolation. Here the
+superset IS the subject matter: a branch on the class's programme that nobody teaches is a real
+state, and this is the only place it can be seen or repaired. A branch still gets no colour,
+icon or tint — the mandarin means "a model wrote this" and nothing else (DC-colour-06), so a
+branch is named (DC-colour-08) and the head teacher is marked with a written label, never a
+violet pill (DC-colour-05).
+
+**Two defects the canvas-vs-browser comparison caught, both fixed at the shared level.**
+`ConfirmDestructive` rendered `error` only inside its typed-confirmation `Field`, so on a dialog
+without one the message had nowhere to go — the server's refusal went silently missing. And a
+disabled **ghost** button inherited the shared `:disabled` face (`--c-surface-2`) plus a drop,
+which on an edge-less button reads as a small grey box that appeared out of nowhere; an
+end-of-list reorder arrow looked broken rather than merely out of moves. Ghost now keeps its
+own nature when disabled, and ink alone carries the state.
+
+**The reorder arrows sit side by side, not stacked.** A stacked pair fits the panel header in
+44 px total and gives each arrow 22 — half the floor this product holds itself to, on a screen
+used on a phone. Two full-size targets spend width, which that row has, rather than height.
