@@ -28,6 +28,10 @@ COPY . .
 # same-origin /api/v1 that this container does not serve.
 ARG NEXT_PUBLIC_API_BASE_URL=http://localhost:8000/api/v1
 ENV NEXT_PUBLIC_API_BASE_URL=$NEXT_PUBLIC_API_BASE_URL
+# Empty by default, which is what keeps the session gate on: the middleware
+# only stands aside for the literal "1".
+ARG NEXT_PUBLIC_ALPPY_DEMO_MODE=
+ENV NEXT_PUBLIC_ALPPY_DEMO_MODE=$NEXT_PUBLIC_ALPPY_DEMO_MODE
 ENV NEXT_TELEMETRY_DISABLED=1 ALPPY_STANDALONE=1
 # @alppy/ui resolves through ./dist, and .dockerignore excludes every dist/ —
 # correctly, since a stale one from the host is worse than none. So it has to

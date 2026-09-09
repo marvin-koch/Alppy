@@ -163,6 +163,12 @@ services:
       args:
         # Baked into the client bundle; see apps/web/Dockerfile.
         NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+        # The web half of ALPPY_DEMO_MODE on the api service: it stops the
+        # middleware redirecting a cookieless visitor to /login. A build arg
+        # rather than an environment variable because NEXT_PUBLIC_* is inlined
+        # by `next build` — setting it at runtime does nothing at all, which is
+        # the confusing half of this pair.
+        NEXT_PUBLIC_ALPPY_DEMO_MODE: ${NEXT_PUBLIC_ALPPY_DEMO_MODE:-}
     environment:
       NODE_ENV: production
       # The browser talks to the API directly, so this is the host-visible URL.
