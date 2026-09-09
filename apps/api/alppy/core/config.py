@@ -135,6 +135,14 @@ class Settings(BaseSettings):
     truncated, which is to say unparsable, and the whole class gets nothing. The
     batch path sizes its own budget and clamps it here."""
     ai_rate_limit_per_min: int = 20
+    """Per teacher, per process. Uvicorn workers multiply it — see
+    ``deps.enforce_ai_rate_limit``."""
+
+    # Not AI, still expensive: headless Chromium and synchronous pagination.
+    render_rate_limit_per_min: int = 12
+    """Per teacher, per process, like the AI bucket. A render is a Chromium
+    process and a preview paginates inside the request handler, so this guards
+    the API box rather than the provider bill."""
 
     # --- Prompt log (debugging; NOT the audit trail) ---------------------
     # `ModelCall` stays content-free whatever these say. This is the separate,

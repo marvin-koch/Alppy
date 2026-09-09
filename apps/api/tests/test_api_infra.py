@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import PDF_BYTES, Tenant, login
 
-from alppy.api.deps import TokenBucketLimiter, get_ai_limiter
+from alppy.api.deps import TokenBucketLimiter, get_ai_limiter, get_render_limiter
 from alppy.core.config import Settings
 from alppy.models import Competency
 from alppy.models.enums import CurriculumKind
@@ -105,6 +105,58 @@ def test_ai_endpoints_are_rate_limited(client: TestClient, tenant: Tenant) -> No
     assert limited.status_code == 429
     assert limited.json()["error"]["code"] == "rate_limited"
     assert int(limited.headers["Retry-After"]) >= 1
+
+
+def test_scan_upload_is_rate_limited(client: TestClient, tenant: Tenant) -> None:
+    """The handler stores bytes, but the job it queues chains open-answer
+    grading: one provider call per written answer per copy. Unthrottled, a
+    single pile of 28 copies with 6 open items is ~168 calls."""
+    login(client, tenant.teacher.email)
+    limiter = get_ai_limiter()
+    seen: set[int] = set()
+    for _ in range(limiter.rate_per_min + 2):
+        seen.add(
+            client.post(
+                "/api/v1/scans",
+                files={"files": ("copies.pdf", PDF_BYTES, "application/pdf")},
+            ).status_code
+        )
+    assert 429 in seen
+
+
+def test_source_upload_is_rate_limited(client: TestClient, tenant: Tenant) -> None:
+    login(client, tenant.teacher.email)
+    limiter = get_ai_limiter()
+    seen: set[int] = set()
+    for _ in range(limiter.rate_per_min + 2):
+        seen.add(
+            client.post(
+                "/api/v1/sources",
+                files={"file": ("book.pdf", PDF_BYTES, "application/pdf")},
+                data={"subject_id": str(tenant.subject.id)},
+            ).status_code
+        )
+    assert 429 in seen
+
+
+def test_preview_uses_the_render_bucket_not_the_ai_one(
+    client: TestClient, tenant: Tenant
+) -> None:
+    """Pagination runs inside the request handler and never reaches a provider,
+    so it must not spend a teacher's AI budget — and must still be capped."""
+    login(client, tenant.teacher.email)
+    payload = {
+        "class_id": str(tenant.school_class.id),
+        "subject_id": str(tenant.subject.id),
+        "title": "Aperçu",
+        "language": "fr",
+        "items": [],
+    }
+    seen: set[int] = set()
+    for _ in range(get_render_limiter().rate_per_min + 2):
+        seen.add(client.post("/api/v1/sheets/preview", json=payload).status_code)
+    assert 429 in seen
+    assert get_ai_limiter().take(str(tenant.teacher.id)) == 0.0
 
 
 # --------------------------------------------------------------------------

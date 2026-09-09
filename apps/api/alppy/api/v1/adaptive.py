@@ -23,6 +23,7 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    RenderRateLimit,
     ScopeDep,
     StorageDep,
     TeacherDep,
@@ -287,6 +288,7 @@ def create_batch(
     "/adaptive/batch/{sheet_id}/render",
     response_model=JobOut,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[RenderRateLimit],
 )
 def render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     """Queue the single PDF that holds every student's page, in order."""

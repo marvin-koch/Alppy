@@ -207,7 +207,7 @@ def scoped_get(
 
 
 # --------------------------------------------------------------------------
-# Rate limiting for the AI-backed endpoints
+# Rate limiting for the AI-backed and otherwise expensive endpoints
 # --------------------------------------------------------------------------
 @dataclass(slots=True)
 class _Bucket:
@@ -254,6 +254,7 @@ class TokenBucketLimiter:
 
 
 _ai_limiter: TokenBucketLimiter | None = None
+_render_limiter: TokenBucketLimiter | None = None
 
 
 def get_ai_limiter() -> TokenBucketLimiter:
@@ -264,8 +265,31 @@ def get_ai_limiter() -> TokenBucketLimiter:
     return _ai_limiter
 
 
+def get_render_limiter() -> TokenBucketLimiter:
+    global _render_limiter
+    settings = get_settings()
+    rate = settings.render_rate_limit_per_min
+    if _render_limiter is None or _render_limiter.rate_per_min != rate:
+        _render_limiter = TokenBucketLimiter(rate_per_min=rate)
+    return _render_limiter
+
+
 def enforce_ai_rate_limit(teacher: TeacherDep) -> None:
-    """Dependency for every endpoint that can reach a model provider."""
+    """Dependency for every endpoint that can reach a model provider.
+
+    Directly or through the job it queues: an endpoint that queues nothing but
+    a chain ending in a provider call is exactly as expensive as one that calls
+    out itself, and a pile of 28 copies with 6 open items is ~168 calls behind
+    a single POST.
+
+    The bucket is per teacher and **per process** (``TokenBucketLimiter`` holds
+    it in memory, deliberately — see its docstring). The effective ceiling for
+    one teacher is therefore ``ai_rate_limit_per_min x uvicorn workers``, not
+    ``ai_rate_limit_per_min``: with 4 workers the default 20/min admits up to
+    80/min. Size the setting against the worker count, and do not read this as
+    a global cost control — that lives in ``Settings.ai_max_output_tokens`` and
+    in the provider account.
+    """
     wait = get_ai_limiter().take(str(teacher.id))
     if wait > 0.0:
         raise errors.rate_limited(
@@ -273,7 +297,26 @@ def enforce_ai_rate_limit(teacher: TeacherDep) -> None:
         )
 
 
+def enforce_render_rate_limit(teacher: TeacherDep) -> None:
+    """Dependency for the expensive endpoints that never reach a provider.
+
+    Rendering spawns headless Chromium; preview paginates synchronously inside
+    the request handler. Neither bills the school, so they do not belong in the
+    AI bucket — but held down, either one can eat the box the API is served
+    from. Separate bucket, separate setting.
+
+    Per teacher and per process, like the AI bucket above: the real ceiling is
+    ``render_rate_limit_per_min x uvicorn workers``.
+    """
+    wait = get_render_limiter().take(str(teacher.id))
+    if wait > 0.0:
+        raise errors.rate_limited(
+            "too many render requests; try again shortly", retry_after_s=max(1, int(wait) + 1)
+        )
+
+
 AiRateLimit = Depends(enforce_ai_rate_limit)
+RenderRateLimit = Depends(enforce_render_rate_limit)
 
 
 def load_optional(module: str, attribute: str, *, feature: str) -> Any:

@@ -1732,3 +1732,29 @@ written either way: the string that fired `PiiLeakError` is by definition the on
 Not fixed here: `docs/privacy.md` names `apps/api/tests/ai/test_scrub_no_pii.py` as the normative
 test parametrised over every call site. That file does not exist. The gate is tested per call
 site instead, which is why a missing positive control could hide here for as long as it did.
+
+### D82 · What a request queues is what it costs, and Chromium gets its own bucket
+
+`POST /scans` carried no rate limit because its handler is cheap: it stores bytes and returns.
+But `PROCESS_SCAN` chains `GRADE_OPEN_ANSWERS`, one provider call per written answer per copy,
+so one unthrottled POST of a 28-copy pile with 6 open items is ~168 calls — more than any of the
+endpoints that *were* limited. `POST /sources` was the same shape: a whole textbook through the
+extraction prompts, started from a handler that only queues. **An endpoint is rate limited for
+what its job chain reaches, not for what its handler executes.** Both now take `AiRateLimit`,
+the same dependency as `/sheets/propose` and the adaptive routes.
+
+**Rendering and preview get a second bucket, not the AI one.** `/sheets/{id}/render`,
+`/adaptive/batch/{id}/render` and both preview routes never reach a provider — they spawn
+headless Chromium, or paginate synchronously inside the request handler. Spending a teacher's
+AI budget on a preview would mean previewing a draft costs them a generation, which is the wrong
+trade in a builder whose whole point is that previewing is free. `RenderRateLimit` is the same
+`TokenBucketLimiter` against a separate setting, `render_rate_limit_per_min`, defaulting to 12:
+lower than the AI bucket because the cost is a process on the API box rather than a line on the
+provider bill, and a teacher reprinting legitimately does it a few times, not twenty.
+
+**The ceiling is per process, and the setting has to be read that way.** `TokenBucketLimiter`
+holds its buckets in memory, deliberately (it guards against a held click, not against spend).
+With N uvicorn workers a teacher's real ceiling is `rate_per_min × N` — 4 workers and the default
+20/min admit 80/min. Both dependencies say so where the number is chosen, and `.env.example`
+repeats it, because the trap is reading `ALPPY_AI_RATE_LIMIT_PER_MIN=20` as a global 20. The hard
+cost ceiling stays where it was: `ai_max_output_tokens` and the provider account.

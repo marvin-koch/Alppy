@@ -162,7 +162,7 @@ itself a leak.
 | I-platform-08 | `test_api_infra.py::test_every_error_uses_the_same_envelope`, `::test_an_unroutable_path_still_returns_the_envelope`, `::test_the_request_id_is_echoed_when_the_caller_supplies_one` |
 | I-platform-09 | `test_api_classes.py::test_a_co_enrolled_student_keeps_the_uid_their_home_class_minted`, `::test_a_roster_paste_numbers_around_a_visiting_student`, `::test_a_student_cannot_leave_the_class_that_minted_their_uid`, `test_scan_processing.py::test_a_co_enrolled_students_page_is_graded_not_flagged` |
 | I-platform-10 | `test_api_tenancy.py::test_enrollment_never_crosses_a_school`, `::test_enrollment_never_crosses_a_school_year`, `::test_a_co_enrolled_student_is_readable_by_both_their_teachers` |
-| Rate limit | `test_api_infra.py::test_the_token_bucket_refills_over_time`, `::test_the_bucket_is_per_teacher`, `::test_ai_endpoints_are_rate_limited` |
+| Rate limit | `test_api_infra.py::test_the_token_bucket_refills_over_time`, `::test_the_bucket_is_per_teacher`, `::test_ai_endpoints_are_rate_limited`, `::test_scan_upload_is_rate_limited`, `::test_source_upload_is_rate_limited`, `::test_preview_uses_the_render_bucket_not_the_ai_one` |
 | Health | `test_api_infra.py::test_health_never_throws_and_reports_each_dependency` |
 | Schema | `scripts/check-schema-drift.py` — its own CI job, on a real Postgres |
 

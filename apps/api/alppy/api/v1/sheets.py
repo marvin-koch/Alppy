@@ -3,6 +3,9 @@
 ``/sheets/propose`` is the one read path that can reach a model provider, so it
 is rate limited per teacher. Rendering is a job: a headless-Chromium PDF pass
 over 24 instances is not something a request should hold a connection open for.
+Rendering and preview are limited too, on their own bucket — they cost the API
+box rather than the provider bill, and a preview must never spend a teacher's
+generation budget (D82).
 """
 
 from __future__ import annotations
@@ -17,6 +20,7 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    RenderRateLimit,
     ScopeDep,
     StorageDep,
     TeacherDep,
@@ -127,7 +131,10 @@ def update_sheet(
 
 
 @router.post(
-    "/sheets/{sheet_id}/render", response_model=JobOut, status_code=status.HTTP_202_ACCEPTED
+    "/sheets/{sheet_id}/render",
+    response_model=JobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[RenderRateLimit],
 )
 def render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     """Queue the blank sheet and the answer key. Returns the job to poll."""
@@ -186,7 +193,7 @@ def _assert_printable(db: DbDep, sheet: Any) -> None:
         raise errors.unprocessable(str(exc)) from exc
 
 
-@router.post("/sheets/preview", response_class=Response)
+@router.post("/sheets/preview", response_class=Response, dependencies=[RenderRateLimit])
 def preview_draft(
     payload: SheetDraftPreview, scope: ScopeDep, db: DbDep
 ) -> Response:
@@ -238,7 +245,9 @@ def preview_draft(
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
-@router.get("/sheets/{sheet_id}/preview", response_class=Response)
+@router.get(
+    "/sheets/{sheet_id}/preview", response_class=Response, dependencies=[RenderRateLimit]
+)
 def preview_sheet(
     sheet_id: uuid.UUID,
     scope: ScopeDep,

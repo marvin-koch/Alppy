@@ -104,7 +104,15 @@ def list_sources(school_id: TenantDep, db: DbDep) -> list[SourceOut]:
     ]
 
 
-@router.post("/sources", response_model=SourceOut, status_code=status.HTTP_202_ACCEPTED)
+# A full ingest is a whole textbook through the extraction prompts — the most
+# expensive single thing a teacher can start, and it starts from this handler's
+# job. Same bucket as `/extract` below.
+@router.post(
+    "/sources",
+    response_model=SourceOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
+)
 async def upload_source(
     teacher: TeacherDep,
     school_id: TenantDep,

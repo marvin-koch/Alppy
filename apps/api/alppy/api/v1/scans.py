@@ -13,6 +13,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from alppy.api.deps import (
+    AiRateLimit,
     DbDep,
     ScopeDep,
     SettingsDep,
@@ -50,7 +51,15 @@ def list_scans(
     ]
 
 
-@router.post("/scans", response_model=ScanOut, status_code=status.HTTP_202_ACCEPTED)
+# Rate limited even though the handler only stores bytes: PROCESS_SCAN chains
+# GRADE_OPEN_ANSWERS, which is one provider call per open answer per copy. One
+# unthrottled POST of a 28-copy pile with 6 written items is ~168 calls.
+@router.post(
+    "/scans",
+    response_model=ScanOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
+)
 async def upload_scan(
     teacher: TeacherDep,
     scope: ScopeDep,
