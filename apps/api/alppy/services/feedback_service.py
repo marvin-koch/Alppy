@@ -52,7 +52,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alppy.ai.audit import record_calls
+from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.ai.scrub import scrub, to_ref
 from alppy.core.logging import get_logger
@@ -263,7 +263,7 @@ def generate_for_student(
         student_names=roster_names,
         temperature=GENERATION_TEMPERATURE,
     )
-    record_calls(db, school_id=school_id, records=[record])
+    flush_ai_log(db, school_id=school_id, ai=ai)
 
     try:
         payload = parse_json_response(response.text)

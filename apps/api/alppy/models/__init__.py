@@ -1068,6 +1068,30 @@ class ModelCall(Base, TimestampMixin, SchoolScopedMixin):
     error: Mapped[str | None] = mapped_column(Text)
 
 
+class AdaptiveProposal(Base, TimestampMixin, SchoolScopedMixin):
+    """The proposal a ``PROPOSE_ADAPTIVE`` job built, waiting to be read once.
+
+    Not ``Job.result``. A class of twenty-four with eight items each — full
+    statements, options, provenance — is close to a megabyte of JSON, and the
+    review screen polls the job every 900 ms while it runs. Putting it in the
+    status row would re-serialise the whole proposal on every poll to answer a
+    question about progress.
+
+    Not a set of durable rows either: the *exercises* are already persisted and
+    approval already hangs off them. This is the shape of one screen, keyed by
+    the job that produced it, read once and then stale — which is why it is its
+    own table with its own lifetime rather than a column on something long-lived.
+    """
+
+    __tablename__ = "adaptive_proposal"
+
+    id: Mapped[uuid.UUID] = _pk()
+    job_id: Mapped[uuid.UUID] = _fk("job.id", ondelete="CASCADE")
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+    __table_args__ = (UniqueConstraint("job_id", name="uq_adaptive_proposal_job"),)
+
+
 class PromptLog(Base, TimestampMixin, SchoolScopedMixin):
     """The full text of a model call, for debugging. Off unless a school asks.
 
@@ -1150,6 +1174,7 @@ class Job(Base, TimestampMixin, SchoolScopedMixin):
 
 __all__ = [
     "UNFILED_CHAPTER_KEY",
+    "AdaptiveProposal",
     "AnswerBoxPlacement",
     "Attempt",
     "Base",

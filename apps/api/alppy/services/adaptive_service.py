@@ -51,17 +51,19 @@ from __future__ import annotations
 
 import math
 import uuid
-from collections.abc import Sequence
-from dataclasses import dataclass
-from typing import Any, Literal
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, field
+from typing import Any, Literal, Protocol
 
 from pydantic import BaseModel, ConfigDict, ValidationError, model_validator
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session, selectinload
 
-from alppy.ai.audit import record_calls
+from alppy.ai.audit import flush as flush_ai_log
+from alppy.ai.base import ChatTruncatedError
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.ai.scrub import PiiLeakError, scrub, to_ref
+from alppy.core.config import get_settings
 from alppy.core.logging import get_logger
 from alppy.models import Competency, Exercise, MasterySnapshot, Student
 from alppy.models.enums import ExerciseOrigin, ExerciseType, MasteryBand
@@ -73,8 +75,10 @@ from alppy.schemas import (
     AdaptiveStudentPlan,
     ExerciseProposal,
     Provenance,
+    TargetingBasis,
 )
 from alppy.services import retrieval
+from alppy.services.adaptive_clustering import cluster_students_with_model
 from alppy.services.approval import (
     UnapprovedExerciseError,
     approve_exercises,
@@ -82,6 +86,7 @@ from alppy.services.approval import (
     ensure_printable,
     is_printable,
 )
+from alppy.services.performance_summary import SheetPerformance, sheet_performance
 from alppy.sheets.layout import MAX_OPTIONS
 
 log = get_logger(__name__)
@@ -279,6 +284,9 @@ def propose_adaptive(
     fallback_language: str = "fr",
     group: bool = False,
     n_groups: int | None = None,
+    source_sheet_id: uuid.UUID | None = None,
+    llm_grouping: bool = False,
+    commit: bool = True,
     ai: AiClient | None = None,
 ) -> AdaptiveProposeResponse:
     """Build one differentiated plan per requested student.
@@ -300,12 +308,30 @@ def propose_adaptive(
     class size is one sheet per student — so nothing that worked before needs a
     different call.
 
+    ``source_sheet_id`` is the sheet the teacher has just corrected. When it has
+    confirmed results for a student, those results — not the term's rolling
+    mastery average — choose that student's competencies. It is one query for
+    the whole class, run here rather than per plan.
+
+    ``commit`` is False when a worker task is the caller. ``worker/tasks.py``
+    owns the transaction boundary — "a pipeline function must not commit or
+    close ``db`` itself" — and committing underneath it would end the job's
+    transaction halfway through, before the ``Job`` row is marked succeeded.
+
     ``ai`` has a default and exists so a worker can share one client (and one
     audit buffer) across a whole class batch.
     """
     students = _students(db, school_id=school_id, class_id=class_id, student_ids=student_ids)
     roster_names = _roster_names(db, school_id=school_id, class_id=class_id)
     client = ai or AiClient()
+    performance: dict[uuid.UUID, SheetPerformance] = {}
+    if source_sheet_id is not None:
+        performance = sheet_performance(
+            db,
+            school_id=school_id,
+            student_ids=[s.id for s in students],
+            sheet_id=source_sheet_id,
+        )
     resolved = language or source_language(
         db, school_id=school_id, subject_id=subject_id, fallback=fallback_language
     )
@@ -313,6 +339,7 @@ def propose_adaptive(
     failures: list[AdaptiveGenerationFailure] = []
     group_plan: AdaptiveGroupPlan | None = None
     group_plans: list[AdaptiveGroupPlan] = []
+    collector = _Collector()
 
     # A request for as many groups as there are students is the per-student
     # path spelled differently, and the per-student planner targets each child's
@@ -320,9 +347,10 @@ def propose_adaptive(
     wants_groups = n_groups is not None and n_groups > 1 and n_groups < len(students)
     single_group = group or (n_groups == 1)
 
+    grouped_by_model = False
     if wants_groups:
         assert n_groups is not None
-        plans, group_plans = _plan_for_groups(
+        plans, group_plans, grouped_by_model = _plan_for_groups(
             db,
             students=students,
             school_id=school_id,
@@ -335,6 +363,9 @@ def propose_adaptive(
             failures=failures,
             ai=client,
             n_groups=n_groups,
+            performance=performance,
+            collector=collector,
+            llm_grouping=llm_grouping,
         )
     elif single_group:
         plans, group_plan = _plan_for_group(
@@ -349,6 +380,8 @@ def propose_adaptive(
             roster_names=roster_names,
             failures=failures,
             ai=client,
+            performance=performance,
+            collector=collector,
         )
     else:
         plans = []
@@ -366,8 +399,32 @@ def propose_adaptive(
                     roster_names=roster_names,
                     failures=failures,
                     ai=client,
+                    performance=performance.get(student.id),
+                    collector=collector,
                 )
             )
+
+    # --- one pass over every plan's generation --------------------------
+    # Retrieval is done; the shortfalls are known. This is the only place a
+    # model is called for exercises, and it is where several plans become one
+    # request. `seen` is shared across the whole run: rebuilt per call, it let
+    # two groups in the same proposal generate the identical statement.
+    if collector.asks:
+        seen = _rejected_statements(db, school_id=school_id, subject_id=subject_id)
+        collector.resolve(
+            generate_for_asks(
+                db,
+                school_id=school_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                asks=collector.asks,
+                language=resolved,
+                roster_names=roster_names,
+                ai=client,
+                seen=seen,
+            ),
+            failures=failures,
+        )
 
     generated_total = sum(len(p.generated) for p in plans)
     if group_plan is not None:
@@ -379,7 +436,7 @@ def propose_adaptive(
         # groups counts each generated row exactly once.
         generated_total = sum(len(g.generated) for g in group_plans)
 
-    if generated_total:
+    if generated_total and commit:
         # Generated exercises are rows now: the response hands back their ids,
         # so they must outlive this transaction.
         db.commit()
@@ -397,9 +454,11 @@ def propose_adaptive(
         language=resolved,
         mode=("groups" if group_plans else "group" if single_group else "per_student"),
         groups=len(group_plans),
+        grouped_by_model=grouped_by_model,
     )
     return AdaptiveProposeResponse(
         plans=plans,
+        grouped_by_model=grouped_by_model,
         group=group_plan,
         groups=group_plans,
         language=resolved,
@@ -435,8 +494,56 @@ def latest_snapshots(
     return list(latest.values())
 
 
+class BandedSignal(Protocol):
+    """What ranking a competency needs: which one, how well, how sure.
+
+    A protocol so the same ranking serves both inputs — a stored
+    ``MasterySnapshot`` (every attempt ever) and a ``CompetencySignal`` computed
+    from one sheet. The alternative was a second `pick_gaps`, and two rankings
+    that drift apart is exactly how the strongest child in a class ends up with
+    the easiest sheet (D32).
+    """
+
+    @property
+    def competency_id(self) -> uuid.UUID: ...
+
+    @property
+    def band(self) -> MasteryBand: ...
+
+    @property
+    def score(self) -> float: ...
+
+
+def gaps_for_student(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    student_id: uuid.UUID,
+    performance: SheetPerformance | None,
+) -> tuple[list[Gap], TargetingBasis]:
+    """This student's gaps, and — just as important — where they came from.
+
+    A teacher who corrects a sheet expects the follow-up to answer *that sheet*.
+    So when the source sheet has results for this child, they win: the plan is
+    about the lesson just taught, not about the term's rolling average.
+
+    The fallback is not a second opinion. `MasterySnapshot` is derived from the
+    same `Attempt` rows, unfiltered by sheet and weighted by recency and
+    difficulty — so the two can disagree about the same child, and when they do
+    the sheet is the more specific claim. Falling back only when the sheet says
+    *nothing* keeps that from becoming an argument the model has to settle.
+
+    A student with neither is the diagnostic case, and it is reported as such
+    rather than silently looking like a student with no gaps.
+    """
+    if performance is not None and performance.has_evidence:
+        return pick_gaps(performance.signals), "source_sheet"
+    gaps = pick_gaps(latest_snapshots(db, school_id=school_id, student_id=student_id))
+    return gaps, ("mastery" if gaps else "diagnostic")
+
+
 def pick_gaps(
-    snapshots: Sequence[MasterySnapshot],
+    snapshots: Sequence[BandedSignal],
     *,
     limit: int = MAX_TARGET_COMPETENCIES,
     max_stretch: int = MAX_STRETCH_COMPETENCIES,
@@ -499,6 +606,79 @@ def target_difficulty(score: float, band: MasteryBand) -> int:
 
 
 # --------------------------------------------------------------------------
+# Deferred generation
+# --------------------------------------------------------------------------
+Finisher = Callable[[list[ExerciseProposal], AdaptiveGenerationFailure | None], None]
+
+
+@dataclass(slots=True)
+class _Collector:
+    """Every plan's generation ask, gathered before any of them is sent.
+
+    The planners still do their own retrieval and still decide their own
+    shortfall — nothing about targeting moves. What moves is *when* the model is
+    called: each planner registers what it needs and a closure that finishes its
+    plan, and the whole run is filled in one pass afterwards.
+
+    That is the same move D33 made for grouping — a phase placed above a planner
+    that already worked — and it is why the batched path did not need a second
+    planner to keep in step with the first.
+    """
+
+    asks: list[_GenerationAsk] = field(default_factory=list)
+    finishers: dict[str, Finisher] = field(default_factory=dict)
+
+    def register(
+        self,
+        *,
+        competency_ids: Sequence[uuid.UUID],
+        labels: Sequence[str],
+        difficulty: int,
+        count: int,
+        style_examples: Sequence[str],
+        chapter_id: uuid.UUID | None,
+        student_refs: Sequence[str],
+        owner_id: uuid.UUID,
+        owner_uid: str,
+        finish: Finisher,
+    ) -> None:
+        # Opaque and sequential. Never a UID: it is shorter, and it means the
+        # batched prompt carries no student reference at all.
+        plan_id = f"P{len(self.asks) + 1}"
+        self.asks.append(
+            _GenerationAsk(
+                plan_id=plan_id,
+                competency_ids=list(competency_ids),
+                labels=list(labels),
+                difficulty=difficulty,
+                count=count,
+                style_examples=list(style_examples),
+                chapter_id=chapter_id,
+                student_refs=list(student_refs),
+                owner_id=owner_id,
+                owner_uid=owner_uid,
+            )
+        )
+        self.finishers[plan_id] = finish
+
+    def resolve(
+        self,
+        results: dict[str, tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]],
+        *,
+        failures: list[AdaptiveGenerationFailure],
+    ) -> None:
+        for ask in self.asks:
+            proposals, failure = results.get(ask.plan_id, ([], None))
+            if failure is not None:
+                failures.append(
+                    failure.model_copy(
+                        update={"student_id": ask.owner_id, "student_uid": ask.owner_uid}
+                    )
+                )
+            self.finishers[ask.plan_id](proposals, failure)
+
+
+# --------------------------------------------------------------------------
 # Per-student plan
 # --------------------------------------------------------------------------
 def _plan_for_student(
@@ -514,8 +694,12 @@ def _plan_for_student(
     roster_names: list[str],
     failures: list[AdaptiveGenerationFailure],
     ai: AiClient,
+    performance: SheetPerformance | None = None,
+    collector: _Collector | None = None,
 ) -> AdaptiveStudentPlan:
-    gaps = pick_gaps(latest_snapshots(db, school_id=school_id, student_id=student.id))
+    gaps, basis = gaps_for_student(
+        db, school_id=school_id, student_id=student.id, performance=performance
+    )
     competency_ids = [g.competency_id for g in gaps]
     labels = _competency_labels(db, competency_ids, language=language)
 
@@ -553,40 +737,41 @@ def _plan_for_student(
         for cand in selected
     ]
 
-    # --- 2. generate only the gap ---------------------------------------
-    generated: list[ExerciseProposal] = []
-    shortfall = items_per_student - len(retrieved)
-    if shortfall > 0 and allow_generation and competency_ids:
-        generated, failure = _generate(
-            db,
-            school_id=school_id,
-            class_id=class_id,
-            subject_id=subject_id,
-            student_refs=[str(to_ref(student.uid))],
-            competency_ids=competency_ids,
-            labels=list(labels.values()),
-            difficulty=difficulty,
-            count=shortfall,
-            language=language,
-            style_examples=[c.exercise.statement for c in selected[:STYLE_EXAMPLE_COUNT]],
-            chapter_id=next((c.exercise.chapter_id for c in selected), None),
-            roster_names=roster_names,
-            ai=ai,
-        )
-        if failure is not None:
-            failures.append(
-                failure.model_copy(
-                    update={"student_id": student.id, "student_uid": student.uid}
-                )
-            )
-
-    return AdaptiveStudentPlan(
+    plan = AdaptiveStudentPlan(
         student_id=student.id,
         student_uid=student.uid,
         targeted_competency_ids=competency_ids,
         retrieved=retrieved,
-        generated=generated,
+        generated=[],
+        targeting_basis=basis,
+        evidence_partial=bool(performance is not None and performance.is_partial),
     )
+
+    # --- 2. generate only the gap ---------------------------------------
+    shortfall = items_per_student - len(retrieved)
+    if shortfall > 0 and allow_generation and competency_ids:
+        assert collector is not None  # every caller supplies one
+
+        def finish(
+            proposals: list[ExerciseProposal],
+            _failure: AdaptiveGenerationFailure | None,
+        ) -> None:
+            plan.generated = proposals
+
+        collector.register(
+            competency_ids=competency_ids,
+            labels=list(labels.values()),
+            difficulty=difficulty,
+            count=shortfall,
+            style_examples=[c.exercise.statement for c in selected[:STYLE_EXAMPLE_COUNT]],
+            chapter_id=next((c.exercise.chapter_id for c in selected), None),
+            student_refs=[str(to_ref(student.uid))],
+            owner_id=student.id,
+            owner_uid=student.uid,
+            finish=finish,
+        )
+
+    return plan
 
 
 # --------------------------------------------------------------------------
@@ -605,6 +790,8 @@ def _plan_for_group(
     roster_names: list[str],
     failures: list[AdaptiveGenerationFailure],
     ai: AiClient,
+    performance: dict[uuid.UUID, SheetPerformance] | None = None,
+    collector: _Collector | None = None,
 ) -> tuple[list[AdaptiveStudentPlan], AdaptiveGroupPlan]:
     """One shared item list for several students with overlapping gaps.
 
@@ -617,9 +804,13 @@ def _plan_for_group(
     can see the sheet is not uniform even though the paper is.
     """
     per_student: dict[uuid.UUID, list[Gap]] = {}
+    bases: dict[uuid.UUID, TargetingBasis] = {}
     for student in students:
-        per_student[student.id] = pick_gaps(
-            latest_snapshots(db, school_id=school_id, student_id=student.id)
+        per_student[student.id], bases[student.id] = gaps_for_student(
+            db,
+            school_id=school_id,
+            student_id=student.id,
+            performance=(performance or {}).get(student.id),
         )
 
     # competency -> the students who need it
@@ -671,51 +862,30 @@ def _plan_for_group(
         for cand in selected
     ]
 
-    generated: list[ExerciseProposal] = []
-    shortfall = items_per_student - len(retrieved)
-    if shortfall > 0 and allow_generation and ranked:
-        generated, failure = _generate(
-            db,
-            school_id=school_id,
-            class_id=class_id,
-            subject_id=subject_id,
-            student_refs=[str(to_ref(s.uid)) for s in students],
-            competency_ids=ranked,
-            labels=list(labels.values()),
-            difficulty=difficulty,
-            count=shortfall,
-            language=language,
-            style_examples=[c.exercise.statement for c in selected[:STYLE_EXAMPLE_COUNT]],
-            chapter_id=next((c.exercise.chapter_id for c in selected), None),
-            roster_names=roster_names,
-            ai=ai,
-        )
-        if failure is not None and students:
-            failures.append(
-                failure.model_copy(
-                    update={"student_id": students[0].id, "student_uid": "group"}
-                )
-            )
-
     # Attribution: which of the group is each item actually for?
     gap_ids_by_student = {
         s.id: {g.competency_id for g in per_student[s.id]} for s in students
     }
-    items: list[AdaptiveGroupItem] = []
-    for proposal in [*retrieved, *generated]:
-        covered = set(proposal.exercise.competency_ids)
-        uids = [
-            s.uid for s in students if gap_ids_by_student[s.id] & covered
-        ] or [s.uid for s in students]  # a diagnostic item is for everyone
-        items.append(AdaptiveGroupItem(exercise_id=proposal.exercise.id, for_student_uids=uids))
+
+    def attribute(proposals: Sequence[ExerciseProposal]) -> list[AdaptiveGroupItem]:
+        items: list[AdaptiveGroupItem] = []
+        for proposal in proposals:
+            covered = set(proposal.exercise.competency_ids)
+            uids = [s.uid for s in students if gap_ids_by_student[s.id] & covered] or [
+                s.uid for s in students
+            ]  # a diagnostic item is for everyone
+            items.append(
+                AdaptiveGroupItem(exercise_id=proposal.exercise.id, for_student_uids=uids)
+            )
+        return items
 
     group_plan = AdaptiveGroupPlan(
         student_ids=[s.id for s in students],
         student_uids=[s.uid for s in students],
         targeted_competency_ids=list(ranked),
         retrieved=retrieved,
-        generated=generated,
-        items=items,
+        generated=[],
+        items=attribute(retrieved),
     )
 
     # Every child still gets their own page with their own UID grid: the
@@ -726,10 +896,46 @@ def _plan_for_group(
             student_uid=s.uid,
             targeted_competency_ids=list(ranked),
             retrieved=retrieved,
-            generated=generated,
+            generated=[],
+            targeting_basis=bases[s.id],
+            evidence_partial=bool(
+                (perf := (performance or {}).get(s.id)) is not None and perf.is_partial
+            ),
         )
         for s in students
     ]
+
+    shortfall = items_per_student - len(retrieved)
+    if shortfall > 0 and allow_generation and ranked and students:
+        assert collector is not None  # every caller supplies one
+
+        def finish(
+            proposals: list[ExerciseProposal],
+            _failure: AdaptiveGenerationFailure | None,
+        ) -> None:
+            # The group's items are shared, so every member's plan points at the
+            # same list. Attribution is recomputed over the whole sheet: a
+            # generated item is for whoever needed the competency it covers.
+            group_plan.generated = proposals
+            group_plan.items = attribute([*retrieved, *proposals])
+            for member in plans:
+                member.generated = proposals
+
+        collector.register(
+            competency_ids=ranked,
+            labels=list(labels.values()),
+            difficulty=difficulty,
+            count=shortfall,
+            style_examples=[c.exercise.statement for c in selected[:STYLE_EXAMPLE_COUNT]],
+            chapter_id=next((c.exercise.chapter_id for c in selected), None),
+            student_refs=[str(to_ref(s.uid)) for s in students],
+            owner_id=students[0].id,
+            # The group's own name once it has one; "group" for the single
+            # shared sheet, which has no index to distinguish it from.
+            owner_uid="group",
+            finish=finish,
+        )
+
     return plans, group_plan
 
 
@@ -865,7 +1071,10 @@ def _plan_for_groups(
     failures: list[AdaptiveGenerationFailure],
     ai: AiClient,
     n_groups: int,
-) -> tuple[list[AdaptiveStudentPlan], list[AdaptiveGroupPlan]]:
+    performance: dict[uuid.UUID, SheetPerformance] | None = None,
+    collector: _Collector | None = None,
+    llm_grouping: bool = False,
+) -> tuple[list[AdaptiveStudentPlan], list[AdaptiveGroupPlan], bool]:
     """``n_groups`` shared sheets, one call to `_plan_for_group` per cluster.
 
     `_plan_for_group` is unchanged: it always took an arbitrary sequence of
@@ -873,10 +1082,32 @@ def _plan_for_groups(
     planner to keep in step with the first.
     """
     gaps_by_student = {
-        s.id: pick_gaps(latest_snapshots(db, school_id=school_id, student_id=s.id))
+        s.id: gaps_for_student(
+            db,
+            school_id=school_id,
+            student_id=s.id,
+            performance=(performance or {}).get(s.id),
+        )[0]
         for s in students
     }
     clusters = cluster_students(students, gaps_by_student, n_groups=n_groups)
+    grouped_by_model = False
+    if llm_grouping:
+        # The deterministic partition is the seed AND the fallback. There is no
+        # path here where a model failure produces a worse partition rather than
+        # this one (D33, I-adaptive-10).
+        every_gap = [g.competency_id for gaps in gaps_by_student.values() for g in gaps]
+        clusters, grouped_by_model = cluster_students_with_model(
+            db,
+            school_id=school_id,
+            students=students,
+            gaps_by_student=gaps_by_student,
+            seed=clusters,
+            n_groups=n_groups,
+            competency_labels=_competency_labels(db, every_gap, language=language),
+            roster_names=roster_names,
+            ai=ai,
+        )
 
     plans: list[AdaptiveStudentPlan] = []
     group_plans: list[AdaptiveGroupPlan] = []
@@ -893,16 +1124,23 @@ def _plan_for_groups(
             roster_names=roster_names,
             failures=failures,
             ai=ai,
+            performance=performance,
+            collector=collector,
         )
         label = _group_label(index, group_plan, language=language, db=db)
         group_plan.label = label
         group_plan.index = index
+        # A four-group provider outage used to print four lines all reading
+        # "group : ...", which named nothing. The ask is the last one this
+        # cluster registered, so re-labelling it here reaches the right one.
+        if collector is not None and collector.asks:
+            collector.asks[-1].owner_uid = label
         for plan in cluster_plans:
             plan.group_label = label
             plan.group_index = index
         plans.extend(cluster_plans)
         group_plans.append(group_plan)
-    return plans, group_plans
+    return plans, group_plans, grouped_by_model
 
 
 def _group_label(
@@ -1020,9 +1258,85 @@ def _classify(exc: Exception) -> tuple[str, str]:
     if isinstance(exc, PiiLeakError):
         # Never echo the message: it names the leak.
         return ("pii_gate", "the prompt was blocked before it left Alppy")
+    if isinstance(exc, ChatTruncatedError):
+        # Its own reason, and not `unparsable_response`, which is what a
+        # truncated answer looks like from the outside. The teacher would read
+        # "the model returned something unusable" for a cause that is a number
+        # in the configuration — ALPPY_AI_MAX_OUTPUT_TOKENS_BATCH.
+        return ("truncated", "the answer was cut off by the output-token limit")
     if isinstance(exc, (ValueError, TypeError)):
         return ("unparsable_response", "the model did not return usable JSON")
     return ("provider_error", type(exc).__name__)
+
+
+ADAPTIVE_BATCH_MAX_PLANS = 8
+"""How many plans one generation call may carry.
+
+Not a tuning knob so much as a blast radius. Everything in one call shares one
+output budget and one failure: a provider error or a truncation costs every plan
+in the chunk, and the split retry that repairs it costs one call per plan. Eight
+keeps both numbers small.
+"""
+
+TOKENS_PER_GENERATED_ITEM = 220
+"""A rough ceiling for one MCQ: statement, four options, explanation, JSON
+punctuation. Used only to size the batch's output budget, and deliberately
+generous — the failure it exists to prevent is a truncated response, which
+presents as an unparsable one and costs the whole chunk."""
+
+
+@dataclass(slots=True)
+class _GenerationAsk:
+    """One plan's generation request, with retrieval already done.
+
+    ``plan_id`` is opaque — "P1", never a UID. It is shorter, and it means the
+    batched path sends no student reference to the provider at all.
+    """
+
+    plan_id: str
+    competency_ids: list[uuid.UUID]
+    labels: list[str]
+    difficulty: int
+    count: int
+    style_examples: list[str]
+    chapter_id: uuid.UUID | None
+    student_refs: list[str]
+    """UIDs, for ``generation_meta`` on the stored row. Never for the prompt."""
+
+    owner_id: uuid.UUID
+    owner_uid: str
+    """Whose failure this is, for the message the teacher reads."""
+
+
+def _plan_lines(asks: Sequence[_GenerationAsk]) -> tuple[str, str]:
+    """The competency legend and the plan lines.
+
+    The legend is the batching saving that is actually worth having: in
+    per-student mode two dozen plans usually share the same handful of
+    competencies, and spelling each label out per plan pays for them again and
+    again.
+    """
+    legend: dict[str, str] = {}
+    keys: dict[str, str] = {}
+    for ask in asks:
+        for label in ask.labels:
+            if label not in keys:
+                key = f"C{len(keys) + 1}"
+                keys[label] = key
+                legend[key] = label
+    lines = []
+    for ask in asks:
+        refs = ",".join(keys[label] for label in ask.labels) or "-"
+        lines.append(
+            f"[{ask.plan_id}] competencies: {refs} | "
+            f"difficulty: {ask.difficulty} | count: {ask.count}"
+        )
+    legend_text = "\n".join(f"{k} = {v}" for k, v in legend.items()) or "(none)"
+    return legend_text, "\n".join(lines)
+
+
+def _chunk(asks: Sequence[_GenerationAsk], size: int) -> list[list[_GenerationAsk]]:
+    return [list(asks[i : i + size]) for i in range(0, len(asks), size)]
 
 
 def _generate(
@@ -1041,6 +1355,7 @@ def _generate(
     chapter_id: uuid.UUID | None,
     roster_names: list[str],
     ai: AiClient,
+    seen: set[str] | None = None,
 ) -> tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]:
     """Ask for ``count`` items and keep the ones that survive the schema.
 
@@ -1075,7 +1390,7 @@ def _generate(
         )
         # On the record before the response is even parsed: a call that was
         # made and then failed to parse still cost tokens and still happened.
-        record_calls(db, school_id=school_id, records=[record])
+        flush_ai_log(db, school_id=school_id, ai=ai)
         payload = parse_json_response(response.text)
     except Exception as exc:
         reason, detail = _classify(exc)
@@ -1090,14 +1405,62 @@ def _generate(
         )
         return [], _failure(reason, requested=count, produced=0, detail=detail)
 
+    return _materialise(
+        db,
+        school_id=school_id,
+        class_id=class_id,
+        subject_id=subject_id,
+        ask=_GenerationAsk(
+            plan_id=ref or "-",
+            competency_ids=list(competency_ids),
+            labels=list(labels),
+            difficulty=difficulty,
+            count=count,
+            style_examples=list(style_examples),
+            chapter_id=chapter_id,
+            student_refs=list(student_refs),
+            owner_id=uuid.UUID(int=0),
+            owner_uid=ref,
+        ),
+        items=payload.get("exercises") or [],
+        language=language,
+        model=record.model,
+        prompt_label=f"{prompt.name}.{prompt.version}",
+        seen=seen,
+    )
+
+
+def _materialise(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    class_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    ask: _GenerationAsk,
+    items: Sequence[Any],
+    language: str,
+    model: str,
+    prompt_label: str,
+    seen: set[str] | None = None,
+) -> tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]:
+    """Turn one plan's raw items into rows, dropping what cannot be printed.
+
+    Shared by the single-plan and batched paths so the validation rules cannot
+    diverge between them — a schema-invalid item is dropped and the good items
+    beside it survive (I-adaptive-08), in both.
+
+    ``seen`` is passed in by the batched caller and shared across the whole run;
+    the default builds a per-call set, which is what the single-plan path did.
+    """
     competencies = list(
-        db.scalars(select(Competency).where(Competency.id.in_(list(competency_ids))))
+        db.scalars(select(Competency).where(Competency.id.in_(list(ask.competency_ids))))
     )
     rejected: list[str] = []
-    seen = _rejected_statements(db, school_id=school_id, subject_id=subject_id)
+    if seen is None:
+        seen = _rejected_statements(db, school_id=school_id, subject_id=subject_id)
     proposals: list[ExerciseProposal] = []
 
-    for item in (payload.get("exercises") or [])[:count]:
+    for item in list(items)[: ask.count]:
         try:
             parsed = GeneratedExerciseIn.model_validate(item)
         except ValidationError as exc:
@@ -1105,7 +1468,8 @@ def _generate(
             continue
         if _normalise(parsed.statement) in seen:
             # The teacher already threw this one away, or it is a duplicate of
-            # something we just made. Offering it again wastes their attention.
+            # something we just made — possibly for a different group in this
+            # very run. Offering it again wastes their attention.
             rejected.append("duplicate of an item already discarded or proposed")
             continue
         seen.add(_normalise(parsed.statement))
@@ -1115,38 +1479,41 @@ def _generate(
             school_id=school_id,
             class_id=class_id,
             subject_id=subject_id,
-            chapter_id=chapter_id,
+            chapter_id=ask.chapter_id,
             language=language,
-            difficulty=difficulty,
-            student_refs=student_refs,
-            competency_ids=competency_ids,
-            model=record.model,
-            prompt_name=f"{prompt.name}.{prompt.version}",
+            difficulty=ask.difficulty,
+            student_refs=ask.student_refs,
+            competency_ids=ask.competency_ids,
+            model=model,
+            prompt_name=prompt_label,
         )
         exercise.competencies = competencies
         db.add(exercise)
-        proposals.append(_generated_proposal(exercise, language=language, difficulty=difficulty))
+        proposals.append(
+            _generated_proposal(exercise, language=language, difficulty=ask.difficulty)
+        )
 
     db.flush()
     log.info(
         "adaptive.generate",
-        student_uid=ref,
-        requested=count,
+        plan=ask.plan_id,
+        requested=ask.count,
         produced=len(proposals),
         rejected=len(rejected),
-        model=record.model,
+        model=model,
     )
     failure: AdaptiveGenerationFailure | None = None
-    if len(proposals) < count:
+    if len(proposals) < ask.count:
         detail = (
             "; ".join(rejected[:3])
             if rejected
             else "the model returned fewer exercises than were asked for"
         )
         failure = _failure(
-            "incomplete", requested=count, produced=len(proposals), detail=detail
+            "incomplete", requested=ask.count, produced=len(proposals), detail=detail
         )
     return proposals, failure
+
 
 
 def _first_error(exc: ValidationError) -> str:
@@ -1165,7 +1532,196 @@ def _record_last(db: Session, *, school_id: uuid.UUID, ai: AiClient) -> None:
     path has one waiting that nobody would otherwise write.
     """
     if ai.records:
-        record_calls(db, school_id=school_id, records=[ai.records[-1]])
+        flush_ai_log(db, school_id=school_id, ai=ai)
+
+
+def generate_for_asks(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    class_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    asks: Sequence[_GenerationAsk],
+    language: str,
+    roster_names: list[str],
+    ai: AiClient,
+    seen: set[str],
+) -> dict[str, tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]]:
+    """Fill every ask, in as few calls as the plans allow.
+
+    One chunk is one call. Two kinds of failure, handled differently on purpose:
+
+    * **Per plan** — its entry is missing from the response, or every item in it
+      was rejected by the schema. That plan alone comes up short and is reported;
+      the plans beside it are untouched. This is I-adaptive-08's per-item drop
+      rule lifted one level.
+    * **Per call** — the provider threw, the response would not parse, or the
+      answer was truncated. Batched, that would cost eight plans what used to
+      cost one, and I-adaptive-09 says a plan's failure is its own. So the chunk
+      is **retried once, split into single-plan calls**. Bounded at one extra
+      round, and a failure that persists is then reported per plan exactly as it
+      was before batching existed.
+
+    ``seen`` is shared across every ask in the run. Rebuilt per call, it let two
+    groups in the same proposal generate the identical statement — the teacher
+    reads it twice and has no way to tell which sheet it belongs to.
+    """
+    results: dict[str, tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]] = {}
+    for chunk in _chunk(asks, ADAPTIVE_BATCH_MAX_PLANS):
+        if len(chunk) == 1:
+            ask = chunk[0]
+            results[ask.plan_id] = _generate_one(
+                db,
+                school_id=school_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                ask=ask,
+                language=language,
+                roster_names=roster_names,
+                ai=ai,
+                seen=seen,
+            )
+            continue
+        try:
+            payload = _ask_batch(
+                db,
+                school_id=school_id,
+                asks=chunk,
+                language=language,
+                roster_names=roster_names,
+                ai=ai,
+            )
+        except Exception as exc:
+            reason, _detail = _classify(exc)
+            log.warning(
+                "adaptive.generate.batch_failed",
+                plans=len(chunk),
+                reason=reason,
+                error=type(exc).__name__,
+            )
+            # The split retry. One call per plan, which is what the code did
+            # before batching, so a persistent fault degrades to the old
+            # behaviour rather than to a class-wide blank.
+            for ask in chunk:
+                results[ask.plan_id] = _generate_one(
+                    db,
+                    school_id=school_id,
+                    class_id=class_id,
+                    subject_id=subject_id,
+                    ask=ask,
+                    language=language,
+                    roster_names=roster_names,
+                    ai=ai,
+                    seen=seen,
+                )
+            continue
+
+        by_plan = {
+            str(entry.get("plan_id")): entry.get("exercises") or []
+            for entry in (payload.get("plans") or [])
+            if isinstance(entry, dict)
+        }
+        for ask in chunk:
+            results[ask.plan_id] = _materialise(
+                db,
+                school_id=school_id,
+                class_id=class_id,
+                subject_id=subject_id,
+                ask=ask,
+                items=by_plan.get(ask.plan_id) or [],
+                language=language,
+                model=ai.records[-1].model if ai.records else "",
+                prompt_label="generate_exercises_batch.v1",
+                seen=seen,
+            )
+    return results
+
+
+def _ask_batch(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    asks: Sequence[_GenerationAsk],
+    language: str,
+    roster_names: list[str],
+    ai: AiClient,
+) -> dict[str, Any]:
+    """One call for several plans. Raises; the caller decides what that costs."""
+    prompt = load_prompt("generate_exercises_batch")
+    legend, plans = _plan_lines(asks)
+    # Style examples are shared across the chunk and sent once. They come from
+    # the same subject corpus, so per-plan copies were paying for the same prose
+    # several times over.
+    examples: list[str] = []
+    for ask in asks:
+        for example in ask.style_examples:
+            if example not in examples:
+                examples.append(example)
+
+    total = sum(ask.count for ask in asks)
+    settings = get_settings()
+    budget = min(
+        settings.ai_max_output_tokens_batch,
+        max(settings.ai_max_output_tokens, total * TOKENS_PER_GENERATED_ITEM),
+    )
+
+    response, record = ai.complete(
+        prompt=prompt,
+        purpose="adaptive_generate_batch",
+        values={
+            "language": language,
+            "max_options": MAX_OPTIONS,
+            "competency_legend": legend,
+            "plans": plans,
+            "style_examples": _format_style_examples(
+                examples[:STYLE_EXAMPLE_COUNT], roster_names=roster_names
+            ),
+        },
+        student_names=roster_names,
+        temperature=GENERATION_TEMPERATURE,
+        max_tokens=budget,
+    )
+    # Audited before parsing: a call that was made and then failed to parse
+    # still cost tokens and still happened.
+    flush_ai_log(db, school_id=school_id, ai=ai)
+    _ = record
+    return parse_json_response(response.text)
+
+
+def _generate_one(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    class_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    ask: _GenerationAsk,
+    language: str,
+    roster_names: list[str],
+    ai: AiClient,
+    seen: set[str],
+) -> tuple[list[ExerciseProposal], AdaptiveGenerationFailure | None]:
+    """The single-plan path: the original prompt, unchanged.
+
+    Used for a chunk of one and as the split retry, so the behaviour a batch
+    degrades to is the behaviour that shipped before batching.
+    """
+    return _generate(
+        db,
+        school_id=school_id,
+        class_id=class_id,
+        subject_id=subject_id,
+        student_refs=ask.student_refs,
+        competency_ids=ask.competency_ids,
+        labels=ask.labels,
+        difficulty=ask.difficulty,
+        count=ask.count,
+        language=language,
+        style_examples=ask.style_examples,
+        chapter_id=ask.chapter_id,
+        roster_names=roster_names,
+        ai=ai,
+        seen=seen,
+    )
 
 
 def _rejected_statements(

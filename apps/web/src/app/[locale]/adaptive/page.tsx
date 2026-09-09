@@ -10,6 +10,7 @@ import {
   ErrorState,
   Field,
   IconDownload,
+  IconPlus,
   IconWarning,
   IlloSummit,
   LoadingState,
@@ -20,12 +21,13 @@ import {
   Toggle,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 
 import { useScope } from '@/lib/scope';
 import { apiErrorMessage } from '@/lib/api/error-message';
 
 import { AdaptiveItem } from '@/components/AdaptiveItem';
+import { AddExerciseModal } from '@/components/sheet-builder/AddExerciseModal';
 import { FeedbackNoteCard } from '@/components/FeedbackNoteCard';
 import {
   useApproveAdaptive,
@@ -38,6 +40,7 @@ import {
   useDiscardAdaptive,
   useSheets,
   useStudents,
+  useAdaptiveProposal,
   useJob,
   useProposeAdaptive,
   useRegenerateAdaptive,
@@ -51,6 +54,8 @@ import type {
   AdaptiveGroupPlan,
   AdaptiveProposeResponse,
   AdaptiveStudentPlan,
+  ApiLocale,
+  ExerciseOut,
   ExerciseProposal,
   Uuid,
 } from '@/lib/api/types';
@@ -91,6 +96,8 @@ export default function AdaptivePage() {
   const [allowGeneration, setAllowGeneration] = useState(true);
   const [mode, setMode] = useState<Mode>('per_student');
   const [nGroups, setNGroups] = useState(4);
+  // A second opinion on the partition, never the only one.
+  const [llmGrouping, setLlmGrouping] = useState(false);
   // Which common sheet's results this batch answers. Recorded as the sheet's
   // lineage, and the sheet the feedback notes are read from.
   const [sourceSheetId, setSourceSheetId] = useState<Uuid | ''>('');
@@ -100,9 +107,16 @@ export default function AdaptivePage() {
   // everything about a class, and the partition is a proposal, not a verdict.
   const [moves, setMoves] = useState<Record<string, number>>({});
   const [feedbackJobId, setFeedbackJobId] = useState<Uuid | null>(null);
+  // The planning runs in the worker, so the screen holds a job id and reads the
+  // proposal back once it lands — the same shape as the feedback and export
+  // chains further down this file.
+  const [proposeJobId, setProposeJobId] = useState<Uuid | null>(null);
   const [plan, setPlan] = useState<AdaptiveProposeResponse | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busyExercise, setBusyExercise] = useState<Uuid | null>(null);
+  // Which plan the "add" modal is filling. A number is a group index; a string
+  // is a student uid. Null closes it.
+  const [addingTo, setAddingTo] = useState<number | string | null>(null);
   const [sheetId, setSheetId] = useState<Uuid | null>(null);
   const [jobId, setJobId] = useState<Uuid | null>(null);
   // Which ids the SERVER says are approved. Not a local flag: the export gate
@@ -110,6 +124,25 @@ export default function AdaptivePage() {
   const [approvedIds, setApprovedIds] = useState<ReadonlySet<Uuid>>(new Set());
 
   const propose = useProposeAdaptive();
+  const proposeJob = useJob(proposeJobId);
+  const proposeSucceeded = proposeJob.data?.status === 'succeeded';
+  const proposal = useAdaptiveProposal(proposeSucceeded ? proposeJobId : null);
+  // Busy from the click until the proposal is in hand: the mutation, the job,
+  // and the read that follows it are one wait as far as the teacher is
+  // concerned, and three spinners in a row would say otherwise.
+  const proposing =
+    propose.isPending ||
+    (proposeJobId != null &&
+      proposeJob.data?.status !== 'succeeded' &&
+      proposeJob.data?.status !== 'failed') ||
+    (proposeSucceeded && proposal.isPending);
+
+  // Copied into local state rather than read straight from the query: an edit,
+  // a regeneration or a discard rewrites the plan in place, and the query holds
+  // a megabyte it would be pointless to re-fetch to learn that.
+  useEffect(() => {
+    if (proposal.data) setPlan(proposal.data);
+  }, [proposal.data]);
   const writeFeedback = useGenerateFeedback();
   const approveNotes = useApproveFeedback();
   const discardNote = useDiscardFeedback();
@@ -257,6 +290,10 @@ export default function AdaptivePage() {
         group: current.group
           ? { ...current.group, generated: swap(current.group.generated) }
           : null,
+        // `groups` was missing here, so in N-group mode a regenerate or a
+        // discard changed the server and nothing on screen — the list the
+        // screen renders is `groups` whenever there is more than one.
+        groups: current.groups.map((g) => ({ ...g, generated: swap(g.generated) })),
       };
     });
   }
@@ -274,6 +311,62 @@ export default function AdaptivePage() {
         ...current,
         plans: current.plans.map((p) => ({ ...p, generated: edit(p.generated) })),
         group: current.group ? { ...current.group, generated: edit(current.group.generated) } : null,
+        groups: current.groups.map((g) => ({ ...g, generated: edit(g.generated) })),
+      };
+    });
+  }
+
+  /**
+   * A teacher-written exercise, appended to one plan before export.
+   *
+   * It lands in the corpus as `origin: 'teacher'`, which is deliberately
+   * neither of the other two: no source page to audit against a book, and the
+   * mandarin accent means "a model wrote this". So it needs no approval, and
+   * the export gate is untouched by it.
+   */
+  function appendExercise(target: number | string, exercise: ExerciseOut) {
+    const proposal: ExerciseProposal = {
+      exercise,
+      score: 1,
+      // No source, no page, no similarity: the teacher wrote it just now, and
+      // claiming a provenance it does not have is worse than an empty one.
+      provenance: {
+        source_id: null,
+        source_filename: null,
+        page: null,
+        excerpt: null,
+        similarity: null,
+        reason: t('addedByTeacher'),
+      },
+    };
+    setPlan((current) => {
+      if (!current) return current;
+      const isGroup = typeof target === 'number';
+      return {
+        ...current,
+        plans: current.plans.map((p) =>
+          (isGroup ? p.group_index === target + 1 : p.student_uid === target)
+            ? { ...p, retrieved: [...p.retrieved, proposal] }
+            : p,
+        ),
+        group:
+          isGroup && target === 0 && current.group
+            ? { ...current.group, retrieved: [...current.group.retrieved, proposal] }
+            : current.group,
+        groups: current.groups.map((g, index) =>
+          isGroup && index === target
+            ? {
+                ...g,
+                retrieved: [...g.retrieved, proposal],
+                // Shared paper: the item is for everyone in the group, because
+                // the teacher chose it for the group rather than for a gap.
+                items: [
+                  ...g.items,
+                  { exercise_id: exercise.id, for_student_uids: g.student_uids },
+                ],
+              }
+            : g,
+        ),
       };
     });
   }
@@ -407,6 +500,25 @@ export default function AdaptivePage() {
                   ? t('groupCountPerStudent')
                   : t('groupCountMany', { count: nGroups })}
             </p>
+
+            {/* Off by default, and it says why. The deterministic rule is the
+                one a teacher can state to a parent; an invalid or failed model
+                answer falls straight back to it, so this is a second opinion
+                rather than a replacement. */}
+            {nGroups > 1 && nGroups < rosterSize ? (
+              <div className="mt-3">
+                <Toggle
+                  label={t('llmGrouping')}
+                  description={t('llmGroupingHelp')}
+                  checked={llmGrouping}
+                  onCheckedChange={(value) => {
+                    setLlmGrouping(value);
+                    setMoves({});
+                    setCarrying(null);
+                  }}
+                />
+              </div>
+            ) : null}
           </div>
         ) : null}
 
@@ -443,7 +555,7 @@ export default function AdaptivePage() {
         <div className="mt-4">
           <Button
             variant="primary"
-            loading={propose.isPending}
+            loading={proposing}
             busyLabel={t('preparing')}
             onClick={() =>
               propose.mutate(
@@ -455,14 +567,16 @@ export default function AdaptivePage() {
                   allow_generation: allowGeneration,
                   group: mode === 'group' && nGroups <= 1,
                   n_groups: mode === 'group' ? nGroups : null,
+                  llm_grouping: mode === 'group' && llmGrouping,
                   source_sheet_id: sourceSheetId || null,
                   // No `language`: the sheet follows the source material, and
                   // the server reads that off the corpus. Sending the UI locale
                   // here is exactly the bug this comment exists to prevent.
                 },
                 {
-                  onSuccess: (r) => {
-                    setPlan(r);
+                  onSuccess: (job) => {
+                    setProposeJobId(job.id);
+                    setPlan(null);
                     setApprovedIds(new Set());
                     setSheetId(null);
                     setJobId(null);
@@ -479,23 +593,46 @@ export default function AdaptivePage() {
         </div>
       </Card>
 
-      {propose.isError ? (
+      {/* The teacher's own exercise. Reuses the sheet builder's modal: same
+          form, same validation, same `origin: 'teacher'` row in the corpus —
+          and the language comes from the SHEET, never `useLocale()`, because
+          `Exercise.language` picks the printed V/F · R/F · T/F glyphs. */}
+      {plan && subjectId ? (
+        <AddExerciseModal
+          open={addingTo !== null}
+          onOpenChange={(open) => setAddingTo(open ? addingTo : null)}
+          subjectId={subjectId}
+          language={plan.language as ApiLocale}
+          onCreated={(exercise) => {
+            if (addingTo !== null) appendExercise(addingTo, exercise);
+            setAddingTo(null);
+          }}
+        />
+      ) : null}
+
+      {propose.isError || proposeJob.data?.status === 'failed' || proposal.isError ? (
         <ErrorState
           className="mb-4"
           title={t('proposeError.title')}
           description={t('proposeError.body')}
           // The API's `message` is its own English string, for the console
           // (`client.ts` says so). `apiErrorMessage` switches on `code` instead.
-          details={apiErrorMessage(propose.error, tcode)}
+          details={apiErrorMessage(propose.error ?? proposal.error, tcode)}
           action={
-            <Button variant="primary" onClick={() => propose.reset()}>
+            <Button
+              variant="primary"
+              onClick={() => {
+                propose.reset();
+                setProposeJobId(null);
+              }}
+            >
               {t('retry')}
             </Button>
           }
         />
       ) : null}
 
-      {propose.isPending ? (
+      {proposing ? (
         <LoadingState shape="list" label={t('preparing')} rows={5} />
       ) : !plan ? (
         <EmptyState
@@ -712,6 +849,14 @@ export default function AdaptivePage() {
                 {carrying ? t('moveSelected', { uid: carrying }) : t('moveHint')}
               </p>
 
+              {/* Which rule produced the partition. The deterministic one is
+                  the default and the fallback; when a model's answer was
+                  accepted the teacher should know that is what they are looking
+                  at, because they are the one who will have to justify it. */}
+              <p className="mb-2 text-body-s text-ink-500">
+                {plan.grouped_by_model ? t('groupedByModel') : t('groupedByRule')}
+              </p>
+
               <ul className="mb-4 flex list-none flex-col gap-3 p-0">
                 {groups.map((group, groupIndex) => {
                   const members = membersOf(group, groupIndex);
@@ -771,6 +916,17 @@ export default function AdaptivePage() {
                             />
                           ))}
                         </ul>
+
+                        <div className="mt-3">
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            leadingIcon={<IconPlus />}
+                            onClick={() => setAddingTo(groupIndex)}
+                          >
+                            {t('addExercise')}
+                          </Button>
+                        </div>
                       </Panel>
                     </li>
                   );
@@ -826,20 +982,42 @@ export default function AdaptivePage() {
                         </ul>
                       ) : null}
 
+                      {/* Which evidence chose these competencies, and whether
+                          it was all of it. "Targeted the sheet you corrected"
+                          and "targeted the term so far" are different answers,
+                          and the teacher is the one who has to defend the
+                          sheet. */}
+                      <p className="mt-2 text-body-s text-ink-500">
+                        {t(`basis.${p.targeting_basis}`)}
+                        {p.evidence_partial ? ` · ${t('evidencePartial')}` : null}
+                      </p>
+
                       {open ? (
-                        <ul className="mt-3 flex list-none flex-col gap-3 p-0">
-                          {items.map((proposal, index) => (
-                            <AdaptiveItem
-                              key={proposal.exercise.id}
-                              proposal={proposal}
-                              number={index + 1}
-                              busy={busyExercise === proposal.exercise.id}
-                              onEdit={handleEdit}
-                              onRegenerate={handleRegenerate}
-                              onDiscard={handleDiscard}
-                            />
-                          ))}
-                        </ul>
+                        <>
+                          <ul className="mt-3 flex list-none flex-col gap-3 p-0">
+                            {items.map((proposal, index) => (
+                              <AdaptiveItem
+                                key={proposal.exercise.id}
+                                proposal={proposal}
+                                number={index + 1}
+                                busy={busyExercise === proposal.exercise.id}
+                                onEdit={handleEdit}
+                                onRegenerate={handleRegenerate}
+                                onDiscard={handleDiscard}
+                              />
+                            ))}
+                          </ul>
+                          <div className="mt-3">
+                            <Button
+                              size="sm"
+                              variant="secondary"
+                              leadingIcon={<IconPlus />}
+                              onClick={() => setAddingTo(p.student_uid)}
+                            >
+                              {t('addExercise')}
+                            </Button>
+                          </div>
+                        </>
                       ) : null}
                     </Panel>
                   </li>
@@ -866,6 +1044,11 @@ function failureLine(
       return t('failureProvider', { uid });
     case 'unparsable_response':
       return t('failureUnparsable', { uid });
+    // Its own line, not folded into "unusable response": the cause is a
+    // configured limit, and saying so is the difference between a teacher who
+    // can act and one who retries forever.
+    case 'truncated':
+      return t('failureTruncated', { uid });
     default:
       return t('failureIncomplete', {
         uid,

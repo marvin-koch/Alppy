@@ -48,6 +48,7 @@ PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests -q
 ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
 
 python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
+python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
 ```
 
 ---
@@ -117,6 +118,22 @@ because a leak is a caller bug. See [`docs/privacy.md`](docs/privacy.md).
 
 **AI-generated exercises are never printed without teacher approval** *(DC-content-05)*
 (`Exercise.approved_at`).
+
+**`ModelCall` is content-free, and stays that way.** It is what a school shows an
+auditor to answer "did any of our data go to provider X". The full prompt and
+response go to `PromptLog` — a separate table, off by default, capped, swept, and
+written only *after* the PII gate passed. A blocked prompt records the refusal and
+no content: the string that fired `PiiLeakError` is the one carrying a name.
+
+**A model may revise a partition; it never decides one.** `cluster_students` is the
+default, the seed and the fallback. An answer that drops a child, seats one twice or
+misses the requested count is rejected, not repaired — the rule has to be one a
+teacher can state to a parent.
+
+**Batched generation must keep a plan's failure its own.** A content failure is
+isolated per plan; a whole-call failure retries the chunk *once*, split into
+single-plan calls. Removing that split silently makes one provider hiccup cost the
+whole class.
 
 **A Theme sits under ONE Competence and credits many.** `Chapter.primary_competency_id`
 is where a chapter *sits* in `Class → Branch → Competence → Theme → Sheet`; the

@@ -253,10 +253,85 @@ async def grade_open_answers(ctx: dict[str, Any], job_id: str) -> None:
     await asyncio.to_thread(_run_job, job_id, _call)
 
 
+async def propose_adaptive(ctx: dict[str, Any], job_id: str) -> None:
+    """``JobKind.PROPOSE_ADAPTIVE`` — targeting, retrieval, and the model calls
+    that fill whatever the corpus could not.
+
+    A job rather than part of the request handler for the reason
+    ``generate_feedback`` states below and CLAUDE.md states outright: nothing
+    blocks a request handler on a model call. Batching cut a class of
+    twenty-four from twenty-four calls to three, which made it survivable, not
+    correct.
+
+    The proposal itself is **not** stored in ``Job.result``. A class of
+    twenty-four with eight items each, carrying full statements, options and
+    provenance, is a megabyte of JSON that ``JobOut`` would re-serialise on every
+    900 ms poll. The result is a summary; the proposal is read back from
+    ``GET /adaptive/proposal/{job_id}``.
+    """
+
+    def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
+        from alppy.ai.client import AiClient
+        from alppy.services.adaptive_service import propose_adaptive as build_proposal
+
+        payload = job.payload or {}
+        on_progress(0.05, "targeting")
+        response = build_proposal(
+            db,
+            school_id=job.school_id,
+            class_id=_uuid_from(job, "class_id"),
+            subject_id=_uuid_from(job, "subject_id"),
+            student_ids=[UUID(str(s)) for s in payload.get("student_ids") or []],
+            items_per_student=int(payload.get("items_per_student") or 8),
+            allow_generation=bool(payload.get("allow_generation", True)),
+            language=payload.get("language"),
+            fallback_language=str(payload.get("fallback_language") or "fr"),
+            group=bool(payload.get("group", False)),
+            n_groups=payload.get("n_groups"),
+            source_sheet_id=(
+                UUID(str(payload["source_sheet_id"]))
+                if payload.get("source_sheet_id")
+                else None
+            ),
+            llm_grouping=bool(payload.get("llm_grouping", False)),
+            # The task owns the transaction boundary, not the pipeline.
+            commit=False,
+            ai=AiClient(),
+        )
+        on_progress(0.9, "proposal built")
+
+        # Its own row so the poll stays small. `mode="json"` because the
+        # response is full of UUIDs and JSONB will not take them.
+        from alppy.models import AdaptiveProposal
+
+        db.add(
+            AdaptiveProposal(
+                school_id=job.school_id,
+                job_id=job.id,
+                payload=response.model_dump(mode="json"),
+            )
+        )
+        db.flush()
+        return {
+            "students": len(response.plans),
+            "groups": len(response.groups),
+            "generated": response.generated_count,
+            "needs_approval": response.needs_approval,
+            "failures": len(response.failures),
+        }
+
+    await asyncio.to_thread(_run_job, job_id, _call)
+
+
 async def generate_adaptive(ctx: dict[str, Any], job_id: str) -> None:
-    """``JobKind.GENERATE_ADAPTIVE`` — retrieval + AI generation per student,
-    then one batch PDF with one ``.print-page`` per physical page. See
-    ``docs/architecture.md`` Flow 4."""
+    """``JobKind.GENERATE_ADAPTIVE`` — one batch PDF with one ``.print-page`` per
+    physical page. See ``docs/architecture.md`` Flow 4.
+
+    The name is older than the split and now misleads: this renders an approved
+    batch and generates nothing. ``PROPOSE_ADAPTIVE`` above is the one that calls
+    a model. Left alone deliberately — renaming an enum value in the same change
+    that adds one is how a migration ends up half-applied.
+    """
 
     def _call(db: Session, job: Job, on_progress: ProgressCB) -> dict[str, Any] | None:
         from alppy.sheets.render import render_adaptive_batch

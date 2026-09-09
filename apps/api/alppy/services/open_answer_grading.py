@@ -29,7 +29,7 @@ from typing import Any
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
-from alppy.ai.audit import record_calls
+from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.base import ImagePart
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
@@ -157,7 +157,7 @@ def grade_one(
     statement, expected = grading_context(db, detection, exercise)
     try:
         image = storage.get_bytes(detection.crop_key)
-        response, record = ai.complete(
+        response, _record = ai.complete(
             prompt=load_prompt(PROMPT_NAME, PROMPT_VERSION),
             purpose=PROMPT_NAME,
             values={
@@ -171,7 +171,7 @@ def grade_one(
             images=(ImagePart(image),),
             temperature=0.0,
         )
-        record_calls(db, school_id=detection.school_id, records=[record])
+        flush_ai_log(db, school_id=detection.school_id, ai=ai)
         data = parse_json_response(response.text)
     except Exception as exc:
         log.warning(

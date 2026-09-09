@@ -524,6 +524,10 @@ def test_a_shared_client_keeps_one_audit_trail(world: World, chat: RecordingChat
         language="fr",
         ai=client,
     )
-    assert len(client.records) == 2
-    assert all(r.purpose == "adaptive_generate" for r in client.records)
-    assert all(r.prompt_name == "generate_exercises" for r in client.records)
+    # One call, not two. Both students' plans are gathered before anything is
+    # sent, so a class costs a call per chunk of plans rather than a call per
+    # child — which is the whole point of batching, and is also what makes
+    # "one client, one audit trail" easy to see rather than merely true.
+    assert len(client.records) == 1
+    assert all(r.purpose == "adaptive_generate_batch" for r in client.records)
+    assert all(r.prompt_name == "generate_exercises_batch" for r in client.records)

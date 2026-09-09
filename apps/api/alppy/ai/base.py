@@ -11,6 +11,17 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 
+class ChatTruncatedError(RuntimeError):
+    """The provider stopped because it ran out of output budget.
+
+    Distinct from an unparsable response, and the distinction is the whole
+    point: a truncated answer *is* unparsable, so without this the teacher is
+    told "the model returned something unusable" when the cause is a number in
+    the configuration they could change. It lives here, in the module that
+    imports nothing, so the planner can classify it without importing a
+    provider."""
+
+
 @dataclass(frozen=True, slots=True)
 class ImagePart:
     """One image shown to the model alongside the user text.

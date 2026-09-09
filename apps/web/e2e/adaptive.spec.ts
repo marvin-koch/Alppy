@@ -52,7 +52,12 @@ function sheetIdOf(calls: string[]): string {
 async function prepare(page: import('@playwright/test').Page): Promise<void> {
   await gotoStable(page, ADAPTIVE);
   await page.getByRole('button', { name: /Préparer/i }).click();
-  await page.getByRole('heading', { name: /Compétences ciblées/i }).waitFor();
+  // Planning is a job now — the model calls run in the worker — so this waits
+  // through the poll rather than through one request. The heading is the first
+  // thing that can only exist once the proposal has actually been read back.
+  await page
+    .getByRole('heading', { name: /Compétences ciblées/i })
+    .waitFor({ timeout: 20_000 });
 }
 
 test.describe('the adaptive batch export', () => {

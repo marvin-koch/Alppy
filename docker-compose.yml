@@ -93,10 +93,21 @@ services:
       ALPPY_S3_BUCKET: ${ALPPY_S3_BUCKET:-alppy}
       ALPPY_S3_ACCESS_KEY: ${ALPPY_S3_ACCESS_KEY:-alppy}
       ALPPY_S3_SECRET_KEY: ${ALPPY_S3_SECRET_KEY:-alppy-secret}
-      # Offline by default. Set ALPPY_AI_CHAT_PROVIDER=anthropic and supply a
-      # key to use a real model; nothing else changes.
+      # Offline by default — `docker compose up` must work on a clean machine
+      # with no account anywhere. Set ALPPY_AI_CHAT_PROVIDER to openai or
+      # anthropic and supply THAT provider's key; nothing else changes. Holding
+      # the other one's key is not enough: the app logs `ai.provider.no_key` and
+      # falls back to echo rather than failing, so read the log if a run comes
+      # back suspiciously fast and suspiciously generic.
       ALPPY_AI_CHAT_PROVIDER: ${ALPPY_AI_CHAT_PROVIDER:-echo}
+      # Empty means "that provider's default model". A model id belonging to a
+      # different provider is refused at startup rather than 404-ing every call.
+      ALPPY_AI_CHAT_MODEL: ${ALPPY_AI_CHAT_MODEL:-}
       ALPPY_ANTHROPIC_API_KEY: ${ALPPY_ANTHROPIC_API_KEY:-}
+      ALPPY_OPENAI_API_KEY: ${ALPPY_OPENAI_API_KEY:-}
+      # The prompt log holds what was actually sent. Off unless a school asks
+      # for it, and swept by `python -m alppy.cli purge-prompt-logs`.
+      ALPPY_AI_PROMPT_LOG_ENABLED: ${ALPPY_AI_PROMPT_LOG_ENABLED:-false}
       ALPPY_AI_EMBEDDINGS_PROVIDER: ${ALPPY_AI_EMBEDDINGS_PROVIDER:-hash}
       ALPPY_CORS_ORIGINS: '["http://localhost:3000"]'
       # The sheet renderer inlines packages/ui/src/design/{tokens,base,print}.css

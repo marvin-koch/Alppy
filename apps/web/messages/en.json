@@ -378,6 +378,8 @@
     "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open."
   },
   "adaptive": {
+    "addExercise": "Add an exercise",
+    "addedByTeacher": "Added by the teacher.",
     "aiBadge": "AI",
     "aiNotice": "AI-generated exercises carry the AI mark. Read each one before approving it — nothing generated is printed until you do.",
     "allowGeneration": "Allow AI generation",
@@ -386,6 +388,11 @@
     "approveOne": "Approve",
     "approved": "Approved — these can now be printed.",
     "approving": "Approving…",
+    "basis": {
+      "source_sheet": "Based on the corrected sheet.",
+      "mastery": "Based on mastery so far.",
+      "diagnostic": "No data yet: a diagnostic set."
+    },
     "batchReady": "Batch ready: one sheet per student, plus the answer key.",
     "cancel": "Cancel",
     "correctAnswer": "Correct answer",
@@ -399,6 +406,7 @@
       "title": "No gaps identified yet",
       "body": "Correct at least one sheet so Alppy can target each student's needs."
     },
+    "evidencePartial": "sheet only partly read",
     "exportBatch": "Export PDF batch",
     "exportError": {
       "title": "The batch could not be exported",
@@ -409,6 +417,7 @@
     "failureIncomplete": "{uid}: {produced} of {requested} generated exercises were produced.",
     "failurePiiGate": "{uid}: the prompt was blocked before leaving Alppy, so nothing was generated.",
     "failureProvider": "{uid}: the AI provider could not be reached.",
+    "failureTruncated": "{uid}: the AI provider's answer was cut off before it finished.",
     "failureUnparsable": "{uid}: the AI provider returned an unusable answer.",
     "failuresTitle": "{count, plural, one {# sheet could not be filled} other {# sheets could not be filled}}",
     "falseLabel": "False",
@@ -432,9 +441,13 @@
     "groupFor": "For {count} of {total} students",
     "groupMembers": "{count, plural, one {# student} other {# students}}",
     "groupTitle": "Shared sheet",
+    "groupedByModel": "Grouping proposed by the AI, starting from the computed groups.",
+    "groupedByRule": "Groups formed by principal gap.",
     "groupsTitle": "Personalised groups",
     "hideItems": "Hide the exercises",
     "itemsPerStudent": "Exercises per student",
+    "llmGrouping": "Let the AI propose the grouping",
+    "llmGroupingHelp": "The automatic rule stays the basis and takes over again if the proposal is incomplete.",
     "loadError": {
       "title": "This screen could not load",
       "body": "Alppy could not read your classes and subjects."

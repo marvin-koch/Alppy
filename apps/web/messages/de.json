@@ -378,6 +378,8 @@
     "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen."
   },
   "adaptive": {
+    "addExercise": "Aufgabe hinzufügen",
+    "addedByTeacher": "Von der Lehrperson hinzugefügt.",
     "aiBadge": "KI",
     "aiNotice": "Von KI erzeugte Aufgaben tragen die KI-Markierung. Lesen Sie jede vor der Freigabe — nichts Erzeugtes wird vorher gedruckt.",
     "allowGeneration": "KI-Generierung erlauben",
@@ -386,6 +388,11 @@
     "approveOne": "Freigeben",
     "approved": "Freigegeben — diese Aufgaben können jetzt gedruckt werden.",
     "approving": "Freigabe läuft…",
+    "basis": {
+      "source_sheet": "Auf Basis des korrigierten Blattes.",
+      "mastery": "Auf Basis der bisherigen Beherrschung.",
+      "diagnostic": "Keine Daten: diagnostische Serie."
+    },
     "batchReady": "Stapel bereit: ein Blatt pro Person, dazu das Lösungsblatt.",
     "cancel": "Abbrechen",
     "correctAnswer": "Richtige Antwort",
@@ -399,6 +406,7 @@
       "title": "Noch keine Lücken erkannt",
       "body": "Korrigieren Sie mindestens ein Arbeitsblatt, damit Alppy gezielt arbeiten kann."
     },
+    "evidencePartial": "Blatt nur teilweise gelesen",
     "exportBatch": "PDF-Stapel exportieren",
     "exportError": {
       "title": "Der Stapel konnte nicht exportiert werden",
@@ -409,6 +417,7 @@
     "failureIncomplete": "{uid}: {produced} von {requested} erzeugten Aufgaben wurden geliefert.",
     "failurePiiGate": "{uid}: Die Anfrage wurde vor dem Verlassen von Alppy blockiert, es wurde nichts erzeugt.",
     "failureProvider": "{uid}: Der KI-Anbieter war nicht erreichbar.",
+    "failureTruncated": "{uid}: Die Antwort des KI-Anbieters wurde abgeschnitten.",
     "failureUnparsable": "{uid}: Der KI-Anbieter lieferte eine unbrauchbare Antwort.",
     "failuresTitle": "{count, plural, one {# Blatt konnte nicht gefüllt werden} other {# Blätter konnten nicht gefüllt werden}}",
     "falseLabel": "Falsch",
@@ -432,9 +441,13 @@
     "groupFor": "Für {count} von {total} Lernenden",
     "groupMembers": "{count, plural, one {# Lernende} other {# Lernende}}",
     "groupTitle": "Gemeinsames Blatt",
+    "groupedByModel": "Einteilung von der KI vorgeschlagen, ausgehend von den berechneten Gruppen.",
+    "groupedByRule": "Gruppen nach der Hauptlücke gebildet.",
     "groupsTitle": "Personalisierte Gruppen",
     "hideItems": "Aufgaben ausblenden",
     "itemsPerStudent": "Aufgaben pro Person",
+    "llmGrouping": "Die KI die Einteilung vorschlagen lassen",
+    "llmGroupingHelp": "Die automatische Regel bleibt die Grundlage und übernimmt wieder, wenn der Vorschlag unvollständig ist.",
     "loadError": {
       "title": "Dieser Bildschirm konnte nicht geladen werden",
       "body": "Alppy konnte Ihre Klassen und Fächer nicht lesen."

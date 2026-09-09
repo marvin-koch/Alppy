@@ -29,6 +29,10 @@ export type JobKind =
   | 'extract_section'
   | 'render_sheet'
   | 'process_scan'
+  /** Builds the proposal — targeting, retrieval and the model calls that fill
+   *  the shortfall. Distinct from `generate_adaptive`, which despite its name
+   *  only renders an approved batch to PDF. */
+  | 'propose_adaptive'
   | 'generate_adaptive'
   | 'generate_feedback'
   | 'grade_open_answers';
@@ -789,14 +793,27 @@ export interface AdaptiveProposeRequest {
   /** How many personalised group sheets to build. 1 is one shared sheet for the
    *  whole class; a value at or above the class size is one sheet per student. */
   n_groups?: number | null;
+  /** Ask a model to revise the deterministic partition. Off by default: the
+   *  deterministic rule is the one a teacher can state to a parent, and an
+   *  invalid or failed model answer falls straight back to it. */
+  llm_grouping?: boolean;
   /** The COMMON sheet whose corrected results justify this batch. */
   source_sheet_id?: Uuid | null;
 }
+
+/** Which evidence chose a plan's competencies. `diagnostic` means there was
+ *  none at all and the sheet is a probe, not a diagnosis. */
+export type TargetingBasis = 'source_sheet' | 'mastery' | 'diagnostic';
 
 export interface AdaptiveStudentPlan {
   student_id: Uuid;
   student_uid: string;
   targeted_competency_ids: Uuid[];
+  targeting_basis: TargetingBasis;
+  /** The source sheet was only partly read back — copies unscanned, answers
+   *  blank or ungraded, items tagged to no competency. The plan stands; it is
+   *  built on less than it looks. */
+  evidence_partial: boolean;
   retrieved: ExerciseProposal[];
   generated: ExerciseProposal[];
   /** Which personalised group this copy belongs to. Absent on the per-student
@@ -846,6 +863,10 @@ export interface AdaptiveGenerationFailure {
 }
 
 export interface AdaptiveProposeResponse {
+  /** True when a model's partition was accepted. False covers both "not asked
+   *  for" and "asked for and rejected", so the screen can say which rule the
+   *  groups on it came from. */
+  grouped_by_model: boolean;
   plans: AdaptiveStudentPlan[];
   language: string;
   generated_count: number;

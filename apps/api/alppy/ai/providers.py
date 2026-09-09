@@ -14,9 +14,23 @@ import json
 import math
 import re
 import unicodedata
+from typing import TYPE_CHECKING, Any, cast
 
-from alppy.ai.base import ChatProvider, ChatRequest, ChatResponse, EmbeddingsProvider
+from alppy.ai.base import (
+    ChatProvider,
+    ChatRequest,
+    ChatResponse,
+    ChatTruncatedError,
+    EmbeddingsProvider,
+)
 from alppy.core.config import get_settings
+from alppy.core.logging import get_logger
+
+log = get_logger(__name__)
+
+if TYPE_CHECKING:  # the SDK is optional at runtime
+    from openai import Omit
+    from openai.types.responses import ResponseInputParam
 
 #: Purposes whose output must come from the prompt. An ungrounded provider
 #: returns nothing for these rather than inventing content that would be stored
@@ -33,8 +47,13 @@ from alppy.core.config import get_settings
 #: handwriting and says whether the answer is right; a stand-in that cannot see
 #: the image and answered anyway would be a verdict on a real student drawn
 #: from a hash. It returns the empty shape, and the caller records "no verdict".
+#: ``adaptive_cluster`` belongs here for the same reason as ``adaptive_feedback``.
+#: An invented partition is a claim about which children belong together, drawn
+#: from a hash — and unlike a bad exercise, nobody reads it before it takes
+#: effect. Returning the empty shape sends the caller to the deterministic
+#: partition, which is both the honest answer and the correct one.
 TRANSCRIPTION_PURPOSES: frozenset[str] = frozenset(
-    {"extract_exercises", "adaptive_feedback", "grade_open_answer"}
+    {"extract_exercises", "adaptive_feedback", "grade_open_answer", "adaptive_cluster"}
 )
 
 #: What an ungrounded provider answers for each transcription purpose: the
@@ -48,6 +67,7 @@ _EMPTY_SHAPES: dict[str, dict[str, object]] = {
         "correct": None,
         "confidence": 0.0,
     },
+    "adaptive_cluster": {"groups": []},
 }
 
 
@@ -76,12 +96,15 @@ class EchoChatProvider:
                 output_tokens=len(text) // 4,
                 model="echo",
             )
-        seed = hashlib.sha256(request.user.encode()).hexdigest()
         language = _asked(request.user, "Language", default="fr")
-        n = _asked_int(request.user, "Number of exercises", default=3, lo=1, hi=16)
-        difficulty = _asked_int(request.user, "Difficulty", default=2, lo=1, hi=5)
-        items = [_offline_item(seed, i, language, difficulty) for i in range(n)]
-        text = json.dumps({"exercises": items}, ensure_ascii=False)
+        if request.purpose == "adaptive_generate_batch":
+            payload: dict[str, object] = {"plans": _offline_plans(request.user, language)}
+        else:
+            seed = hashlib.sha256(request.user.encode()).hexdigest()
+            n = _asked_int(request.user, "Number of exercises", default=3, lo=1, hi=16)
+            difficulty = _asked_int(request.user, "Difficulty", default=2, lo=1, hi=5)
+            payload = {"exercises": [_offline_item(seed, i, language, difficulty) for i in range(n)]}
+        text = json.dumps(payload, ensure_ascii=False)
         return ChatResponse(
             text=text,
             input_tokens=len(request.user) // 4,
@@ -111,6 +134,46 @@ def _asked_int(user: str, field: str, *, default: int, lo: int, hi: int) -> int:
     if not match:
         return default
     return max(lo, min(hi, int(match.group(1))))
+
+
+#: One plan line of a batched request: "[P2] competencies: C1,C3 | difficulty: 4
+#: | count: 2". Read line by line rather than by parsing JSON out of the prompt —
+#: the moment the stand-in has to understand structure it stops being a hash
+#: function and becomes a second implementation to keep in step.
+_PLAN_LINE_RE = re.compile(
+    r"^\[(?P<plan>P\d+)\]\s*competencies:.*?\|\s*difficulty:\s*(?P<difficulty>\d+)"
+    r"\s*\|\s*count:\s*(?P<count>\d+)",
+    re.MULTILINE,
+)
+
+
+def _offline_plans(user: str, language: str) -> list[dict[str, object]]:
+    """One entry per plan, each with its own items.
+
+    The seed folds in the plan id. Without it every plan in a batch would get
+    byte-identical statements, the shared duplicate check would drop all but the
+    first, and it would present as a bug in the dedupe rather than in the
+    stand-in.
+
+    `_asked_int` is first-match-wins over the whole prompt, which is exactly
+    wrong here — a batched request has one `count:` per plan. Hence the per-line
+    read.
+    """
+    plans: list[dict[str, object]] = []
+    for match in _PLAN_LINE_RE.finditer(user):
+        plan_id = match.group("plan")
+        count = max(1, min(16, int(match.group("count"))))
+        difficulty = max(1, min(5, int(match.group("difficulty"))))
+        seed = hashlib.sha256(f"{plan_id}:{user}".encode()).hexdigest()
+        plans.append(
+            {
+                "plan_id": plan_id,
+                "exercises": [
+                    _offline_item(seed, i, language, difficulty) for i in range(count)
+                ],
+            }
+        )
+    return plans
 
 
 def _offline_item(seed: str, i: int, language: str, difficulty: int) -> dict[str, object]:
@@ -185,6 +248,156 @@ def _user_content(request: ChatRequest) -> str | list[dict[str, object]]:
         for image in request.images
     ]
     blocks.append({"type": "text", "text": request.user})
+    return blocks
+
+
+#: Models that reject a non-default ``temperature``. Reasoning models take the
+#: sampling decision themselves and 400 on the parameter.
+#:
+#: This is a property of the model id, not a deployment choice, so it lives here
+#: rather than in configuration — and it must be rechecked whenever the default
+#: model moves. It is not cosmetic: ``grade_open_answer.v2.md`` states
+#: "temperature 0.0 — a grade must be reproducible, never creative", so a model
+#: on this list cannot honour the grading prompt's own stated contract.
+_MODELS_WITHOUT_TEMPERATURE: tuple[str, ...] = ("o1", "o3", "o4")
+
+
+def _accepts_temperature(model: str) -> bool:
+    return not model.startswith(_MODELS_WITHOUT_TEMPERATURE)
+
+
+class OpenAiChatProvider:
+    """OpenAI, through the Responses API.
+
+    Deliberately shaped like ``AnthropicChatProvider`` rather than sharing code
+    with it: the two wire formats agree on nothing. The system prompt is
+    ``instructions`` rather than a message, an image is a data URL rather than a
+    base64 source block, and the text comes back through an aggregator because
+    ``output[0]`` is a reasoning item on a reasoning model, not the answer.
+    """
+
+    name = "openai"
+    grounded = True
+
+    def __init__(self, api_key: str, model: str) -> None:
+        self._model = model
+        self._temperature_refused = not _accepts_temperature(model)
+        """Learned as well as declared.
+
+        The prefix table below is a fast path for the models we know about, but
+        the lineup moves faster than this file does. If the API refuses the
+        parameter anyway, that is remembered here and the next call goes without
+        it — one wasted request per process rather than a wrong default table
+        breaking every call in the product."""
+        from openai import OpenAI  # imported lazily: optional at runtime
+
+        self._client = OpenAI(api_key=api_key)
+
+    def complete(self, request: ChatRequest) -> ChatResponse:
+        if request.stop:
+            # The Responses API has no stop-sequence parameter. Nothing in the
+            # codebase sets this today; silently dropping it would give the
+            # first caller who does a subtly wrong result on one provider only.
+            raise NotImplementedError(
+                "stop sequences are not supported by the OpenAI Responses provider"
+            )
+        from openai import omit
+
+        # cast, not ignore: the blocks are built by hand below and the SDK's
+        # TypedDict union cannot narrow a plain dict.
+        content = cast(
+            "ResponseInputParam",
+            [{"role": "user", "content": _openai_content(request)}],
+        )
+
+        def _send(temperature: float | Omit) -> Any:
+            return self._client.responses.create(
+                model=self._model,
+                instructions=request.system,
+                input=content,
+                # Covers reasoning *and* visible output on a reasoning model, so
+                # a budget spent thinking returns nothing — see the check below.
+                max_output_tokens=request.max_tokens,
+                temperature=temperature,
+            )
+
+        if self._temperature_refused:
+            self._warn_dropped(request)
+            response = _send(omit)
+        else:
+            try:
+                response = _send(request.temperature)
+            except Exception as exc:
+                if not _is_temperature_refusal(exc):
+                    raise
+                # Learn it once, for the life of the process.
+                self._temperature_refused = True
+                self._warn_dropped(request)
+                response = _send(omit)
+
+        text: str = getattr(response, "output_text", "") or ""
+        if not text and _hit_the_output_cap(response):
+            raise ChatTruncatedError(
+                f"{self._model} stopped at the {request.max_tokens}-token output cap "
+                f"for purpose {request.purpose!r} without producing an answer"
+            )
+        usage = getattr(response, "usage", None)
+        return ChatResponse(
+            text=text,
+            input_tokens=getattr(usage, "input_tokens", None),
+            output_tokens=getattr(usage, "output_tokens", None),
+            model=self._model,
+        )
+
+    def _warn_dropped(self, request: ChatRequest) -> None:
+        """Say so, every time. `grade_open_answer.v2.md` states "temperature 0.0
+        — a grade must be reproducible, never creative", and a model that will
+        not take the parameter cannot honour that. The call still happens; the
+        log is what lets somebody notice the contract is not being kept."""
+        log.warning(
+            "ai.temperature.dropped",
+            provider=self.name,
+            model=self._model,
+            purpose=request.purpose,
+            requested=request.temperature,
+        )
+
+
+def _is_temperature_refusal(exc: Exception) -> bool:
+    """True when the provider rejected the *parameter*, not the request.
+
+    Matched on the message because the SDK models this as a generic 400. Kept
+    narrow — it must never swallow a real bad-request — and it only ever costs
+    one extra call before the answer is remembered."""
+    text = str(exc).lower()
+    return "temperature" in text and (
+        "unsupported" in text or "not support" in text or "unknown parameter" in text
+    )
+
+
+def _hit_the_output_cap(response: object) -> bool:
+    """True when the run stopped on ``max_output_tokens`` rather than finishing."""
+    if getattr(response, "status", None) != "incomplete":
+        return False
+    details = getattr(response, "incomplete_details", None)
+    return getattr(details, "reason", None) == "max_output_tokens"
+
+
+def _openai_content(request: ChatRequest) -> list[dict[str, object]]:
+    """Images first, then the text — the order the model reads best, and the
+    same order ``_user_content`` uses for Anthropic. The part types differ:
+    ``input_text`` / ``input_image``, not ``text`` / ``image``."""
+    blocks: list[dict[str, object]] = [
+        {
+            "type": "input_image",
+            "image_url": (
+                f"data:{image.media_type};base64,"
+                f"{base64.b64encode(image.data).decode('ascii')}"
+            ),
+        }
+        for image in request.images
+    ]
+    blocks.append({"type": "input_text", "text": request.user})
     return blocks
 
 
@@ -269,15 +482,43 @@ class HashEmbeddingsProvider:
         return [v / norm for v in vec]
 
 
+#: The key each provider needs, by name. A provider with no key cannot be built.
+def _api_key_for(provider: str) -> str | None:
+    s = get_settings()
+    return {"anthropic": s.anthropic_api_key, "openai": s.openai_api_key}.get(provider)
+
+
 def build_chat_provider() -> ChatProvider:
-    """Anthropic when a key is configured, the deterministic echo otherwise.
+    """The configured provider when its key is present, the echo otherwise.
 
     The fallback is not a stub: it is what lets `docker compose up` run the
     whole product with no account anywhere.
+
+    It is also the sharpest edge in this module, and it grew sharper the moment
+    there was more than one real provider. A deployment holding the *other*
+    provider's key falls through to a stand-in that answers multiplication
+    tables derived from a hash — structurally valid, pedagogically meaningless,
+    and marked only as "generated". So the fall-through says so, loudly, once,
+    naming what was configured and what was missing.
     """
     s = get_settings()
-    if s.ai_chat_provider == "anthropic" and s.anthropic_api_key:
-        return AnthropicChatProvider(s.anthropic_api_key, s.ai_chat_model)
+    provider = s.ai_chat_provider
+    if provider != "echo":
+        key = _api_key_for(provider)
+        if key:
+            if provider == "openai":
+                return OpenAiChatProvider(key, s.ai_chat_model)
+            return AnthropicChatProvider(key, s.ai_chat_model)
+        log.warning(
+            "ai.provider.no_key",
+            provider=provider,
+            model=s.ai_chat_model,
+            detail=(
+                f"ALPPY_AI_CHAT_PROVIDER={provider} but no key was configured; "
+                f"falling back to the offline echo provider. Nothing this process "
+                f"generates comes from a model."
+            ),
+        )
     return EchoChatProvider()
 
 

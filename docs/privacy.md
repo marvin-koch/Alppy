@@ -110,10 +110,19 @@ no vendor call at all, for a different reason: content-licensing caution per
 ## 3. Provider configuration and data residency
 
 - The LLM provider is **configurable**, not hard-coded, specifically so a school or canton can
-  require an EU/CH-hosted option. Anthropic is the default for generation (see the plan), but the
-  `alppy/ai/` interface is provider-agnostic by construction (a `ModelProvider` protocol with
-  swappable backends) so a Mistral (EU, Paris) or a self-hosted EU/CH-region deployment can be
-  substituted without touching call sites.
+  require an EU/CH-hosted option. **OpenAI is the default for generation** (ADR 0002, which
+  supersedes the earlier Anthropic default); Anthropic remains selectable, and both are chosen by
+  one setting, `ALPPY_AI_CHAT_PROVIDER`. The `alppy/ai/` interface is provider-agnostic by
+  construction (a `ChatProvider` protocol with swappable backends) so a Mistral (EU, Paris) or a
+  self-hosted EU/CH-region deployment can be substituted without touching call sites.
+- **No processor agreement exists with either vendor yet** (§7 lists this among the things a real
+  deployment needs before it holds a real class). A school that requires EU/CH residency today
+  should set `ALPPY_AI_CHAT_PROVIDER=echo` or point the setting at an in-region deployment; the
+  offline provider is a complete, deterministic stand-in, not a stub, and the product runs on it.
+- **A provider whose own key is absent falls back to the offline provider and says so**
+  (`ai.provider.no_key`). This matters operationally now that there is more than one real vendor:
+  a deployment holding the *other* provider's key is silently offline, and everything it
+  "generates" is derived from a hash. The log line is how that is noticed.
 - Embeddings are planned to be **self-hosted** (see ADR 0001) precisely so textbook-chunk data
   never has to leave infrastructure Alppy controls, sidestepping the residency question for that
   data class entirely.
@@ -143,6 +152,29 @@ retained for a short, separately-governed window (out of scope for the MVP — s
 audit table itself becoming a second place PII could leak into. This table is the artifact a school
 or auditor is shown to answer "did any of our data go to provider X" without Alppy needing to
 expose actual prompts.
+
+### The prompt log — content, and therefore a different thing entirely
+
+`PromptLog` (`alppy/ai/prompt_log.py`) stores what `ModelCall` deliberately does not: the rendered
+system and user text and the provider's raw answer. It exists because "which calls happened" and
+"what did we actually send" are different questions, and an engineer debugging a bad sheet needs
+the second one. It is **not** an extension of the audit trail and must never be described as one —
+the moment content lives in the audit table, the audit table is the leak it exists to detect.
+
+Four properties make it defensible, and all four are enforced in code:
+
+| Property | Where |
+|---|---|
+| **Off unless a school turns it on.** `ALPPY_AI_PROMPT_LOG_ENABLED` defaults to false; an upgrading deployment gains an empty table and no new data flow. | `core/config.py`, `AiClient._transcribe` |
+| **Content is written only after the PII gate passed.** A prompt that fired `PiiLeakError` is by definition the one carrying a roster name; that row records the refusal, the provider, the purpose and the hash — and no content at all. | `AiClient.complete` |
+| **Rows expire.** `ALPPY_AI_PROMPT_LOG_RETENTION_DAYS` (default 30) plus `python -m alppy.cli purge-prompt-logs`. A retention window nothing enforces is no window. | `prompt_log.purge_expired_prompts` |
+| **Fields are capped.** `ALPPY_AI_PROMPT_LOG_MAX_CHARS`, and a truncated value says so rather than reading as the thing that was sent. An extraction prompt carries a whole textbook chunk. | `AiClient._transcribe` |
+
+**Passing the PII gate is not the same as holding no student data.** The gate refuses names,
+e-mail, Swiss phone numbers and AHV numbers; it does not and cannot refuse a UID, a wrong answer,
+or a description of a misconception — and a UID plus a class roster re-identifies. That is why this
+table is school-scoped (so a tenant deletion takes it), swept by default, and off by default. It
+is a debugging aid a school opts into, not a record it is asked to keep.
 
 ## 4. Data export and deletion; retention of scans
 
@@ -181,6 +213,8 @@ expose actual prompts.
 | `Attempt` | Indirect (student UID + competency + score, no name) | Postgres | Retained for mastery history beyond scan deletion | Teacher(s) of the class |
 | `MasterySnapshot` | Indirect (student UID) | Postgres | Retained per-class history | Teacher(s) of the class; the student's later teachers on class handover |
 | `ModelCall` (audit log) | No (see §3 — explicitly content-free) | Postgres | Operational retention (e.g. 90 days), separate from student data lifecycle | Alppy ops; school admin on request |
+| `PromptLog` (prompt/response content) | Indirectly: UIDs, answers, competency text — never a name, never an e-mail (§3) | Postgres | **Off by default**; 30 days when enabled, swept by `alppy.cli purge-prompt-logs` | Alppy ops, with the school's consent to enable it |
+| `AdaptiveProposal` (a built proposal awaiting review) | Indirectly: UIDs and exercise text; no names | Postgres | Cascades with the `Job` that produced it | Teacher(s) of the class |
 
 "Indirect" PII means the row carries a student UID or class/sheet linkage that is only personally
 identifying when joined against `Student`; access control (tenancy, §below) governs who can make

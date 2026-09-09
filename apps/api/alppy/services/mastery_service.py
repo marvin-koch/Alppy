@@ -103,6 +103,7 @@ def load_attempt_inputs(
     *,
     subject_id: uuid.UUID | None = None,
     competency_ids: list[uuid.UUID] | None = None,
+    sheet_id: uuid.UUID | None = None,
     as_of: datetime | None = None,
 ) -> dict[Key, list[AttemptInput]]:
     """Every attempt, keyed by (student, competency).
@@ -114,6 +115,11 @@ def load_attempt_inputs(
     need it — nothing is answered in the future — but a snapshot dated last
     Tuesday must be computed from the evidence that existed last Tuesday, or
     backfilling a history produces the same number at every point on the curve.
+
+    ``sheet_id`` narrows to one sheet's results, for the adaptive planner
+    answering "how did they do on *this*". Mastery itself never passes it: the
+    model is a weighted mean over all the evidence, and scoping it to one lesson
+    would make a bad afternoon erase a term.
     """
     if not student_ids:
         return {}
@@ -139,6 +145,8 @@ def load_attempt_inputs(
         )
     if competency_ids is not None:
         stmt = stmt.where(exercise_competency.c.competency_id.in_(competency_ids))
+    if sheet_id is not None:
+        stmt = stmt.where(Attempt.sheet_id == sheet_id)
 
     grouped: dict[Key, list[AttemptInput]] = defaultdict(list)
     for student_id, competency_id, correct, answered_at, difficulty in db.execute(stmt):

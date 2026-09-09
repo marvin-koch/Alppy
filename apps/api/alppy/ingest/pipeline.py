@@ -34,7 +34,7 @@ from typing import Any
 from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
-from alppy.ai.audit import record_calls
+from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
@@ -377,7 +377,7 @@ def _ingest_fresh(
 
     # Every model call this ingest made, on the record. No prompt content and
     # no student name reaches the row; see alppy.ai.audit.
-    record_calls(db, school_id=source.school_id, records=client.records)
+    flush_ai_log(db, school_id=source.school_id, ai=client)
 
     return IngestResult(
         source_id=source.id,
@@ -971,7 +971,7 @@ def extract_section(
             language=source.language or DEFAULT_LANGUAGE,
             ai=client,
         )
-        record_calls(db, school_id=source.school_id, records=client.records)
+        flush_ai_log(db, school_id=source.school_id, ai=client)
         db.commit()
         log.info(
             "ingest.section.tagged",
@@ -1007,7 +1007,7 @@ def extract_section(
         language=source.language or DEFAULT_LANGUAGE,
         ai=client,
     )
-    record_calls(db, school_id=source.school_id, records=client.records)
+    flush_ai_log(db, school_id=source.school_id, ai=client)
     db.commit()
     log.info(
         "ingest.section.extracted",

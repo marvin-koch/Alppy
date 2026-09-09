@@ -91,6 +91,7 @@ export const queryKeys = {
       q.offset ?? 0,
       q.limit ?? DEFAULT_PAGE_SIZE,
     ] as const,
+  adaptiveProposal: (jobId: Uuid) => ['adaptive', 'proposal', jobId] as const,
   home: ['home'] as const,
   classes: ['classes'] as const,
   klass: (id: Uuid) => ['classes', id] as const,
@@ -611,12 +612,34 @@ export function useConfirmScan(
 }
 
 /* ----------------------------------------------------------- adaptive --- */
+/**
+ * Queues the planning and returns the JOB, not the proposal.
+ *
+ * It used to return the plan directly, which meant every model call for the
+ * class ran inside the request handler — a class of twenty-four was
+ * twenty-four sequential provider calls with a browser waiting on them.
+ * Follow it with `useJob`, then `useAdaptiveProposal`.
+ */
 export function useProposeAdaptive(): UseMutationResult<
-  AdaptiveProposeResponse,
+  JobOut,
   Error,
   AdaptiveProposeRequest
 > {
   return useMutation({ mutationFn: api.proposeAdaptive });
+}
+
+/** The proposal a finished job built. Enabled only once there is a job id. */
+export function useAdaptiveProposal(
+  jobId: Uuid | null,
+): UseQueryResult<AdaptiveProposeResponse> {
+  return useQuery({
+    queryKey: queryKeys.adaptiveProposal(jobId ?? ''),
+    queryFn: () => api.readAdaptiveProposal(jobId as Uuid),
+    enabled: jobId != null,
+    // A proposal is written once and never changes: refetching it would only
+    // re-download a megabyte to learn nothing.
+    staleTime: Infinity,
+  });
 }
 
 /**

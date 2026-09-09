@@ -303,10 +303,22 @@ def test_one_students_failure_does_not_cost_the_rest_of_the_batch(
     world: World, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     """The provider falls over on the second student; the other two still get a
-    full sheet, and the failed one is named."""
+    full sheet, and the failed one is named.
+
+    Re-encoded when generation started batching. It used to pin the invariant to
+    a shape — one call per student — rather than to the invariant itself, which
+    is that a plan's failure is its own. Batched, the *call* is shared, so the
+    isolation has to come from somewhere else: a failed batch is retried once,
+    split into single-plan calls, and it is the split that keeps one student's
+    provider error from emptying the other two sheets.
+
+    So the script is: the batched call falls over, then three single-plan calls
+    of which the middle one fails. Same claim, one layer down.
+    """
     use_chat(
         monkeypatch,
         ScriptedChat(
+            RuntimeError("the batched call fell over"),
             {"exercises": [GOOD_MCQ]},
             RuntimeError("provider fell over mid-batch"),
             {"exercises": [{**GOOD_MCQ, "statement": "Combien font 9 × 9 ?"}]},

@@ -378,6 +378,8 @@
     "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte."
   },
   "adaptive": {
+    "addExercise": "Ajouter un exercice",
+    "addedByTeacher": "Ajouté par l'enseignant·e.",
     "aiBadge": "IA",
     "aiNotice": "Les exercices générés portent la marque IA. Relisez chacun avant de l'approuver — rien de généré n'est imprimé tant que vous ne l'avez pas fait.",
     "allowGeneration": "Autoriser la génération par IA",
@@ -386,6 +388,11 @@
     "approveOne": "Approuver",
     "approved": "Approuvé — ces exercices peuvent maintenant être imprimés.",
     "approving": "Approbation…",
+    "basis": {
+      "source_sheet": "D'après la fiche corrigée.",
+      "mastery": "D'après la maîtrise accumulée.",
+      "diagnostic": "Aucune donnée : série diagnostique."
+    },
     "batchReady": "Lot prêt : une fiche par élève, avec le corrigé.",
     "cancel": "Annuler",
     "correctAnswer": "Bonne réponse",
@@ -399,6 +406,7 @@
       "title": "Pas encore de lacunes identifiées",
       "body": "Corrigez au moins une fiche pour qu'Alppy puisse cibler les besoins de chaque élève."
     },
+    "evidencePartial": "copie lue en partie",
     "exportBatch": "Exporter le lot PDF",
     "exportError": {
       "title": "Le lot n'a pas pu être exporté",
@@ -409,6 +417,7 @@
     "failureIncomplete": "{uid} : {produced} exercices générés sur {requested} demandés.",
     "failurePiiGate": "{uid} : la requête a été bloquée avant de quitter Alppy, rien n'a été généré.",
     "failureProvider": "{uid} : le fournisseur d'IA est injoignable.",
+    "failureTruncated": "{uid} : la réponse du fournisseur d'IA a été coupée avant la fin.",
     "failureUnparsable": "{uid} : le fournisseur d'IA a renvoyé une réponse inexploitable.",
     "failuresTitle": "{count, plural, one {# fiche n'a pas pu être complétée} other {# fiches n'ont pas pu être complétées}}",
     "falseLabel": "Faux",
@@ -432,9 +441,13 @@
     "groupFor": "Pour {count} élèves sur {total}",
     "groupMembers": "{count, plural, one {# élève} other {# élèves}}",
     "groupTitle": "Fiche commune",
+    "groupedByModel": "Répartition proposée par l'IA, à partir des groupes calculés.",
+    "groupedByRule": "Groupes formés par lacune principale.",
     "groupsTitle": "Groupes personnalisés",
     "hideItems": "Masquer les exercices",
     "itemsPerStudent": "Exercices par élève",
+    "llmGrouping": "Laisser l'IA proposer la répartition",
+    "llmGroupingHelp": "La règle automatique reste la base et reprend la main si la proposition est incomplète.",
     "loadError": {
       "title": "Cet écran n'a pas pu se charger",
       "body": "Alppy n'a pas pu lire vos classes et vos disciplines."

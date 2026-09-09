@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from typing import TYPE_CHECKING
 
 from sqlalchemy.orm import Session
 
@@ -27,6 +28,9 @@ from alppy.core.logging import get_logger
 from alppy.models import ModelCall
 
 log = get_logger(__name__)
+
+if TYPE_CHECKING:
+    from alppy.ai.client import AiClient
 
 
 def record_calls(
@@ -66,4 +70,38 @@ def record_calls(
     return written
 
 
-__all__ = ["record_calls"]
+def flush(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    ai: AiClient,
+    request_id: str | None = None,
+    job_id: uuid.UUID | None = None,
+    sheet_id: uuid.UUID | None = None,
+) -> int:
+    """Write everything one client accumulated: the audit rows and, if a school
+    turned it on, the prompt log.
+
+    One call so that a call site never grows a second logging concern.
+    Idempotent: it drains, so flushing after every call and flushing once at the
+    end of a job both write each row exactly once.
+
+    The import is local because ``prompt_log`` imports the models and this
+    module is reached from paths that must work without them loaded.
+    """
+    from alppy.ai.prompt_log import record_prompts
+
+    records, transcripts = ai.drain()
+    written = record_calls(db, school_id=school_id, records=records)
+    record_prompts(
+        db,
+        school_id=school_id,
+        transcripts=transcripts,
+        request_id=request_id,
+        job_id=job_id,
+        sheet_id=sheet_id,
+    )
+    return written
+
+
+__all__ = ["flush", "record_calls"]

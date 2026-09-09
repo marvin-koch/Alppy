@@ -302,8 +302,16 @@ export const getCompetencyAttempts = (studentId: Uuid, competencyId: Uuid) =>
   );
 
 /* ----------------------------------------------------------- adaptive --- */
+/** Queues the planning. Returns the job to poll, NOT the proposal — the model
+ *  calls run in the worker, and a request handler never blocks on one. Read the
+ *  result with `readAdaptiveProposal` once the job succeeds. */
 export const proposeAdaptive = (body: AdaptiveProposeRequest) =>
-  apiRequest<AdaptiveProposeResponse>('/adaptive/propose', { method: 'POST', body });
+  apiRequest<JobOut>('/adaptive/propose', { method: 'POST', body });
+
+/** The built proposal. Its own call rather than a field on the job: the screen
+ *  polls the job every 900 ms, and a class of 24 is close to a megabyte. */
+export const readAdaptiveProposal = (jobId: Uuid) =>
+  apiRequest<AdaptiveProposeResponse>(`/adaptive/proposal/${jobId}`)
 
 /**
  * Creating the batch is NOT rendering it. This returns the `SheetOut` it just

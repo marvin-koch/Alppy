@@ -79,6 +79,29 @@ def _backfill_events() -> int:
     return 0
 
 
+def _purge_prompt_logs() -> int:
+    """Delete prompt-log rows past ``ALPPY_AI_PROMPT_LOG_RETENTION_DAYS``.
+
+    The retention setting is a promise; this is what keeps it. Meant for a cron
+    or the same entrypoint that runs the backfill — a window nothing enforces is
+    no window, and this is the one table that holds what was actually sent.
+    """
+    from alppy.ai.prompt_log import purge_expired_prompts
+
+    db = SessionLocal()
+    try:
+        deleted = purge_expired_prompts(db)
+        db.commit()
+        log.info("prompt_log.purge.done", deleted=deleted)
+    except Exception:
+        db.rollback()
+        log.exception("prompt_log.purge.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging(debug=get_settings().debug)
 
@@ -89,6 +112,10 @@ def main(argv: list[str] | None = None) -> int:
         "backfill-events",
         help="Reconstruct the agenda from existing timestamps (idempotent).",
     )
+    subparsers.add_parser(
+        "purge-prompt-logs",
+        help="Delete prompt-log rows past the configured retention window.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -97,6 +124,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "backfill-events":
         return _backfill_events()
+
+    if args.command == "purge-prompt-logs":
+        return _purge_prompt_logs()
 
     parser.print_help()
     return 1

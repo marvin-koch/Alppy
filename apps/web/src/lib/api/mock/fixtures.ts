@@ -845,6 +845,7 @@ export const timeline: TimelineOut = {
 
 export const adaptive: AdaptiveProposeResponse = {
   language: 'fr',
+  grouped_by_model: false,
   generated_count: 2,
   needs_approval: true,
   group: null,
@@ -865,6 +866,10 @@ export const adaptive: AdaptiveProposeResponse = {
     student_id: student.id,
     student_uid: student.uid,
     targeted_competency_ids: [id(200 + (index % 3)), id(200 + ((index + 2) % 5))],
+    // The mock exercises the interesting path: a source sheet was corrected, and
+    // one copy in four came back only partly read.
+    targeting_basis: 'source_sheet' as const,
+    evidence_partial: index === 3,
     retrieved: [
       proposal(exercises[index % exercises.length] as ExerciseOut, 0.86, 'Cible la lacune principale.'),
       proposal(exercises[(index + 2) % exercises.length] as ExerciseOut, 0.79, 'Consolide un acquis fragile.'),

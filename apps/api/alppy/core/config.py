@@ -5,10 +5,35 @@ from __future__ import annotations
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, PostgresDsn, RedisDsn
+from pydantic import Field, PostgresDsn, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 Locale = Literal["fr", "de", "en"]
+
+#: What each provider is asked for when ``ai_chat_model`` is left empty.
+_DEFAULT_CHAT_MODELS: dict[str, str] = {
+    "anthropic": "claude-sonnet-5",
+    "openai": "gpt-5",
+    "echo": "echo",
+}
+
+#: Model-id prefixes that belong unmistakably to one provider. Used only to
+#: refuse a *known-foreign* pair — an unrecognised prefix is left alone, because
+#: Azure deployment names and fine-tune ids are legitimate and unguessable.
+_MODEL_PREFIX_OWNER: tuple[tuple[str, str], ...] = (
+    ("claude-", "anthropic"),
+    ("gpt-", "openai"),
+    ("o1", "openai"),
+    ("o3", "openai"),
+    ("o4", "openai"),
+)
+
+
+def _known_owner(model: str) -> str | None:
+    for prefix, owner in _MODEL_PREFIX_OWNER:
+        if model.startswith(prefix):
+            return owner
+    return None
 
 
 class Settings(BaseSettings):
@@ -48,9 +73,19 @@ class Settings(BaseSettings):
     # --- AI layer -------------------------------------------------------
     # Provider is configurable by design: a Swiss school may require that no
     # data leaves EU/CH infrastructure (docs/privacy.md).
-    ai_chat_provider: Literal["anthropic", "echo"] = "anthropic"
-    ai_chat_model: str = "claude-sonnet-5"
+    ai_chat_provider: Literal["openai", "anthropic", "echo"] = "openai"
+    ai_chat_model: str = ""
+    """Empty means "whatever this provider's default is" — see
+    ``_DEFAULT_CHAT_MODELS`` and the validator below.
+
+    It is empty rather than a literal because the provider and the model are one
+    setting wearing two names. A literal default here means that changing
+    ``ai_chat_provider`` alone ships a Claude model id to OpenAI, which 404s every
+    call in the product — and the failure path in ``AiClient.complete`` records
+    ``settings.ai_chat_model`` on the audit row, so the trail would name a model
+    that was never called."""
     anthropic_api_key: str | None = None
+    openai_api_key: str | None = None
 
     ai_embeddings_provider: Literal["local", "hash"] = "hash"
     ai_embeddings_model: str = "intfloat/multilingual-e5-large"
@@ -65,7 +100,25 @@ class Settings(BaseSettings):
 
     # Hard cap so a runaway prompt cannot bill the school.
     ai_max_output_tokens: int = 2048
+    ai_max_output_tokens_batch: int = 8192
+    """The cap for one call that answers several plans at once.
+
+    The per-call cap above is sized for one student's handful of exercises. A
+    batched generation call carries every plan in the run, and 2048 tokens does
+    not hold eight plans of four multiple-choice items — the response comes back
+    truncated, which is to say unparsable, and the whole class gets nothing. The
+    batch path sizes its own budget and clamps it here."""
     ai_rate_limit_per_min: int = 20
+
+    # --- Prompt log (debugging; NOT the audit trail) ---------------------
+    # `ModelCall` stays content-free whatever these say. This is the separate,
+    # opt-in store of what was actually sent — see models.PromptLog.
+    ai_prompt_log_enabled: bool = False
+    ai_prompt_log_retention_days: int = 30
+    ai_prompt_log_max_chars: int = 20_000
+    """Per field, not per row. An `extract_exercises` prompt carries a whole
+    textbook chunk and a full ingest is thousands of calls; without a cap the
+    debugging aid becomes the largest table in the database."""
 
     # --- Uploads --------------------------------------------------------
     max_upload_mb: int = 50
@@ -86,6 +139,29 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @model_validator(mode="after")
+    def _resolve_chat_model(self) -> Settings:
+        """Fill the model from the provider, and refuse a pair that cannot work.
+
+        Startup is the only place this can be caught cheaply. A Claude model id
+        sent to OpenAI is a 404 on every generation, every extraction and every
+        grade — and because the offline provider is the fallback for a *missing*
+        key rather than a wrong one, nothing degrades gracefully. A `Literal`
+        already makes a misspelled provider a startup crash; this makes a
+        mismatched pair one too.
+        """
+        if not self.ai_chat_model:
+            self.ai_chat_model = _DEFAULT_CHAT_MODELS[self.ai_chat_provider]
+            return self
+        owner = _known_owner(self.ai_chat_model)
+        if owner is not None and owner != self.ai_chat_provider:
+            raise ValueError(
+                f"ALPPY_AI_CHAT_MODEL={self.ai_chat_model!r} is a {owner} model, but "
+                f"ALPPY_AI_CHAT_PROVIDER is {self.ai_chat_provider!r}. Set both, or "
+                f"leave the model empty to take that provider's default."
+            )
+        return self
 
 
 @lru_cache

@@ -5,6 +5,7 @@
  */
 import { ApiError } from '../client';
 import type {
+  AdaptiveProposeResponse,
   AdaptiveApproveRequest,
   AdaptiveBatchRequest,
   AdaptiveDiscardRequest,
@@ -92,6 +93,26 @@ function completeExtraction(sectionId: string): void {
   const made = fx.exercisesForSection(section, state.exercises.length);
   state.exercises = [...state.exercises, ...made];
   section.extracted_at = fx.NOW;
+}
+
+/** The proposal as it currently stands, with approvals and discards applied. */
+function currentProposal(): AdaptiveProposeResponse {
+  return {
+    ...fx.adaptive,
+    plans: fx.adaptive.plans.map((plan) => ({
+      ...plan,
+      // A discarded item is never proposed again.
+      generated: plan.generated
+        .filter((proposal) => !state.discards.has(proposal.exercise.id))
+        .map((proposal) => ({
+          ...proposal,
+          exercise: {
+            ...proposal.exercise,
+            approved_at: state.approvals.has(proposal.exercise.id) ? fx.NOW : null,
+          },
+        })),
+    })),
+  };
 }
 
 function stripTicks(job: JobOut & { ticks: number }): JobOut {
@@ -502,23 +523,24 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   }
 
   /* ------------------------------------------------------ adaptive --- */
+  // Planning is a JOB now, not a synchronous answer: the model calls run in the
+  // worker. The mock has to agree with that, or the screen polls something the
+  // fixture never made — which is how the export button shipped broken once
+  // already (see e2e/adaptive.spec.ts).
   if (method === 'POST' && path === '/adaptive/propose') {
-    return {
-      ...fx.adaptive,
-      plans: fx.adaptive.plans.map((plan) => ({
-        ...plan,
-        // A discarded item is never proposed again.
-        generated: plan.generated
-          .filter((proposal) => !state.discards.has(proposal.exercise.id))
-          .map((proposal) => ({
-            ...proposal,
-            exercise: {
-              ...proposal.exercise,
-              approved_at: state.approvals.has(proposal.exercise.id) ? fx.NOW : null,
-            },
-          })),
-      })),
-    };
+    const existing = Object.values(state.jobs).find(
+      (job) => job.kind === 'propose_adaptive' && job.status !== 'succeeded',
+    );
+    if (existing) return stripTicks(existing);
+    return startJob('propose_adaptive', { students: fx.adaptive.plans.length });
+  }
+  m = match(path, /^\/adaptive\/proposal\/([^/]+)$/);
+  if (m && method === 'GET') {
+    const job = state.jobs[m[1] ?? ''];
+    if (!job || job.status !== 'succeeded') {
+      throw new ApiError(404, 'not_found', 'proposal not built yet');
+    }
+    return currentProposal();
   }
   if (method === 'POST' && path === '/adaptive/approve') {
     const ids = (body as AdaptiveApproveRequest).exercise_ids;

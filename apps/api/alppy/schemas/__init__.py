@@ -913,14 +913,32 @@ class AdaptiveProposeRequest(BaseModel):
     #: student. Absent means the per-student path, unchanged.
     n_groups: Annotated[int | None, Field(ge=1, le=40)] = None
     #: The COMMON sheet whose corrected results justify this batch. Recorded on
-    #: the sheet as lineage, and the sheet feedback is read from.
+    #: the sheet as lineage, the sheet feedback is read from — and, when it has
+    #: confirmed results, the evidence the plans target.
     source_sheet_id: uuid.UUID | None = None
+    #: Ask a model to revise the deterministic partition. Off by default: the
+    #: deterministic rule is the one a teacher can state to a parent (D33), and
+    #: an invalid or failed model answer falls straight back to it.
+    llm_grouping: bool = False
+
+
+#: Which evidence chose this plan's competencies. Reported because the teacher
+#: has to be able to defend the sheet, and "we targeted the sheet you just
+#: corrected" and "we targeted the term so far" are different answers.
+TargetingBasis = Literal["source_sheet", "mastery", "diagnostic"]
 
 
 class AdaptiveStudentPlan(ApiModel):
     student_id: uuid.UUID
     student_uid: str
     targeted_competency_ids: list[uuid.UUID]
+    #: Where the gaps came from. `diagnostic` means there was no evidence at all
+    #: and the plan is a probe, not a diagnosis.
+    targeting_basis: TargetingBasis = "mastery"
+    #: True when the source sheet was only partly read back — some copies not
+    #: scanned, some answers blank or ungraded, some items tagged to no
+    #: competency. The plan still stands; it is just built on less than it looks.
+    evidence_partial: bool = False
     retrieved: list[ExerciseProposal] = []
     generated: list[ExerciseProposal] = []
     #: Which personalised group this student's copy belongs to, printed on the
@@ -968,6 +986,8 @@ class AdaptiveGenerationFailure(ApiModel):
     student_id: uuid.UUID
     student_uid: str
     #: `provider_error` | `unparsable_response` | `pii_gate` | `incomplete`
+    #: | `truncated` (the answer hit the output-token cap — a configuration
+    #: cause, which `unparsable_response` would have hidden)
     reason: str
     requested: int
     produced: int = 0
@@ -976,6 +996,10 @@ class AdaptiveGenerationFailure(ApiModel):
 
 class AdaptiveProposeResponse(ApiModel):
     plans: list[AdaptiveStudentPlan]
+    #: True when a model's partition was accepted. False covers both "not asked
+    #: for" and "asked for and rejected", so the screen can say which rule the
+    #: groups on it came from.
+    grouped_by_model: bool = False
     language: str
     generated_count: int = 0
     needs_approval: bool = True

@@ -26,6 +26,7 @@ from alppy.worker.tasks import (
     grade_open_answers,
     ingest_source,
     process_scan,
+    propose_adaptive,
     render_sheet,
 )
 
@@ -53,6 +54,7 @@ class WorkerSettings:
         extract_section,
         render_sheet,
         process_scan,
+        propose_adaptive,
         generate_adaptive,
         generate_feedback,
         grade_open_answers,

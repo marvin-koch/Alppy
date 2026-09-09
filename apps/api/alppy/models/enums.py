@@ -100,6 +100,10 @@ class JobKind(StrEnum):
     EXTRACT_SECTION = "extract_section"
     RENDER_SHEET = "render_sheet"
     PROCESS_SCAN = "process_scan"
+    #: Builds the proposal: targeting, retrieval, and the model calls that fill
+    #: the shortfall. Separate from GENERATE_ADAPTIVE, which despite its name
+    #: only *renders* an already-approved batch to PDF.
+    PROPOSE_ADAPTIVE = "propose_adaptive"
     GENERATE_ADAPTIVE = "generate_adaptive"
     GENERATE_FEEDBACK = "generate_feedback"
     #: The vision grader over a scan's written answers. Chained after

@@ -17,6 +17,7 @@ from __future__ import annotations
 import uuid
 
 from fastapi import APIRouter, status
+from sqlalchemy import select
 
 from alppy.api import errors
 from alppy.api.deps import (
@@ -29,7 +30,7 @@ from alppy.api.deps import (
     start_job,
 )
 from alppy.core.config import get_settings
-from alppy.models import Job, MisconceptionNote, Student
+from alppy.models import AdaptiveProposal, Job, MisconceptionNote, Student
 from alppy.models.enums import EventKind, EventSubject, JobKind, JobStatus
 from alppy.schemas import (
     AdaptiveApproveRequest,
@@ -64,12 +65,30 @@ router = APIRouter(tags=["adaptive"])
 
 
 @router.post(
-    "/adaptive/propose", response_model=AdaptiveProposeResponse, dependencies=[AiRateLimit]
+    "/adaptive/propose",
+    response_model=JobOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
 )
 def propose(
     payload: AdaptiveProposeRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep
-) -> AdaptiveProposeResponse:
-    """Target each student's gaps. Generated items still need approval."""
+) -> JobOut:
+    """Queue the targeting, retrieval and generation for a class.
+
+    A job rather than a synchronous response because it makes model calls, and
+    CLAUDE.md is explicit that nothing blocks a request handler on one. Batching
+    took a class of twenty-four from twenty-four calls to three, which made the
+    old shape survivable rather than correct.
+
+    The rate limit stays on this handler even though it now only enqueues: it is
+    the only door in front of the worker's fan-out, and without it a teacher can
+    queue twenty proposals a minute. The in-flight check below is the other half
+    — a double-click used to cost one token and now costs a second Job and a
+    second set of unapproved Exercise rows.
+
+    Poll ``GET /jobs/{id}``; read the result from
+    ``GET /adaptive/proposal/{job_id}`` once it succeeds.
+    """
     school_class = get_class(db, scope, payload.class_id)
     student_ids = list(payload.student_ids)
     if student_ids:
@@ -82,40 +101,97 @@ def propose(
     if not student_ids:
         raise errors.unprocessable("this class has no students yet")
 
-    propose_adaptive = load_optional(
+    # Fail here rather than in the worker: a class with no adaptive module
+    # installed should say so at the moment the teacher asks.
+    load_optional(
         "alppy.services.adaptive_service", "propose_adaptive", feature="adaptive planning"
     )
-    # `language` stays an explicit override and is normally absent. The sheet's
-    # language follows the source material (the service reads it off the
-    # corpus); the teacher's locale is only the last resort for a subject with
-    # nothing indexed yet. A teacher reading Alppy in English whose class works
-    # in French must not be handed English exercises.
-    response: AdaptiveProposeResponse = propose_adaptive(
-        db,
-        school_id=scope.school_id,
-        class_id=payload.class_id,
-        subject_id=payload.subject_id,
-        student_ids=student_ids,
-        items_per_student=payload.items_per_student,
-        allow_generation=payload.allow_generation,
-        language=payload.language,
-        fallback_language=str(teacher.locale) or get_settings().default_locale,
-        group=payload.group,
-        n_groups=payload.n_groups,
-    )
 
-    # Attach whatever feedback already exists for these students on the common
-    # sheet, so the review screen shows the notes beside the plans they explain.
-    # Generating it is a separate, queued call: it is one model request per
-    # student, which a request handler may not block on.
-    if payload.source_sheet_id is not None:
+    running = db.scalars(
+        select(Job).where(
+            Job.school_id == scope.school_id,
+            Job.kind == JobKind.PROPOSE_ADAPTIVE,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+        )
+    ).first()
+    if running is not None:
+        # Not an error. The second click wanted the thing the first one is
+        # already doing, and starting a second run would write a second set of
+        # unapproved exercises for the same class.
+        return job_out(running)
+
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=scope.school_id,
+        kind=JobKind.PROPOSE_ADAPTIVE,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="queued for adaptive planning",
+        payload={
+            "class_id": str(payload.class_id),
+            "subject_id": str(payload.subject_id),
+            "student_ids": [str(i) for i in student_ids],
+            "items_per_student": payload.items_per_student,
+            "allow_generation": payload.allow_generation,
+            # An explicit teacher override, normally absent. The sheet's language
+            # follows the source material; the locale is only the last resort for
+            # a subject with nothing indexed yet.
+            "language": payload.language,
+            "fallback_language": str(teacher.locale) or get_settings().default_locale,
+            "group": payload.group,
+            "n_groups": payload.n_groups,
+            "source_sheet_id": (
+                str(payload.source_sheet_id) if payload.source_sheet_id else None
+            ),
+            "llm_grouping": payload.llm_grouping,
+        },
+    )
+    db.add(job)
+    db.commit()
+    start_job(db, job)
+    db.refresh(job)
+    return job_out(job)
+
+
+@router.get("/adaptive/proposal/{job_id}", response_model=AdaptiveProposeResponse)
+def read_proposal(
+    job_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> AdaptiveProposeResponse:
+    """The proposal a finished job built.
+
+    Its own endpoint rather than a field on ``JobOut``: the screen polls the job
+    every 900 ms while it runs, and a class of twenty-four with eight items each
+    is close to a megabyte of statements and provenance. A status row has to stay
+    cheap to ask about.
+    """
+    job = db.get(Job, job_id)
+    if job is None or job.school_id != scope.school_id:
+        raise errors.not_found("job", ids=[str(job_id)])
+
+    row = db.scalars(
+        select(AdaptiveProposal).where(
+            AdaptiveProposal.school_id == scope.school_id,
+            AdaptiveProposal.job_id == job_id,
+        )
+    ).first()
+    if row is None:
+        raise errors.not_found("proposal", ids=[str(job_id)])
+
+    response = AdaptiveProposeResponse.model_validate(row.payload)
+
+    # Attach whatever feedback exists for these students on the common sheet, so
+    # the review screen shows the notes beside the plans they explain. Read here
+    # rather than baked into the stored proposal: the teacher can write and
+    # approve notes after the plan was built, and a frozen copy would go stale.
+    source_sheet_id = (job.payload or {}).get("source_sheet_id")
+    if source_sheet_id:
         from alppy.services.feedback_service import latest_for_students
 
         notes = latest_for_students(
             db,
             school_id=scope.school_id,
             student_ids=[p.student_id for p in response.plans],
-            source_sheet_id=payload.source_sheet_id,
+            source_sheet_id=uuid.UUID(str(source_sheet_id)),
         )
         for plan in response.plans:
             note = notes.get(plan.student_id)

@@ -1144,3 +1144,103 @@ primary key is `(class_id, subject_id)` and `ON CONFLICT` cannot serialise that.
 than locking a row on an ordinary sheet creation, `subject_ids_for_class` breaks the
 tie on `subject_id`, so the branch order is arbitrary in that rare case but never
 wobbles between requests.
+
+### D63 · Adaptive targeting reads the sheet the teacher just corrected
+
+Targeting read all-time `MasterySnapshot` rows; `source_sheet_id` was on the request and
+recorded lineage only. `services/performance_summary.py` now rolls one sheet's attempts
+up per competency through the same `mastery.model`, and that wins where it says
+anything; mastery is the fallback, and "no evidence at all" is reported as a diagnostic
+rather than looking like a child with no gaps.
+
+The summary reports its own limits, because each is a way it could lie: attribution is
+many-to-many so a roll-up does not partition; the attempt join is an inner join on
+`exercise_competency`, so items nobody tagged are invisible and are counted separately;
+and attempts only exist after a scan is confirmed, so `answered` and `printed` are both
+reported. `targeting_basis` and `evidence_partial` reach the screen — a teacher who has
+to defend a sheet needs to know which evidence chose it.
+
+Full reasoning in [`docs/features/adaptive/decisions.md`](features/adaptive/decisions.md).
+
+### D64 · An LLM may revise a partition, never decide it
+
+`cluster_students` stays the default, the seed and the fallback. `llm_grouping` is
+opt-in per request; the model's answer is validated against the roster and **rejected,
+not repaired** if it drops a child, seats one twice, invents an id, empties a group or
+misses the requested count. `adaptive_cluster` is a transcription purpose, so the
+offline provider returns nothing and CI takes the deterministic path — which is the
+correct answer, not a degraded one.
+
+**Rejected:** letting the model decide with the deterministic rule only as an error
+fallback. D33's rule exists because a teacher has to state it to a parent, and a
+regrouping nobody can justify is worse than no regrouping.
+
+### D65 · Generation is batched, and the isolation that costs is bought back
+
+Plans register a generation *ask* with a collector; one pass fills them all, eight plans
+to a call. Measured honestly: ~25–35% of input tokens and **zero** output tokens saved,
+against output costing ~5× input — the win is latency and round-trips, not spend, and
+that is recorded so nobody re-derives the wrong expectation from the diff.
+
+One call for eight plans breaks I-adaptive-09 unless it is bought back, so: a content
+failure is isolated per plan, and a transport failure retries the chunk **once, split
+into single-plan calls**. It also fixed a live bug — `seen` was rebuilt per call, so two
+groups in one run could be handed the identical statement.
+
+`test_one_students_failure_does_not_cost_the_rest_of_the_batch` pinned the invariant to
+a shape rather than to the invariant, and was re-encoded for the split path rather than
+loosened, as D32's tests were.
+
+### D66 · Proposing an adaptive batch is a job, and the proposal is not its result
+
+`POST /adaptive/propose` made every model call for a class inside the request handler —
+the thing CLAUDE.md forbids outright, and which `generate_feedback`'s own docstring
+already argued against. It is now `JobKind.PROPOSE_ADAPTIVE` (a new value:
+`GENERATE_ADAPTIVE` renders and generates nothing, despite its name).
+
+The proposal lives in `AdaptiveProposal`, read by `GET /adaptive/proposal/{job_id}`, not
+in `Job.result`: the screen polls the job every 900 ms and a class of 24 is close to a
+megabyte, so a status row has to stay cheap to ask about.
+
+Two things the move would have broken quietly and did not: `propose_adaptive` used to
+`db.commit()` under a task that owns the transaction boundary, and the AI rate limit
+would have stopped covering the model calls it was there to throttle — so the limit
+stays on the handler and an in-flight check returns the running job instead of starting
+a second.
+
+### D67 · OpenAI is the default chat provider, and the pair is validated at startup
+
+See [`docs/adr/0002-chat-provider.md`](adr/0002-chat-provider.md). `ALPPY_OPENAI_API_KEY`
+follows the `ALPPY_` convention rather than the briefed bare `LLM_API_KEY`, because with
+two providers a single key variable cannot say which vendor it belongs to.
+
+`ai_chat_model` defaults to empty, meaning "this provider's default"; a model id
+belonging unmistakably to another vendor raises on load, because a `claude-*` id sent to
+OpenAI 404s every call in the product *and* the audit row would name a model that was
+never called. A provider whose own key is missing falls back to `echo` and logs
+`ai.provider.no_key` — with two real vendors, "has the other one's key" became a way to
+be silently offline while everything still appeared to generate.
+
+Temperature is treated as a property of the model, with a prefix table for the known
+cases and a runtime-learned refusal behind it. `grade_open_answer.v2.md` states
+"temperature 0.0 — a grade must be reproducible, never creative" in its own front
+matter, so `ai.temperature.dropped` on that purpose is a signal to change model, not a
+line to ignore.
+
+### D68 · The prompt log is a second store, not a wider audit row
+
+`ModelCall` stays content-free: `docs/privacy.md` §3 offers it as what a school shows an
+auditor, and content in it would make the audit table the leak it exists to detect. The
+full prompt and response go to `PromptLog` instead — **off by default**, capped per
+field, swept by `python -m alppy.cli purge-prompt-logs`, and written only *after* the
+PII gate passed. A blocked prompt records the refusal and no content at all: the string
+that fired `PiiLeakError` is by definition the one carrying a roster name.
+
+Captured inside `AiClient.complete` rather than in a provider wrapper. A wrapper would
+lose the prompt name and version, and would have to re-declare `grounded` on behalf of
+the provider it wraps — one forgotten attribute away from letting the offline stand-in
+claim it had read a textbook page.
+
+**Rejected:** an HTTP endpoint to read it. The store holds prompt content and exposing it
+needs an authorisation story that does not exist yet; the query path is SQL and the CLI.
+

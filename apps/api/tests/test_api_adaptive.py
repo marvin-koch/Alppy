@@ -5,6 +5,7 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
@@ -31,9 +32,13 @@ def _proposal(exercise: Exercise) -> dict[str, Any]:
     }
 
 
-def test_propose_reports_the_missing_planner_or_answers(
+def test_proposing_returns_a_job_rather_than_blocking_on_the_model(
     client: TestClient, tenant: Tenant
 ) -> None:
+    """Re-encoded when generation moved to the worker. It used to be a 200
+    carrying the whole proposal, which meant every model call for the class ran
+    inside the request handler — the thing CLAUDE.md forbids outright and
+    `generate_feedback`'s own docstring already argued against."""
     login(client, tenant.teacher.email)
     response = client.post(
         "/api/v1/adaptive/propose",
@@ -43,9 +48,75 @@ def test_propose_reports_the_missing_planner_or_answers(
             "items_per_student": 4,
         },
     )
-    assert response.status_code in (200, 503)
+    assert response.status_code in (202, 503)
     if response.status_code == 503:
         assert response.json()["error"]["code"] == "service_unavailable"
+        return
+    body = response.json()
+    assert body["kind"] == "propose_adaptive"
+    assert body["status"] == "queued"
+
+
+def test_a_second_propose_while_one_is_running_does_not_start_a_second_run(
+    client: TestClient, tenant: Tenant
+) -> None:
+    """A double-click used to cost one rate-limit token. Queued, it would cost a
+    second Job and a second set of unapproved Exercise rows for the same class —
+    and the teacher would be asked to approve both."""
+    login(client, tenant.teacher.email)
+    body = {
+        "class_id": str(tenant.school_class.id),
+        "subject_id": str(tenant.subject.id),
+        "items_per_student": 4,
+    }
+    first = client.post("/api/v1/adaptive/propose", json=body)
+    if first.status_code == 503:
+        pytest.skip("adaptive planning is not installed in this build")
+    second = client.post("/api/v1/adaptive/propose", json=body)
+
+    assert second.status_code == 202
+    assert second.json()["id"] == first.json()["id"]
+
+
+def test_a_proposal_that_was_never_built_is_a_404_not_an_empty_plan(
+    client: TestClient, tenant: Tenant
+) -> None:
+    """An empty proposal and a missing one are different facts, and the screen
+    must not render "no gaps" for "the job has not finished"."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/adaptive/propose",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "items_per_student": 4,
+        },
+    )
+    if response.status_code == 503:
+        pytest.skip("adaptive planning is not installed in this build")
+    job_id = response.json()["id"]
+
+    assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 404
+
+
+def test_another_schools_proposal_is_not_readable(
+    client: TestClient, tenant: Tenant, other_tenant: Tenant
+) -> None:
+    login(client, tenant.teacher.email)
+    mine = client.post(
+        "/api/v1/adaptive/propose",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "items_per_student": 4,
+        },
+    )
+    if mine.status_code == 503:
+        pytest.skip("adaptive planning is not installed in this build")
+    job_id = mine.json()["id"]
+
+    login(client, other_tenant.teacher.email)
+    assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 404
 
 
 def test_propose_rejects_a_student_from_another_class(
