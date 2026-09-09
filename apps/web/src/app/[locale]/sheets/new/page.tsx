@@ -2,13 +2,12 @@
 
 import {
   Button,
-  Card,
   ErrorState,
   Field,
-  LoadingState,
+  IconChevronLeft,
   IconPrint,
   IconSheet,
-  Input,
+  LoadingState,
   Select,
   Tabs,
   TabsContent,
@@ -30,19 +29,22 @@ import {
   toSheetItemIn,
   useDraftSheet,
 } from '@/components/sheet-builder/useDraftSheet';
-import { useRouter } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import {
-  useChapters,
-  useClasses,
-  useCreateSheet,
-  useSourceSections,
-  useSources,
-  useSubjects,
-} from '@/lib/api/queries';
+import { useChapters, useCreateSheet, useSourceSections, useSources } from '@/lib/api/queries';
 import type { SourceSectionOut, Uuid } from '@/lib/api/types';
 import { useScope } from '@/lib/scope';
 
+/**
+ * The builder.
+ *
+ * One page, two columns, three ways in. The left column is where exercises
+ * come from — a textbook chapter, a retrieval across every book, or the
+ * teacher's own keyboard — and the right column is the paper, in the order it
+ * prints. The class and the subject are the shell's, chosen in the sidebar:
+ * they were repeated here as two more selects, and a sheet built under one
+ * scope while the sidebar showed another was a sheet for the wrong pupils.
+ */
 export default function SheetBuilderPage() {
   const t = useTranslations('builder');
   const ts = useTranslations('sheets');
@@ -52,35 +54,31 @@ export default function SheetBuilderPage() {
   const router = useRouter();
   const scope = useScope();
 
-  const classes = useClasses();
-  const subjects = useSubjects();
   const sources = useSources();
-
-  const [classId, setClassId] = useState('');
-  const [subjectId, setSubjectId] = useState('');
-  // Default to what the shell is scoped to rather than to whichever class sorts
-  // first: arriving from a class you were looking at and being silently
-  // switched to another one is how a sheet gets built for the wrong pupils.
-  const activeClass = classId || scope.classId || classes.data?.[0]?.id || '';
-  const activeSubject = subjectId || scope.subjectId || subjects.data?.[0]?.id || '';
-
+  const activeClass = scope.classId ?? '';
+  const activeSubject = scope.subjectId ?? '';
   const chapters = useChapters(activeSubject || undefined);
 
   const [title, setTitle] = useState('');
   const [sourceId, setSourceId] = useState<Uuid | ''>('');
   const [section, setSection] = useState<SourceSectionOut | null>(null);
   const [adding, setAdding] = useState(false);
-  // Closed by default: the two working columns get the room, and the page count
-  // the teacher actually needs while choosing lives in the composer instead.
+  // Closed by default: the two working columns get the room, and the page
+  // count the teacher needs while choosing lives in the composer instead.
   const [previewOpen, setPreviewOpen] = useState(false);
 
   const draft = useDraftSheet();
   const create = useCreateSheet();
   const composer = useRef<HTMLDivElement | null>(null);
 
-  // A source belongs to exactly one subject, so a document chosen under
-  // "Mathematics" must not stay selected when the teacher switches to German.
-  const subjectSources = useMemo(
+  // A source and a chapter both belong to a subject; keeping either across a
+  // subject change would filter on another subject's material.
+  useEffect(() => {
+    setSourceId('');
+    setSection(null);
+  }, [activeSubject]);
+
+  const readySources = useMemo(
     () => (sources.data ?? []).filter((source) => source.status === 'succeeded'),
     [sources.data],
   );
@@ -88,8 +86,7 @@ export default function SheetBuilderPage() {
   const sections = useSourceSections(sourceId || null);
 
   // Land on the first chapter that has been read, so the picker has something
-  // in it. Falling back to the first chapter overall keeps the outline
-  // reachable when none has been extracted yet.
+  // in it; the first chapter overall keeps the outline reachable otherwise.
   useEffect(() => {
     if (!sections.data?.length) {
       setSection(null);
@@ -107,20 +104,29 @@ export default function SheetBuilderPage() {
     });
   }, [sections.data]);
 
-  const selectedSource = subjectSources.find((source) => source.id === sourceId) ?? null;
+  const selectedSource = readySources.find((source) => source.id === sourceId) ?? null;
   const sheetLanguage = draftLanguage(draft.items, locale);
   const mixedLanguages = draftHasMixedLanguages(draft.items);
+
+  // The chapter names the sheet unless the teacher does. A list of twelve
+  // sheets all called "New sheet" is what the old default produced.
+  // Only a chapter that holds exercises lends its name: an unread book names
+  // its chapters by page range, and "p. 1–4" is no title for a sheet.
+  const suggestedTitle = section && section.exercise_count > 0 ? section.title : '';
+  const effectiveTitle = title.trim() || suggestedTitle || ts('new');
 
   function onCreate() {
     create.mutate(
       {
         class_id: activeClass,
         subject_id: activeSubject,
-        title: title || ts('new'),
+        title: effectiveTitle,
         language: sheetLanguage,
         target: 'class',
         intent: null,
         items: draft.items.map((item, index) => toSheetItemIn(item, index)),
+        default_points_correct: draft.bareme.correct,
+        default_points_penalty: draft.bareme.penalty,
       },
       { onSuccess: (sheet) => router.push(`/sheets/${sheet.id}`) },
     );
@@ -149,145 +155,147 @@ export default function SheetBuilderPage() {
       >
         {t('generate')}
       </Button>
-      <p className="text-center text-body-s text-ink-500">{ts('bothSheets')}</p>
+      <p className="text-center text-body-s text-ink-500">{t('generateHelp')}</p>
     </div>
   );
 
-  // Every screen ships loading and error states (CLAUDE.md). `sources` belongs
-  // in both: a failed document list would otherwise render as an empty picker,
-  // which reads as "you have no textbooks" rather than "this did not load".
-  if (classes.isError || subjects.isError || sources.isError) {
-    return (
-      <ErrorState
-        title={te('generic')}
-        description={apiErrorMessage(classes.error ?? subjects.error ?? sources.error, te)}
-      />
-    );
+  if (sources.isError) {
+    return <ErrorState title={te('generic')} description={apiErrorMessage(sources.error, te)} />;
   }
 
-  if (classes.isPending || subjects.isPending || sources.isPending) {
+  if (scope.isLoading || sources.isPending) {
     return (
       <div className="mx-auto max-w-[1400px]">
-        <h1 className="mb-6">{ts('builder')}</h1>
+        <h1 className="mb-6">{ts('new')}</h1>
         <LoadingState shape="cards" label={tc('loading')} rows={2} />
       </div>
     );
   }
 
+  const scopeLine = [
+    scope.currentClass?.code,
+    scope.currentSubject
+      ? (scope.currentSubject.labels[locale] ?? scope.currentSubject.labels.fr ?? scope.currentSubject.key)
+      : null,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const preview =
+    activeClass && activeSubject ? (
+      <DraftPreview
+        classId={activeClass}
+        subjectId={activeSubject}
+        title={effectiveTitle}
+        language={sheetLanguage}
+        items={draft.items}
+        bareme={draft.bareme}
+      />
+    ) : null;
+
+  const composerColumn = (
+    <div ref={composer}>
+      <SheetComposer
+        draft={draft}
+        onAdd={() => setAdding(true)}
+        footer={generate}
+        previewOpen={previewOpen}
+        onTogglePreview={() => setPreviewOpen((open) => !open)}
+      />
+    </div>
+  );
+
   return (
     <div className="mx-auto max-w-[1400px] pb-20 lg:pb-0">
-      <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
-        <div>
-          <h1>{ts('builder')}</h1>
-          <p className="mt-1 text-body-s text-ink-500">{ts('bothSheets')}</p>
-        </div>
-        <Button
-          variant="secondary"
-          size="sm"
-          leadingIcon={<IconSheet />}
-          aria-pressed={previewOpen}
-          onClick={() => setPreviewOpen((open) => !open)}
-        >
-          {previewOpen ? t('hidePreview') : t('showPreview')}
-        </Button>
-      </div>
+      <Link
+        href="/sheets"
+        className="mb-3 inline-flex min-h-11 items-center gap-1 text-body-s font-bold text-ink-500 no-underline hover:text-primary-700"
+      >
+        <IconChevronLeft size={18} aria-hidden />
+        {ts('title')}
+      </Link>
 
-      <Card className="mb-4">
-        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-          <Field label={ts('classLabel')}>
-            <Select value={activeClass} onChange={(e) => setClassId(e.currentTarget.value)}>
-              {(classes.data ?? []).map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.code}
-                  {c.label ? ` — ${c.label}` : ''}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={ts('subjectLabel')}>
-            <Select
-              value={activeSubject}
-              onChange={(e) => {
-                setSubjectId(e.currentTarget.value);
-                // A source and a chapter both belong to a subject; keeping
-                // either would filter on another subject's material.
-                setSourceId('');
-                setSection(null);
-              }}
-            >
-              {(subjects.data ?? []).map((sub) => (
-                <option key={sub.id} value={sub.id}>
-                  {sub.labels[locale] ?? sub.labels.en ?? sub.key}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label={ts('sheetTitle')}>
-            <Input value={title} onChange={(e) => setTitle(e.target.value)} />
-          </Field>
-          <Field label={t('document')}>
-            <Select
-              value={sourceId}
-              onChange={(e) => {
-                setSourceId(e.currentTarget.value as Uuid | '');
-                setSection(null);
-              }}
-            >
-              <option value="">{t('documentPlaceholder')}</option>
-              {subjectSources.map((source) => (
-                <option key={source.id} value={source.id}>
-                  {source.filename} · {source.exercise_count}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
-
-        {selectedSource?.notice ? (
-          <p className="mt-3 text-body-s text-warn-600" role="status">
-            {selectedSource.notice}
-          </p>
-        ) : null}
-
-        {sourceId ? (
-          <div className="mt-4">
-            <SectionPicker
-              sourceId={sourceId}
-              section={section}
-              onSelect={(next) => setSection(next)}
+      {/* The title is the heading. A sheet is named the way a note is: type
+          over the placeholder, and the chapter's own name stands in until
+          then. There is no separate "title" field to find. */}
+      <header className="mb-6">
+        <h1 className="m-0">
+          <label className="block">
+            <span className="sr-only">{ts('sheetTitle')}</span>
+            <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={suggestedTitle || t('titlePlaceholder')}
+            maxLength={200}
+              className="w-full rounded-sm border-0 bg-transparent px-0 font-display text-h1 font-bold text-ink-900 placeholder:text-ink-300 focus:outline-none focus-visible:shadow-[0_0_0_4px_var(--c-primary-100)]"
             />
-          </div>
+          </label>
+        </h1>
+        {scopeLine ? (
+          <p className="mt-1 text-body-s text-ink-500">{t('forScope', { scope: scopeLine })}</p>
         ) : null}
-      </Card>
+      </header>
 
       <Tabs defaultValue="document">
-        <TabsList>
-          <TabsTrigger value="document">{t('tabDocument')}</TabsTrigger>
-          <TabsTrigger value="propose">{t('tabPropose')}</TabsTrigger>
-        </TabsList>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <TabsList className="mb-0">
+            <TabsTrigger value="document">{t('tabDocument')}</TabsTrigger>
+            <TabsTrigger value="propose">{t('tabPropose')}</TabsTrigger>
+          </TabsList>
+          {/* The document lives beside the tab it belongs to, and nowhere
+              else: it used to sit in a bar above both tabs, where it filtered
+              a list the retrieval tab never showed. */}
+          {readySources.length > 0 ? (
+            <Field label={t('document')} hideLabel className="w-full sm:w-auto sm:min-w-72">
+              <Select
+                value={sourceId}
+                onChange={(event) => {
+                  setSourceId(event.currentTarget.value as Uuid | '');
+                  setSection(null);
+                }}
+              >
+                <option value="">{t('documentPlaceholder')}</option>
+                {readySources.map((source) => (
+                  <option key={source.id} value={source.id}>
+                    {source.filename}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+          ) : null}
+        </div>
 
         <TabsContent value="document">
           <BuilderColumns
             previewOpen={previewOpen}
             picker={
-              <ExercisePicker sourceId={sourceId || null} section={section} draft={draft} />
-            }
-            composer={
-              <div ref={composer}>
-                <SheetComposer draft={draft} onAdd={() => setAdding(true)} footer={generate} />
+              <div className="flex flex-col gap-3">
+                {selectedSource?.notice ? (
+                  <p className="text-body-s text-warn-600" role="status">
+                    {selectedSource.notice}
+                  </p>
+                ) : null}
+                {sourceId ? (
+                  <SectionPicker
+                    sourceId={sourceId}
+                    section={section}
+                    onSelect={(next) => setSection(next)}
+                  />
+                ) : null}
+                <ExercisePicker
+                  sourceId={sourceId || null}
+                  section={section}
+                  draft={draft}
+                  sources={readySources}
+                  onChooseSource={(id) => {
+                    setSourceId(id);
+                    setSection(null);
+                  }}
+                />
               </div>
             }
-            preview={
-              activeClass && activeSubject ? (
-                <DraftPreview
-                  classId={activeClass}
-                  subjectId={activeSubject}
-                  title={title || ts('new')}
-                  language={sheetLanguage}
-                  items={draft.items}
-                />
-              ) : null
-            }
+            composer={composerColumn}
+            preview={preview}
           />
         </TabsContent>
 
@@ -302,22 +310,8 @@ export default function SheetBuilderPage() {
                 draft={draft}
               />
             }
-            composer={
-              <div ref={composer}>
-                <SheetComposer draft={draft} onAdd={() => setAdding(true)} footer={generate} />
-              </div>
-            }
-            preview={
-              activeClass && activeSubject ? (
-                <DraftPreview
-                  classId={activeClass}
-                  subjectId={activeSubject}
-                  title={title || ts('new')}
-                  language={sheetLanguage}
-                  items={draft.items}
-                />
-              ) : null
-            }
+            composer={composerColumn}
+            preview={preview}
           />
         </TabsContent>
       </Tabs>
@@ -342,6 +336,7 @@ export default function SheetBuilderPage() {
           </div>
           <Button
             variant="primary"
+            leadingIcon={<IconSheet />}
             onClick={() => composer.current?.scrollIntoView({ block: 'start' })}
           >
             {t('onSheet')}

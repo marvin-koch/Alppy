@@ -310,9 +310,13 @@ def _item_from_exercise(
     variant: Any | None = None,
     box_lines: int | None = None,
     box_fill: AnswerBoxFill | str | None = None,
+    expected_answer: str | None = None,
+    points_correct: float = L.DEFAULT_POINTS_CORRECT,
 ) -> Item:
     """One ``Exercise`` (optionally a per-student variant, optionally with the
-    teacher's printed wording and answer box) as a plain, database-free ``Item``."""
+    teacher's printed wording, answer box and expected answer) as a plain,
+    database-free ``Item``. The sheet item's expected answer wins over the
+    exercise's own, so the key prints what the teacher wrote for this sheet."""
     text = statement or (variant.statement if variant is not None else None) or exercise.statement
     options = None
     if variant is not None and variant.options:
@@ -352,11 +356,12 @@ def _item_from_exercise(
         statement=text,
         options=tuple(options or ()),
         answer_index=answer_index,
-        answer_text=exercise.answer_text,
+        answer_text=expected_answer or exercise.answer_text,
         language=exercise.language or language,
         ai_generated=exercise.origin is ExerciseOrigin.AI_GENERATED,
         open_lines=box_lines if box_lines is not None else L.ANSWER_BOX_DEFAULT_LINES,
         box_fill=AnswerBoxFill(box_fill) if box_fill else AnswerBoxFill.LINED,
+        points_correct=points_correct,
         figure=figure,
     )
 
@@ -401,6 +406,7 @@ def build_draft_sheet_data(
     language: str,
     items: Sequence[Any],
     show_legend: bool = False,
+    default_points_correct: float = L.DEFAULT_POINTS_CORRECT,
 ) -> SheetData:
     """Assemble a printable document from a sheet that has not been saved.
 
@@ -438,6 +444,14 @@ def build_draft_sheet_data(
                 statement=getattr(entry, "statement_override", None),
                 box_lines=getattr(entry, "answer_box_lines", None),
                 box_fill=getattr(entry, "answer_box_fill", None),
+                expected_answer=getattr(entry, "expected_answer", None),
+                # No Sheet row exists yet, so the sheet-level default arrives
+                # as an argument instead of off a column.
+                points_correct=(
+                    float(entry.points_correct)
+                    if getattr(entry, "points_correct", None) is not None
+                    else default_points_correct
+                ),
             )
         )
     if not built:
@@ -472,6 +486,18 @@ def _subject_label_for(db: Any, subject_id: Any) -> str:
     return str(subject.key)
 
 
+def _points_for(item: Any, sheet: Any) -> float:
+    """What one item is worth: its own override, else the sheet's default.
+
+    ``is not None`` rather than ``or``: 0 is a real choice — an item that earns
+    nothing — and reading it as absent would hand the item the default back.
+    """
+    override = getattr(item, "points_correct", None)
+    if override is not None:
+        return float(override)
+    return float(getattr(sheet, "default_points_correct", L.DEFAULT_POINTS_CORRECT))
+
+
 def _sheet_items(sheet: Any) -> list[Item]:
     """The class-wide item list, in the teacher's order."""
     return [
@@ -481,6 +507,8 @@ def _sheet_items(sheet: Any) -> list[Item]:
             statement=si.statement_override,
             box_lines=si.answer_box_lines,
             box_fill=si.answer_box_fill,
+            expected_answer=si.expected_answer,
+            points_correct=_points_for(si, sheet),
         )
         for si in sorted(sheet.items, key=lambda si: si.position)
     ]
@@ -532,6 +560,13 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
                 variant=variant,
                 box_lines=getattr(boxes.get(str(exercise_id)), "answer_box_lines", None),
                 box_fill=getattr(boxes.get(str(exercise_id)), "answer_box_fill", None),
+                # The teacher's expected answer follows the sheet item, like
+                # the box; a variant is a rewording of the same question.
+                expected_answer=getattr(boxes.get(str(exercise_id)), "expected_answer", None),
+                # Through the same lookup as the box, and for the same reason:
+                # a plan carries ids, so an override not fetched here is
+                # silently dropped from every differentiated copy.
+                points_correct=_points_for(boxes.get(str(exercise_id)), sheet),
             )
         )
     return items

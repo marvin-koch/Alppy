@@ -26,6 +26,8 @@ from alppy.models.enums import ExerciseType
 from alppy.sheets.pagination import (
     FIGURE_GAP_MM,
     FIGURE_MAX_H_MM,
+    ITEM_PADDING_MM,
+    ITEM_RULE_MM,
     OPEN_LINES_MARGIN_MM,
     TEXT_W_MM,
     USABLE_H_MM,
@@ -242,9 +244,9 @@ def test_pagination_reserves_the_figures_printed_height() -> None:
     assert estimate_item_height_mm(with_figure) - estimate_item_height_mm(text_only) == pytest.approx(
         60.0 + FIGURE_GAP_MM
     )
-    # A full-page exercise of the book, shrunk to the ceiling, still fits a
-    # sheet on its own.
-    tall = Item(key="p", type=ExerciseType.OPEN, statement="Voir la figure.",
+    # A full-page exercise of the book worked in the notebook fits a sheet on
+    # its own, at the ceiling.
+    tall = Item(key="p", type=ExerciseType.OPEN, statement="Voir la figure.", open_lines=0,
                 figure=_figure(165.0, 150.0))
     pages = paginate([tall])
     assert len(pages) == 1 and not pages[0].overflowing
@@ -263,24 +265,27 @@ def test_pagination_reserves_the_figures_printed_height() -> None:
         Item(key="b", type=ExerciseType.OPEN, statement="b", figure=_figure(165.0, 46.0)),
     ]
     assert len(paginate(boxed)) == 2
+    assert all(p.part == "whole" for page in paginate(boxed) for p in page.items)
 
 
 def test_a_figure_taller_than_the_page_is_shrunk_to_fit_never_refused() -> None:
     """A half-page exercise of the book used to fail the whole sheet with a
-    message about one item. It is a raster at print resolution: shrink it."""
+    message about one item. It is a raster at print resolution: shrink it to
+    the ceiling — and no further for the box, which follows on the next page."""
     huge = Item(key="h", type=ExerciseType.OPEN, statement="NO113 Rectangle coloré",
                 figure=_figure(165.0, 300.0))
-    pages = paginate([huge])
-    assert len(pages) == 1 and not pages[0].overflowing
     width, height, scale = printed_figure_size_mm(huge)
-    assert height == pytest.approx(figure_room_mm(huge))
-    assert height <= FIGURE_MAX_H_MM
+    assert height == pytest.approx(figure_room_mm(huge)) == pytest.approx(FIGURE_MAX_H_MM)
     assert width == pytest.approx(165.0 * scale)
+    pages = paginate([huge])
+    assert [p.items[0].part for p in pages] == ["statement", "box"]
+    assert not any(page.overflowing for page in pages)
 
 
 def test_the_figure_makes_room_for_the_text_printed_above_it() -> None:
     """A teacher's three-line wording above a full-height crop must not push
-    the item past the page — the picture gives way, and the item still fits."""
+    the statement past the page — the picture gives way to the words, which
+    are the statement too. It does not give way to the box."""
     long_wording = " ".join(["Mesure chaque côté du rectangle avec la règle"] * 6)
     figure = Figure(
         src="data:image/png;base64,iVBORw0KGgo=", width_mm=165.0, height_mm=150.0,
@@ -288,8 +293,8 @@ def test_the_figure_makes_room_for_the_text_printed_above_it() -> None:
     )
     item = Item(key="w", type=ExerciseType.OPEN, statement=long_wording, figure=figure)
     assert figure_room_mm(item) < FIGURE_MAX_H_MM
-    assert estimate_item_height_mm(item) <= USABLE_H_MM
-    assert len(paginate([item])) == 1
+    assert estimate_item_height_mm(item, with_box=False) <= USABLE_H_MM
+    assert [p.items[0].part for p in paginate([item])] == ["statement", "box"]
 
     # An MCQ with a picture pays for its options the same way.
     mcq = Item(key="m", type=ExerciseType.MCQ, statement="Quelle aire ?",
@@ -371,33 +376,241 @@ def test_the_box_prints_its_height_inline_with_four_ticks_and_the_chosen_fill() 
     assert 'class="sheet-answer-box"' not in html_for(_open(0))
 
 
-def test_a_picture_gives_the_box_its_room_and_gets_it_back_without_one() -> None:
-    """A textbook exercise is the common case for a written answer: the box
-    prints under the crop, and the crop is sized to what the box leaves so
-    the item still fits a page on its own. Zero lines is the teacher saying
-    "worked in the notebook", and the picture gets the whole room back."""
+def test_the_box_never_shrinks_the_picture_it_moves_to_the_next_page() -> None:
+    """A textbook exercise is the common case for a written answer. The crop
+    used to be sized to what the box left, which printed the book's type at a
+    size nobody could read under a twelve-line box. The statement is the one
+    thing that must be legible: the picture keeps its room, and a box that no
+    longer fits under it is carried whole to the next page."""
     from alppy.sheets.pagination import (
-        BOX_MARGIN_BOTTOM_MM,
-        OPEN_LINE_PITCH_MM,
-        box_height_mm,
+        LINE_H_MM,
+        box_block_mm,
+        continuation_height_mm,
         figure_room_mm,
     )
 
-    boxed = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=5,
+    boxed = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=12,
                  figure=_figure(165.0, 150.0))
     bare = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=0,
                 figure=_figure(165.0, 150.0))
-    assert box_height_mm(boxed) == pytest.approx(5 * OPEN_LINE_PITCH_MM)
-    assert box_height_mm(bare) is None
-    # Without a box the picture hits the ceiling; with one it gets exactly
-    # the room the page has left once the box and its margins are paid for.
-    from alppy.sheets.pagination import ITEM_PADDING_MM, ITEM_RULE_MM, LINE_H_MM
+    assert figure_room_mm(boxed) == figure_room_mm(bare) == pytest.approx(FIGURE_MAX_H_MM)
+    assert printed_figure_size_mm(boxed) == printed_figure_size_mm(bare)
 
-    assert figure_room_mm(bare) == pytest.approx(FIGURE_MAX_H_MM)
-    assert figure_room_mm(boxed) == pytest.approx(
-        USABLE_H_MM - ITEM_PADDING_MM - ITEM_RULE_MM - FIGURE_GAP_MM - LINE_H_MM
-        - (OPEN_LINES_MARGIN_MM + 5 * OPEN_LINE_PITCH_MM + BOX_MARGIN_BOTTOM_MM)
+    pages = paginate([boxed])
+    assert len(pages) == 2
+    statement, box = pages[0].items[0], pages[1].items[0]
+    assert (statement.part, box.part) == ("statement", "box")
+    # Same printed number, each with its own page-local index; the box part
+    # is the one a detection is recorded against.
+    assert statement.number == box.number == 1
+    assert statement.item_index == box.item_index == 0
+    assert not statement.prints_box and box.prints_box
+    assert statement.height_mm == pytest.approx(estimate_item_height_mm(boxed, with_box=False))
+    assert box.height_mm == pytest.approx(continuation_height_mm(boxed))
+    assert continuation_height_mm(boxed) == pytest.approx(
+        ITEM_PADDING_MM + ITEM_RULE_MM + LINE_H_MM + box_block_mm(boxed)
     )
-    for item in (boxed, bare):
-        pages = paginate([item])
-        assert len(pages) == 1 and not pages[0].overflowing
+
+    # A small box still prints under its picture: nothing moves that fits.
+    small = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=3,
+                 figure=_figure(165.0, 60.0))
+    assert [p.items[0].part for p in paginate([small])] == ["whole"]
+
+    # A long text statement with a tall box splits the same way; a statement
+    # too tall on its own is still refused, never clipped.
+    long_text = Item(key="t", type=ExerciseType.OPEN, statement=" ".join(["mot"] * 150), open_lines=12)
+    assert [p.items[0].part for p in paginate([long_text])] == ["statement", "box"]
+    with pytest.raises(ItemTooTallError):
+        paginate([Item(key="L", type=ExerciseType.OPEN, statement=FORTY_LINES, open_lines=3)])
+
+    # Items after a split item carry on numbering on the continuation's page.
+    after = Item(key="n", type=ExerciseType.MCQ, statement="Suivant.", options=("a", "b"))
+    eight = Item(key="f", type=ExerciseType.OPEN, statement="x", open_lines=8, figure=_figure(165.0, 150.0))
+    pages = paginate([eight, after])
+    assert [(p.number, p.part, p.item_index) for p in pages[1].items] == [(1, "box", 0), (2, "whole", 1)]
+
+
+def test_a_continuation_prints_the_number_the_word_suite_and_the_box_only() -> None:
+    from alppy.sheets.html import Copy, SheetData, render_sheet_html
+
+    item = Item(key="f", type=ExerciseType.OPEN, statement="Prends les mesures nécessaires.",
+                open_lines=12, answer_text="7/8", figure=_figure(165.0, 150.0))
+    data = SheetData(
+        title="Aires", class_code="10B", subject="Maths", language="fr",
+        copies=(Copy(uid="10B_01", items=(item,)),),
+    )
+    html = render_sheet_html(data)
+    first, second = html.split('data-part="box"')
+    assert 'data-part="statement"' in first
+    assert 'data-answer-box="true"' not in first, "the box is on the next page"
+    assert 'data-answer-box="true"' in second and "(suite)" in second
+    assert 'class="sheet-figure"' not in second, "the picture is not printed twice"
+    assert html.count("sheet-figure\"") == 1
+    assert html.count('data-number="1"') == 2
+
+    key = render_sheet_html(data, kind=__import__("alppy.sheets.html", fromlist=["SheetKind"]).SheetKind.ANSWER_KEY)
+    assert key.count("7/8") == 1, "the expected answer prints once, beside the box"
+
+
+def test_the_key_prints_the_sheet_items_answer_over_the_exercises(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The teacher wrote an answer for this printing; the book's own stays in
+    the corpus and off this key."""
+    from alppy.models.enums import ExerciseType
+
+    login(client, tenant.teacher.email)
+    written = make_exercise(db, tenant, statement="Calcule 3/4 + 1/8.", kind=ExerciseType.OPEN, answer_index=None)
+    written.answer_text = "0,875"
+    db.commit()
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Key test",
+            "language": "fr",
+            "items": [{"exercise_id": str(written.id), "position": 0, "expected_answer": "7/8"}],
+        },
+    )
+    assert response.status_code == 201, response.text
+    sheet_id = response.json()["id"]
+    key = client.get(f"/api/v1/sheets/{sheet_id}/preview?kind=answer_key").text
+    assert "7/8" in key and "0,875" not in key
+
+
+def test_written_items_have_no_grid_row_and_a_page_of_them_has_no_grid(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The box under the statement is where a written answer goes; a grid row
+    saying "in the box" told the student nothing. Bubble items keep their rows
+    at the same page-local index, which is what the detector reads."""
+    from alppy.models.enums import ExerciseType
+
+    login(client, tenant.teacher.email)
+    written = make_exercise(db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None)
+    bubbles = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+
+    def sheet_with(ids: list[str]) -> str:
+        response = client.post(
+            "/api/v1/sheets",
+            json={
+                "class_id": str(tenant.school_class.id),
+                "subject_id": str(tenant.subject.id),
+                "title": "Grid test",
+                "language": "fr",
+                "items": [{"exercise_id": eid, "position": i} for i, eid in enumerate(ids)],
+            },
+        )
+        assert response.status_code == 201, response.text
+        return client.get(f"/api/v1/sheets/{response.json()['id']}/preview").text
+
+    row = '<div class="sheet-grid-row"'
+    alone = sheet_with([str(written.id)])
+    assert row not in alone and 'class="sheet-grid"' not in alone
+    assert "dans le cadre" in alone and "grille de réponses en bas" not in alone
+
+    # One row per copy — the preview prints the whole class, three students here.
+    mixed = sheet_with([str(written.id), str(bubbles.id)])
+    assert mixed.count(row) == 3
+    # The bubble item keeps its page-local index — the detector's key.
+    assert 'data-row="1" data-item-index="1"' in mixed
+    assert "dans le cadre" in mixed and "grille de réponses en bas" in mixed
+
+
+def test_the_tallest_allowed_box_still_fits_a_page_when_carried_over() -> None:
+    """``layout.ANSWER_BOX_MAX_LINES`` is derived from the continuation height;
+    if either constant moves, this is what catches the two disagreeing."""
+    from alppy.sheets.layout import ANSWER_BOX_MAX_LINES
+    from alppy.sheets.pagination import continuation_height_mm
+
+    tallest = Item(key="t", type=ExerciseType.OPEN, statement="x", open_lines=ANSWER_BOX_MAX_LINES)
+    assert continuation_height_mm(tallest) <= USABLE_H_MM
+    one_more = Item(key="t", type=ExerciseType.OPEN, statement="x", open_lines=ANSWER_BOX_MAX_LINES + 1)
+    assert continuation_height_mm(one_more) > USABLE_H_MM
+    with pytest.raises(ItemTooTallError):
+        paginate([one_more])
+
+
+def test_each_statement_prints_what_it_is_worth(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The student needs to know where to spend the hour, so the paper says it.
+
+    Only the reward is printed. The penalty is a scoring rule, and "-0,25"
+    beside every question on a child's paper is a different message from
+    telling them what the question is worth.
+    """
+    login(client, tenant.teacher.email)
+    cheap = make_exercise(db, tenant, statement="Question facile.")
+    dear = make_exercise(db, tenant, statement="Question difficile.")
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Barème test",
+            "language": "fr",
+            "default_points_correct": 1.0,
+            "default_points_penalty": 0.25,
+            "items": [
+                {"exercise_id": str(cheap.id), "position": 0},
+                {"exercise_id": str(dear.id), "position": 1, "points_correct": 3.0},
+            ],
+        },
+    )
+    assert response.status_code == 201, response.text
+    html = client.get(f"/api/v1/sheets/{response.json()['id']}/preview").text
+
+    # The unit agrees in number. "(1 pts)" is wrong French and wrong English,
+    # and it is the kind of thing nobody notices until it is on 24 sheets of
+    # paper in front of a class.
+    assert "(1 pt)" in html
+    assert "(1 pts)" not in html
+    assert "(3 pts)" in html
+    # The penalty is a scoring rule, not something a student reads per item.
+    assert "0,25" not in html and "-0.25" not in html
+
+
+def test_an_item_worth_nothing_prints_no_label(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """A "(0 pts)" beside a question is a thing to explain to thirty
+    teenagers. Silence is not."""
+    login(client, tenant.teacher.email)
+    warmup = make_exercise(db, tenant, statement="Pour se mettre en route.")
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Zero test",
+            "language": "fr",
+            "items": [{"exercise_id": str(warmup.id), "position": 0, "points_correct": 0.0}],
+        },
+    )
+    assert response.status_code == 201, response.text
+    html = client.get(f"/api/v1/sheets/{response.json()['id']}/preview").text
+    assert "pts)" not in html
+
+
+def test_the_printed_instruction_names_both_ways_of_marking(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The detector reads a cross as readily as a fill, and the paper is the
+    only place a student learns that either is allowed."""
+    login(client, tenant.teacher.email)
+    a = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Instruction test",
+            "language": "fr",
+            "items": [{"exercise_id": str(a.id), "position": 0}],
+        },
+    )
+    assert response.status_code == 201, response.text
+    html = client.get(f"/api/v1/sheets/{response.json()['id']}/preview").text
+    assert "croise" in html.lower()

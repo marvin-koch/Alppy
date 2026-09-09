@@ -77,7 +77,13 @@ export const SHEET_LAYOUT = {
       8,
       12
     ],
-    "defaultLines": 5
+    "defaultLines": 5,
+    "maxLines": 14
+  },
+  "grading": {
+    "defaultPointsCorrect": 1.0,
+    "defaultPointsPenalty": 0.0,
+    "maxItemPoints": 20.0
   }
 } as const;
 
@@ -89,5 +95,7 @@ export const SCAN_THRESHOLDS = {
   "lowConfidence": 0.65,
   "fillMarked": 0.35,
   "fillBlank": 0.18,
+  "crossMarked": 0.55,
+  "crossBlank": 0.2,
   "minQuality": 0.55
 } as const;

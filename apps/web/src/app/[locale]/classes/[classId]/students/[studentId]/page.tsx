@@ -206,7 +206,13 @@ export default function StudentPage({
                     className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line pb-2 last:border-0"
                   >
                     <span className="flex flex-wrap items-baseline gap-2">
-                      <Link href={`/sheets/${sheet.sheet_id}`}>{sheet.title}</Link>
+                      {/* The pupil's OWN copy, not the class-wide sheet: from a
+                          profile, "this sheet" means the paper they sat. */}
+                      <Link
+                        href={`/classes/${classId}/students/${studentId}/sheets/${sheet.sheet_id}`}
+                      >
+                        {sheet.title}
+                      </Link>
                       <time className="text-body-s text-ink-500" data-numeric>
                         {fmt.date(sheet.answered_at)}
                       </time>

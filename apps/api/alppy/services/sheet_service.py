@@ -11,14 +11,16 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Sequence
+from dataclasses import dataclass
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
 from alppy.models import (
+    Attempt,
     Exercise,
     MisconceptionNote,
     Sheet,
@@ -27,7 +29,7 @@ from alppy.models import (
     Student,
     Subject,
 )
-from alppy.models.enums import EventKind, EventSubject, SheetTarget
+from alppy.models.enums import EventKind, EventSubject, ExerciseType, SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
 from alppy.services import event_service
 from alppy.services.approval import (
@@ -58,7 +60,11 @@ def get_sheet(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
 
 
 def list_sheets(
-    db: Session, scope: Scope, *, class_id: uuid.UUID | None = None
+    db: Session,
+    scope: Scope,
+    *,
+    class_id: uuid.UUID | None = None,
+    subject_id: uuid.UUID | None = None,
 ) -> list[Sheet]:
     stmt = (
         select(Sheet)
@@ -67,6 +73,8 @@ def list_sheets(
     )
     if class_id is not None:
         stmt = stmt.where(Sheet.class_id == class_id)
+    if subject_id is not None:
+        stmt = stmt.where(Sheet.subject_id == subject_id)
     return list(db.execute(stmt.order_by(Sheet.created_at.desc())).scalars())
 
 
@@ -121,6 +129,18 @@ def _replace_items(
                 statement_override=entry.statement_override,
                 answer_box_lines=entry.answer_box_lines,
                 answer_box_fill=entry.answer_box_fill,
+                expected_answer=(
+                    entry.expected_answer
+                    if exercises[entry.exercise_id].type is ExerciseType.OPEN
+                    else None
+                ),
+                # Deliberately not type-gated, unlike the wording, the box and
+                # the expected answer above. The answer of an MCQ is the
+                # bubble, so an expected answer on one is meaningless — but
+                # what a bubble is WORTH is not, and neither is what a written
+                # item is worth once a verdict grades it.
+                points_correct=entry.points_correct,
+                points_penalty=entry.points_penalty,
             )
         )
     db.flush()
@@ -178,6 +198,8 @@ def create_sheet(db: Session, scope: Scope, teacher_id: uuid.UUID, payload: Shee
         language=payload.language,
         intent=payload.intent,
         layout_version=LAYOUT_VERSION,
+        default_points_correct=payload.default_points_correct,
+        default_points_penalty=payload.default_points_penalty,
     )
     db.add(sheet)
     db.flush()
@@ -209,12 +231,23 @@ def update_sheet(
     sheet = get_sheet(db, scope, sheet_id)
     if payload.title is not None:
         sheet.title = payload.title
+    # A barème edit changes the paper: every statement prints what it is worth.
+    # So it invalidates the render exactly as an item edit does — otherwise the
+    # teacher downloads a PDF whose "(1 pt)" disagrees with how it will grade.
+    stale = False
+    if payload.default_points_correct is not None:
+        sheet.default_points_correct = payload.default_points_correct
+        stale = True
+    if payload.default_points_penalty is not None:
+        sheet.default_points_penalty = payload.default_points_penalty
+        stale = True
     if payload.items is not None:
         _replace_items(db, school_id, sheet, payload.items)
         plan = _item_plan(payload.items)
         for instance in sheet.instances:
             instance.item_plan = plan
-        # Editing the items invalidates whatever was rendered from the old ones.
+        stale = True
+    if stale:
         sheet.blank_pdf_key = None
         sheet.answer_key_pdf_key = None
         sheet.rendered_at = None
@@ -358,3 +391,170 @@ def _load_notes(
         )
     )
     return {row.id: row for row in rows}
+
+
+@dataclass(frozen=True, slots=True)
+class SheetPoints:
+    """One copy's marks: what the student has, and what the copy was worth."""
+
+    #: Points earned, floored at 0. None when nothing has been graded yet —
+    #: which is not the same as zero, and a report that showed 0 for a pile
+    #: nobody has scanned would be saying something false.
+    earned: float | None
+    #: The sum of what a correct answer earns over this copy's own items.
+    possible: float
+
+
+def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
+    """What each copy of this sheet was worth, from ITS OWN item plan.
+
+    Factored out so a class-wide rollup reuses this instead of re-deriving what
+    a differentiated copy was worth. A differentiated batch hands each student
+    a different subset, so the sheet's class-wide item list is not what any one
+    student held, and two places computing that separately would eventually
+    disagree.
+    """
+    items_by_exercise = {item.exercise_id: item for item in sheet.items}
+    default_points = sheet.default_points_correct
+    possible: dict[uuid.UUID, float] = {}
+    for instance in sheet.instances:
+        plan = instance.item_plan or [
+            {"exercise_id": str(item.exercise_id)} for item in sheet.items
+        ]
+        total = 0.0
+        for entry in plan:
+            raw = entry.get("exercise_id")
+            if raw is None:
+                continue
+            item = items_by_exercise.get(uuid.UUID(str(raw)))
+            # `is not None` rather than `or`: a deliberate 0 is an item that
+            # earns nothing, not an item with no override.
+            if item is not None and item.points_correct is not None:
+                total += item.points_correct
+            else:
+                total += default_points
+        possible[instance.student_id] = total
+    return possible
+
+
+def _earned_by_sheet(
+    db: Session, school_id: uuid.UUID, sheet_ids: Sequence[uuid.UUID]
+) -> dict[tuple[uuid.UUID, uuid.UUID], float]:
+    """``(student, sheet) -> earned``, floored at zero, in one query for N sheets.
+
+    One query rather than one per sheet: a term's worth of sheets for a class is
+    the normal case, and this is read on every dashboard load.
+    """
+    if not sheet_ids:
+        return {}
+    rows = db.execute(
+        select(Attempt.student_id, Attempt.sheet_id, func.sum(Attempt.score))
+        .where(Attempt.sheet_id.in_(list(sheet_ids)))
+        .where(Attempt.school_id == school_id)
+        .group_by(Attempt.student_id, Attempt.sheet_id)
+    ).all()
+    return {
+        (student_id, sheet_id): max(0.0, float(total))
+        for student_id, sheet_id, total in rows
+        if total is not None
+    }
+
+
+def points_totals_for_sheet(
+    db: Session, school_id: uuid.UUID, sheet: Sheet
+) -> dict[uuid.UUID, SheetPoints]:
+    """Each copy's total, keyed by student.
+
+    Computed, never stored. ``Attempt.score`` is already the durable per-item
+    record and is rewritten on every confirmation, so a SUM over it is exactly
+    as fresh as the attempts themselves; a stored total would be one more place
+    to disagree with them the first time a teacher corrects a single detection.
+
+    The total floors at zero. Individual scores stay signed in the record, so a
+    teacher can still see which answers cost points — only the sum is clamped,
+    because a mark below zero says nothing a report can use.
+    """
+    earned = _earned_by_sheet(db, school_id, [sheet.id])
+    return {
+        student_id: SheetPoints(earned=earned.get((student_id, sheet.id)), possible=possible)
+        for student_id, possible in _possible_by_student(sheet).items()
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class ClassSheetPoints:
+    """One sheet, as the class did on it."""
+
+    sheet_id: uuid.UUID
+    sheet_title: str
+    #: Mean of each graded copy's own ratio. None when nobody has been graded
+    #: on it yet — which is not zero, and a report that showed 0% for a pile
+    #: nobody has scanned would be saying something false.
+    average_ratio: float | None
+    per_student: dict[uuid.UUID, SheetPoints]
+
+
+@dataclass(frozen=True, slots=True)
+class ClassPointsReport:
+    #: Totals ACROSS every sheet in scope, per student.
+    students: dict[uuid.UUID, SheetPoints]
+    sheets: list[ClassSheetPoints]
+
+
+def class_points_totals(
+    db: Session,
+    scope: Scope,
+    class_id: uuid.UUID,
+    *,
+    subject_id: uuid.UUID | None = None,
+) -> ClassPointsReport:
+    """Every sheet of a class, rolled up per student and per sheet.
+
+    ``possible`` accumulates over every sheet whether or not it has been
+    scanned: it is a fact about the paper the student was handed. ``earned``
+    accumulates only where there is a grade, and stays ``None`` for a student
+    with none — the same "absent is not zero" rule ``SheetPoints`` already
+    states, one level up. A term where two of five sheets are marked must not
+    read as though the other three were failed.
+    """
+    school_id = scope.school_id
+    get_class(db, scope, class_id)
+    sheets = list_sheets(db, scope, class_id=class_id, subject_id=subject_id)
+    if not sheets:
+        return ClassPointsReport(students={}, sheets=[])
+
+    earned_by_sheet = _earned_by_sheet(db, school_id, [sheet.id for sheet in sheets])
+    earned_total: dict[uuid.UUID, float] = {}
+    possible_total: dict[uuid.UUID, float] = {}
+    graded_students: set[uuid.UUID] = set()
+    per_sheet: list[ClassSheetPoints] = []
+
+    for sheet in sheets:
+        per_student: dict[uuid.UUID, SheetPoints] = {}
+        ratios: list[float] = []
+        for student_id, possible in _possible_by_student(sheet).items():
+            earned = earned_by_sheet.get((student_id, sheet.id))
+            per_student[student_id] = SheetPoints(earned=earned, possible=possible)
+            possible_total[student_id] = possible_total.get(student_id, 0.0) + possible
+            if earned is not None:
+                earned_total[student_id] = earned_total.get(student_id, 0.0) + earned
+                graded_students.add(student_id)
+                if possible > 0:
+                    ratios.append(earned / possible)
+        per_sheet.append(
+            ClassSheetPoints(
+                sheet_id=sheet.id,
+                sheet_title=sheet.title,
+                average_ratio=(sum(ratios) / len(ratios)) if ratios else None,
+                per_student=per_student,
+            )
+        )
+
+    students = {
+        student_id: SheetPoints(
+            earned=earned_total.get(student_id) if student_id in graded_students else None,
+            possible=possible,
+        )
+        for student_id, possible in possible_total.items()
+    }
+    return ClassPointsReport(students=students, sheets=per_sheet)

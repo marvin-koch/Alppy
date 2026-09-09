@@ -20,7 +20,8 @@
     "sources": "Manuels",
     "switchClass": "Changer de classe",
     "switchSubject": "Changer de discipline",
-    "timeline": "Agenda"
+    "timeline": "Agenda",
+    "results": "Suivi"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -221,6 +222,17 @@
       "title": "Aucune fiche",
       "body": "Construisez votre première fiche à partir de vos manuels.",
       "action": "Nouvelle fiche"
+    },
+    "forClass": "Pour la classe {code}",
+    "untitled": "Fiche sans titre",
+    "searchPlaceholder": "Rechercher une fiche…",
+    "noMatches": "Aucune fiche ne porte ce nom.",
+    "adaptiveTag": "Adaptée",
+    "pageCount": "{count, plural, one {# page} other {# pages}}",
+    "groups": {
+      "drafts": "À terminer",
+      "draftsHint": "Les PDF ne sont pas encore générés.",
+      "ready": "Prêtes à imprimer"
     }
   },
   "scans": {
@@ -319,10 +331,34 @@
       "machineVerdict": "Verdict de la machine : {verdict} · {transcription}",
       "verdictCorrect": "juste",
       "verdictWrong": "faux",
-      "verdictNone": "aucun"
+      "verdictNone": "aucun",
+      "modelReference": "Aucune réponse attendue n'était donnée ; le modèle a résolu l'exercice et a jugé sur : {answer}"
     },
     "confirmTranscription": "Enregistrer la transcription",
-    "readingAnswers": "{count, plural, one {# réponse écrite en cours de lecture} other {# réponses écrites en cours de lecture}} — la validation attend la fin de la lecture."
+    "readingAnswers": "{count, plural, one {# réponse écrite en cours de lecture} other {# réponses écrites en cours de lecture}} — la validation attend la fin de la lecture.",
+    "reopen": "Rouvrir",
+    "reopening": "Réouverture…",
+    "stage": {
+      "pending": "À valider",
+      "validated": "Validé",
+      "revised": "Révisé",
+      "reopened": "Rouvert",
+      "processing": "Analyse en cours"
+    },
+    "filterOutcome": "Afficher",
+    "filterCopy": "Copie",
+    "filterAllCopies": "Toutes les copies",
+    "filterCopyUnsure": "{uid} — {count} à vérifier",
+    "filterClear": "Tout afficher",
+    "filterNoMatches": "Aucun élément ne correspond à ce filtre.",
+    "unidentifiedCopy": "Copie non identifiée",
+    "revert": "Rétablir la lecture de la machine",
+    "uploadingCount": "{count, plural, one {Envoi d'une copie…} other {Envoi de # copies…}}",
+    "uploadingHelp": "Gardez cette page ouverte jusqu'à la fin de l'envoi.",
+    "processingQueued": "Analyse en attente…",
+    "processingReading": "Lecture des copies…",
+    "processingLabel": "Avancement de l'analyse",
+    "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte."
   },
   "adaptive": {
     "aiBadge": "IA",
@@ -558,7 +594,7 @@
     "overrideHelp": "Ne modifie que cette feuille — le document source garde son texte.",
     "remove": "Retirer",
     "emptyPickTitle": "Choisissez un document",
-    "emptyPickBody": "Sélectionnez un manuel ou une ancienne feuille ci-dessus. Alppy affichera les exercices qu'il y a trouvés, et vous cochez ceux que vous gardez.",
+    "emptyPickBody": "Alppy affiche les exercices qu'il y a trouvés ; vous cochez ceux que vous gardez.",
     "emptySheetTitle": "Rien sur la feuille",
     "emptySheetBody": "Cochez des exercices à gauche, ou écrivez-en un vous-même.",
     "noMatches": "Aucun exercice ne correspond à ces filtres.",
@@ -575,7 +611,41 @@
     "boxFillGrid": "Quadrillage",
     "boxFillBlank": "Vide",
     "boxHelp": "L'élève écrit dans le cadre. Au scan, Alppy le découpe, lit l'écriture et propose une correction que vous validez.",
-    "boxNone": "Sans cadre"
+    "boxNone": "Sans cadre",
+    "baremeTitle": "Barème de la feuille",
+    "baremeItemTitle": "Barème de cet exercice",
+    "baremePoints": "Points par bonne réponse",
+    "baremePenalty": "Pénalité par erreur",
+    "baremeHelp": "Une réponse laissée vide vaut zéro et n'est jamais pénalisée. Deux cases cochées ne sont pas notées : la copie passe en relecture.",
+    "baremeTotal": "Total : {points, number} points",
+    "baremeOverridden": "modifié",
+    "baremeFollowsSheet": "{points, number} · barème de la feuille",
+    "pointsOption": "{points, number} pts",
+    "pointsSummary": "{points, number} pts",
+    "pointsCustom": "Personnalisé",
+    "pointsCustomLabel": "Points (jusqu'à {max, number})",
+    "penaltyNone": "Aucune",
+    "penaltyOption": "−{points, number} par erreur",
+    "penaltySummary": "pénalité {points, number}",
+    "penaltySummaryNone": "sans pénalité",
+    "expectedAnswerTitle": "Réponse attendue",
+    "expectedAnswerGiven": "Donnée",
+    "expectedAnswerModel": "Le modèle la trouvera",
+    "expectedAnswerPlaceholder": "Facultatif — p. ex. 7/8, ou la démarche attendue",
+    "expectedAnswerHelp": "Si vous la donnez, le corrigé l'imprime et la correction s'appuie dessus. Sinon, le modèle résout l'exercice lui-même avant de juger, et vous montre sa réponse.",
+    "expectedAnswerFromBook": "Réponse issue de l'exercice. La modifier ne change que cette feuille — le document source garde la sienne.",
+    "boxCustom": "Personnalisé…",
+    "boxCustomLines": "Nombre de lignes (1 à {max})",
+    "titlePlaceholder": "Titre de la fiche",
+    "forScope": "Pour {scope} — se change dans la barre latérale.",
+    "generateHelp": "Vous obtenez deux PDF : la fiche élève et son corrigé.",
+    "noDocumentsTitle": "Aucun manuel pour l'instant",
+    "noDocumentsBody": "Importez un manuel ou un PDF d'exercices : Alppy en indexe les exercices, chapitre par chapitre.",
+    "importDocument": "Importer un manuel",
+    "overflowHelp": "Plus de seize exercices : la fiche tiendra sur {count} pages au minimum.",
+    "boxSummary": "{count, plural, one {Cadre d'une ligne} other {Cadre de # lignes}}",
+    "answerSummaryGiven": "réponse attendue donnée",
+    "answerSummaryModel": "réponse trouvée par le modèle"
   },
   "newExercise": {
     "title": "Ajouter un exercice",
@@ -639,6 +709,47 @@
       "adaptive_exported": "Lot adapté exporté",
       "feedback_written": "Retours rédigés",
       "feedback_approved": "Retours approuvés"
+    }
+  },
+  "results": {
+    "title": "Suivi des résultats",
+    "forClass": "Classe {code}",
+    "classAverage": "Moyenne de la classe",
+    "notGradedYet": "Rien de corrigé pour l'instant",
+    "totalColumn": "Total",
+    "studentColumn": "Élève",
+    "matrixCaption": "Points obtenus par élève et par fiche",
+    "sheetCount": "{count, plural, one {# fiche} other {# fiches}}",
+    "cellLabel": "{student}, {sheet} : {earned} sur {possible} points",
+    "cellLabelUngraded": "{student}, {sheet} : pas encore corrigé",
+    "empty": {
+      "title": "Aucun résultat pour l'instant",
+      "body": "Créez une fiche, imprimez-la, puis scannez les copies : les points apparaîtront ici.",
+      "action": "Créer une fiche"
+    },
+    "perSheet": {
+      "title": "Par fiche",
+      "notGraded": "Pas corrigée"
+    }
+  },
+  "studentSheet": {
+    "title": "Copie de {student}",
+    "back": "Retour au profil",
+    "openScan": "Voir la photo de la copie",
+    "total": "Total",
+    "notGradedYet": "Pas encore corrigé",
+    "given": "Sa réponse",
+    "expected": "Réponse attendue",
+    "noAnswer": "Sans réponse",
+    "noExpected": "Aucune réponse de référence",
+    "points": "{earned} / {possible, number} pts",
+    "pointsUngraded": "— / {possible, number} pts",
+    "correct": "Juste",
+    "incorrect": "Faux",
+    "ungraded": "Non noté",
+    "empty": {
+      "title": "Cette copie n'a pas encore été corrigée",
+      "body": "Scannez la pile, puis validez-la : le détail apparaîtra ici."
     }
   }
 }

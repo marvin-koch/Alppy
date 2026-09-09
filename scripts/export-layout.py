@@ -92,6 +92,13 @@ def main() -> int:
         "lowConfidence": detector.LOW_CONFIDENCE,
         "fillMarked": detector.FILL_MARKED,
         "fillBlank": detector.FILL_BLANK,
+        # The cross scale's own pair. Exported for the same reason as the fill
+        # pair: the review overlay explains a reading to the teacher, and
+        # "0.55" typed into a React component is a constant one language away
+        # from the one it mirrors. The shape test's internals (bin count, lobe
+        # width) stay in Python — nothing on screen draws a line at them.
+        "crossMarked": detector.CROSS_MARKED,
+        "crossBlank": detector.CROSS_BLANK,
         "minQuality": detector.MIN_QUALITY,
     }
 

@@ -75,7 +75,7 @@ def list_sheets(
     class_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[SheetOut]:
     return [
-        sheet_out(s, storage=storage)
+        sheet_out(s, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, s))
         for s in svc.list_sheets(db, scope, class_id=class_id)
     ]
 
@@ -91,14 +91,19 @@ def create_sheet(
     sheet = svc.create_sheet(db, scope, teacher.id, payload)
     db.commit()
     db.refresh(sheet)
-    return sheet_out(sheet, storage=storage)
+    return sheet_out(
+        sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
+    )
 
 
 @router.get("/sheets/{sheet_id}", response_model=SheetOut)
 def get_sheet(
     sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
 ) -> SheetOut:
-    return sheet_out(svc.get_sheet(db, scope, sheet_id), storage=storage)
+    sheet = svc.get_sheet(db, scope, sheet_id)
+    return sheet_out(
+        sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
+    )
 
 
 @router.patch("/sheets/{sheet_id}", response_model=SheetOut)
@@ -112,7 +117,9 @@ def update_sheet(
     sheet = svc.update_sheet(db, scope, sheet_id, payload)
     db.commit()
     db.refresh(sheet)
-    return sheet_out(sheet, storage=storage)
+    return sheet_out(
+        sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
+    )
 
 
 @router.post(
@@ -213,6 +220,10 @@ def preview_draft(
             title=payload.title,
             language=str(payload.language),
             items=payload.items,
+            # The draft has no Sheet row to read a default off, so it rides in
+            # with the payload — otherwise the preview prints "(1 pt)" beside
+            # every statement while the saved sheet grades on something else.
+            default_points_correct=payload.default_points_correct,
         )
         html: str = render_html(data, kind=SheetKind.BLANK)
     except (render_error, ValueError) as exc:
@@ -284,4 +295,6 @@ def mark_printed(
     )
     db.commit()
     db.refresh(sheet)
-    return sheet_out(sheet, storage=storage)
+    return sheet_out(
+        sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
+    )

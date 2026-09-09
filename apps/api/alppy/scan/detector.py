@@ -53,6 +53,48 @@ student meant. A small gap means a stray pencil line or an erased answer."""
 LOW_CONFIDENCE: Final = 0.65
 """Below this the item is surfaced to the teacher first, before anything else."""
 
+# --- Reading a CROSS as well as a fill -----------------------------------
+# The thresholds above measure how MUCH ink is in a bubble. These measure what
+# SHAPE it is in, so a student who crosses the box is read as confidently as
+# one who fills it. See ``_cross_score``.
+CROSS_BINS: Final = 24
+"""Angular bins around the bubble, 15 degrees each. Fine enough to separate the
+two strokes of a cross (their lobes sit ~90 degrees apart), coarse enough that
+one bin still holds enough pixels for its mean to mean anything at 8 px/mm."""
+
+CROSS_LOBES: Final = 4
+"""Two crossing strokes cut the rim of the disc in exactly four places. This is
+the definition of the shape rather than a tuned value: two lobes is a single
+stroke, and three or five is a scribble."""
+
+CROSS_BAND_INNER_FRAC: Final = 0.45
+"""The band starts at this fraction of the sampling radius. Inside it lies the
+middle, where a cross's own intersection and a rubbed-out answer both leave ink
+and neither can be told from the other — so the middle is not counted."""
+
+CROSS_LOBE_FRAC: Final = 0.45
+"""A bin belongs to a lobe when it holds at least this fraction of the peak
+bin's ink. Empirical: high enough that the gaps between a cross's arms survive
+a photocopy, low enough that a light arm is not split in two."""
+
+CROSS_MAX_LOBE_BINS: Final = 8
+"""A lobe wider than 120 degrees is a wedge of ink, not the arm of a stroke."""
+
+CROSS_MIN_BAND_INK: Final = 0.06
+"""Below this the outer band is empty and there is no shape to read. Keeps the
+angular profile from finding lobes in sensor noise."""
+
+CROSS_LOBE_REF: Final = 0.5
+"""The ink fraction a bin holds when a full stroke passes through it. The
+weakest arm is divided by this to score how complete the cross is. Empirical."""
+
+CROSS_MARKED: Final = 0.55
+CROSS_BLANK: Final = 0.20
+"""The cross score's own marked/blank pair, in its own 0-1 units.
+``_mark_strength`` maps the span between them onto FILL_BLANK..FILL_MARKED so
+that one item's bubbles stay comparable however each of them was marked. Both
+empirical."""
+
 MIN_QUALITY: Final = 0.55
 """Below this the located frame is not a page, and nothing read from it means
 anything.
@@ -86,6 +128,12 @@ class Registration:
 class BubbleReading:
     option_index: int
     fill: float
+    """Raw ink density. Unchanged in meaning, and still what ``fill_ratios``
+    reports to the review screen."""
+    cross: float
+    """Raw shape score, 0 unless a crossing structure was found."""
+    mark: float
+    """The two combined — the quantity every decision below is made on."""
     u: float
     v: float
 
@@ -286,8 +334,31 @@ def register(image: Image) -> Registration:
 # --------------------------------------------------------------------------
 # 3 · sampling
 # --------------------------------------------------------------------------
-def _fill_ratio(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> float:
-    """Fraction of dark pixels inside a disc, measured against the LOCAL paper.
+@dataclass(slots=True)
+class _InkSample:
+    """One bubble's ink, as both measures below agree to see it.
+
+    Extracted so ``_cross_score`` cannot invent a second definition of what
+    counts as ink. The local-annulus threshold (D6) is the load-bearing part;
+    a shape measure built on a different threshold would disagree with the
+    density measure about whether there is anything there at all.
+    """
+
+    ink: npt.NDArray[np.bool_]
+    """Patch-shaped: True where the pixel is darker than the local paper."""
+    inside: npt.NDArray[np.bool_]
+    """Patch-shaped: True inside the 80%-diameter sampling disc."""
+    cx_px: float
+    """Bubble centre, patch-local."""
+    cy_px: float
+    inner_r: float
+    """Radius of the sampling disc, in pixels."""
+
+
+def _sample_ink(
+    canonical: Image, cx_mm: float, cy_mm: float, d_mm: float
+) -> _InkSample | None:
+    """The ink inside one bubble, measured against the LOCAL paper.
 
     Two details here are load-bearing, and both were found by the synthetic
     degradation suite rather than by reasoning:
@@ -302,6 +373,9 @@ def _fill_ratio(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> fl
       photocopy's grey paper pushes a global threshold the other way. The local
       annulus tracks both. We take a high percentile of it rather than the mean
       so that a stray line clipping the annulus does not drag the estimate down.
+
+    ``None`` when the bubble sits outside the page or the patch is unusable —
+    every caller treats that as "no reading", not as "blank".
     """
     r_px = (d_mm * PX_PER_MM) / 2.0
     inner_r = r_px * 0.8
@@ -313,18 +387,18 @@ def _fill_ratio(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> fl
     y0, y1 = int(cy - outer_r), int(cy + outer_r) + 1
     h, w = canonical.shape[:2]
     if x0 < 0 or y0 < 0 or x1 > w or y1 > h:
-        return 0.0
+        return None
 
     patch = canonical[y0:y1, x0:x1].astype(np.float32)
     if patch.size == 0:
-        return 0.0
+        return None
 
     yy, xx = np.ogrid[y0:y1, x0:x1]
     dist2 = (xx - cx) ** 2 + (yy - cy) ** 2
     inside = dist2 <= inner_r**2
     annulus = (dist2 > (r_px * 1.15) ** 2) & (dist2 <= outer_r**2)
     if not inside.any():
-        return 0.0
+        return None
 
     # Local paper level. Fall back to the page's 90th percentile if this bubble
     # sits too close to an edge for a usable annulus.
@@ -337,7 +411,161 @@ def _fill_ratio(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> fl
     # A pencil mark reflects roughly 60-75% of what the paper does. Anything
     # below 82% of local paper is treated as deliberate ink.
     threshold = paper * 0.82
-    return float((patch[inside] < threshold).mean())
+    return _InkSample(
+        ink=patch < threshold,
+        # Already patch-shaped: `dist2` broadcast the two ogrid axes together,
+        # so this is the full (h, w) mask, not a row/column vector.
+        inside=inside,
+        cx_px=cx - x0,
+        cy_px=cy - y0,
+        inner_r=inner_r,
+    )
+
+
+def _fill_ratio(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> float:
+    """Fraction of dark pixels inside the sampling disc. See ``_sample_ink``."""
+    sample = _sample_ink(canonical, cx_mm, cy_mm, d_mm)
+    if sample is None:
+        return 0.0
+    return float(sample.ink[sample.inside].mean())
+
+
+def _cross_score(canonical: Image, cx_mm: float, cy_mm: float, d_mm: float) -> float:
+    """How much this bubble looks like a CROSS, 0 when it does not look like one.
+
+    Why this exists: a hand-drawn X's ink DENSITY is naturally far below
+    ``FILL_MARKED``. Two ~0.5 mm strokes across a 5 mm bubble cover roughly a
+    quarter of the sampled disc, where a filled bubble covers most of it. Tuned
+    on density alone, every crossed answer in a class would land in the
+    uncertain band and be handed back to the teacher — the pipeline working
+    perfectly and being useless. So a cross is recognised by its SHAPE instead,
+    and the two measures are combined in ``_mark_strength``.
+
+    The shape test is an angular profile. Bin the ink in the OUTER band of the
+    disc by its angle around the centre, and count how many separate lobes the
+    profile has:
+
+        filled disc   every bin lit          -> one lobe the whole way round
+        stray line    two lobes, 180 apart   -> a single stroke
+        cross         FOUR lobes             -> two strokes crossing
+        smudge        no coherent lobes      -> nothing to count
+
+    Two crossing strokes produce four lobes at ANY rotation, so this needs no
+    angle threshold and does not care whether the student's X is upright or
+    leaning. The outer band is what excludes the middle, where a cross's own
+    intersection and a rubbed-out smudge both put ink and neither is
+    distinguishable from the other.
+
+    Gated, not graded: anything failing the structural tests returns exactly
+    0.0, which is what lets ``_mark_strength`` collapse to the fill ratio for
+    every bubble that is not crossed, and leaves the existing behaviour of this
+    module bit-for-bit unchanged on every mark that was ever tested before.
+    """
+    sample = _sample_ink(canonical, cx_mm, cy_mm, d_mm)
+    if sample is None:
+        return 0.0
+
+    h, w = sample.ink.shape
+    yy, xx = np.mgrid[0:h, 0:w]
+    dx = xx - sample.cx_px
+    dy = yy - sample.cy_px
+    dist = np.sqrt(dx * dx + dy * dy)
+    band = sample.inside & (dist >= sample.inner_r * CROSS_BAND_INNER_FRAC)
+    if not band.any():
+        return 0.0
+
+    band_ink = float(sample.ink[band].mean())
+    if band_ink < CROSS_MIN_BAND_INK:
+        # Nothing in the outer band. An empty bubble, or a mark so faint the
+        # density measure is the honest one to use.
+        return 0.0
+
+    # Angle of every band pixel, in bins around the circle.
+    angles = np.degrees(np.arctan2(dy, dx)) % 360.0
+    bin_index = (angles / (360.0 / CROSS_BINS)).astype(np.int32) % CROSS_BINS
+    profile = np.zeros(CROSS_BINS, dtype=np.float64)
+    for b in range(CROSS_BINS):
+        cell = band & (bin_index == b)
+        profile[b] = float(sample.ink[cell].mean()) if cell.any() else 0.0
+
+    peak = float(profile.max())
+    if peak <= 0.0:
+        return 0.0
+
+    lit = profile >= peak * CROSS_LOBE_FRAC
+    if lit.all():
+        # Ink all the way round: a filled bubble, or a blot. Either way the
+        # density measure already describes it correctly.
+        return 0.0
+
+    # Contiguous runs of lit bins, counted around the circle rather than across
+    # the array: a lobe straddling 0 degrees is one lobe, not two.
+    runs: list[list[int]] = []
+    start = 0
+    while lit[start - 1] and start < CROSS_BINS:
+        start += 1  # begin at a gap so no run is split at the seam
+    current: list[int] = []
+    for offset in range(CROSS_BINS):
+        b = (start + offset) % CROSS_BINS
+        if lit[b]:
+            current.append(b)
+        elif current:
+            runs.append(current)
+            current = []
+    if current:
+        runs.append(current)
+
+    if len(runs) != CROSS_LOBES:
+        # Two lobes is one stroke; three or five is a scribble. Only four is
+        # two strokes crossing, and we never guess at the others.
+        return 0.0
+    if any(len(run) > CROSS_MAX_LOBE_BINS for run in runs):
+        # A lobe wider than a stroke: a wedge of ink, not an arm.
+        return 0.0
+
+    # The weakest arm decides. An X is only an X if all four arms are there,
+    # so a strong pair plus two faint smudges must not score as a whole one.
+    weakest = min(float(profile[run].mean()) for run in runs)
+    return float(min(1.0, weakest / CROSS_LOBE_REF))
+
+
+def _mark_strength(fill: float, cross: float) -> float:
+    """One number for "is this bubble marked", from the two measures.
+
+    ``max``, not a blend. ``_cross_score`` is gated: it is either 0 or a shape
+    it has already confirmed, and once confirmed there is nothing a low density
+    can usefully add — a thin X SHOULD have low density. Blending would drag a
+    real cross back under the threshold, which is the whole problem being
+    solved.
+
+    It also buys a guarantee worth having: for every bubble with no crossing
+    structure, ``cross`` is 0 and this returns ``fill`` exactly, so every mark
+    the degradation suite ever tested is classified precisely as before.
+
+    The cross score is mapped into the fill scale first, so ``detect_item``
+    keeps comparing against ``FILL_MARKED``/``FILL_BLANK`` and the MULTIPLE
+    test keeps working when the two marks on an item are a cross and a fill.
+    """
+    if cross <= CROSS_BLANK:
+        return fill
+
+    # Piecewise linear through three anchors, so the two scales agree at every
+    # point that has a name:
+    #
+    #   CROSS_BLANK   -> FILL_BLANK        the floor of the uncertain band
+    #   CROSS_MARKED  -> FILL_MARKED       the threshold itself
+    #   1.0 (perfect) -> FILL_MARKED * 1.6 where `strength` saturates
+    #
+    # The top anchor matters: mapping a perfect cross to exactly FILL_MARKED
+    # would clear the threshold by nothing at all, and the confidence formula
+    # below would then report an unmistakable X as barely-a-mark.
+    if cross <= CROSS_MARKED:
+        span = (cross - CROSS_BLANK) / (CROSS_MARKED - CROSS_BLANK)
+        mapped = FILL_BLANK + span * (FILL_MARKED - FILL_BLANK)
+    else:
+        span = (cross - CROSS_MARKED) / (1.0 - CROSS_MARKED)
+        mapped = FILL_MARKED + min(1.0, span) * (FILL_MARKED * 1.6 - FILL_MARKED)
+    return max(fill, mapped)
 
 
 def read_uid_grid(canonical: Image) -> tuple[str | None, float, list[float]]:
@@ -377,8 +605,10 @@ def detect_item(canonical: Image, item_index: int, option_count: int) -> ItemDet
     for oi in range(option_count):
         cx, cy = L.bubble_centre_mm(item_index, oi)
         fill = _fill_ratio(canonical, cx, cy, L.BUBBLE_D_MM)
+        cross = _cross_score(canonical, cx, cy, L.BUBBLE_D_MM)
+        mark = _mark_strength(fill, cross)
         slot = L.BubbleSlot(0, item_index, oi, cx, cy)
-        readings.append(BubbleReading(oi, fill, slot.u, slot.v))
+        readings.append(BubbleReading(oi, fill, cross, mark, slot.u, slot.v))
         half_u = (L.BUBBLE_D_MM / 2) / L.FRAME_W_MM
         half_v = (L.BUBBLE_D_MM / 2) / L.FRAME_H_MM
         boxes.append(
@@ -388,23 +618,30 @@ def detect_item(canonical: Image, item_index: int, option_count: int) -> ItemDet
                 "w": half_u * 2,
                 "h": half_v * 2,
                 "fill": fill,
+                # Additive, and JSONB either side, so no migration: the review
+                # overlay can say WHY a bubble was read, not just that it was.
+                "cross": cross,
+                "mark": mark,
             }
         )
 
+    # `fill_ratios` keeps reporting raw DENSITY: it is the audit trail, and a
+    # teacher looking at why a bubble was read wants what was measured, not a
+    # combined figure. Every decision below is made on `.mark`.
     fills = [r.fill for r in readings]
-    ordered = sorted(readings, key=lambda r: r.fill, reverse=True)
+    ordered = sorted(readings, key=lambda r: r.mark, reverse=True)
     best = ordered[0]
-    second = ordered[1].fill if len(ordered) > 1 else 0.0
-    margin = best.fill - second
+    second = ordered[1].mark if len(ordered) > 1 else 0.0
+    margin = best.mark - second
 
-    if best.fill < FILL_BLANK:
+    if best.mark < FILL_BLANK:
         # Confidently blank only when the bubble is really empty. A reading just
         # under the threshold is an eraser smudge or a very light mark, and the
         # teacher must be the one to decide — reporting "blank, 100% sure" for a
         # faint pencil mark silently scores a child zero.
         outcome = DetectionOutcome.BLANK
         detected: int | None = None
-        confidence = float(max(0.0, min(1.0, 1.0 - best.fill / FILL_BLANK)))
+        confidence = float(max(0.0, min(1.0, 1.0 - best.mark / FILL_BLANK)))
     elif second >= FILL_MARKED:
         # Two bubbles are both filled. Never guess between them, and note that
         # the margin plays no part in this test: it used to, and a runner-up at
@@ -416,19 +653,19 @@ def detect_item(canonical: Image, item_index: int, option_count: int) -> ItemDet
         outcome = DetectionOutcome.MULTIPLE
         detected = None
         confidence = float(max(0.0, 1.0 - margin / MARGIN_CONFIDENT) * 0.5)
-    elif best.fill < FILL_MARKED:
+    elif best.mark < FILL_MARKED:
         # Something is there, but it is faint. Always surface it, whatever the
         # separation from the runner-up looks like.
         detected = best.option_index
         span = FILL_MARKED - FILL_BLANK
         outcome = DetectionOutcome.LOW_CONFIDENCE
         confidence = float(
-            max(0.0, min(LOW_CONFIDENCE - 0.05, 0.30 + 0.30 * (best.fill - FILL_BLANK) / span))
+            max(0.0, min(LOW_CONFIDENCE - 0.05, 0.30 + 0.30 * (best.mark - FILL_BLANK) / span))
         )
     else:
         detected = best.option_index
         # Confidence combines "is it clearly a mark" with "is it clearly THE mark".
-        strength = min(1.0, best.fill / (FILL_MARKED * 1.6))
+        strength = min(1.0, best.mark / (FILL_MARKED * 1.6))
         separation = min(1.0, margin / MARGIN_CONFIDENT)
         confidence = float(max(0.0, min(1.0, 0.45 * strength + 0.55 * separation)))
         outcome = (

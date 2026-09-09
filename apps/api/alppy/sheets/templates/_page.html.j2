@@ -35,7 +35,7 @@
     </div>
 
     <section class="sheet-items" data-student-facing="true">
-      <p class="sheet-instructions">{{ t.instructions }}</p>
+      <p class="sheet-instructions">{{ page.instructions }}</p>
       {% for item in page.statements %}{% include "_item.html.j2" %}{% endfor %}
     </section>
 

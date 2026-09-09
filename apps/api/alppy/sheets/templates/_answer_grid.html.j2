@@ -6,20 +6,21 @@
   `detector.detect_item` uses. The number printed next to it is the running
   question number, which is what the student matches against the statement.
 
+  Written answers are not rows: their box sits under the statement. A page with
+  no bubble item prints no grid at all.
+
   On the answer key, and only there, the correct bubble carries data-key="true".
 -#}
+{%- if page.rows %}
 <section class="sheet-grid" aria-label="{{ t.answers }}">
   <p class="sheet-grid-caption">{{ t.answers }}</p>
   {%- for row in page.rows %}
   <div class="sheet-grid-row" data-group="{{ row.group }}" data-row="{{ row.row }}" data-item-index="{{ row.item_index }}" data-options="{{ row.option_count }}">
     <span class="sheet-grid-number">{{ row.number }}.</span>
-    {%- if row.gradeable -%}
     {%- for bubble in row.bubbles %}
     <span class="print-bubble" data-option="{{ bubble.index }}"><span class="print-bubble-letter">{{ bubble.letter }}</span><span class="print-bubble-mark"{% if bubble.key %} data-key="true"{% endif %}></span></span>
     {%- endfor %}
-    {%- else %}
-    <span class="sheet-grid-open">{{ t.written }}</span>
-    {%- endif %}
   </div>
   {%- endfor %}
 </section>
+{%- endif %}

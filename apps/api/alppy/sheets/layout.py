@@ -97,8 +97,29 @@ ANSWER_BOX_GRID_MM: Final = 5.0  # the square of a Swiss maths notebook
 ANSWER_BOX_BORDER_MM: Final = 0.35  # 1 pt
 ANSWER_BOX_TICK_MM: Final = 3.0  # arm of the L-shaped corner tick, outside the box
 ANSWER_BOX_LINE_PRESETS: Final[tuple[int, ...]] = (3, 5, 8, 12)
+# The tallest box a teacher may ask for, in lines. Any height from 1 to this
+# is allowed — the presets are shortcuts, not the only choices. The ceiling is
+# the tallest box that still fits the statement region alone when carried to
+# the next page (``pagination.continuation_height_mm``): 14 lines is 133.3 mm
+# of the 134 mm a page has for statements; 15 would not fit any page.
+ANSWER_BOX_MAX_LINES: Final = 14
 ANSWER_BOX_NO_BOX: Final = 0  # the teacher's "worked in the notebook"
 ANSWER_BOX_DEFAULT_LINES: Final = 5
+
+# --- Grading policy ------------------------------------------------------
+# The teacher's barème: what a correct answer is worth, and what a wrong one
+# costs. Not print geometry — nothing here moves a fiducial or a bubble, so
+# this is not a layout version bump. It lives here anyway because the printed
+# points label is a *pagination* concern: `pagination.POINTS_LABEL_W_MM` has
+# to reserve room for the widest label a teacher can ask for, and that width
+# is decided by this ceiling.
+#
+# The penalty is stored as a MAGNITUDE, never as a negative number. The sign
+# is applied in exactly one place (`scan.grading.score_for`), so a teacher who
+# types 0.25 and a teacher who types -0.25 cannot mean two different things.
+MAX_ITEM_POINTS: Final = 20.0
+DEFAULT_POINTS_CORRECT: Final = 1.0
+DEFAULT_POINTS_PENALTY: Final = 0.0
 
 
 class OptionLetters(StrEnum):
@@ -240,5 +261,11 @@ def as_dict() -> dict[str, object]:
             "tickMm": ANSWER_BOX_TICK_MM,
             "linePresets": list(ANSWER_BOX_LINE_PRESETS),
             "defaultLines": ANSWER_BOX_DEFAULT_LINES,
+            "maxLines": ANSWER_BOX_MAX_LINES,
+        },
+        "grading": {
+            "defaultPointsCorrect": DEFAULT_POINTS_CORRECT,
+            "defaultPointsPenalty": DEFAULT_POINTS_PENALTY,
+            "maxItemPoints": MAX_ITEM_POINTS,
         },
     }

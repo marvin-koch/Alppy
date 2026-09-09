@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   ConfidenceBar,
   EmptyState,
   ErrorState,
@@ -17,6 +18,7 @@ import {
   ScanReviewOverlay,
   SegmentedControl,
   Select,
+  Spinner,
   type ScanMark,
   type ScanMarkState,
 } from '@alppy/ui';
@@ -29,6 +31,7 @@ import {
   useAssignScanPage,
   useConfirmScan,
   useCorrectDetection,
+  useReopenScan,
   useDiscardScanPage,
   useJob,
   useScan,
@@ -38,6 +41,7 @@ import { apiErrorMessage } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { badgeVariant } from '@/lib/detectionOutcome';
+import { useFormatters } from '@/lib/format';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -61,9 +65,24 @@ const FRAME = {
   h: SHEET_LAYOUT.frame.hMm / SHEET_LAYOUT.pageHMm,
 };
 
+/** The outcomes worth filtering to. Everything else is settled work. */
+const FILTER_OUTCOMES = ['low_confidence', 'multiple', 'corrected', 'pending'] as const;
+type FilterOutcome = (typeof FILTER_OUTCOMES)[number];
+
+function isFilterOutcome(outcome: string): outcome is FilterOutcome {
+  return (FILTER_OUTCOMES as readonly string[]).includes(outcome);
+}
+
+/** Pages of one student are one physical copy; an unassigned page is its own,
+ *  keyed by page id so it still gets a row in the picker. */
+function copyKey(page: { student_id: string | null; id: string }): string {
+  return page.student_id ?? `page:${page.id}`;
+}
+
 export default function ScanReviewPage({ params }: { params: Promise<{ scanId: string }> }) {
   const { scanId } = use(params);
   const t = useTranslations('scans');
+  const fmt = useFormatters();
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const tErr = useTranslations('errors.code');
@@ -77,6 +96,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const students = useScanStudents(scanId);
   const correct = useCorrectDetection(scanId);
   const confirm = useConfirmScan(scanId);
+  const reopen = useReopenScan(scanId);
   const [selected, setSelected] = useState<Uuid | null>(null);
   const rowRefs = useRef(new Map<Uuid, HTMLLIElement>());
 
@@ -94,12 +114,80 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
     [scan.data],
   );
 
+  // --- filters. A VIEW concern, and only a view concern. -------------------
+  const [outcomeFilter, setOutcomeFilter] = useState<Set<FilterOutcome>>(
+    () => new Set<FilterOutcome>(),
+  );
+  const [copyFilter, setCopyFilter] = useState('');
+  const filtered = outcomeFilter.size > 0 || copyFilter !== '';
+
+  const outcomeCounts = useMemo(() => {
+    const counts: Record<FilterOutcome, number> = {
+      low_confidence: 0,
+      multiple: 0,
+      corrected: 0,
+      pending: 0,
+    };
+    for (const page of pages) {
+      for (const d of page.detections) {
+        if (isFilterOutcome(d.outcome)) counts[d.outcome] += 1;
+      }
+    }
+    return counts;
+  }, [pages]);
+
+  const copies = useMemo(() => {
+    const byKey = new Map<string, { key: string; label: string; unsure: number }>();
+    for (const page of pages) {
+      const key = copyKey(page);
+      const entry = byKey.get(key) ?? {
+        key,
+        label: page.detected_uid ?? t('unidentifiedCopy'),
+        unsure: 0,
+      };
+      entry.unsure += page.detections.filter(needsAHuman).length;
+      byKey.set(key, entry);
+    }
+    return [...byKey.values()];
+  }, [pages, t]);
+
+  const visiblePages = useMemo(
+    () =>
+      pages
+        .filter((page) => copyFilter === '' || copyKey(page) === copyFilter)
+        .map((page) => ({
+          ...page,
+          detections:
+            outcomeFilter.size === 0
+              ? page.detections
+              : page.detections.filter(
+                  (d) => isFilterOutcome(d.outcome) && outcomeFilter.has(d.outcome),
+                ),
+        }))
+        // A page with nothing left to show still appears when it is the page
+        // ITSELF that needs attention.
+        .filter(
+          (page) =>
+            page.detections.length > 0 ||
+            page.wrong_class ||
+            !page.registered ||
+            page.discarded,
+        ),
+    [pages, outcomeFilter, copyFilter],
+  );
+
+  // The queue follows the filter — narrowing the view should narrow what N
+  // walks through, which is the useful behaviour.
   const queue = useMemo(
-    () => pages.flatMap((p) => p.detections).filter(needsAHuman),
-    [pages],
+    () => visiblePages.flatMap((p) => p.detections).filter(needsAHuman),
+    [visiblePages],
   );
   // Written answers still with the grader. Confirming now would lock the
   // pile with those answers unrecorded, and there is no second confirmation.
+  //
+  // Deliberately counted over the UNFILTERED pages: a filter is a way of
+  // looking, never a way of signing off. Hiding a pending answer must not make
+  // Confirm available while it is still unread.
   const reading = useMemo(
     () => pages.flatMap((p) => p.detections).filter((d) => d.outcome === 'pending').length,
     [pages],
@@ -156,12 +244,32 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   }
 
   const confirmed = scan.data.status === 'confirmed';
+  // Driven by the job, not by its prose: `message` is a log line, in English.
+  const progress = job.data?.progress ?? 0;
+  const queued = (job.data?.status ?? 'queued') === 'queued';
+  // The lifecycle a teacher reads, derived rather than stored: `status` still
+  // answers only "is this pile signed off?" (D48).
+  const stage = processing
+    ? 'processing'
+    : confirmed
+      ? scan.data.revised
+        ? 'revised'
+        : 'validated'
+      : scan.data.reopened_at
+        ? 'reopened'
+        : 'pending';
 
   return (
     <div className="mx-auto max-w-5xl">
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h1>{t('review')}</h1>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1>{t('review')}</h1>
+            {/* Colour AND a word: the stage is never signalled by tint alone. */}
+            <Badge variant={processing ? 'info' : confirmed ? 'success' : 'warn'}>
+              {t(`stage.${stage}`)}
+            </Badge>
+          </div>
           <p className="text-body-s text-ink-500">{t('reviewHelp')}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -171,24 +279,55 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
               <KeyboardHint keys={['N']} />
             </Button>
           ) : null}
-          <Button
-            variant="primary"
-            loading={confirm.isPending}
-            busyLabel={t('confirming')}
-            onClick={() => confirm.mutate()}
-            disabled={confirmed || processing || reading > 0}
-          >
-            {t('confirm')}
-          </Button>
+          {confirmed ? (
+            <Button
+              variant="secondary"
+              loading={reopen.isPending}
+              busyLabel={t('reopening')}
+              onClick={() => reopen.mutate()}
+            >
+              {t('reopen')}
+            </Button>
+          ) : (
+            <Button
+              variant="primary"
+              loading={confirm.isPending}
+              busyLabel={t('confirming')}
+              onClick={() => confirm.mutate()}
+              disabled={processing || reading > 0}
+            >
+              {t('confirm')}
+            </Button>
+          )}
         </div>
       </header>
 
       {processing ? (
-        // A scan still being read must not look like a finished empty one.
-        <Panel className="mb-4" role="status">
-          <div className="flex items-center gap-3">
-            <ProgressRing value={job.data?.progress ?? 0} label={t('processing')} size={56} />
-            <p className="text-body-s">{job.data?.message ?? t('processing')}</p>
+        // A scan still being read must not look like a finished empty one —
+        // and must not look failed either. Two things were wrong here: a ring
+        // drawn at 0 (a meter reporting "no progress", when in truth nobody
+        // has started measuring yet), and the job's own `message`, which is
+        // English developer text written for a log and was being shown to a
+        // teacher. The stage drives the words now; the server string never
+        // reaches the screen.
+        <Panel className="mb-4 flex items-center gap-4" role="status" aria-live="polite">
+          {progress > 0 ? (
+            <ProgressRing
+              value={progress}
+              centre={fmt.percent(progress)}
+              label={t('processingLabel')}
+              size={56}
+            />
+          ) : (
+            <Spinner size={32} className="shrink-0 text-primary-600" />
+          )}
+          <div className="min-w-0">
+            {/* The ring states the number; the words say what is happening.
+                Saying "42" in both was two answers to one question. */}
+            <p className="text-body font-bold text-ink-900">
+              {t(queued ? 'processingQueued' : 'processingReading')}
+            </p>
+            <p className="text-body-s text-ink-500">{t('processingHelp')}</p>
           </div>
         </Panel>
       ) : (
@@ -196,7 +335,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
           <p className="text-body-s">{t('itemsToCheck', { count: queue.length })}</p>
           {reading > 0 ? (
             <p className="mt-1 flex items-center gap-3 text-body-s text-ink-700">
-              <ProgressRing value={0} label={t('readingAnswers', { count: reading })} size={28} />
+              <Spinner size={20} className="shrink-0 text-primary-600" />
               {t('readingAnswers', { count: reading })}
             </p>
           ) : null}
@@ -236,8 +375,74 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
         />
       ) : null}
 
+      {!processing && pages.length > 0 ? (
+        <Card className="mb-4 flex flex-wrap items-end gap-4" data-scan-filters>
+          <fieldset className="m-0 flex min-w-0 flex-col gap-2 border-0 p-0">
+            <legend className="text-label uppercase text-ink-500">{t('filterOutcome')}</legend>
+            <div className="flex flex-wrap gap-3">
+              {FILTER_OUTCOMES.map((outcome) => (
+                <Checkbox
+                  key={outcome}
+                  label={`${t(`outcome.${outcome}`)} (${outcomeCounts[outcome]})`}
+                  checked={outcomeFilter.has(outcome)}
+                  onChange={() =>
+                    setOutcomeFilter((current) => {
+                      const next = new Set(current);
+                      if (next.has(outcome)) next.delete(outcome);
+                      else next.add(outcome);
+                      return next;
+                    })
+                  }
+                />
+              ))}
+            </div>
+          </fieldset>
+          <Field label={t('filterCopy')}>
+            <Select value={copyFilter} onChange={(e) => setCopyFilter(e.currentTarget.value)}>
+              <option value="">{t('filterAllCopies')}</option>
+              {copies.map((copy) => (
+                <option key={copy.key} value={copy.key}>
+                  {copy.unsure > 0
+                    ? t('filterCopyUnsure', { uid: copy.label, count: copy.unsure })
+                    : copy.label}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          {filtered ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setOutcomeFilter(new Set());
+                setCopyFilter('');
+              }}
+            >
+              {t('filterClear')}
+            </Button>
+          ) : null}
+        </Card>
+      ) : null}
+
+      {!processing && pages.length > 0 && visiblePages.length === 0 ? (
+        <EmptyState
+          title={t('filterNoMatches')}
+          size="sm"
+          action={
+            <Button
+              onClick={() => {
+                setOutcomeFilter(new Set());
+                setCopyFilter('');
+              }}
+            >
+              {t('filterClear')}
+            </Button>
+          }
+        />
+      ) : null}
+
       <div className="flex flex-col gap-4">
-        {pages.map((page) => (
+        {visiblePages.map((page) => (
           <PageCard
             key={page.id}
             scanId={scanId}

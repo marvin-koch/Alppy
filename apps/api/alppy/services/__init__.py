@@ -14,7 +14,8 @@ attributes of the row.
 from __future__ import annotations
 
 import uuid
-from typing import Any
+from collections.abc import Mapping, Sequence
+from typing import TYPE_CHECKING, Any
 
 from alppy.models import (
     Chapter,
@@ -38,24 +39,41 @@ from alppy.models.enums import ExerciseOrigin, ExerciseType
 from alppy.schemas import (
     ChapterOut,
     ClassOut,
+    ClassPointsOut,
+    ClassSheetPointsOut,
     CompetencyOut,
     DetectionOut,
     ExerciseOut,
+    ItemConfidenceOut,
     JobOut,
     ScanOut,
     ScanPageOut,
+    SheetConfidenceOut,
     SheetInstanceOut,
     SheetItemOut,
     SheetOut,
     SourceOut,
     SourceSectionOut,
     StudentOut,
+    StudentPointsOut,
+    StudentSheetItemOut,
+    StudentSheetOut,
     SubjectOut,
     TeacherOut,
     TeacherPreferences,
 )
 from alppy.sheets.layout import OptionLetters, tf_letters
 from alppy.storage import Storage, get_storage
+
+if TYPE_CHECKING:
+    from alppy.services.results_service import StudentSheet
+    from alppy.services.scan_service import ItemConfidence
+
+    # Guarded: `sheet_service` imports this package (for `event_service`), so
+    # importing it back at runtime would close the cycle. `from __future__
+    # import annotations` makes the annotation a string, so the guard is
+    # enough — nothing here needs the class at runtime.
+    from alppy.services.sheet_service import ClassPointsReport, SheetPoints
 
 __all__ = [
     "chapter_out",
@@ -196,9 +214,7 @@ def source_section_out(section: SourceSection, *, exercise_count: int = 0) -> So
     )
 
 
-def source_out(
-    source: Source, *, exercise_count: int = 0, section_count: int = 0
-) -> SourceOut:
+def source_out(source: Source, *, exercise_count: int = 0, section_count: int = 0) -> SourceOut:
     return SourceOut(
         id=source.id,
         filename=source.filename,
@@ -222,11 +238,16 @@ def sheet_item_out(item: SheetItem) -> SheetItemOut:
         statement_override=item.statement_override,
         answer_box_lines=item.answer_box_lines,
         answer_box_fill=item.answer_box_fill,
+        expected_answer=item.expected_answer,
+        points_correct=item.points_correct,
+        points_penalty=item.points_penalty,
         exercise=exercise_out(item.exercise),
     )
 
 
-def sheet_instance_out(instance: SheetInstance) -> SheetInstanceOut:
+def sheet_instance_out(
+    instance: SheetInstance, points: SheetPoints | None = None
+) -> SheetInstanceOut:
     return SheetInstanceOut(
         id=instance.id,
         student_id=instance.student_id,
@@ -234,6 +255,8 @@ def sheet_instance_out(instance: SheetInstance) -> SheetInstanceOut:
         page_count=instance.page_count,
         group_label=instance.group_label,
         has_feedback=instance.feedback_id is not None,
+        points_earned=points.earned if points is not None else None,
+        points_possible=points.possible if points is not None else 0.0,
     )
 
 
@@ -243,7 +266,15 @@ def _url(storage: Storage | None, key: str | None) -> str | None:
     return storage.url_for(key)
 
 
-def sheet_out(sheet: Sheet, *, storage: Storage | None = None) -> SheetOut:
+def sheet_out(
+    sheet: Sheet,
+    *,
+    storage: Storage | None = None,
+    points: Mapping[uuid.UUID, SheetPoints] | None = None,
+) -> SheetOut:
+    """Serialise a sheet. Pure: the marks are computed by the caller (see
+    ``sheet_service.points_totals_for_sheet``) and handed in, so this stays a
+    function of its arguments rather than one that queries."""
     return SheetOut(
         id=sheet.id,
         class_id=sheet.class_id,
@@ -253,8 +284,13 @@ def sheet_out(sheet: Sheet, *, storage: Storage | None = None) -> SheetOut:
         language=sheet.language,
         intent=sheet.intent,
         layout_version=sheet.layout_version,
+        default_points_correct=sheet.default_points_correct,
+        default_points_penalty=sheet.default_points_penalty,
         items=[sheet_item_out(i) for i in sorted(sheet.items, key=lambda i: i.position)],
-        instances=[sheet_instance_out(i) for i in sheet.instances],
+        instances=[
+            sheet_instance_out(i, points.get(i.student_id) if points else None)
+            for i in sheet.instances
+        ],
         blank_pdf_url=_url(storage, sheet.blank_pdf_key),
         answer_key_pdf_url=_url(storage, sheet.answer_key_pdf_key),
         feedback_pdf_url=_url(storage, sheet.feedback_pdf_key),
@@ -311,9 +347,7 @@ def detection_out(
         options=options,
         option_letters=letters,
         exercise_type=exercise.type if exercise is not None else None,
-        ai_generated=(
-            exercise is not None and exercise.origin is ExerciseOrigin.AI_GENERATED
-        ),
+        ai_generated=(exercise is not None and exercise.origin is ExerciseOrigin.AI_GENERATED),
         answer_index=answer_index,
         crop_url=_url(storage, detection.crop_key),
         transcription=detection.transcription,
@@ -321,12 +355,24 @@ def detection_out(
         machine_transcription=detection.machine_transcription,
         machine_verdict_correct=detection.machine_verdict_correct,
         vision_model=detection.vision_model,
-        answer_text=(
-            exercise.answer_text
-            if exercise is not None and exercise.type is ExerciseType.OPEN
-            else None
+        answer_text=expected_answer_for(detection),
+        reference_answer=(
+            detection.reference_answer if expected_answer_for(detection) is None else None
         ),
     )
+
+
+def expected_answer_for(detection: Detection) -> str | None:
+    """The answer an open item is judged against: the sheet item's, written by
+    the teacher for this printing, else the exercise's own. ``None`` means the
+    grader had to work it out itself."""
+    exercise = detection.exercise
+    if exercise is None or exercise.type is not ExerciseType.OPEN:
+        return None
+    item = detection.sheet_item
+    if item is not None and item.expected_answer:
+        return item.expected_answer
+    return exercise.answer_text or None
 
 
 def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPageOut:
@@ -362,7 +408,99 @@ def scan_out(
         status=scan.status,
         error=scan.error,
         pages=[scan_page_out(p, storage=storage) for p in scan.pages],
+        # Derived, not stored: a pile signed off more than once has been
+        # revised. Keeping this out of `status` is what stops every
+        # "is it confirmed?" check in the codebase from needing to know (D48).
+        revised=scan.confirmation_count > 1,
+        reopened_at=scan.reopened_at,
+        confirmed_at=scan.confirmed_at,
         created_at=scan.created_at,
+    )
+
+
+def class_points_out(class_id: uuid.UUID, report: ClassPointsReport) -> ClassPointsOut:
+    """Pure: the caller computes the report, this only shapes it."""
+    return ClassPointsOut(
+        class_id=class_id,
+        students=[
+            StudentPointsOut(
+                student_id=student_id, points_earned=p.earned, points_possible=p.possible
+            )
+            for student_id, p in report.students.items()
+        ],
+        sheets=[
+            ClassSheetPointsOut(
+                sheet_id=sheet.sheet_id,
+                sheet_title=sheet.sheet_title,
+                average_ratio=sheet.average_ratio,
+                students=[
+                    StudentPointsOut(
+                        student_id=student_id,
+                        points_earned=p.earned,
+                        points_possible=p.possible,
+                    )
+                    for student_id, p in sheet.per_student.items()
+                ],
+            )
+            for sheet in report.sheets
+        ],
+    )
+
+
+def student_sheet_out(
+    breakdown: StudentSheet, *, storage: Storage | None = None
+) -> StudentSheetOut:
+    return StudentSheetOut(
+        student=student_out(breakdown.student),
+        sheet_id=breakdown.sheet.id,
+        sheet_title=breakdown.sheet.title,
+        scan_id=breakdown.scan_id,
+        answered_at=breakdown.answered_at,
+        points_earned=breakdown.points_earned,
+        points_possible=breakdown.points_possible,
+        items=[
+            StudentSheetItemOut(
+                position=item.position,
+                number=item.number,
+                exercise_id=item.exercise_id,
+                statement=item.statement,
+                exercise_type=item.exercise_type,
+                ai_generated=item.ai_generated,
+                options=item.options,
+                given=item.given,
+                given_index=item.given_index,
+                expected=item.expected,
+                expected_index=item.expected_index,
+                outcome=item.outcome,
+                confidence=item.confidence,
+                correct=item.correct,
+                points_earned=item.points_earned,
+                points_possible=item.points_possible,
+                crop_url=_url(storage, item.crop_key),
+            )
+            for item in breakdown.items
+        ],
+    )
+
+
+def sheet_confidence_out(
+    sheet_id: uuid.UUID, items: Sequence[ItemConfidence]
+) -> SheetConfidenceOut:
+    return SheetConfidenceOut(
+        sheet_id=sheet_id,
+        items=[
+            ItemConfidenceOut(
+                sheet_item_id=item.sheet_item_id,
+                exercise_id=item.exercise_id,
+                number=item.number,
+                statement=item.statement,
+                copies_read=item.copies_read,
+                low_confidence=item.low_confidence,
+                ambiguous=item.ambiguous,
+                corrected=item.corrected,
+            )
+            for item in items
+        ],
     )
 
 

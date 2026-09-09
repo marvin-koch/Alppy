@@ -33,7 +33,7 @@ from alppy.ai.audit import record_calls
 from alppy.ai.base import ImagePart
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
-from alppy.models import AnswerBoxPlacement, Detection, Exercise, Job, Scan, ScanPage
+from alppy.models import AnswerBoxPlacement, Detection, Exercise, Job, Scan, ScanPage, SheetItem
 from alppy.models.enums import DetectionOutcome, JobKind, JobStatus
 from alppy.scan.detector import LOW_CONFIDENCE
 from alppy.storage import Storage
@@ -43,7 +43,7 @@ log = get_logger(__name__)
 ProgressCB = Callable[[float, "str | None"], None]
 
 PROMPT_NAME = "grade_open_answer"
-PROMPT_VERSION = "v1"
+PROMPT_VERSION = "v2"
 
 _FILL_WORDS = {
     "lined": "faint horizontal guide lines every 8 mm",
@@ -96,6 +96,24 @@ def _fill_for(db: Session, detection: Detection) -> str:
     return _FILL_WORDS.get(row.value if row is not None else "lined", _FILL_WORDS["lined"])
 
 
+NO_EXPECTED_ANSWER = "No expected answer was given. Work the question out yourself first."
+
+
+def grading_context(
+    db: Session, detection: Detection, exercise: Exercise
+) -> tuple[str, str | None]:
+    """What the model is told about the question: the statement as it was
+    printed, and the expected answer if anyone recorded one.
+
+    Both follow the sheet item first. The teacher may have reworded the
+    statement for this sheet and written the answer that goes with it; the
+    exercise's own text and answer are the fallback, not the authority."""
+    item = db.get(SheetItem, detection.sheet_item_id) if detection.sheet_item_id else None
+    statement = (item.statement_override if item is not None else None) or exercise.statement
+    expected = (item.expected_answer if item is not None else None) or exercise.answer_text
+    return statement, (expected.strip() or None) if expected else None
+
+
 def _settle(
     detection: Detection,
     *,
@@ -104,6 +122,7 @@ def _settle(
     transcription: str | None = None,
     verdict: bool | None = None,
     model: str | None = None,
+    reference: str | None = None,
 ) -> None:
     """Write the machine's reading, once, into both halves of the row."""
     detection.transcription = detection.machine_transcription = transcription
@@ -111,6 +130,7 @@ def _settle(
     detection.outcome = detection.machine_outcome = outcome
     detection.confidence = detection.machine_confidence = confidence
     detection.vision_model = model
+    detection.reference_answer = reference
 
 
 def _ungradeable(detection: Detection, *, transcription: str | None = None) -> None:
@@ -134,6 +154,7 @@ def grade_one(
     if not ai.chat_is_grounded or not detection.crop_key:
         _ungradeable(detection)
         return DetectionOutcome.NOT_GRADEABLE
+    statement, expected = grading_context(db, detection, exercise)
     try:
         image = storage.get_bytes(detection.crop_key)
         response, record = ai.complete(
@@ -141,8 +162,10 @@ def grade_one(
             purpose=PROMPT_NAME,
             values={
                 "language": exercise.language,
-                "statement": exercise.statement,
-                "expected_answer": exercise.answer_text or "(no expected answer was recorded)",
+                "statement": statement,
+                # With a key the model judges against it and nothing else;
+                # without one it is told to work the answer out first.
+                "reference": expected or NO_EXPECTED_ANSWER,
                 "fill": _fill_for(db, detection),
             },
             images=(ImagePart(image),),
@@ -163,6 +186,11 @@ def grade_one(
     transcription = str(transcription).strip() if transcription else None
     written = data.get("written")
     correct = data.get("correct")
+    # The reference the model judged against is kept only when it had to
+    # produce one; the teacher's own answer is already on the sheet item.
+    reference = None
+    if expected is None and data.get("reference"):
+        reference = str(data["reference"]).strip()[:2000] or None
     try:
         confidence = float(max(0.0, min(1.0, float(data.get("confidence") or 0.0))))
     except (TypeError, ValueError):
@@ -184,11 +212,14 @@ def grade_one(
             confidence=confidence,
             transcription=transcription,
             model=response.model,
+            reference=reference,
         )
         return DetectionOutcome.NOT_GRADEABLE
 
     outcome = (
-        DetectionOutcome.DETECTED if confidence >= LOW_CONFIDENCE else DetectionOutcome.LOW_CONFIDENCE
+        DetectionOutcome.DETECTED
+        if confidence >= LOW_CONFIDENCE
+        else DetectionOutcome.LOW_CONFIDENCE
     )
     _settle(
         detection,
@@ -197,6 +228,7 @@ def grade_one(
         transcription=transcription,
         verdict=correct,
         model=response.model,
+        reference=reference,
     )
     return outcome
 
@@ -303,9 +335,11 @@ def settle_abandoned(db: Session, scan_id: uuid.UUID) -> int:
 
 
 __all__ = [
+    "NO_EXPECTED_ANSWER",
     "chain_open_grading",
     "grade_one",
     "grade_open_answers",
+    "grading_context",
     "grading_in_progress",
     "pending_detections",
     "queue_open_grading",

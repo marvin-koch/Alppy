@@ -12,6 +12,7 @@ import type {
   ChapterOut,
   ClassCreate,
   ClassOut,
+  ClassPointsOut,
   CompetencyAttemptsOut,
   CompetencyOut,
   CurriculumKind,
@@ -39,6 +40,8 @@ import type {
   ScanPageAssign,
   ScanPageDiscard,
   ScanPageOut,
+  ScanUnvalidateResponse,
+  SheetConfidenceOut,
   SheetCreate,
   SheetDraftPreview,
   SheetOut,
@@ -49,6 +52,7 @@ import type {
   SourceSectionOut,
   StudentOut,
   StudentProfileOut,
+  StudentSheetOut,
   SubjectOut,
   TeacherOut,
   TeacherPreferences,
@@ -232,6 +236,28 @@ export const discardScanPage = (scanId: Uuid, pageId: Uuid, body: ScanPageDiscar
 
 export const confirmScan = (scanId: Uuid) =>
   apiRequest<ScanConfirmResponse>(`/scans/${scanId}/confirm`, { method: 'POST' });
+
+/** Take a confirmed pile back into review, withdrawing the grades it wrote. */
+export const reopenScan = (scanId: Uuid) =>
+  apiRequest<ScanUnvalidateResponse>(`/scans/${scanId}/reopen`, { method: 'POST' });
+
+/** Undo one correction, restoring exactly what the machine read. */
+export const revertDetection = (scanId: Uuid, detectionId: Uuid) =>
+  apiRequest<DetectionOut>(`/scans/${scanId}/detections/${detectionId}/revert`, {
+    method: 'POST',
+  });
+
+/* ------------------------------------------------------------ reports --- */
+export const getClassPoints = (classId: Uuid, options: { subjectId?: Uuid } = {}) =>
+  apiRequest<ClassPointsOut>(`/classes/${classId}/points`, {
+    query: { subject_id: options.subjectId },
+  });
+
+export const getStudentSheet = (studentId: Uuid, sheetId: Uuid) =>
+  apiRequest<StudentSheetOut>(`/students/${studentId}/sheets/${sheetId}`);
+
+export const getSheetConfidence = (sheetId: Uuid) =>
+  apiRequest<SheetConfidenceOut>(`/sheets/${sheetId}/confidence`);
 
 /* ------------------------------------------------------------ mastery --- */
 export const getClassMastery = (

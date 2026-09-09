@@ -445,6 +445,16 @@ class ExerciseVariant(Base, TimestampMixin, SchoolScopedMixin):
 # --------------------------------------------------------------------------
 class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "sheet"
+    __table_args__ = (
+        # The barème is bounded so the printed "(N pts)" label has a known
+        # widest form; `pagination.POINTS_LABEL_W_MM` reserves room for it.
+        CheckConstraint(
+            "default_points_correct BETWEEN 0 AND 20", name="ck_sheet_default_points_correct"
+        ),
+        CheckConstraint(
+            "default_points_penalty BETWEEN 0 AND 20", name="ck_sheet_default_points_penalty"
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     class_id: Mapped[uuid.UUID] = _fk("class.id")
@@ -470,6 +480,14 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     # always registered against the layout the sheet was printed with.
     layout_version: Mapped[str] = mapped_column(String(10), default="v1", nullable=False)
 
+    # The teacher's barème for this sheet: what a correct answer is worth and
+    # what a wrong one costs. NOT NULL, because every item needs a value to
+    # fall back to — a sheet item's own columns are the nullable ones. The
+    # penalty is a MAGNITUDE; `scan.grading.score_for` applies the sign, so
+    # "0.25" here always means a quarter point off, never a quarter point on.
+    default_points_correct: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
+    default_points_penalty: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+
     blank_pdf_key: Mapped[str | None] = mapped_column(String(500))
     answer_key_pdf_key: Mapped[str | None] = mapped_column(String(500))
     # The feedback pages, as their OWN document. Deliberately not extra pages
@@ -493,11 +511,20 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "sheet_item"
     __table_args__ = (
         UniqueConstraint("sheet_id", "position", name="uq_sheet_item_position"),
-        # The four presets the builder offers. A value outside them would print
-        # a box the pagination estimate never reserved.
+        # Any height up to the tallest box a page can carry on its own
+        # (``layout.ANSWER_BOX_MAX_LINES``); 0 prints none. Taller would be a
+        # box no page can hold, so pagination could never place it.
         CheckConstraint(
-            "answer_box_lines IS NULL OR answer_box_lines IN (0, 3, 5, 8, 12)",
+            "answer_box_lines IS NULL OR answer_box_lines BETWEEN 0 AND 14",
             name="ck_sheet_item_answer_box_lines",
+        ),
+        CheckConstraint(
+            "points_correct IS NULL OR points_correct BETWEEN 0 AND 20",
+            name="ck_sheet_item_points_correct",
+        ),
+        CheckConstraint(
+            "points_penalty IS NULL OR points_penalty BETWEEN 0 AND 20",
+            name="ck_sheet_item_points_penalty",
         ),
     )
 
@@ -508,7 +535,7 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     # The teacher may edit the printed wording without mutating the corpus.
     statement_override: Mapped[str | None] = mapped_column(Text)
     # The written-answer box under an `open` item: its height in 8 mm lines
-    # (3, 5, 8 or 12; 0 prints none) and what is printed inside it. Per sheet item, not per
+    # (1 to 14; 0 prints none) and what is printed inside it. Per sheet item, not per
     # exercise, for the same reason as the wording: the same exercise may want
     # three lines on a quiz and twelve on a test. NULL means the default, and
     # both are meaningless on an MCQ or a true/false item.
@@ -516,6 +543,25 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     answer_box_fill: Mapped[AnswerBoxFill | None] = mapped_column(
         Enum(AnswerBoxFill, name="answer_box_fill")
     )
+    # The answer the teacher expects for THIS printing of an open item. It is
+    # what the answer key prints and what the vision grader judges against.
+    # Per sheet item like the wording: a reworded statement wants a different
+    # answer, and the corpus keeps the book's own. NULL falls back to the
+    # exercise's `answer_text`; when that is NULL too, the grader works the
+    # answer out itself before judging, and says so to the teacher.
+    expected_answer: Mapped[str | None] = mapped_column(Text)
+    # This item's own barème. NULL means "use the sheet's default" — the same
+    # convention as `answer_box_lines`, and the reason 0.0 must be tested with
+    # `is not None` rather than for truth: a deliberate 0 is a bonus item that
+    # costs nothing to get wrong, not an absent override.
+    #
+    # Deliberately NOT gated by exercise type. The wording and the box are
+    # meaningless on a bubble item, but a point value is meaningful on every
+    # type — an `open` item is not auto-graded today and will be the moment a
+    # verdict arrives through `register_grader`, and a column that had to be
+    # un-gated later is worse than one that was never gated.
+    points_correct: Mapped[float | None] = mapped_column(Float)
+    points_penalty: Mapped[float | None] = mapped_column(Float)
 
     sheet: Mapped[Sheet] = relationship(back_populates="items")
     exercise: Mapped[Exercise] = relationship()
@@ -722,6 +768,24 @@ class Scan(Base, TimestampMixin, SchoolScopedMixin):
     )
     error: Mapped[str | None] = mapped_column(Text)
 
+    # --- the confirmation history ------------------------------------------
+    # A pile can be signed off, reopened, and signed off again. That is a fact
+    # about its HISTORY, not a fourth status: `status` answers one question —
+    # "is this pile signed off?" — and a revised pile still answers yes. Adding
+    # a REVISED member would turn every `is ScanStatus.CONFIRMED` check in the
+    # codebase into a two-member test, and each one missed is a silently
+    # unlocked pile. The label the teacher reads is derived instead (D48):
+    #   needs_review, count == 0 -> pending
+    #   confirmed,    count == 1 -> validated
+    #   confirmed,    count  > 1 -> revised
+    #   needs_review, count  > 0 -> reopened
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    """Stamped by every successful confirmation, and NOT cleared on reopen.
+    This is what orders "the newest other scan still confirmed" when a reopen
+    has to decide which reading a freed item falls back to."""
+    reopened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+
     pages: Mapped[list[ScanPage]] = relationship(
         back_populates="scan", cascade="all, delete-orphan", order_by="ScanPage.page_index"
     )
@@ -811,6 +875,10 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     machine_verdict_correct: Mapped[bool | None] = mapped_column(Boolean)
     # Which model read it, for the audit trail; never the prompt or the image.
     vision_model: Mapped[str | None] = mapped_column(String(80))
+    # What the grader judged against. The teacher's expected answer when one
+    # existed; otherwise the answer the model worked out itself, kept so the
+    # teacher reviewing the verdict can see what it was measured against.
+    reference_answer: Mapped[str | None] = mapped_column(Text)
     corrected_by_id: Mapped[uuid.UUID | None] = _fk(
         "teacher.id", nullable=True, ondelete="SET NULL"
     )
@@ -820,6 +888,7 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     # selectin, not joined: the review screen loads every detection of a scan at
     # once, so one extra query beats a row per detection.
     exercise: Mapped[Exercise | None] = relationship(lazy="selectin")
+    sheet_item: Mapped[SheetItem | None] = relationship(lazy="selectin")
 
 
 class Attempt(Base, TimestampMixin, SchoolScopedMixin):
@@ -846,6 +915,12 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
     )
     detection_id: Mapped[uuid.UUID | None] = _fk(
         "detection.id", nullable=True, ondelete="SET NULL"
+    )
+    # Which confirmation wrote this row. Without it, reopening a pile has no
+    # way to know which attempts it owns: `detection_id` names the reading, but
+    # the same row may have been superseded from another scan since.
+    confirmed_scan_id: Mapped[uuid.UUID | None] = _fk(
+        "scan.id", nullable=True, ondelete="SET NULL"
     )
     correct: Mapped[bool] = mapped_column(Boolean, nullable=False)
     score: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)

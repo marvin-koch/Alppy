@@ -6,6 +6,7 @@ import {
   Card,
   EmptyState,
   ErrorState,
+  IconBook,
   IconChevronLeft,
   IconChevronRight,
   IconSearch,
@@ -17,9 +18,16 @@ import {
 import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 
+import { Link } from '@/i18n/navigation';
 import { DEFAULT_PAGE_SIZE, useSourceExercises } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import type { ExerciseOut, ExerciseType, SourceSectionOut, Uuid } from '@/lib/api/types';
+import type {
+  ExerciseOut,
+  ExerciseType,
+  SourceOut,
+  SourceSectionOut,
+  Uuid,
+} from '@/lib/api/types';
 import { ExerciseRow } from './ExerciseRow';
 import type { DraftSheet } from './useDraftSheet';
 
@@ -27,6 +35,9 @@ interface Props {
   sourceId: Uuid | null;
   section: SourceSectionOut | null;
   draft: DraftSheet;
+  /** The indexed documents, offered as the first step when none is open. */
+  sources: SourceOut[];
+  onChooseSource: (id: Uuid) => void;
 }
 
 /**
@@ -44,7 +55,7 @@ interface Props {
  * this list. A teacher who ticks three exercises, searches for a fourth, and
  * finds the first three gone has lost work.
  */
-export function ExercisePicker({ sourceId, section, draft }: Props) {
+export function ExercisePicker({ sourceId, section, draft, sources, onChooseSource }: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
   const tx = useTranslations('exercise');
@@ -89,15 +100,7 @@ export function ExercisePicker({ sourceId, section, draft }: Props) {
   const hasFilters = Boolean(type || difficulty || debounced);
 
   if (!sourceId) {
-    return (
-      <Card>
-        <EmptyState
-          illustration={<IlloCompass />}
-          title={t('emptyPickTitle')}
-          description={t('emptyPickBody')}
-        />
-      </Card>
-    );
+    return <DocumentChooser sources={sources} onChoose={onChooseSource} />;
   }
 
   // Group a page by the book's page number, so the teacher can check it against
@@ -306,5 +309,78 @@ function TypeChip({
         {count === undefined ? '' : ` · ${count}`}
       </Badge>
     </button>
+  );
+}
+
+/**
+ * The first step, when no document is open: the books themselves, as buttons.
+ *
+ * A select in a toolbar is the right control once a document is open and the
+ * teacher wants another; it is the wrong one for the first choice, where the
+ * page otherwise showed an illustration and told them to look "above".
+ */
+function DocumentChooser({
+  sources,
+  onChoose,
+}: {
+  sources: SourceOut[];
+  onChoose: (id: Uuid) => void;
+}) {
+  const t = useTranslations('builder');
+
+  if (sources.length === 0) {
+    return (
+      <Card>
+        <EmptyState
+          illustration={<IlloCompass />}
+          title={t('noDocumentsTitle')}
+          description={t('noDocumentsBody')}
+          action={
+            <Link href="/sources" className="ard-btn" data-variant="primary">
+              {t('importDocument')}
+            </Link>
+          }
+        />
+      </Card>
+    );
+  }
+
+  return (
+    <Card className="flex flex-col gap-3">
+      <div>
+        <h2 className="text-h3">{t('emptyPickTitle')}</h2>
+        <p className="mt-1 text-body-s text-ink-500">{t('emptyPickBody')}</p>
+      </div>
+      <ul className="flex list-none flex-col gap-2 p-0">
+        {sources.map((source) => (
+          <li key={source.id}>
+            <button
+              type="button"
+              onClick={() => onChoose(source.id)}
+              className="flex min-h-11 w-full cursor-pointer items-center gap-3.5 rounded-md border-2 border-line bg-surface p-3 text-left transition-colors hover:border-primary-500 hover:bg-primary-050"
+            >
+              <span
+                className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-md bg-primary-100 text-primary-700"
+                aria-hidden
+              >
+                <IconBook size={22} />
+              </span>
+              <span className="min-w-0 flex-grow">
+                <span className="block truncate font-display font-semibold text-ink-900">
+                  {source.filename}
+                </span>
+                <span className="block text-body-s text-ink-500">
+                  {[
+                    t('sectionCount', { count: source.section_count }),
+                    t('exerciseCount', { count: source.exercise_count }),
+                  ].join(' · ')}
+                </span>
+              </span>
+              <IconChevronRight size={20} className="shrink-0 text-ink-300" aria-hidden />
+            </button>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }

@@ -99,8 +99,6 @@ export function ExerciseRow({
                   </span>
                 ))}
               </span>
-            ) : exercise.type === 'open' ? (
-              <span className="text-body-s text-ink-500">{tx('openNotGraded')}</span>
             ) : null}
           </span>
         }

@@ -580,6 +580,8 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
         page_count: 1,
         group_label: plan.group_label ?? null,
         has_feedback: plan.feedback_id != null,
+        points_earned: null,
+        points_possible: 0,
       })),
     };
     state.sheets[created.id] = created;

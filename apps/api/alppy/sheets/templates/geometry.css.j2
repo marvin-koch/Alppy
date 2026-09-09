@@ -149,6 +149,23 @@
   margin-right: 2mm;
 }
 
+/* "(suite)" beside the number of a box carried over to the next page. */
+.sheet-item-continued {
+  color: var(--c-ink-700);
+}
+
+/* What the item is worth, beside its number. Deliberately quiet: it is
+   information the student needs while budgeting the hour, not a second
+   heading. It inherits the statement's size rather than shrinking, because it
+   sits inside text a student reads and that floor is a product constraint —
+   weight and colour carry the subordination instead.
+   `pagination.POINTS_LABEL_W_MM` reserves the width this occupies. */
+.sheet-item-points {
+  font-weight: 700;
+  color: var(--c-ink-700);
+  margin-right: 2mm;
+}
+
 /* The one place the mandarin accent appears on paper. It carries a word, not
    just a colour: a photocopier turns the colour into grey. */
 /* Rendered inside the statement a student reads, so it may not drop below the
@@ -318,19 +335,6 @@
   line-height: {{ g.letter_line }}mm;
 }
 
-/* "réponse écrite" tells the student this row has no bubble to fill: an
-   instruction to them, not chrome for the teacher. */
-.sheet-grid-open {
-  position: absolute;
-  left: {{ g.number_w }}mm;
-  top: 0;
-  height: {{ g.bubble_d }}mm;
-  line-height: {{ g.bubble_d }}mm;
-  font-size: var(--text-body-l);
-  color: var(--c-ink-700);
-  /* One row is 5 mm tall; a second line would land on the next row's bubbles. */
-  white-space: nowrap;
-}
 
 /* -- Footer, kept clear of the two bottom fiducials ----------------------- */
 .print-footer {

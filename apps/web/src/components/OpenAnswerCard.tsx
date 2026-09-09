@@ -165,6 +165,14 @@ export function OpenAnswerCard({
                 {to('expected', { answer: '' })}
                 <span className="mono">{detection.answer_text}</span>
               </>
+            ) : detection.reference_answer ? (
+              // Nobody wrote a key for this item: the model worked the answer
+              // out itself and judged against it. Shown so the teacher can
+              // disagree with the reference, not only with the verdict.
+              <>
+                {to('modelReference', { answer: '' })}
+                <span className="mono">{detection.reference_answer}</span>
+              </>
             ) : (
               to('noExpected')
             )}

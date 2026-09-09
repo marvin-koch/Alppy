@@ -1,16 +1,8 @@
-import {
-  forwardRef,
-  useCallback,
-  useRef,
-  useState,
-  type HTMLAttributes,
-  type KeyboardEvent,
-  type ReactNode,
-} from 'react';
-import { cx } from '../../lib/cx';
+import { forwardRef, type HTMLAttributes, type ReactNode } from 'react';
 import type { BandLabels } from '../../lib/mastery';
 import type { MasteryValue } from '../../lib/types';
 import { ConceptTag } from './ConceptTag';
+import { Matrix } from './Matrix';
 import { MasteryCell, type MasteryCellLabelParts } from './MasteryCell';
 
 export interface MatrixStudent {
@@ -109,149 +101,48 @@ export const MasteryMatrix = forwardRef<HTMLDivElement, MasteryMatrixProps>(func
   },
   ref,
 ) {
-  const stickyBackground = surface === 'canvas' ? 'bg-canvas' : 'bg-surface';
-  const gridRef = useRef<HTMLTableSectionElement>(null);
-  // Which cell owns the single tab stop. Clamped on render rather than stored
-  // as an id, so a filter or a re-sort cannot strand focus on a vanished cell.
-  const [cursor, setCursor] = useState<[number, number]>([0, 0]);
-  const activeRow = Math.min(cursor[0], Math.max(0, students.length - 1));
-  const activeCol = Math.min(cursor[1], Math.max(0, competencies.length - 1));
-
-  const focusCell = useCallback((row: number, col: number) => {
-    const cell = gridRef.current?.querySelector<HTMLButtonElement>(
-      `[data-row="${row}"][data-col="${col}"]`,
-    );
-    cell?.focus();
-  }, []);
-
-  const onGridKeyDown = useCallback(
-    (event: KeyboardEvent<HTMLTableSectionElement>) => {
-      const target = event.target as HTMLElement;
-      const row = Number(target.dataset?.['row']);
-      const col = Number(target.dataset?.['col']);
-      if (Number.isNaN(row) || Number.isNaN(col)) return;
-
-      const lastRow = students.length - 1;
-      const lastCol = competencies.length - 1;
-      let next: [number, number] | null = null;
-      switch (event.key) {
-        case 'ArrowRight':
-          next = [row, Math.min(lastCol, col + 1)];
-          break;
-        case 'ArrowLeft':
-          next = [row, Math.max(0, col - 1)];
-          break;
-        case 'ArrowDown':
-          next = [Math.min(lastRow, row + 1), col];
-          break;
-        case 'ArrowUp':
-          next = [Math.max(0, row - 1), col];
-          break;
-        case 'Home':
-          next = event.ctrlKey ? [0, 0] : [row, 0];
-          break;
-        case 'End':
-          next = event.ctrlKey ? [lastRow, lastCol] : [row, lastCol];
-          break;
-        default:
-          return;
-      }
-      if (next[0] === row && next[1] === col) {
-        event.preventDefault();
-        return;
-      }
-      event.preventDefault();
-      setCursor(next);
-      focusCell(next[0], next[1]);
-    },
-    [competencies.length, focusCell, students.length],
-  );
-
   return (
-    <div
+    <Matrix<MatrixStudent, MatrixCompetency>
       ref={ref}
-      data-matrix-scroll=""
-      className={cx(
-        'w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain',
-        bleed && '-mx-4 px-4 md:mx-0 md:px-0',
-        className,
+      rows={students}
+      columns={competencies}
+      caption={caption}
+      rowHeaderLabel={studentColumnLabel}
+      showCaption={showCaption}
+      bleed={bleed}
+      surface={surface}
+      {...(className !== undefined ? { className } : {})}
+      renderColumnHeader={(competency) => (
+        <>
+          <ConceptTag code={competency.code} />
+          <span className="visually-hidden">{competency.label}</span>
+        </>
       )}
+      renderRowHeader={(student) => {
+        const name = formatStudentName(student);
+        return renderStudentName ? renderStudentName(student, name) : name;
+      }}
+      renderCell={(student, competency, _rowIndex, _colIndex, slot) => {
+        const value = valueFor(student.id, competency.id) ?? EMPTY;
+        const cellId = `${student.id}:${competency.id}`;
+        return (
+          <MasteryCell
+            band={value.band}
+            score={value.score}
+            studentName={formatStudentName(student)}
+            competencyLabel={competency.label}
+            bandLabel={bandLabels[value.band]}
+            {...(formatLabel ? { formatLabel } : {})}
+            showScore={showScores}
+            selected={selectedCellId === cellId}
+            {...slot}
+            onClick={() =>
+              onCellSelect?.({ studentId: student.id, competencyId: competency.id, value })
+            }
+          />
+        );
+      }}
       {...rest}
-    >
-      <table className="min-w-max border-separate border-spacing-1 text-left">
-        <caption
-          className={cx(
-            'text-left text-body-s text-ink-500',
-            showCaption ? 'pb-2' : 'visually-hidden',
-          )}
-        >
-          {caption}
-        </caption>
-        <thead>
-          <tr>
-            <th
-              scope="col"
-              className={cx(
-                'sticky left-0 z-20 min-w-[9rem] px-2 py-1 text-label uppercase text-ink-500',
-                stickyBackground,
-              )}
-            >
-              {studentColumnLabel}
-            </th>
-            {competencies.map((competency) => (
-              <th key={competency.id} scope="col" className="px-1 py-1 text-center align-bottom">
-                <ConceptTag code={competency.code} />
-                <span className="visually-hidden">{competency.label}</span>
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody ref={gridRef} onKeyDown={onGridKeyDown}>
-          {students.map((student, rowIndex) => {
-            const name = formatStudentName(student);
-            return (
-              <tr key={student.id}>
-                <th
-                  scope="row"
-                  className={cx(
-                    'sticky left-0 z-10 min-w-[9rem] max-w-[12rem] truncate py-1 pr-3',
-                    'text-body-s font-bold text-ink-900',
-                    'shadow-[1px_0_0_0_var(--c-line)]',
-                    stickyBackground,
-                  )}
-                >
-                  {renderStudentName ? renderStudentName(student, name) : name}
-                </th>
-                {competencies.map((competency, colIndex) => {
-                  const value = valueFor(student.id, competency.id) ?? EMPTY;
-                  const cellId = `${student.id}:${competency.id}`;
-                  return (
-                    <td key={competency.id} className="p-0 align-middle">
-                      <MasteryCell
-                        band={value.band}
-                        score={value.score}
-                        studentName={name}
-                        competencyLabel={competency.label}
-                        bandLabel={bandLabels[value.band]}
-                        {...(formatLabel ? { formatLabel } : {})}
-                        showScore={showScores}
-                        selected={selectedCellId === cellId}
-                        data-row={rowIndex}
-                        data-col={colIndex}
-                        tabIndex={rowIndex === activeRow && colIndex === activeCol ? 0 : -1}
-                        onFocus={() => setCursor([rowIndex, colIndex])}
-                        onClick={() =>
-                          onCellSelect?.({ studentId: student.id, competencyId: competency.id, value })
-                        }
-                      />
-                    </td>
-                  );
-                })}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+    />
   );
 });

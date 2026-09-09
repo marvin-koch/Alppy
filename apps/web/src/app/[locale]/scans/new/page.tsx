@@ -8,7 +8,9 @@ import {
   FileDrop,
   IlloTray,
   LoadingState,
+  Panel,
   Select,
+  Spinner,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
@@ -28,6 +30,8 @@ export default function NewScanPage() {
   const upload = useUploadScan();
   const [sheetId, setSheetId] = useState<Uuid | ''>('');
   const [error, setError] = useState<string | null>(null);
+  //  How many files are in flight, so the wait can name them.
+  const [pending, setPending] = useState(0);
 
   // Only a sheet that has been rendered can have copies coming back.
   const printable = (sheets.data ?? []).filter((s) => s.rendered_at !== null);
@@ -39,6 +43,7 @@ export default function NewScanPage() {
       return;
     }
     setError(null);
+    setPending(files.length);
     upload.mutate(
       { files, sheetId },
       {
@@ -46,7 +51,10 @@ export default function NewScanPage() {
           router.push(
             scan.job_id ? `/scans/${scan.id}?job=${scan.job_id}` : `/scans/${scan.id}`,
           ),
-        onError: (e) => setError(apiErrorMessage(e, tErr)),
+        onError: (e) => {
+          setPending(0);
+          setError(apiErrorMessage(e, tErr));
+        },
       },
     );
   }
@@ -111,9 +119,22 @@ export default function NewScanPage() {
             </div>
 
             {upload.isPending ? (
-              <p className="mt-3 text-body-s text-ink-500" role="status">
-                {t('uploading')}
-              </p>
+              // A pile of 28 photos is tens of megabytes: this is the longest
+              // wait in the product and it used to be one grey line of text.
+              // A teacher who cannot tell whether anything is happening takes
+              // the phone away, and the upload dies with the page.
+              <Panel className="mt-3 flex items-center gap-3" role="status" aria-live="polite">
+                {/* A spinner, not a ring: nobody is measuring how much of the
+                    upload is done, and a meter drawn at 0 says "nothing has
+                    happened", which is both wrong and discouraging. */}
+                <Spinner size={28} className="shrink-0 text-primary-600" />
+                <div className="min-w-0">
+                  <p className="text-body-s font-bold text-ink-900">
+                    {t('uploadingCount', { count: pending })}
+                  </p>
+                  <p className="text-body-s text-ink-500">{t('uploadingHelp')}</p>
+                </div>
+              </Panel>
             ) : null}
             {error ? (
               <p className="mt-3 text-body-s text-danger-600" role="alert">

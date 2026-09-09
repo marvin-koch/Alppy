@@ -29,6 +29,7 @@ from alppy.schemas import (
     ScanPageAssign,
     ScanPageDiscard,
     ScanPageOut,
+    ScanUnvalidateResponse,
     StudentOut,
 )
 from alppy.services import detection_out, scan_out, scan_page_out, student_out
@@ -111,7 +112,11 @@ def correct_detection(
     db: DbDep,
     storage: StorageDep,
 ) -> DetectionOut:
-    """A teacher overriding the machine. Always allowed, always recorded."""
+    """A teacher overriding the machine, always recorded.
+
+    Refused once the pile is confirmed: the grades were computed from the
+    readings as they stood then. Reopen first — that withdraws them.
+    """
     svc.get_scan(db, scope, scan_id)
     detection = svc.correct_detection(
         db, scope.school_id, teacher.id, scan_id, detection_id, payload
@@ -119,6 +124,39 @@ def correct_detection(
     db.commit()
     db.refresh(detection)
     return detection_out(detection, storage=storage)
+
+
+@router.post(
+    "/scans/{scan_id}/detections/{detection_id}/revert", response_model=DetectionOut
+)
+def revert_detection(
+    scan_id: uuid.UUID,
+    detection_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    storage: StorageDep,
+) -> DetectionOut:
+    """Undo a correction, restoring exactly what the machine read.
+
+    Refused on a reading that was never corrected, and on a confirmed pile.
+    """
+    detection = svc.revert_detection(db, scope, scan_id, detection_id)
+    db.commit()
+    db.refresh(detection)
+    return detection_out(detection, storage=storage)
+
+
+@router.post("/scans/{scan_id}/reopen", response_model=ScanUnvalidateResponse)
+def reopen_scan(scan_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> ScanUnvalidateResponse:
+    """Take a confirmed pile back into review.
+
+    Withdraws the grades this confirmation wrote, puts back any that an older
+    still-confirmed pile still accounts for, and recomputes mastery. An item
+    with no older reading simply has no grade again — not a zero.
+    """
+    result = svc.unvalidate_scan(db, scope, scan_id)
+    db.commit()
+    return result
 
 
 @router.get("/scans/{scan_id}/students", response_model=list[StudentOut])

@@ -24,6 +24,17 @@ class AnswerKey:
     answer_index: int | None = None
     answer_bool: bool | None = None
     option_count: int = 0
+    points_correct: float = 1.0
+    """What a correct, gradeable answer is worth under the teacher's barème."""
+    penalty: float = 0.0
+    """What a WRONG, gradeable answer costs, as a non-negative magnitude.
+    ``score_for`` applies the sign; nothing stores a negative number, so a
+    teacher who types 0.25 and one who types -0.25 cannot mean two things.
+
+    A blank never reaches it: a blank is a graded zero (D5), settled before
+    the barème is consulted. Both defaults reproduce the binary 1.0/0.0
+    scoring this module shipped with, so a caller that knows nothing about a
+    barème still grades exactly as it did."""
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +76,22 @@ def ungradeable(outcome: DetectionOutcome, confidence: float, reason: str) -> Gr
     )
 
 
+def score_for(key: AnswerKey, *, correct: bool) -> float:
+    """The points a gradeable, non-blank answer earns under ``key``'s barème.
+
+    The one place a policy becomes a number, and the only place the penalty's
+    sign is applied. Public because every grader must agree on it: the two
+    bubble graders below call it, ``open_grading`` calls it for a vision
+    verdict, and a third type arriving through ``register_grader`` gets the
+    teacher's barème by calling it too rather than by re-deriving it.
+
+    A blank is never scored through here. Each grader returns 0.0 for a blank
+    unconditionally, before this is reached, so no barème can turn an item the
+    student left empty into a penalised one.
+    """
+    return key.points_correct if correct else -key.penalty
+
+
 def _grade_choice(key: AnswerKey, detected: DetectedAnswer, expected: int | None) -> GradedItem:
     """Shared logic for the two bubble-based types."""
     if detected.outcome is DetectionOutcome.BLANK:
@@ -93,7 +120,7 @@ def _grade_choice(key: AnswerKey, detected: DetectedAnswer, expected: int | None
     correct = detected.index == expected
     return GradedItem(
         correct=correct,
-        score=1.0 if correct else 0.0,
+        score=score_for(key, correct=correct),
         gradeable=True,
         outcome=detected.outcome,
         confidence=detected.confidence,

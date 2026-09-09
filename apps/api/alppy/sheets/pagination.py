@@ -30,6 +30,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from math import ceil
+from typing import Literal
 
 from alppy.models.enums import AnswerBoxFill, ExerciseType
 from alppy.sheets import layout as L
@@ -81,7 +82,18 @@ USABLE_H_MM: float = REGION_H_MM - INSTRUCTIONS_H_MM - REGION_BOTTOM_PAD_MM
 
 COLUMN_W_MM: float = L.PAGE_W_MM - 2 * L.MARGIN_MM
 NUMBER_GUTTER_MM: float = 10.0
-TEXT_W_MM: float = COLUMN_W_MM - NUMBER_GUTTER_MM
+POINTS_LABEL_W_MM: float = 14.0
+"""Width reserved for the printed "(N pts)" label, which shares the first line
+of the statement with the item number.
+
+Bounded because ``layout.MAX_ITEM_POINTS`` caps a value at 20 and the schema
+enforces it, so the widest label a teacher can produce is a handful of glyphs.
+Subtracted from ``TEXT_W_MM`` rather than modelled per line: only line one
+actually loses the width, so charging every line for it makes the estimate
+*larger* than the truth — which is the direction this whole module errs in on
+purpose (see ``AVG_CHAR_EM``). An estimate that under-counts clips a statement;
+one that over-counts spends a little paper."""
+TEXT_W_MM: float = COLUMN_W_MM - NUMBER_GUTTER_MM - POINTS_LABEL_W_MM
 
 OPTION_INDENT_MM: float = 8.0
 OPTION_LETTER_W_MM: float = 6.0
@@ -120,10 +132,12 @@ paper can see that in the preview, which is what the preview is for."""
 
 # An answer box under a picture prints like any other: the box is what the
 # scanner crops and the model reads, and a textbook exercise is the common
-# case, not the exception. ``figure_room_mm`` gives the picture whatever the
-# box leaves, so the item still fits a page on its own. A teacher who wants
-# the exercise worked in the notebook, as the book intends, picks "no box"
-# (``open_lines = 0``) and the picture gets the whole room back.
+# case, not the exception. The box never takes room from the picture: a crop
+# shrunk to make way for a twelve-line box printed the book's type at a size
+# nobody could read, and the statement is the one thing on the page that must
+# be legible. When picture and box together do not fit a page, the box moves
+# whole to the next page as a *continuation* (``PlacedItem.part``), never
+# split — a crop cut in two is two crops for the grader.
 
 MCQ_LETTERS: str = L.OptionLetters.MCQ.value
 
@@ -181,6 +195,11 @@ class Item:
     of ``layout.ANSWER_BOX_LINE_PRESETS`` when the teacher chose; 0 prints no
     box at all."""
     box_fill: AnswerBoxFill = AnswerBoxFill.LINED
+    points_correct: float = L.DEFAULT_POINTS_CORRECT
+    """What a correct answer earns, printed beside the statement so the student
+    knows where to spend the hour. Only the reward is printed: the penalty is a
+    scoring rule, and putting "-0.25" on a child's paper next to every question
+    is a different message from telling them what the question is worth."""
     figure: Figure | None = None
     """When set, the sheet prints the picture and not the statement text: the
     picture *is* the statement, exactly as the book set it. The text stays as
@@ -255,9 +274,8 @@ def figure_room_mm(item: Item) -> float:
     Never below a millimetre: a degenerate item still prints *something*."""
     room = USABLE_H_MM - ITEM_PADDING_MM - ITEM_RULE_MM - FIGURE_GAP_MM
     room -= _text_above_figure_mm(item) + _options_height_mm(item)
-    box = box_height_mm(item)
-    if box is not None:
-        room -= OPEN_LINES_MARGIN_MM + box + BOX_MARGIN_BOTTOM_MM
+    # The box is deliberately not subtracted: it moves to the next page when
+    # the two do not fit together, and the picture keeps its size.
     return max(1.0, min(FIGURE_MAX_H_MM, room))
 
 
@@ -271,10 +289,11 @@ def printed_figure_size_mm(item: Item) -> tuple[float, float, float]:
     return item.figure.printed_size_mm(max_height_mm=figure_room_mm(item))
 
 
-def estimate_item_height_mm(item: Item) -> float:
+def estimate_item_height_mm(item: Item, *, with_box: bool = True) -> float:
     """Millimetres of statement region this item will occupy.
 
-    Deliberately an over-estimate. See ``AVG_CHAR_EM``."""
+    Deliberately an over-estimate. See ``AVG_CHAR_EM``. ``with_box=False`` is
+    the statement alone, the height of the first part of a split item."""
     height = ITEM_PADDING_MM + ITEM_RULE_MM
     if item.figure is not None:
         _, figure_h, _ = printed_figure_size_mm(item)
@@ -287,9 +306,8 @@ def estimate_item_height_mm(item: Item) -> float:
 
     height += _options_height_mm(item)
 
-    box = box_height_mm(item)
-    if box is not None:
-        height += OPEN_LINES_MARGIN_MM + box + BOX_MARGIN_BOTTOM_MM
+    if with_box:
+        height += box_block_mm(item)
 
     return height
 
@@ -300,6 +318,23 @@ def box_height_mm(item: Item) -> float | None:
     if item.type is not ExerciseType.OPEN or item.open_lines <= 0:
         return None
     return item.open_lines * OPEN_LINE_PITCH_MM
+
+
+def box_block_mm(item: Item) -> float:
+    """The box and its margins, as printed under a statement. 0 without a box."""
+    box = box_height_mm(item)
+    if box is None:
+        return 0.0
+    return OPEN_LINES_MARGIN_MM + box + BOX_MARGIN_BOTTOM_MM
+
+
+def continuation_height_mm(item: Item) -> float:
+    """The height of a box carried over to the next page: the item's padding
+    and rule, one line for the number and the "continued" word, and the box."""
+    return ITEM_PADDING_MM + ITEM_RULE_MM + LINE_H_MM + box_block_mm(item)
+
+
+ItemPart = Literal["whole", "statement", "box"]
 
 
 # --------------------------------------------------------------------------
@@ -317,6 +352,18 @@ class PlacedItem:
     """1-based number printed next to the statement AND next to the grid row.
     Continuous across pages, so it is not the same thing as ``item_index``."""
     height_mm: float
+    part: ItemPart = "whole"
+    """Which part of the item this is. An open item whose statement and box do
+    not fit one page together is placed twice: ``"statement"`` prints the
+    question and no box; ``"box"`` is the continuation on the next page — the
+    number, the word "continued", and the box. Each part has its own page-local
+    ``item_index``. The box is what the scanner crops, so the continuation is
+    the placement a detection is recorded against; the statement part records
+    none. A ``"whole"`` item is the ordinary case."""
+
+    @property
+    def prints_box(self) -> bool:
+        return self.part != "statement" and box_height_mm(self.item) is not None
 
     @property
     def group(self) -> int:
@@ -429,25 +476,12 @@ def paginate(
         current = []
         used = 0.0
 
-    for item in items:
-        # A figured item is sized by ``figure_room_mm`` to fit a page on its
-        # own, so only a text item can be too tall here.
-        height = estimate_item_height_mm(item)
-        if height > usable_height_mm and not allow_overflow:
-            raise ItemTooTallError(
-                number=number + 1,
-                height_mm=height,
-                limit_mm=usable_height_mm,
-                statement=item.statement,
-            )
+    def place(item: Item, *, height: float, number: int, part: ItemPart) -> None:
+        nonlocal used
         bubbles_full = len(current) >= items_per_page
         too_tall = bool(current) and used + height > usable_height_mm
         if bubbles_full or too_tall:
             flush()
-
-        # Not enumerate(): the counter advances per *placed* item, and a page
-        # flush above can restart the loop body without consuming a number.
-        number += 1  # noqa: SIM113
         current.append(
             PlacedItem(
                 item=item,
@@ -455,9 +489,40 @@ def paginate(
                 item_index=len(current),
                 number=number,
                 height_mm=height,
+                part=part,
             )
         )
         used += height
+
+    for item in items:
+        height = estimate_item_height_mm(item)
+        # Not enumerate(): the counter advances per *placed* item, and a page
+        # flush above can restart the loop body without consuming a number.
+        number += 1
+        if height <= usable_height_mm or allow_overflow:
+            place(item, height=height, number=number, part="whole")
+            continue
+
+        # Too tall as a whole. A statement that fits on its own keeps its size
+        # and its page; the box follows on the next one. Only a statement that
+        # is too tall by itself — text, since a figure is sized to fit — is
+        # refused, and it is refused rather than clipped.
+        statement_h = estimate_item_height_mm(item, with_box=False)
+        continuation_h = continuation_height_mm(item)
+        if (
+            box_height_mm(item) is None
+            or statement_h > usable_height_mm
+            or continuation_h > usable_height_mm
+        ):
+            raise ItemTooTallError(
+                number=number,
+                height_mm=height,
+                limit_mm=usable_height_mm,
+                statement=item.statement,
+            )
+        place(item, height=statement_h, number=number, part="statement")
+        flush()
+        place(item, height=continuation_h, number=number, part="box")
 
     flush()
     return pages

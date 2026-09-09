@@ -16,8 +16,42 @@ export const ANSWER_BOX_LINES: readonly AnswerBoxLines[] = [
   ...(SHEET_LAYOUT.answerBox.linePresets as readonly AnswerBoxLines[]),
 ];
 export const DEFAULT_ANSWER_BOX_LINES = SHEET_LAYOUT.answerBox.defaultLines as AnswerBoxLines;
+/** The tallest box a page can carry on its own; the API refuses more. */
+export const MAX_ANSWER_BOX_LINES = SHEET_LAYOUT.answerBox.maxLines as number;
+
+/** Clamp a typed height to what the paper can print. */
+export function clampAnswerBoxLines(value: number): AnswerBoxLines {
+  if (!Number.isFinite(value)) return DEFAULT_ANSWER_BOX_LINES;
+  return Math.min(MAX_ANSWER_BOX_LINES, Math.max(0, Math.round(value)));
+}
 export const ANSWER_BOX_FILLS: readonly AnswerBoxFill[] = ['lined', 'grid', 'blank'];
 export const DEFAULT_ANSWER_BOX_FILL: AnswerBoxFill = 'lined';
+
+/** The barème, straight from `layout.py`. */
+export const DEFAULT_POINTS_CORRECT = SHEET_LAYOUT.grading.defaultPointsCorrect as number;
+export const DEFAULT_POINTS_PENALTY = SHEET_LAYOUT.grading.defaultPointsPenalty as number;
+/** The most a single item may be worth; the API refuses more. */
+export const MAX_ITEM_POINTS = SHEET_LAYOUT.grading.maxItemPoints as number;
+
+/** The shortcuts the control offers. Any value in 0..MAX_ITEM_POINTS is legal;
+ *  these are the ones a teacher reaches for. */
+export const POINTS_PRESETS: readonly number[] = [0.5, 1, 2, 3, 5];
+export const PENALTY_PRESETS: readonly number[] = [0, 0.25, 0.5, 1];
+
+/** Clamp a typed value to what the API will accept. */
+export function clampPoints(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_POINTS_CORRECT;
+  return Math.min(MAX_ITEM_POINTS, Math.max(0, Math.round(value * 100) / 100));
+}
+
+/** The barème a whole sheet grades by, and every item falls back to. */
+export interface Bareme {
+  /** What a correct answer earns. */
+  correct: number;
+  /** What a wrong answer costs, as a MAGNITUDE — the server applies the sign.
+   *  A blank is never penalised, whatever this is. */
+  penalty: number;
+}
 
 export interface AnswerBox {
   lines: AnswerBoxLines;
@@ -32,6 +66,38 @@ export interface DraftItem {
   /** The written-answer box under an open item. Absent means the default;
    *  meaningless on a bubble item and never sent for one. */
   box?: AnswerBox;
+  /** The answer the teacher expects for this printing of an open item. Rides
+   *  along as `SheetItem.expected_answer`. Absent means the exercise's own
+   *  answer if it has one, else the grader works it out itself. */
+  expectedAnswer?: string;
+  /** This item's own barème, when it departs from the sheet's. Absent means it
+   *  follows the sheet — so changing the sheet's barème moves it, which is the
+   *  behaviour a teacher expects from a default. */
+  points?: Partial<Bareme>;
+}
+
+/** The answer an open item will be judged against, as the builder shows it:
+ *  the teacher's for this sheet, else the one the exercise already carries. */
+export function expectedAnswerOf(item: DraftItem): string {
+  return item.expectedAnswer ?? item.exercise.answer_text ?? '';
+}
+
+/** What an item is worth: its own override, else the sheet's barème.
+ *
+ *  Tested against `undefined` rather than for truth, exactly as the server
+ *  tests `is not None`: 0 is a real choice — an item that earns nothing, or one
+ *  that costs nothing to get wrong — and reading it as absent would silently
+ *  hand the item the sheet's value back. */
+export function baremeOf(item: DraftItem, sheet: Bareme): Bareme {
+  return {
+    correct: item.points?.correct ?? sheet.correct,
+    penalty: item.points?.penalty ?? sheet.penalty,
+  };
+}
+
+/** Whether this item departs from the sheet's barème at all. */
+export function hasOwnBareme(item: DraftItem): boolean {
+  return item.points?.correct !== undefined || item.points?.penalty !== undefined;
 }
 
 /** The box an item prints, defaults applied. */
@@ -51,11 +117,22 @@ export function toSheetItemIn(item: DraftItem, position: number): SheetItemIn {
     ...(item.exercise.type === 'open' && item.box
       ? { answer_box_lines: item.box.lines, answer_box_fill: item.box.fill }
       : {}),
+    ...(item.exercise.type === 'open' && item.expectedAnswer?.trim()
+      ? { expected_answer: item.expectedAnswer.trim() }
+      : {}),
+    // Deliberately NOT gated by type, unlike the two above. An MCQ's answer is
+    // its bubble, so an expected answer on one is meaningless — but what a
+    // bubble is WORTH is not, and a written item becomes auto-gradeable the
+    // moment a vision verdict lands.
+    ...(item.points?.correct !== undefined ? { points_correct: item.points.correct } : {}),
+    ...(item.points?.penalty !== undefined ? { points_penalty: item.points.penalty } : {}),
   };
 }
 
 export interface DraftSheet {
   items: DraftItem[];
+  /** The sheet's own barème — what every item falls back to. */
+  bareme: Bareme;
   ids: Set<Uuid>;
   count: number;
   isFull: boolean;
@@ -74,6 +151,14 @@ export interface DraftSheet {
   reorder: (from: number, to: number) => void;
   setOverride: (id: Uuid, value: string | undefined) => void;
   setAnswerBox: (id: Uuid, box: Partial<AnswerBox>) => void;
+  setExpectedAnswer: (id: Uuid, value: string | undefined) => void;
+  /** Change the sheet-wide barème. Items without an override follow it. */
+  setBareme: (patch: Partial<Bareme>) => void;
+  /** Give one item its own barème, or hand it back to the sheet's by passing
+   *  `undefined` for a field. */
+  setItemBareme: (id: Uuid, patch: Partial<Bareme> | undefined) => void;
+  /** What the whole sheet is worth, with every override resolved. */
+  totalPoints: number;
   clear: () => void;
 }
 
@@ -90,6 +175,10 @@ export interface DraftSheet {
  */
 export function useDraftSheet(): DraftSheet {
   const [items, setItems] = useState<DraftItem[]>([]);
+  const [bareme, setBaremeState] = useState<Bareme>({
+    correct: DEFAULT_POINTS_CORRECT,
+    penalty: DEFAULT_POINTS_PENALTY,
+  });
 
   const ids = useMemo(() => new Set(items.map((i) => i.exercise.id)), [items]);
 
@@ -141,6 +230,7 @@ export function useDraftSheet(): DraftSheet {
               exercise: item.exercise,
               ...(value ? { override: value } : {}),
               ...(item.box ? { box: item.box } : {}),
+              ...(item.expectedAnswer !== undefined ? { expectedAnswer: item.expectedAnswer } : {}),
             }
           : item,
       ),
@@ -155,10 +245,52 @@ export function useDraftSheet(): DraftSheet {
     );
   }, []);
 
+  const setExpectedAnswer = useCallback((id: Uuid, value: string | undefined) => {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.exercise.id !== id) return item;
+        const { expectedAnswer: _dropped, ...rest } = item;
+        return value === undefined ? rest : { ...rest, expectedAnswer: value };
+      }),
+    );
+  }, []);
+
+  const setBareme = useCallback((patch: Partial<Bareme>) => {
+    setBaremeState((current) => ({ ...current, ...patch }));
+  }, []);
+
+  const setItemBareme = useCallback((id: Uuid, patch: Partial<Bareme> | undefined) => {
+    setItems((current) =>
+      current.map((item) => {
+        if (item.exercise.id !== id) return item;
+        if (patch === undefined) {
+          // Back to following the sheet. The key is dropped rather than set to
+          // the sheet's current values, so a later change to the sheet's
+          // barème still moves this item.
+          const { points: _dropped, ...rest } = item;
+          return rest;
+        }
+        const next = { ...item.points, ...patch };
+        const cleaned = Object.fromEntries(
+          Object.entries(next).filter(([, v]) => v !== undefined),
+        ) as Partial<Bareme>;
+        return Object.keys(cleaned).length === 0
+          ? (({ points: _dropped, ...rest }) => rest)(item)
+          : { ...item, points: cleaned };
+      }),
+    );
+  }, []);
+
+  const totalPoints = useMemo(
+    () => items.reduce((sum, item) => sum + baremeOf(item, bareme).correct, 0),
+    [items, bareme],
+  );
+
   const clear = useCallback(() => setItems([]), []);
 
   return {
     items,
+    bareme,
     ids,
     count: items.length,
     isFull: items.length >= MAX_SHEET_ITEMS,
@@ -171,6 +303,10 @@ export function useDraftSheet(): DraftSheet {
     reorder,
     setOverride,
     setAnswerBox,
+    setExpectedAnswer,
+    setBareme,
+    setItemBareme,
+    totalPoints,
     clear,
   };
 }

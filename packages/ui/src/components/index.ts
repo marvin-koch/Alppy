@@ -70,3 +70,5 @@ export type { FileDropProps } from './FileDrop';
 
 /* — Domain — */
 export * from './domain';
+export { Spinner } from './Spinner';
+export type { SpinnerProps } from './Spinner';

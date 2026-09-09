@@ -20,7 +20,8 @@
     "sources": "Textbooks",
     "switchClass": "Switch class",
     "switchSubject": "Switch subject",
-    "timeline": "Agenda"
+    "timeline": "Agenda",
+    "results": "Results"
   },
   "auth": {
     "signIn": "Sign in",
@@ -221,6 +222,17 @@
       "title": "No sheets",
       "body": "Build your first sheet from your textbooks.",
       "action": "New sheet"
+    },
+    "forClass": "For class {code}",
+    "untitled": "Untitled sheet",
+    "searchPlaceholder": "Search a sheet…",
+    "noMatches": "No sheet has that name.",
+    "adaptiveTag": "Adaptive",
+    "pageCount": "{count, plural, one {# page} other {# pages}}",
+    "groups": {
+      "drafts": "To finish",
+      "draftsHint": "The PDFs are not generated yet.",
+      "ready": "Ready to print"
     }
   },
   "scans": {
@@ -319,10 +331,34 @@
       "machineVerdict": "The machine’s verdict: {verdict} · {transcription}",
       "verdictCorrect": "correct",
       "verdictWrong": "wrong",
-      "verdictNone": "none"
+      "verdictNone": "none",
+      "modelReference": "No expected answer was given; the model solved the exercise and judged against: {answer}"
     },
     "confirmTranscription": "Save the transcription",
-    "readingAnswers": "{count, plural, one {# written answer is still being read} other {# written answers are still being read}} — confirming waits for the reading to finish."
+    "readingAnswers": "{count, plural, one {# written answer is still being read} other {# written answers are still being read}} — confirming waits for the reading to finish.",
+    "reopen": "Reopen",
+    "reopening": "Reopening…",
+    "stage": {
+      "pending": "To check",
+      "validated": "Validated",
+      "revised": "Revised",
+      "reopened": "Reopened",
+      "processing": "Analysing"
+    },
+    "filterOutcome": "Show",
+    "filterCopy": "Copy",
+    "filterAllCopies": "All copies",
+    "filterCopyUnsure": "{uid} — {count} to check",
+    "filterClear": "Show all",
+    "filterNoMatches": "Nothing matches this filter.",
+    "unidentifiedCopy": "Unidentified copy",
+    "revert": "Restore the machine's reading",
+    "uploadingCount": "{count, plural, one {Sending one copy…} other {Sending # copies…}}",
+    "uploadingHelp": "Keep this page open until the upload finishes.",
+    "processingQueued": "Analysis queued…",
+    "processingReading": "Reading the copies…",
+    "processingLabel": "Analysis progress",
+    "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open."
   },
   "adaptive": {
     "aiBadge": "AI",
@@ -558,7 +594,7 @@
     "overrideHelp": "Changes this sheet only — the source document keeps its text.",
     "remove": "Remove",
     "emptyPickTitle": "Choose a document",
-    "emptyPickBody": "Pick a textbook or an earlier sheet above. Alppy will show the exercises it found, and you tick the ones you keep.",
+    "emptyPickBody": "Alppy shows the exercises it found; you tick the ones you keep.",
     "emptySheetTitle": "Nothing on the sheet",
     "emptySheetBody": "Tick exercises on the left, or write one yourself.",
     "noMatches": "No exercise matches these filters.",
@@ -575,7 +611,41 @@
     "boxFillGrid": "Grid",
     "boxFillBlank": "Blank",
     "boxHelp": "The student writes inside the box. On scanning, Alppy cuts it out, reads the handwriting and proposes a mark for you to confirm.",
-    "boxNone": "No box"
+    "boxNone": "No box",
+    "baremeTitle": "Sheet marking scheme",
+    "baremeItemTitle": "Marking for this exercise",
+    "baremePoints": "Points per correct answer",
+    "baremePenalty": "Penalty per wrong answer",
+    "baremeHelp": "An answer left blank scores zero and is never penalised. Two boxes marked is not graded: the copy goes to review.",
+    "baremeTotal": "Total: {points, number} points",
+    "baremeOverridden": "changed",
+    "baremeFollowsSheet": "{points, number} · sheet default",
+    "pointsOption": "{points, number} pts",
+    "pointsSummary": "{points, number} pts",
+    "pointsCustom": "Custom",
+    "pointsCustomLabel": "Points (up to {max, number})",
+    "penaltyNone": "None",
+    "penaltyOption": "−{points, number} per error",
+    "penaltySummary": "penalty {points, number}",
+    "penaltySummaryNone": "no penalty",
+    "expectedAnswerTitle": "Expected answer",
+    "expectedAnswerGiven": "Given",
+    "expectedAnswerModel": "The model will work it out",
+    "expectedAnswerPlaceholder": "Optional — e.g. 7/8, or the working you expect",
+    "expectedAnswerHelp": "Give one and the key prints it and the marking relies on it. Leave it blank and the model works the exercise out itself before judging, and shows you its answer.",
+    "expectedAnswerFromBook": "Answer taken from the exercise. Editing it changes this sheet only — the source document keeps its own.",
+    "boxCustom": "Custom…",
+    "boxCustomLines": "Number of lines (1 to {max})",
+    "titlePlaceholder": "Sheet title",
+    "forScope": "For {scope} — change it in the sidebar.",
+    "generateHelp": "You get two PDFs: the student sheet and its answer key.",
+    "noDocumentsTitle": "No textbook yet",
+    "noDocumentsBody": "Import a textbook or an exercise PDF: Alppy indexes its exercises chapter by chapter.",
+    "importDocument": "Import a textbook",
+    "overflowHelp": "More than sixteen exercises: the sheet will take at least {count} pages.",
+    "boxSummary": "{count, plural, one {One-line box} other {#-line box}}",
+    "answerSummaryGiven": "expected answer given",
+    "answerSummaryModel": "answer worked out by the model"
   },
   "newExercise": {
     "title": "Add an exercise",
@@ -639,6 +709,47 @@
       "adaptive_exported": "Adaptive batch exported",
       "feedback_written": "Feedback written",
       "feedback_approved": "Feedback approved"
+    }
+  },
+  "results": {
+    "title": "Results",
+    "forClass": "Class {code}",
+    "classAverage": "Class average",
+    "notGradedYet": "Nothing marked yet",
+    "totalColumn": "Total",
+    "studentColumn": "Student",
+    "matrixCaption": "Points earned per student and per sheet",
+    "sheetCount": "{count, plural, one {# sheet} other {# sheets}}",
+    "cellLabel": "{student}, {sheet}: {earned} out of {possible} points",
+    "cellLabelUngraded": "{student}, {sheet}: not marked yet",
+    "empty": {
+      "title": "No results yet",
+      "body": "Build a sheet, print it, then scan the copies — the points appear here.",
+      "action": "Build a sheet"
+    },
+    "perSheet": {
+      "title": "Per sheet",
+      "notGraded": "Not marked"
+    }
+  },
+  "studentSheet": {
+    "title": "{student}'s copy",
+    "back": "Back to the profile",
+    "openScan": "See the photo of the copy",
+    "total": "Total",
+    "notGradedYet": "Not marked yet",
+    "given": "Their answer",
+    "expected": "Expected answer",
+    "noAnswer": "No answer",
+    "noExpected": "No reference answer",
+    "points": "{earned} / {possible, number} pts",
+    "pointsUngraded": "— / {possible, number} pts",
+    "correct": "Correct",
+    "incorrect": "Wrong",
+    "ungraded": "Not graded",
+    "empty": {
+      "title": "This copy has not been marked yet",
+      "body": "Scan the pile and confirm it — the breakdown appears here."
     }
   }
 }

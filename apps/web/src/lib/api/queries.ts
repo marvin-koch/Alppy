@@ -15,13 +15,14 @@ import type {
   AdaptiveBatchRequest,
   AdaptiveDiscardRequest,
   AdaptiveDiscardResponse,
-  AdaptiveRegenerateRequest,
-  AdaptiveRegenerateResponse,
   AdaptiveProposeRequest,
   AdaptiveProposeResponse,
+  AdaptiveRegenerateRequest,
+  AdaptiveRegenerateResponse,
   ChapterOut,
   ClassCreate,
   ClassOut,
+  ClassPointsOut,
   CompetencyAttemptsOut,
   CurriculumKind,
   DetectionCorrection,
@@ -31,28 +32,31 @@ import type {
   ExerciseOut,
   ExerciseQuery,
   ExerciseUpdate,
-  HomeOut,
   FeedbackApproveRequest,
   FeedbackApproveResponse,
   FeedbackDiscardRequest,
   FeedbackDiscardResponse,
   FeedbackGenerateRequest,
-  MisconceptionNoteOut,
+  HomeOut,
   JobOut,
   MasteryMatrixOut,
   MatrixSort,
+  MisconceptionNoteOut,
+  RosterCreate,
   ScanConfirmResponse,
   ScanOut,
   ScanPageOut,
+  ScanUnvalidateResponse,
+  SheetConfidenceOut,
   SheetCreate,
   SheetOut,
   SheetProposeRequest,
   SheetProposeResponse,
-  RosterCreate,
   SourceOut,
   SourceSectionOut,
   StudentOut,
   StudentProfileOut,
+  StudentSheetOut,
   SubjectOut,
   TeacherOut,
   TeacherPreferences,
@@ -92,6 +96,11 @@ export const queryKeys = {
   students: (id: Uuid) => ['classes', id, 'students'] as const,
   // The prefix ['classes', id, 'mastery'] is what confirming a scan
   // invalidates, so every filter/sort variant has to hang off it.
+  classPoints: (id: Uuid, options: { subjectId?: Uuid } = {}) =>
+    ['classes', id, 'points', options.subjectId ?? null] as const,
+  sheetConfidence: (id: Uuid) => ['sheets', id, 'confidence'] as const,
+  studentSheet: (studentId: Uuid, sheetId: Uuid) =>
+    ['students', studentId, 'sheets', sheetId] as const,
   classMastery: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {}) =>
     [
       'classes',
@@ -252,6 +261,37 @@ export function useCreateRoster(
       void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
       void client.invalidateQueries({ queryKey: queryKeys.home });
     },
+  });
+}
+
+/* ------------------------------------------------------------ reports --- */
+export function useClassPoints(
+  classId: Uuid | null,
+  options: { subjectId?: Uuid } = {},
+): UseQueryResult<ClassPointsOut> {
+  return useQuery({
+    queryKey: queryKeys.classPoints(classId ?? '', options),
+    queryFn: () => api.getClassPoints(classId as Uuid, options),
+    enabled: Boolean(classId),
+  });
+}
+
+export function useStudentSheet(
+  studentId: Uuid | null,
+  sheetId: Uuid | null,
+): UseQueryResult<StudentSheetOut> {
+  return useQuery({
+    queryKey: queryKeys.studentSheet(studentId ?? '', sheetId ?? ''),
+    queryFn: () => api.getStudentSheet(studentId as Uuid, sheetId as Uuid),
+    enabled: Boolean(studentId && sheetId),
+  });
+}
+
+export function useSheetConfidence(sheetId: Uuid | null): UseQueryResult<SheetConfidenceOut> {
+  return useQuery({
+    queryKey: queryKeys.sheetConfidence(sheetId ?? ''),
+    queryFn: () => api.getSheetConfidence(sheetId as Uuid),
+    enabled: Boolean(sheetId),
   });
 }
 
@@ -496,6 +536,36 @@ export function useDiscardScanPage(
   });
 }
 
+export function useReopenScan(
+  scanId: Uuid | null,
+): UseMutationResult<ScanUnvalidateResponse, Error, void> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.reopenScan(scanId as Uuid),
+    onSuccess: () => {
+      // Reopening withdraws grades, so it invalidates exactly what confirming
+      // does — the same numbers move, in the other direction.
+      void client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') });
+      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: ['classes'] });
+      void client.invalidateQueries({ queryKey: ['students'] });
+      void client.invalidateQueries({ queryKey: ['sheets'] });
+    },
+  });
+}
+
+export function useRevertDetection(
+  scanId: Uuid | null,
+): UseMutationResult<DetectionOut, Error, Uuid> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (detectionId: Uuid) => api.revertDetection(scanId as Uuid, detectionId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') });
+    },
+  });
+}
+
 export function useConfirmScan(
   scanId: Uuid | null,
 ): UseMutationResult<ScanConfirmResponse, Error, void> {
@@ -505,6 +575,8 @@ export function useConfirmScan(
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') });
       void client.invalidateQueries({ queryKey: queryKeys.home });
+      // ...and the moment the points dashboard changes, for the same reason.
+      void client.invalidateQueries({ queryKey: ['sheets'] });
       // Confirming is the moment the matrix changes. Without these two the
       // teacher walks from the review screen back to the grid and, for the
       // 30s staleTime, sees the numbers from before they confirmed. The

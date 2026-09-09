@@ -7,7 +7,7 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { previewSheetDraft } from '@/lib/api/endpoints';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { ApiLocale, Uuid } from '@/lib/api/types';
-import { toSheetItemIn, type DraftItem } from './useDraftSheet';
+import { toSheetItemIn, type Bareme, type DraftItem } from './useDraftSheet';
 
 interface Props {
   classId: Uuid;
@@ -15,6 +15,10 @@ interface Props {
   title: string;
   language: ApiLocale;
   items: DraftItem[];
+  /** The sheet's barème. The preview prints what each item is worth, so it has
+   *  to travel with the draft or the paper on screen disagrees with the paper
+   *  that comes out of the printer. */
+  bareme: Bareme;
 }
 
 /**
@@ -31,7 +35,7 @@ interface Props {
  * The document is standalone (its CSS is inlined at render time), so nothing
  * needs to resolve from the frame's origin.
  */
-export function DraftPreview({ classId, subjectId, title, language, items }: Props) {
+export function DraftPreview({ classId, subjectId, title, language, items, bareme }: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
   const te = useTranslations('errors');
@@ -91,6 +95,8 @@ export function DraftPreview({ classId, subjectId, title, language, items }: Pro
         title,
         language,
         items: items.map((item, index) => toSheetItemIn(item, index)),
+        default_points_correct: bareme.correct,
+        default_points_penalty: bareme.penalty,
       })
         .then((document) => {
           if (controller.signal.aborted) return;

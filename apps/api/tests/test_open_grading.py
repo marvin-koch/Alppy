@@ -63,3 +63,33 @@ def test_the_stub_alone_grades_nothing() -> None:
     """``grading.py`` imported on its own still refuses a written answer."""
     g = grading._grade_open(OPEN, DetectedAnswer(outcome=DetectionOutcome.DETECTED, verdict_correct=True))
     assert not g.gradeable
+
+
+# ------------------------------------------------------------- the barème
+# A written answer inherits the teacher's scale through the same seam as a
+# bubble. This is the whole "extendable to the VLM path" claim, pinned: the
+# open grader has no scoring logic of its own to fall out of step with.
+
+
+def test_a_written_answer_earns_the_barème_the_teacher_set() -> None:
+    key = AnswerKey(type=ExerciseType.OPEN, points_correct=3.0, penalty=1.0)
+    right = DetectedAnswer(outcome=DetectionOutcome.DETECTED, verdict_correct=True)
+    wrong = DetectedAnswer(outcome=DetectionOutcome.DETECTED, verdict_correct=False)
+    assert grade_item(key, right).score == 3.0
+    assert grade_item(key, wrong).score == -1.0
+
+
+def test_an_empty_box_is_never_penalised() -> None:
+    key = AnswerKey(type=ExerciseType.OPEN, penalty=5.0)
+    g = grade_item(key, DetectedAnswer(outcome=DetectionOutcome.BLANK, confidence=0.98))
+    assert g.gradeable and g.score == 0.0
+
+
+def test_a_missing_verdict_is_never_a_penalty() -> None:
+    """The rule that matters most here. A pending or unreadable answer already
+    produced no attempt; a barème must not turn it into a NEGATIVE one."""
+    key = AnswerKey(type=ExerciseType.OPEN, points_correct=3.0, penalty=1.0)
+    for outcome in (DetectionOutcome.PENDING, DetectionOutcome.NOT_GRADEABLE):
+        g = grade_item(key, DetectedAnswer(outcome=outcome, confidence=0.9))
+        assert not g.gradeable, outcome
+        assert g.score == 0.0, outcome

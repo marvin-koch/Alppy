@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import uuid
+from datetime import UTC, datetime
+
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
@@ -134,3 +137,145 @@ def test_render_queues_a_job_or_reports_the_renderer_missing(
         assert client.get(f"/api/v1/jobs/{job['id']}").status_code == 200
     else:
         assert response.status_code == 503
+
+
+def test_an_open_item_carries_the_teachers_expected_answer(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The answer is per sheet item and optional. An MCQ item never keeps one:
+    its answer is the bubble, and a stray text would print on the key."""
+    from alppy.models.enums import ExerciseType
+
+    written = make_exercise(db, tenant, statement="Calcule 3/4 + 1/8.", kind=ExerciseType.OPEN, answer_index=None)
+    bubbles = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    login(client, tenant.teacher.email)
+
+    payload = _sheet_payload(tenant, [str(written.id), str(bubbles.id)])
+    payload["items"] = [
+        {"exercise_id": str(written.id), "position": 0, "expected_answer": "  7/8 "},
+        {"exercise_id": str(bubbles.id), "position": 1, "expected_answer": "B"},
+    ]
+    response = client.post("/api/v1/sheets", json=payload)
+    assert response.status_code == 201, response.text
+    items = response.json()["items"]
+    assert items[0]["expected_answer"] == "7/8"
+    assert items[1]["expected_answer"] is None
+
+    # Blank means "none given", not an empty string the grader would judge against.
+    payload["items"][0]["expected_answer"] = "   "
+    response = client.patch(f"/api/v1/sheets/{response.json()['id']}", json={"items": payload["items"]})
+    assert response.status_code == 200, response.text
+    assert response.json()["items"][0]["expected_answer"] is None
+
+
+def test_a_box_may_be_any_height_up_to_the_pages_ceiling(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    from alppy.models.enums import ExerciseType
+    from alppy.sheets.layout import ANSWER_BOX_MAX_LINES
+
+    written = make_exercise(db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None)
+    login(client, tenant.teacher.email)
+
+    def create(lines: int):  # type: ignore[no-untyped-def]
+        payload = _sheet_payload(tenant, [str(written.id)])
+        payload["items"] = [{"exercise_id": str(written.id), "position": 0, "answer_box_lines": lines}]
+        return client.post("/api/v1/sheets", json=payload)
+
+    assert create(7).status_code == 201, "not a preset, still a box a page can carry"
+    assert create(ANSWER_BOX_MAX_LINES).json()["items"][0]["answer_box_lines"] == ANSWER_BOX_MAX_LINES
+    assert create(ANSWER_BOX_MAX_LINES + 1).status_code == 422
+    assert create(-1).status_code == 422
+
+
+def test_the_barème_is_a_sheet_default_with_per_item_overrides(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    a = make_exercise(db, tenant, statement="a")
+    b = make_exercise(db, tenant, statement="b")
+    login(client, tenant.teacher.email)
+
+    payload = _sheet_payload(tenant, [str(a.id), str(b.id)])
+    payload["default_points_correct"] = 1.0
+    payload["default_points_penalty"] = 0.25
+    payload["items"] = [
+        {"exercise_id": str(a.id), "position": 0},
+        {"exercise_id": str(b.id), "position": 1, "points_correct": 3.0, "points_penalty": 0.0},
+    ]
+    response = client.post("/api/v1/sheets", json=payload)
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["default_points_correct"] == 1.0
+    assert body["default_points_penalty"] == 0.25
+    # No override means NULL, not a copy of the default: the item follows the
+    # sheet, so changing the sheet's barème moves it.
+    assert body["items"][0]["points_correct"] is None
+    assert body["items"][1]["points_correct"] == 3.0
+    assert body["items"][1]["points_penalty"] == 0.0
+
+
+def test_points_survive_on_every_exercise_type(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Unlike `expected_answer`, which an MCQ never keeps. A point value means
+    something on every type, and a written item becomes auto-gradeable the
+    moment a vision verdict lands — a column that had to be un-gated later is
+    worse than one that was never gated."""
+    from alppy.models.enums import ExerciseType
+
+    written = make_exercise(
+        db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None
+    )
+    login(client, tenant.teacher.email)
+    payload = _sheet_payload(tenant, [str(written.id)])
+    payload["items"] = [{"exercise_id": str(written.id), "position": 0, "points_correct": 3.0}]
+    response = client.post("/api/v1/sheets", json=payload)
+    assert response.status_code == 201, response.text
+    assert response.json()["items"][0]["points_correct"] == 3.0
+
+
+def test_a_barème_outside_the_ceiling_is_refused(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    from alppy.sheets.layout import MAX_ITEM_POINTS
+
+    a = make_exercise(db, tenant, statement="a")
+    login(client, tenant.teacher.email)
+
+    def create(**item_fields: object):  # type: ignore[no-untyped-def]
+        payload = _sheet_payload(tenant, [str(a.id)])
+        payload["items"] = [{"exercise_id": str(a.id), "position": 0, **item_fields}]
+        return client.post("/api/v1/sheets", json=payload)
+
+    assert create(points_correct=MAX_ITEM_POINTS).status_code == 201
+    assert create(points_correct=MAX_ITEM_POINTS + 1).status_code == 422
+    # The penalty is a magnitude. A teacher who types a minus sign means the
+    # same thing as one who does not, and guessing which would double it.
+    assert create(points_penalty=-0.25).status_code == 422
+
+
+def test_editing_the_barème_invalidates_the_rendered_pdf(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The paper prints what each item is worth, so a barème edit makes the
+    rendered PDF wrong in a way the teacher cannot see by looking at the app."""
+    a = make_exercise(db, tenant, statement="a")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(a.id)])
+    ).json()["id"]
+
+    from alppy.models import Sheet
+
+    sheet = db.get(Sheet, uuid.UUID(sheet_id))
+    assert sheet is not None
+    sheet.blank_pdf_key = "sheets/x/v1/blank.pdf"
+    sheet.rendered_at = datetime.now(UTC)
+    db.commit()
+
+    response = client.patch(
+        f"/api/v1/sheets/{sheet_id}", json={"default_points_penalty": 1.0}
+    )
+    assert response.status_code == 200, response.text
+    assert response.json()["rendered_at"] is None
+    assert response.json()["default_points_penalty"] == 1.0

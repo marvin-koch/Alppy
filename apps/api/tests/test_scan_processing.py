@@ -21,11 +21,20 @@ from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, make_exercise
 
 from alppy.api.errors import ApiError
-from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance, SheetItem
+from alppy.models import (
+    Attempt,
+    Detection,
+    MasterySnapshot,
+    Scan,
+    ScanPage,
+    Sheet,
+    SheetInstance,
+    SheetItem,
+)
 from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus, SheetTarget
 from alppy.scan.synthetic import render_page
 from alppy.schemas import DetectionCorrection
-from alppy.services import scan_processing, scan_service
+from alppy.services import scan_processing, scan_service, sheet_service
 from alppy.sheets.pagination import paginate
 from alppy.sheets.render import build_sheet_data
 from alppy.storage import LocalStorage
@@ -837,7 +846,7 @@ def _open_detection(db: Session, scan: Scan) -> Detection:
 
 
 class _Verdict:
-    """A grounded provider that has an opinion."""
+    """A grounded provider that has an opinion, and remembers what it was asked."""
 
     name = "stub"
     grounded = True
@@ -845,11 +854,13 @@ class _Verdict:
     def __init__(self, text: str) -> None:
         self.text = text
         self.calls = 0
+        self.last_user: str = ""
 
     def complete(self, request):  # type: ignore[no-untyped-def]
         from alppy.ai.base import ChatResponse
 
         self.calls += 1
+        self.last_user = request.user
         assert request.images, "the grader must send the crop"
         return ChatResponse(text=self.text, model="stub")
 
@@ -1146,3 +1157,391 @@ def test_the_fill_told_to_the_model_is_the_boxs_own_page(
     page.page_in_copy = 1
     db.commit()
     assert "grid" in _fill_for(db, detection)
+
+
+def test_the_grader_judges_against_the_sheet_items_answer_and_wording(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The teacher reworded the item and wrote the answer that goes with it on
+    the sheet; the exercise's own text and answer are the fallback, not what
+    the model is told."""
+    from alppy.services.open_answer_grading import grade_open_answers
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    item = next(si for si in sheet.items if si.exercise_id == exercises[1].id)
+    item.statement_override = "Calcule 3/4 + 1/8 et simplifie."
+    item.expected_answer = "7/8 (déjà irréductible)"
+    db.commit()
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict('{"transcription": "7/8", "written": true, "correct": true, "confidence": 0.9, "reference": "7/8"}')
+    grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+    assert "Calcule 3/4 + 1/8 et simplifie." in provider.last_user
+    assert "7/8 (déjà irréductible)" in provider.last_user
+    detection = _open_detection(db, scan)
+    assert detection.verdict_correct is True
+    # The teacher's answer is on the sheet item already; nothing to keep here.
+    assert detection.reference_answer is None
+
+
+def test_without_an_expected_answer_the_model_works_one_out_and_it_is_kept(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.services.open_answer_grading import NO_EXPECTED_ANSWER, grade_open_answers
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    exercises[1].answer_text = None
+    db.commit()
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict('{"transcription": "6/8", "written": true, "correct": false, "confidence": 0.8, "reference": "7/8"}')
+    grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+    assert NO_EXPECTED_ANSWER in provider.last_user
+    detection = _open_detection(db, scan)
+    assert detection.verdict_correct is False
+    assert detection.reference_answer == "7/8", "the teacher must see what the model judged against"
+
+    from alppy.services import detection_out
+
+    out = detection_out(detection, storage=storage)
+    assert out.answer_text is None and out.reference_answer == "7/8"
+
+
+# --------------------------------------------------------------------------
+# The teacher's barème, through the real pipeline
+# --------------------------------------------------------------------------
+def _render_copy_wrong(db: Session, sheet: Sheet, uid: str) -> list:
+    """Every page of one copy, answered WRONGLY — a different bubble, not a
+    blank. `_render_copy(all_correct=False)` leaves items empty, and a blank is
+    a different act from a wrong answer under any barème with a penalty."""
+    images = []
+    for page in _copy_pages(db, sheet, uid):
+        marks: Marks = []
+        for p in page.items:
+            if not p.item.is_gradeable or p.item.answer_index is None:
+                marks.append(None)
+                continue
+            # Any bubble but the right one, from the options this item printed.
+            wrong = next(
+                oi for oi in range(p.item.option_count) if oi != p.item.answer_index
+            )
+            marks.append(wrong)
+        images.append(render_page(uid, page.option_counts, marks, pencil=0.95).image)
+    return images
+
+
+def test_the_barème_reaches_the_attempt_score(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Item 0 overrides the points but not the penalty, so it must take its own
+    reward and the sheet's cost — the two columns resolve independently."""
+    sheet, exercises = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_correct = 1.0
+    sheet.default_points_penalty = 0.25
+    items = sorted(sheet.items, key=lambda i: i.position)
+    items[0].points_correct = 4.0
+    db.commit()
+
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    by_exercise = {a.exercise_id: a for a in _attempts(db, scan)}
+    assert by_exercise[exercises[0].id].score == 4.0
+    assert by_exercise[exercises[1].id].score == 1.0
+    assert all(a.correct for a in by_exercise.values())
+
+
+def test_a_wrong_answer_costs_the_penalty_and_a_blank_does_not(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_penalty = 0.5
+    db.commit()
+    uid = tenant.students[0].uid
+
+    wrong = _run(db, storage, tenant, sheet, _render_copy_wrong(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, wrong.id)
+    db.commit()
+    assert [a.score for a in _attempts(db, wrong)] == [-0.5, -0.5]
+
+    # The same copy left blank instead. D5: the student saw the item and left
+    # it, which is a zero, and a zero is not a penalty.
+    blank = _run(
+        db, storage, tenant, sheet, _render_copy(db, sheet, uid, all_correct=False), monkeypatch
+    )
+    scan_service.confirm_scan(db, tenant.scope, blank.id)
+    db.commit()
+    assert [a.score for a in _attempts(db, blank)] == [0.0, 0.0]
+
+
+def test_mastery_is_untouched_by_the_barème(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The mark and the mastery signal are two different quantities on purpose.
+
+    `Attempt.score` carries the teacher's points and may be negative or larger
+    than one; `Attempt.correct` stays the boolean the mastery model reads. A
+    barème that could move a mastery band would let a teacher's marking scheme
+    silently rewrite what the model believes a child knows.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_correct = 7.0
+    sheet.default_points_penalty = 3.0
+    db.commit()
+
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    attempts = _attempts(db, scan)
+    assert all(a.score == 7.0 for a in attempts)
+    # Well outside the unit interval, and the snapshot still lands inside it.
+    snapshots = db.query(MasterySnapshot).all()
+    assert snapshots, "confirming recomputes mastery"
+    assert all(0.0 <= s.score <= 1.0 for s in snapshots)
+
+
+def test_a_sheet_total_is_floored_at_zero(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Per-item scores stay signed in the record so the teacher can see which
+    answers cost points; only the sum is clamped, because a mark below zero
+    says nothing a report can use."""
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_correct = 1.0
+    sheet.default_points_penalty = 2.0  # every error costs more than any answer earns
+    db.commit()
+    uid = tenant.students[0].uid
+
+    scan = _run(db, storage, tenant, sheet, _render_copy_wrong(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    assert [a.score for a in _attempts(db, scan)] == [-2.0, -2.0]
+    totals = sheet_service.points_totals_for_sheet(db, tenant.school.id, sheet)
+    student = next(s for s in tenant.students if s.uid == uid)
+    assert totals[student.id].earned == 0.0, "clamped, not -4.0"
+    assert totals[student.id].possible == 2.0
+
+
+# --------------------------------------------------------------------------
+# Reopening a confirmed pile
+# --------------------------------------------------------------------------
+def test_reopening_withdraws_the_grades_that_confirmation_wrote(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert db.query(Attempt).count() == 2
+
+    result = scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    assert result.attempts_removed == 2
+    assert result.attempts_rederived == 0, "no older pile to fall back to"
+    assert db.query(Attempt).count() == 0
+    assert db.get(Scan, scan.id).status is ScanStatus.NEEDS_REVIEW
+    assert db.get(Scan, scan.id).reopened_at is not None
+
+
+def test_reopening_leaves_no_grade_rather_than_a_zero(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The rule that matters. An item nobody has signed off has NO attempt —
+    it is not an attempt scoring zero. A zero is a claim about the student."""
+    sheet, exercises = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    for exercise in exercises:
+        rows = db.query(Attempt).filter(Attempt.exercise_id == exercise.id).all()
+        assert rows == [], "an ungraded item must have no row at all"
+
+
+def test_reopening_a_rescan_falls_back_to_the_pile_it_superseded(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The case a history table would otherwise be needed for.
+
+    Pile A is confirmed with every answer right. Pile B — a re-photograph —
+    is confirmed with every answer wrong, superseding A. Reopening B must put
+    A's reading back, not leave the student with nothing.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+
+    first = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, first.id)
+    db.commit()
+    assert all(a.correct for a in db.query(Attempt).all())
+
+    second = _run(
+        db, storage, tenant, sheet, _render_copy_wrong(db, sheet, uid), monkeypatch
+    )
+    scan_service.confirm_scan(db, tenant.scope, second.id)
+    db.commit()
+    assert not any(a.correct for a in db.query(Attempt).all()), "B superseded A"
+
+    result = scan_service.unvalidate_scan(db, tenant.scope, second.id)
+    db.commit()
+
+    assert result.attempts_removed == 2
+    assert result.attempts_rederived == 2, "A is still confirmed and still stands"
+    attempts = db.query(Attempt).all()
+    assert len(attempts) == 2, "one row per student x exercise x sheet, still"
+    assert all(a.correct for a in attempts), "A's reading is back"
+    assert all(a.confirmed_scan_id == first.id for a in attempts)
+
+
+def test_revalidating_after_a_reopen_supersedes_rather_than_doubling(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """I-grading-10 still holds across a reopen/revalidate cycle."""
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+    again = scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    assert db.query(Attempt).count() == 2, "never a second row for the same triple"
+    assert again.attempts_created == 2
+    reloaded = db.get(Scan, scan.id)
+    assert reloaded is not None
+    assert reloaded.status is ScanStatus.CONFIRMED
+    assert reloaded.confirmation_count == 2, "signed off twice — the pile reads as revised"
+
+
+def test_reopening_a_pile_that_was_never_confirmed_is_a_conflict(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    with pytest.raises(ApiError):
+        scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+
+
+def test_reopening_recomputes_mastery_from_what_is_left(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Mastery needs no undo of its own: it is a pure recompute over attempts,
+    so withdrawing the attempts is what corrects it."""
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    before = db.query(MasterySnapshot).count()
+    assert before > 0
+
+    result = scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert result.competencies_updated >= 0
+    assert all(0.0 <= s.score <= 1.0 for s in db.query(MasterySnapshot).all())
+
+
+# --------------------------------------------------------------------------
+# Reverting one correction
+# --------------------------------------------------------------------------
+def test_reverting_a_correction_restores_the_machines_own_reading(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    detection = scan.pages[0].detections[0]
+    machine_index = detection.machine_index
+    machine_outcome = detection.machine_outcome
+    wrong = 1 if machine_index == 0 else 0
+
+    scan_service.correct_detection(
+        db,
+        tenant.school.id,
+        tenant.teacher.id,
+        scan.id,
+        detection.id,
+        DetectionCorrection(detected_index=wrong),
+    )
+    db.commit()
+    assert detection.outcome is DetectionOutcome.CORRECTED
+    assert detection.detected_index == wrong
+
+    reverted = scan_service.revert_detection(db, tenant.scope, scan.id, detection.id)
+    db.commit()
+
+    assert reverted.detected_index == machine_index
+    assert reverted.outcome is machine_outcome
+    assert reverted.corrected_by_id is None and reverted.corrected_at is None
+    # The audit columns are read, never rewritten.
+    assert reverted.machine_index == machine_index
+
+
+def test_reverting_a_reading_that_was_never_corrected_is_a_conflict(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A caller that believes it undid something and did not is worse than
+    an error."""
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    with pytest.raises(ApiError):
+        scan_service.revert_detection(
+            db, tenant.scope, scan.id, scan.pages[0].detections[0].id
+        )
+
+
+def test_a_confirmed_pile_refuses_both_correction_and_revert(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The grade was computed from the reading as it stood. Editing one
+    underneath leaves the two disagreeing — reopen first."""
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    detection = scan.pages[0].detections[0]
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    with pytest.raises(ApiError):
+        scan_service.correct_detection(
+            db,
+            tenant.school.id,
+            tenant.teacher.id,
+            scan.id,
+            detection.id,
+            DetectionCorrection(detected_index=0),
+        )
+    with pytest.raises(ApiError):
+        scan_service.revert_detection(db, tenant.scope, scan.id, detection.id)
+
+    # ...and after reopening, both are allowed again.
+    scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+    scan_service.correct_detection(
+        db,
+        tenant.school.id,
+        tenant.teacher.id,
+        scan.id,
+        detection.id,
+        DetectionCorrection(detected_index=0),
+    )
+    db.commit()
+    assert detection.outcome is DetectionOutcome.CORRECTED

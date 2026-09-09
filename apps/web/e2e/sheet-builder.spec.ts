@@ -81,6 +81,8 @@ test.describe('sheet builder', () => {
     // the budget is reachable with the preview shut.
     await expect(page.getByRole('tabpanel').getByText(/1 page A4/)).toBeVisible();
 
+    // The toggle sits on the composer, beside the budget it complements.
+
     await page.getByRole('button', { name: /afficher l'aperçu/i }).click();
     await expect(page.getByRole('heading', { name: /^aperçu$/i })).toBeVisible();
     await expect(page.getByRole('button', { name: /masquer l'aperçu/i })).toBeVisible();
@@ -165,7 +167,7 @@ test.describe('sheet builder', () => {
     await boxes.nth(0).check();
     await boxes.nth(1).check();
 
-    const sheet = page.getByRole('heading', { name: /sur la feuille/i }).locator('..').locator('..');
+    const sheet = page.locator('[data-composer]');
     const before = await sheet.locator('[data-student-facing]').first().innerText();
 
     await page.getByRole('button', { name: /^descendre$/i }).first().click();
@@ -181,6 +183,12 @@ test.describe('sheet builder', () => {
     await page.getByRole('button', { name: /^réponse libre/i }).click();
     await page.getByRole('checkbox').first().check();
 
+    // The defaults are summarised on one line; the controls open on demand.
+    const settings = page.locator('[data-item-settings]');
+    await expect(settings).toHaveCount(1);
+    await expect(settings.getByText(/cadre de 5 lignes/i)).toBeVisible();
+    await settings.locator('summary').click();
+
     const control = page.locator('[data-answer-box-control]');
     const height = control.getByLabel(/hauteur/i);
     await expect(height).toBeVisible();
@@ -190,5 +198,52 @@ test.describe('sheet builder', () => {
     await control.getByLabel(/fond/i).selectOption('grid');
     await expect(control.getByLabel(/fond/i)).toHaveValue('grid');
     await expect(page.locator('[data-answer-box-control]')).toHaveCount(1);
+    await expect(settings.getByText(/cadre de 12 lignes, quadrillage/i)).toBeVisible();
+  });
+
+  test('the teacher sets a barème for the sheet and overrides one exercise', async ({ page }) => {
+    await openDocument(page);
+    await page.getByRole('checkbox').first().check();
+    await page.getByRole('checkbox').nth(1).check();
+
+    // The sheet-wide barème: one place, above the list, because it is what
+    // every item below inherits.
+    const bareme = page.locator('[data-bareme]');
+    await expect(bareme).toHaveCount(1);
+    await bareme.getByLabel(/pénalité par erreur/i).selectOption('0.25');
+
+    // Every item carries the barème in its summary line, bubble items too —
+    // this is the drawer that used to open only on a written answer.
+    const settings = page.locator('[data-item-settings]');
+    await expect(settings).toHaveCount(2);
+    await expect(settings.first().locator('summary')).toContainText(/1 pts · pénalité 0,25/i);
+
+    // One item departs from the sheet, and says so in a word.
+    await settings.first().locator('summary').click();
+    const own = page.locator('[data-item-bareme]').first();
+    await own.getByLabel(/points par bonne réponse/i).selectOption('3');
+    await expect(settings.first().getByText(/modifié/i)).toBeVisible();
+    // The summary, not the select that was just used: both say "3 pts".
+    await expect(settings.first().locator('summary')).toContainText(/3 pts/i);
+
+    // The other item still follows the sheet, so the total is 3 + 1.
+    await expect(bareme.getByText(/total\s*:\s*4 points/i)).toBeVisible();
+  });
+
+  test('a document can be opened from the list of books', async ({ page }) => {
+    await gotoStable(page, '/fr/sheets/new');
+    // Before any document is open the books are offered as buttons, not
+    // hidden behind a select the empty state points "above" at.
+    await page.getByRole('button', { name: /mathematiques-9e-cycle3\.pdf/i }).click();
+    await expect(page.getByRole('heading', { name: /dans le document/i })).toBeVisible();
+    await expect(page.getByLabel(/document source/i)).toHaveValue(/./);
+  });
+
+  test('the chapter names the sheet until the teacher does', async ({ page }) => {
+    await openDocument(page);
+    const title = page.getByRole('textbox', { name: /titre de la fiche/i });
+    await expect(title).toHaveAttribute('placeholder', /les fractions/i);
+    await title.fill('Révision du vendredi');
+    await expect(title).toHaveValue('Révision du vendredi');
   });
 });

@@ -89,3 +89,62 @@ def test_grade_sheet_pairs_by_position() -> None:
 def test_grade_sheet_rejects_a_length_mismatch() -> None:
     with pytest.raises(ValueError, match="length mismatch"):
         grade_sheet([MCQ], [detected(0), detected(1)])
+
+
+# ---------------------------------------------------------------- the barème
+# The teacher's scale reaches the grader on the AnswerKey. Every test above
+# builds a key without one and still asserts 1.0/0.0, which is the point of the
+# defaults: a caller that knows nothing about a barème grades as it always did.
+
+SCALED = AnswerKey(type=ExerciseType.MCQ, answer_index=2, option_count=4, points_correct=2.5)
+PENALISED = AnswerKey(type=ExerciseType.MCQ, answer_index=2, option_count=4, penalty=0.5)
+
+
+def test_a_correct_answer_earns_what_the_teacher_set() -> None:
+    assert grade_item(SCALED, detected(2)).score == 2.5
+
+
+def test_a_wrong_answer_costs_the_penalty_and_the_grader_applies_the_sign() -> None:
+    g = grade_item(PENALISED, detected(0))
+    assert not g.correct and g.gradeable
+    # The key carries 0.5, a magnitude. Only the score is signed.
+    assert PENALISED.penalty == 0.5
+    assert g.score == -0.5
+
+
+def test_a_blank_is_never_penalised_however_large_the_penalty() -> None:
+    """D5: a blank is a graded zero. The student saw the item and left it, and
+    that is information — it is not the same act as answering wrongly, so it
+    cannot cost what answering wrongly costs."""
+    key = AnswerKey(type=ExerciseType.MCQ, answer_index=2, option_count=4, penalty=5.0)
+    g = grade_item(key, DetectedAnswer(outcome=DetectionOutcome.BLANK, confidence=0.4))
+    assert g.gradeable and not g.correct
+    assert g.score == 0.0
+
+
+def test_an_ambiguous_answer_is_not_penalised_either() -> None:
+    """Two bubbles filled is a question for the teacher, not a wrong answer.
+    It produces no attempt at all, so no barème applies to it."""
+    key = AnswerKey(type=ExerciseType.MCQ, answer_index=2, option_count=4, penalty=5.0)
+    g = grade_item(key, DetectedAnswer(outcome=DetectionOutcome.MULTIPLE, confidence=0.3))
+    assert not g.gradeable
+    assert g.score == 0.0
+
+
+def test_true_false_carries_the_barème_too() -> None:
+    key = AnswerKey(
+        type=ExerciseType.TRUE_FALSE,
+        answer_bool=True,
+        option_count=2,
+        points_correct=2.0,
+        penalty=1.0,
+    )
+    assert grade_item(key, detected(0)).score == 2.0
+    assert grade_item(key, detected(1)).score == -1.0
+
+
+def test_zero_points_is_a_real_choice_not_an_absent_one() -> None:
+    """An item worth nothing — a warm-up the teacher does not want counted."""
+    key = AnswerKey(type=ExerciseType.MCQ, answer_index=2, option_count=4, points_correct=0.0)
+    g = grade_item(key, detected(2))
+    assert g.correct and g.gradeable and g.score == 0.0

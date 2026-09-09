@@ -104,3 +104,18 @@ def test_the_grading_prompt_names_every_input() -> None:
     system, user = prompt.render(language="fr", statement="Q", expected_answer="7/8", fill="lines")
     assert "7/8" in user and "Q" in user
     assert "never" in system.lower() and "json" in system.lower()
+
+
+def test_the_v2_grading_prompt_carries_the_reference_block() -> None:
+    """v2 replaces the expected answer with a reference block, so the same
+    prompt grades against the teacher's answer or tells the model to work one
+    out. Both branches must be named in the system text."""
+    from alppy.services.open_answer_grading import NO_EXPECTED_ANSWER, PROMPT_VERSION
+
+    prompt = load_prompt("grade_open_answer", PROMPT_VERSION)
+    system, user = prompt.render(language="fr", statement="Q", reference="7/8", fill="lines")
+    assert "7/8" in user and "Q" in user
+    assert "expected answer" in system.lower() and "work the question out" in system.lower()
+    assert '"reference"' in user
+    _, without = prompt.render(language="fr", statement="Q", reference=NO_EXPECTED_ANSWER, fill="lines")
+    assert NO_EXPECTED_ANSWER in without

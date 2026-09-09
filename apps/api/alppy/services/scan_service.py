@@ -18,6 +18,7 @@ Three rules shape this module.
 from __future__ import annotations
 
 import uuid
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any
 
@@ -47,7 +48,11 @@ from alppy.models.enums import (
     ScanStatus,
 )
 from alppy.scan.grading import AnswerKey, DetectedAnswer, grade_item
-from alppy.schemas import DetectionCorrection, ScanConfirmResponse
+from alppy.schemas import (
+    DetectionCorrection,
+    ScanConfirmResponse,
+    ScanUnvalidateResponse,
+)
 from alppy.services import event_service
 from alppy.services.class_service import owned_class_ids
 from alppy.services.mastery_service import recompute_for_students
@@ -174,6 +179,32 @@ def create_scan(
     return scan, job
 
 
+def _scan_for_school(db: Session, school_id: uuid.UUID, scan_id: uuid.UUID) -> Scan:
+    """The scan, checked against the school. ``get_scan`` takes a ``Scope``;
+    the correction path only carries a school id."""
+    scan = db.execute(
+        select(Scan).where(Scan.id == scan_id).where(Scan.school_id == school_id)
+    ).scalar_one_or_none()
+    if scan is None:
+        raise errors.not_found("scan", id=str(scan_id))
+    return scan
+
+
+def _refuse_when_confirmed(scan: Scan) -> None:
+    """A confirmed pile is read-only until it is reopened.
+
+    Everything a confirmation wrote is graded from the readings as they stood
+    at that moment. Editing one underneath is not an edit, it is a
+    disagreement between a grade and its own evidence.
+    """
+    if scan.status is ScanStatus.CONFIRMED:
+        raise errors.conflict(
+            "this pile is confirmed; reopen it before changing a reading",
+            code="scan_confirmed",
+            scan_id=str(scan.id),
+        )
+
+
 def get_detection(
     db: Session, school_id: uuid.UUID, scan_id: uuid.UUID, detection_id: uuid.UUID
 ) -> Detection:
@@ -238,12 +269,20 @@ def correct_detection(
     *,
     now: datetime | None = None,
 ) -> Detection:
-    """Record a teacher override. Always allowed, always attributed.
+    """Record a teacher override, always attributed.
 
     The machine's reading is *not* touched: ``machine_index``,
     ``machine_outcome`` and ``machine_confidence`` were written when the page
     was detected and stay as they were.
+
+    Refused once the pile is confirmed. Until now nothing on the server said
+    so — only the review screen's ``readOnly`` prop did, which meant a direct
+    PATCH could edit a reading that a live ``Attempt`` had already been graded
+    from, leaving the grade and the reading it claims to come from disagreeing.
+    Reopen the pile first; that is what withdraws the grades.
     """
+    scan = _scan_for_school(db, school_id, scan_id)
+    _refuse_when_confirmed(scan)
     detection = get_detection(db, school_id, scan_id, detection_id)
     exercise = _exercise_for_detection(db, school_id, detection)
 
@@ -304,12 +343,267 @@ def _correct_written_answer(
     return detection
 
 
-def _answer_key(exercise: Exercise) -> AnswerKey:
+def revert_detection(
+    db: Session, scope: Scope, scan_id: uuid.UUID, detection_id: uuid.UUID
+) -> Detection:
+    """Undo a teacher's correction: put back exactly what the machine read.
+
+    Nothing here is invented. Every value written back was already sitting in
+    ``machine_index`` / ``machine_outcome`` / ``machine_confidence`` (a bubble)
+    or ``machine_transcription`` / ``machine_verdict_correct`` (a written
+    answer) — columns written once at detection time and never touched by a
+    correction, precisely so that this is possible.
+
+    Two refusals rather than two silent no-ops:
+
+    * a detection that was never corrected has nothing to revert, and a caller
+      that believes it undid something must be told it did not;
+    * a confirmed pile is read-only (``_refuse_when_confirmed``) — the grade
+      was computed from the corrected reading, so replacing the reading
+      underneath would leave the two disagreeing. Reopening withdraws the
+      grade first, which is what makes the revert safe.
+    """
+    school_id = scope.school_id
+    scan = get_scan(db, scope, scan_id)
+    _refuse_when_confirmed(scan)
+    detection = get_detection(db, school_id, scan_id, detection_id)
+    if detection.outcome is not DetectionOutcome.CORRECTED:
+        raise errors.conflict(
+            "this reading was never corrected",
+            code="detection_not_corrected",
+            detection_id=str(detection_id),
+        )
+
+    exercise = _exercise_for_detection(db, school_id, detection)
+    if exercise is not None and exercise.type is ExerciseType.OPEN:
+        detection.transcription = detection.machine_transcription
+        detection.verdict_correct = detection.machine_verdict_correct
+    else:
+        detection.detected_index = detection.machine_index
+        detection.detected_bool = (
+            None
+            if exercise is None
+            or exercise.type is not ExerciseType.TRUE_FALSE
+            or detection.machine_index is None
+            else detection.machine_index == 0
+        )
+    # `machine_outcome` is written for every detection the pipeline produces,
+    # so the fallback is defensive only — a row with none was never machine-read
+    # at all, and NOT_GRADEABLE is the honest reading of that.
+    detection.outcome = detection.machine_outcome or DetectionOutcome.NOT_GRADEABLE
+    detection.confidence = detection.machine_confidence or 0.0
+    detection.corrected_by_id = None
+    detection.corrected_at = None
+    db.flush()
+    return detection
+
+
+def _newest_other_confirmed(
+    db: Session,
+    school_id: uuid.UUID,
+    *,
+    exclude_scan_id: uuid.UUID,
+    student_id: uuid.UUID,
+    exercise_id: uuid.UUID,
+    sheet_id: uuid.UUID | None,
+) -> tuple[Detection, Scan, ScanPage] | None:
+    """The reading a freed item falls back to when a pile is reopened.
+
+    Ordered by ``Scan.confirmed_at``, not by upload time: what matters is which
+    pile the teacher most recently signed off, not which arrived last.
+    """
+    sheet_clause = Scan.sheet_id.is_(None) if sheet_id is None else Scan.sheet_id == sheet_id
+    row = db.execute(
+        select(Detection, Scan, ScanPage)
+        .join(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .join(Scan, Scan.id == ScanPage.scan_id)
+        .where(Scan.school_id == school_id)
+        .where(Scan.id != exclude_scan_id)
+        .where(Scan.status == ScanStatus.CONFIRMED)
+        .where(sheet_clause)
+        .where(ScanPage.student_id == student_id)
+        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.wrong_class.is_(False))
+        .where(Detection.exercise_id == exercise_id)
+        .order_by(Scan.confirmed_at.desc().nullslast())
+        .limit(1)
+    ).first()
+    return None if row is None else (row[0], row[1], row[2])
+
+
+def unvalidate_scan(
+    db: Session,
+    scope: Scope,
+    scan_id: uuid.UUID,
+    *,
+    now: datetime | None = None,
+) -> ScanUnvalidateResponse:
+    """Reopen a confirmed pile: withdraw exactly what it wrote, then put back
+    whatever confirmed evidence still stands.
+
+    This works without a history table because two things are already true.
+    ``grade_item`` is a pure function of an answer key and a reading, and a
+    confirmation never deletes a ``Detection`` — so every grade this pile wrote
+    can be recomputed, and every grade it *superseded* can be recomputed from
+    whichever older pile is now the newest one still signed off for that
+    student and exercise. Mastery needs no special handling at all: it is a
+    pure recompute over attempts, so correcting the attempts corrects it.
+
+    An item with no older confirmed reading goes back to having no attempt —
+    which is not a zero. Nobody has asserted anything about that item any more,
+    and that is the honest record (D5).
+    """
+    at = now or datetime.now(UTC)
+    school_id = scope.school_id
+    scan = get_scan(db, scope, scan_id)
+    if scan.status is not ScanStatus.CONFIRMED:
+        raise errors.conflict(
+            "this pile is not confirmed, so there is nothing to reopen",
+            code="scan_not_confirmed",
+            scan_id=str(scan_id),
+        )
+
+    written = list(
+        db.execute(
+            select(Attempt)
+            .where(Attempt.confirmed_scan_id == scan_id)
+            .where(Attempt.school_id == school_id)
+        ).scalars()
+    )
+    freed: set[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = set()
+    students: set[uuid.UUID] = set()
+    for attempt in written:
+        freed.add((attempt.student_id, attempt.exercise_id, attempt.sheet_id))
+        students.add(attempt.student_id)
+        db.delete(attempt)
+    # Flushed before re-inserting: the unique key on
+    # (student, exercise, sheet) allows exactly one live row per triple, so the
+    # delete has to land before a replacement is added for the same triple.
+    db.flush()
+
+    rederived = 0
+    for student_id, exercise_id, sheet_id in sorted(freed, key=lambda t: (str(t[0]), str(t[1]))):
+        found = _newest_other_confirmed(
+            db,
+            school_id,
+            exclude_scan_id=scan_id,
+            student_id=student_id,
+            exercise_id=exercise_id,
+            sheet_id=sheet_id,
+        )
+        if found is None:
+            continue
+        detection, older_scan, page = found
+        exercise = db.execute(
+            select(Exercise)
+            .where(Exercise.id == exercise_id)
+            .where(Exercise.school_id == school_id)
+        ).scalar_one_or_none()
+        if exercise is None:
+            continue
+        sheet = db.get(Sheet, sheet_id) if sheet_id else None
+        graded = grade_item(
+            _answer_key(exercise, detection.sheet_item, sheet), _detected_answer(detection)
+        )
+        if not graded.gradeable:
+            continue
+        db.add(
+            Attempt(
+                id=uuid.uuid4(),
+                school_id=school_id,
+                student_id=student_id,
+                exercise_id=exercise_id,
+                sheet_id=sheet_id,
+                sheet_instance_id=page.sheet_instance_id,
+                detection_id=detection.id,
+                correct=graded.correct,
+                score=graded.score,
+                difficulty=exercise.difficulty,
+                answered_at=_answered_at(older_scan, at),
+                confirmed_scan_id=older_scan.id,
+            )
+        )
+        rederived += 1
+        students.add(student_id)
+
+    scan.status = ScanStatus.NEEDS_REVIEW
+    scan.reopened_at = at
+    db.flush()
+
+    competencies_updated = recompute_for_students(db, school_id, sorted(students), now=at)
+
+    sheet_row = db.get(Sheet, scan.sheet_id) if scan.sheet_id else None
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.SCAN_REOPENED,
+        subject_type=EventSubject.SCAN,
+        subject_id=scan.id,
+        summary=(sheet_row.title if sheet_row else scan.original_filename or ""),
+        actor_id=scope.teacher_id,
+        class_id=sheet_row.class_id if sheet_row else None,
+        subject_area_id=sheet_row.subject_id if sheet_row else None,
+        occurred_at=at,
+        detail={
+            "attempts_removed": len(written),
+            "attempts_rederived": rederived,
+            "students": len(students),
+        },
+    )
+    return ScanUnvalidateResponse(
+        attempts_removed=len(written),
+        attempts_rederived=rederived,
+        students_affected=len(students),
+        competencies_updated=competencies_updated,
+    )
+
+
+def _resolve_policy(sheet_item: SheetItem | None, sheet: Sheet | None) -> tuple[float, float]:
+    """The barème that governs one item: its own, else the sheet's.
+
+    NULL on a sheet item means "use the sheet's default", the same convention
+    ``answer_box_lines`` uses — which is why each column is tested with ``is
+    not None`` rather than for truth. A deliberate 0 is a real override (a
+    bonus item worth nothing, or an item that costs nothing to get wrong), and
+    reading it as absent would silently hand the item the sheet's value back.
+
+    The fallback when there is no sheet at all is the 1.0/0.0 this pipeline
+    graded with before a barème existed. It is reachable: a scan may be
+    uploaded before anyone links it to the sheet it was printed from.
+    """
+    points_correct = sheet.default_points_correct if sheet is not None else 1.0
+    penalty = sheet.default_points_penalty if sheet is not None else 0.0
+    if sheet_item is not None:
+        if sheet_item.points_correct is not None:
+            points_correct = sheet_item.points_correct
+        if sheet_item.points_penalty is not None:
+            penalty = sheet_item.points_penalty
+    return (points_correct, penalty)
+
+
+def _answer_key(
+    exercise: Exercise, sheet_item: SheetItem | None, sheet: Sheet | None
+) -> AnswerKey:
+    """What the answer is, and what it is worth.
+
+    The barème resolves HERE, at grading time, from the rows as they stand —
+    deliberately not frozen at print time the way an answer box's rectangle is.
+    A box's rectangle is a physical fact about a page the browser laid out, and
+    recomputing it would crop the wrong pixels from a real photograph. A barème
+    touches no coordinate: it is arithmetic applied after every physical fact
+    is already fixed. And the correctness key beside it has always resolved
+    live — a teacher who fixes a typo'd answer after printing grades against
+    the fix. Freezing what an answer is WORTH while leaving what it IS live
+    would split one question down the middle for no reason.
+    """
+    points_correct, penalty = _resolve_policy(sheet_item, sheet)
     return AnswerKey(
         type=exercise.type,
         answer_index=exercise.answer_index,
         answer_bool=exercise.answer_bool,
         option_count=exercise.option_count,
+        points_correct=points_correct,
+        penalty=penalty,
     )
 
 
@@ -398,6 +692,11 @@ def confirm_scan(
     items_skipped = 0
     students: set[uuid.UUID] = set()
 
+    # Fetched once, before the loop: it carries the sheet's default barème, so
+    # every item on every page resolves against the same row. It is also what
+    # names the sheet in the event recorded at the end.
+    sheet = db.get(Sheet, scan.sheet_id) if scan.sheet_id else None
+
     for page in pending:
         student_id = page.student_id
         if student_id is None:  # pragma: no cover - guarded above
@@ -417,7 +716,9 @@ def confirm_scan(
                 # that this copy never printed. Nothing to grade against, and
                 # nothing the teacher needs to know about either.
                 continue
-            graded = grade_item(_answer_key(exercise), _detected_answer(detection))
+            graded = grade_item(
+                _answer_key(exercise, detection.sheet_item, sheet), _detected_answer(detection)
+            )
             if not graded.gradeable:
                 # Two bubbles filled, or free text. Deliberately not a zero —
                 # but it IS an item that went in on paper and comes out of the
@@ -440,6 +741,9 @@ def confirm_scan(
                 existing.score = graded.score
                 existing.difficulty = exercise.difficulty
                 existing.answered_at = answered_at
+                # This pile now owns the row, whoever wrote it before. Reopening
+                # reads this to know what to withdraw.
+                existing.confirmed_scan_id = scan.id
                 attempts_superseded += 1
             else:
                 db.add(
@@ -455,6 +759,7 @@ def confirm_scan(
                         score=graded.score,
                         difficulty=exercise.difficulty,
                         answered_at=answered_at,
+                        confirmed_scan_id=scan.id,
                     )
                 )
                 attempts_created += 1
@@ -477,6 +782,11 @@ def confirm_scan(
     # processing stage recorded — a batch that came back with a page it could
     # not read stays a batch that came back with a page it could not read.
     scan.status = ScanStatus.CONFIRMED
+    # The history, not a status. `confirmed_at` orders this pile against any
+    # other still-confirmed one when a reopen has to choose a fallback reading;
+    # the count is what makes a re-signed pile read as "revised" (D48).
+    scan.confirmed_at = at
+    scan.confirmation_count += 1
     db.flush()
 
     competencies_updated = recompute_for_students(db, school_id, sorted(students), now=at)
@@ -486,7 +796,6 @@ def confirm_scan(
     # the next edit to the row, whatever it is. `occurred_at` is `at`, the same
     # stamp the attempts carry, so a pile corrected on Sunday for Friday's
     # lesson lands on the day the class actually sat it.
-    sheet = db.get(Sheet, scan.sheet_id) if scan.sheet_id else None
     event_service.record(
         db,
         school_id=school_id,
@@ -653,3 +962,106 @@ def set_page_discarded(
         page.sheet_instance_id = None
     db.flush()
     return page
+
+
+@dataclass(frozen=True, slots=True)
+class ItemConfidence:
+    """How one printed item was read across a whole class's copies."""
+
+    sheet_item_id: uuid.UUID | None
+    exercise_id: uuid.UUID | None
+    number: int | None
+    statement: str | None
+    copies_read: int
+    low_confidence: int
+    ambiguous: int
+    corrected: int
+
+
+def confidence_by_item(db: Session, scope: Scope, sheet_id: uuid.UUID) -> list[ItemConfidence]:
+    """Per printed item: how many copies came back unsure, ambiguous, or fixed.
+
+    The point of aggregating by ITEM rather than by student: one child misreading
+    question 7 is a child; twenty of them is a smudged photocopy or a fold across
+    the answer grid. This is the view that tells those two apart, and it names a
+    piece of paper rather than a student.
+
+    One reading per (student, item) — the newest non-discarded page — so a copy
+    photographed twice is not counted twice. That is the same rule confirmation
+    already applies to attempts, applied here to a report.
+
+    A `corrected` item is not also counted as low-confidence: the teacher has
+    already dealt with it. A high corrected count is itself the signal.
+    """
+    from alppy.services.sheet_service import get_sheet
+
+    sheet = get_sheet(db, scope, sheet_id)
+    school_id = scope.school_id
+
+    rows = db.execute(
+        select(
+            Detection,
+            ScanPage.student_id,
+            ScanPage.page_in_copy,
+            ScanPage.created_at,
+            Scan.created_at,
+        )
+        .join(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .join(Scan, Scan.id == ScanPage.scan_id)
+        .where(Scan.sheet_id == sheet.id)
+        .where(Scan.school_id == school_id)
+        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.wrong_class.is_(False))
+    ).all()
+
+    # Deduplicated per QUESTION, not per `item_index`. `item_index` is
+    # page-local and restarts at 0 on every physical page (I6), so keying on it
+    # makes page two's first item collide with page one's and silently drop a
+    # question from the report. The exercise is what identifies a question
+    # across pages; only a detection with no exercise at all falls back to a
+    # position, and then the folio has to be part of the key too.
+    newest: dict[tuple[Any, ...], tuple[Detection, Any, Any]] = {}
+    for detection, student_id, page_in_copy, page_created, scan_created in rows:
+        if student_id is None:
+            continue
+        key: tuple[Any, ...] = (
+            (student_id, detection.exercise_id)
+            if detection.exercise_id is not None
+            else (student_id, page_in_copy, detection.item_index)
+        )
+        current = newest.get(key)
+        if current is None or (page_created, scan_created) > (current[1], current[2]):
+            newest[key] = (detection, page_created, scan_created)
+
+    counts: dict[tuple[uuid.UUID | None, uuid.UUID | None], dict[str, int]] = {}
+    labels: dict[tuple[uuid.UUID | None, uuid.UUID | None], tuple[int | None, str | None]] = {}
+    for detection, _page_at, _scan_at in newest.values():
+        key = (detection.sheet_item_id, detection.exercise_id)
+        bucket = counts.setdefault(
+            key, {"copies_read": 0, "low_confidence": 0, "ambiguous": 0, "corrected": 0}
+        )
+        bucket["copies_read"] += 1
+        if detection.outcome is DetectionOutcome.CORRECTED:
+            bucket["corrected"] += 1
+        elif detection.outcome is DetectionOutcome.LOW_CONFIDENCE:
+            bucket["low_confidence"] += 1
+        elif detection.outcome in (DetectionOutcome.MULTIPLE, DetectionOutcome.NOT_GRADEABLE):
+            bucket["ambiguous"] += 1
+        labels[key] = (
+            detection.printed_number,
+            detection.exercise.statement if detection.exercise is not None else None,
+        )
+
+    return sorted(
+        (
+            ItemConfidence(
+                sheet_item_id=key[0],
+                exercise_id=key[1],
+                number=labels[key][0],
+                statement=labels[key][1],
+                **bucket,
+            )
+            for key, bucket in counts.items()
+        ),
+        key=lambda item: (item.number is None, item.number or 0),
+    )

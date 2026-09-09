@@ -293,7 +293,9 @@ export interface SheetProposeResponse {
 export type AnswerBoxFill = 'lined' | 'grid' | 'blank';
 
 /** The heights the paper reserves room for, in 8 mm lines; 0 prints no box. */
-export type AnswerBoxLines = 0 | 3 | 5 | 8 | 12;
+/** Height of the written-answer box in 8 mm lines: 0 prints none, any value
+ *  up to `SHEET_LAYOUT.answerBox.maxLines` is allowed; the presets are shortcuts. */
+export type AnswerBoxLines = number;
 
 export interface SheetItemIn {
   exercise_id: Uuid;
@@ -302,6 +304,16 @@ export interface SheetItemIn {
   /** The written-answer box under an open item; ignored on a bubble item. */
   answer_box_lines?: AnswerBoxLines | null;
   answer_box_fill?: AnswerBoxFill | null;
+  /** The teacher's expected answer for this printing of an open item. Blank
+   *  means the exercise's own answer if it has one, else the grader works the
+   *  answer out itself. Ignored on a bubble item. */
+  expected_answer?: string | null;
+  /** This item's own barème. Null means "use the sheet's default". Unlike the
+   *  box and the expected answer, these are NOT ignored on a bubble item: a
+   *  point value means something on every exercise type. */
+  points_correct?: number | null;
+  /** The penalty as a MAGNITUDE — the server applies the sign. */
+  points_penalty?: number | null;
 }
 
 export interface SheetCreate {
@@ -312,11 +324,16 @@ export interface SheetCreate {
   target: SheetTarget;
   intent?: string | null;
   items: SheetItemIn[];
+  /** The barème every item falls back to when it sets none of its own. */
+  default_points_correct?: number;
+  default_points_penalty?: number;
 }
 
 export interface SheetUpdate {
   title?: string;
   items?: SheetItemIn[];
+  default_points_correct?: number;
+  default_points_penalty?: number;
 }
 
 /** A sheet that has not been saved, rendered so the teacher can see the paper
@@ -329,6 +346,96 @@ export interface SheetDraftPreview {
   title: string;
   language: ApiLocale;
   items: SheetItemIn[];
+  default_points_correct?: number;
+  default_points_penalty?: number;
+}
+
+/** One student's marks, aggregated. Field names match `SheetInstanceOut`
+ *  because they are the same two numbers one level up. */
+export interface StudentPointsOut {
+  student_id: Uuid;
+  /** null when nothing is graded yet. NEVER render this as a zero: a term with
+   *  two of five sheets marked is not three failures. */
+  points_earned: number | null;
+  points_possible: number;
+}
+
+export interface ClassSheetPointsOut {
+  sheet_id: Uuid;
+  sheet_title: string;
+  /** Mean of each graded copy's ratio, 0..1; null when no copy is graded. */
+  average_ratio: number | null;
+  students: StudentPointsOut[];
+}
+
+export interface ClassPointsOut {
+  class_id: Uuid;
+  /** Totals across every sheet in scope. */
+  students: StudentPointsOut[];
+  sheets: ClassSheetPointsOut[];
+}
+
+/** How one printed item read across the class's copies. Names an item, never
+ *  a student: twenty bad readings of question 7 is a bad photocopy. */
+/** One question, as one student answered it. */
+export interface StudentSheetItemOut {
+  position: number;
+  number: number | null;
+  exercise_id: Uuid;
+  statement: string;
+  exercise_type: ExerciseType;
+  ai_generated: boolean;
+  options: string[];
+  /** Already readable: "B. 2/3", "Vrai", or the transcription. */
+  given: string | null;
+  given_index: number | null;
+  expected: string | null;
+  expected_index: number | null;
+  outcome: DetectionOutcome | null;
+  confidence: number | null;
+  /** null = no attempt at all. Not the same as wrong. */
+  correct: boolean | null;
+  /** null = ungraded. Never rendered as a zero. */
+  points_earned: number | null;
+  points_possible: number;
+  crop_url: string | null;
+}
+
+export interface StudentSheetOut {
+  student: StudentOut;
+  sheet_id: Uuid;
+  sheet_title: string;
+  scan_id: Uuid | null;
+  answered_at: IsoDateTime | null;
+  points_earned: number | null;
+  points_possible: number;
+  items: StudentSheetItemOut[];
+}
+
+export interface ItemConfidenceOut {
+  sheet_item_id: Uuid | null;
+  exercise_id: Uuid | null;
+  number: number | null;
+  statement: string | null;
+  copies_read: number;
+  low_confidence: number;
+  ambiguous: number;
+  corrected: number;
+}
+
+export interface SheetConfidenceOut {
+  sheet_id: Uuid;
+  items: ItemConfidenceOut[];
+}
+
+/** What reopening a pile withdrew, and what it put back. */
+export interface ScanUnvalidateResponse {
+  attempts_removed: number;
+  /** Recomputed from an older pile still confirmed. The gap between removed
+   *  and rederived is the number of items that now have no grade at all. */
+  attempts_rederived: number;
+  students_affected: number;
+  competencies_updated: number;
 }
 
 export interface SheetItemOut {
@@ -337,6 +444,9 @@ export interface SheetItemOut {
   statement_override: string | null;
   answer_box_lines: AnswerBoxLines | null;
   answer_box_fill: AnswerBoxFill | null;
+  expected_answer: string | null;
+  points_correct: number | null;
+  points_penalty: number | null;
   exercise: ExerciseOut;
 }
 
@@ -349,6 +459,11 @@ export interface SheetInstanceOut {
   group_label: string | null;
   /** Whether this copy has an approved feedback page in the third document. */
   has_feedback: boolean;
+  /** Points earned, floored at zero; null when nothing is graded yet — which
+   *  is not the same as zero, and must not be shown as one. */
+  points_earned: number | null;
+  /** What this copy's own item list is worth in total. */
+  points_possible: number;
 }
 
 export interface SheetOut {
@@ -360,6 +475,8 @@ export interface SheetOut {
   language: string;
   intent: string | null;
   layout_version: string;
+  default_points_correct: number;
+  default_points_penalty: number;
   items: SheetItemOut[];
   instances: SheetInstanceOut[];
   blank_pdf_url: string | null;
@@ -414,8 +531,12 @@ export interface DetectionOut {
   machine_transcription: string | null;
   machine_verdict_correct: boolean | null;
   vision_model: string | null;
-  /** The expected answer of an open item, for the teacher adjudicating it. */
+  /** The expected answer of an open item, for the teacher adjudicating it:
+   *  the sheet item's, else the exercise's own. */
   answer_text: string | null;
+  /** When no expected answer existed, the answer the model worked out and
+   *  judged against. Null whenever `answer_text` is set. */
+  reference_answer: string | null;
 }
 
 /** A bubble correction carries `detected_index`; a written-answer correction
@@ -462,6 +583,13 @@ export interface ScanOut {
   /** Set on upload only: the job to poll for per-page progress. */
   job_id: Uuid | null;
   pages: ScanPageOut[];
+  /** The confirmation history, as derived facts rather than a fourth status.
+   *  `ScanStatus` deliberately does NOT gain a 'revised' member: every
+   *  `status === 'confirmed'` check in the app would otherwise have to know,
+   *  and each one missed silently unlocks a signed-off pile (D48). */
+  revised: boolean;
+  reopened_at: IsoDateTime | null;
+  confirmed_at: IsoDateTime | null;
   created_at: IsoDateTime;
 }
 

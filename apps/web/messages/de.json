@@ -20,7 +20,8 @@
     "sources": "Lehrmittel",
     "switchClass": "Klasse wechseln",
     "switchSubject": "Fach wechseln",
-    "timeline": "Agenda"
+    "timeline": "Agenda",
+    "results": "Resultate"
   },
   "auth": {
     "signIn": "Anmelden",
@@ -221,6 +222,17 @@
       "title": "Keine Arbeitsblätter",
       "body": "Stellen Sie Ihr erstes Arbeitsblatt aus Ihren Lehrmitteln zusammen.",
       "action": "Neues Arbeitsblatt"
+    },
+    "forClass": "Für die Klasse {code}",
+    "untitled": "Arbeitsblatt ohne Titel",
+    "searchPlaceholder": "Arbeitsblatt suchen…",
+    "noMatches": "Kein Arbeitsblatt trägt diesen Namen.",
+    "adaptiveTag": "Angepasst",
+    "pageCount": "{count, plural, one {# Seite} other {# Seiten}}",
+    "groups": {
+      "drafts": "Noch fertigzustellen",
+      "draftsHint": "Die PDFs sind noch nicht erzeugt.",
+      "ready": "Bereit zum Drucken"
     }
   },
   "scans": {
@@ -319,10 +331,34 @@
       "machineVerdict": "Urteil der Maschine: {verdict} · {transcription}",
       "verdictCorrect": "richtig",
       "verdictWrong": "falsch",
-      "verdictNone": "keines"
+      "verdictNone": "keines",
+      "modelReference": "Keine erwartete Antwort war angegeben; das Modell hat die Aufgabe gelöst und beurteilt nach: {answer}"
     },
     "confirmTranscription": "Abschrift speichern",
-    "readingAnswers": "{count, plural, one {# schriftliche Antwort wird noch gelesen} other {# schriftliche Antworten werden noch gelesen}} — die Bestätigung wartet auf das Ende des Lesens."
+    "readingAnswers": "{count, plural, one {# schriftliche Antwort wird noch gelesen} other {# schriftliche Antworten werden noch gelesen}} — die Bestätigung wartet auf das Ende des Lesens.",
+    "reopen": "Wieder öffnen",
+    "reopening": "Wird geöffnet…",
+    "stage": {
+      "pending": "Zu prüfen",
+      "validated": "Bestätigt",
+      "revised": "Überarbeitet",
+      "reopened": "Wieder offen",
+      "processing": "Analyse läuft"
+    },
+    "filterOutcome": "Anzeigen",
+    "filterCopy": "Kopie",
+    "filterAllCopies": "Alle Kopien",
+    "filterCopyUnsure": "{uid} — {count} zu prüfen",
+    "filterClear": "Alle anzeigen",
+    "filterNoMatches": "Kein Eintrag passt zu diesem Filter.",
+    "unidentifiedCopy": "Unbekannte Kopie",
+    "revert": "Maschinenlesung wiederherstellen",
+    "uploadingCount": "{count, plural, one {Eine Kopie wird gesendet…} other {# Kopien werden gesendet…}}",
+    "uploadingHelp": "Lassen Sie diese Seite offen, bis das Senden fertig ist.",
+    "processingQueued": "Analyse in Warteschlange…",
+    "processingReading": "Kopien werden gelesen…",
+    "processingLabel": "Fortschritt der Analyse",
+    "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen."
   },
   "adaptive": {
     "aiBadge": "KI",
@@ -558,7 +594,7 @@
     "overrideHelp": "Ändert nur dieses Blatt — das Quelldokument behält seinen Text.",
     "remove": "Entfernen",
     "emptyPickTitle": "Wählen Sie ein Dokument",
-    "emptyPickBody": "Wählen Sie oben ein Lehrmittel oder ein früheres Blatt. Alppy zeigt die gefundenen Aufgaben, und Sie haken die gewünschten ab.",
+    "emptyPickBody": "Alppy zeigt die gefundenen Aufgaben; Sie haken an, was Sie behalten.",
     "emptySheetTitle": "Nichts auf dem Blatt",
     "emptySheetBody": "Haken Sie links Aufgaben ab oder schreiben Sie selbst eine.",
     "noMatches": "Keine Aufgabe passt zu diesen Filtern.",
@@ -575,7 +611,41 @@
     "boxFillGrid": "Karo",
     "boxFillBlank": "Leer",
     "boxHelp": "Die Schülerin oder der Schüler schreibt in den Kasten. Beim Scannen schneidet Alppy ihn aus, liest die Handschrift und schlägt eine Korrektur vor, die Sie bestätigen.",
-    "boxNone": "Kein Kasten"
+    "boxNone": "Kein Kasten",
+    "baremeTitle": "Bewertung des Blatts",
+    "baremeItemTitle": "Bewertung dieser Aufgabe",
+    "baremePoints": "Punkte pro richtige Antwort",
+    "baremePenalty": "Abzug pro Fehler",
+    "baremeHelp": "Eine leer gelassene Antwort zählt null und wird nie abgezogen. Zwei angekreuzte Felder werden nicht bewertet: das Blatt geht in die Durchsicht.",
+    "baremeTotal": "Total: {points, number} Punkte",
+    "baremeOverridden": "geändert",
+    "baremeFollowsSheet": "{points, number} · Bewertung des Blatts",
+    "pointsOption": "{points, number} Pkt.",
+    "pointsSummary": "{points, number} Pkt.",
+    "pointsCustom": "Eigener Wert",
+    "pointsCustomLabel": "Punkte (bis {max, number})",
+    "penaltyNone": "Kein Abzug",
+    "penaltyOption": "−{points, number} pro Fehler",
+    "penaltySummary": "Abzug {points, number}",
+    "penaltySummaryNone": "ohne Abzug",
+    "expectedAnswerTitle": "Erwartete Antwort",
+    "expectedAnswerGiven": "Angegeben",
+    "expectedAnswerModel": "Das Modell ermittelt sie",
+    "expectedAnswerPlaceholder": "Optional — z. B. 7/8 oder der erwartete Lösungsweg",
+    "expectedAnswerHelp": "Wenn Sie sie angeben, druckt der Lösungsbogen sie und die Korrektur stützt sich darauf. Sonst löst das Modell die Aufgabe zuerst selbst, urteilt dann und zeigt Ihnen seine Antwort.",
+    "expectedAnswerFromBook": "Antwort aus der Aufgabe. Eine Änderung gilt nur für diesen Bogen — das Quelldokument behält seine eigene.",
+    "boxCustom": "Benutzerdefiniert…",
+    "boxCustomLines": "Anzahl Zeilen (1 bis {max})",
+    "titlePlaceholder": "Titel des Arbeitsblatts",
+    "forScope": "Für {scope} — in der Seitenleiste änderbar.",
+    "generateHelp": "Sie erhalten zwei PDFs: das Arbeitsblatt und das Lösungsblatt.",
+    "noDocumentsTitle": "Noch kein Lehrmittel",
+    "noDocumentsBody": "Importieren Sie ein Lehrmittel oder ein Aufgaben-PDF: Alppy indexiert die Aufgaben Kapitel für Kapitel.",
+    "importDocument": "Lehrmittel importieren",
+    "overflowHelp": "Mehr als sechzehn Aufgaben: Das Blatt braucht mindestens {count} Seiten.",
+    "boxSummary": "{count, plural, one {Rahmen mit einer Zeile} other {Rahmen mit # Zeilen}}",
+    "answerSummaryGiven": "erwartete Antwort angegeben",
+    "answerSummaryModel": "Antwort wird vom Modell ermittelt"
   },
   "newExercise": {
     "title": "Aufgabe hinzufügen",
@@ -639,6 +709,47 @@
       "adaptive_exported": "Angepasster Satz exportiert",
       "feedback_written": "Rückmeldungen geschrieben",
       "feedback_approved": "Rückmeldungen freigegeben"
+    }
+  },
+  "results": {
+    "title": "Resultate",
+    "forClass": "Klasse {code}",
+    "classAverage": "Klassendurchschnitt",
+    "notGradedYet": "Noch nichts korrigiert",
+    "totalColumn": "Total",
+    "studentColumn": "Schüler:in",
+    "matrixCaption": "Erreichte Punkte pro Schüler:in und Blatt",
+    "sheetCount": "{count, plural, one {# Blatt} other {# Blätter}}",
+    "cellLabel": "{student}, {sheet}: {earned} von {possible} Punkten",
+    "cellLabelUngraded": "{student}, {sheet}: noch nicht korrigiert",
+    "empty": {
+      "title": "Noch keine Resultate",
+      "body": "Erstelle ein Blatt, drucke es, scanne die Kopien — die Punkte erscheinen hier.",
+      "action": "Blatt erstellen"
+    },
+    "perSheet": {
+      "title": "Pro Blatt",
+      "notGraded": "Nicht korrigiert"
+    }
+  },
+  "studentSheet": {
+    "title": "Blatt von {student}",
+    "back": "Zurück zum Profil",
+    "openScan": "Foto der Kopie ansehen",
+    "total": "Total",
+    "notGradedYet": "Noch nicht korrigiert",
+    "given": "Ihre Antwort",
+    "expected": "Erwartete Antwort",
+    "noAnswer": "Keine Antwort",
+    "noExpected": "Keine Referenzantwort",
+    "points": "{earned} / {possible, number} Pkt.",
+    "pointsUngraded": "— / {possible, number} Pkt.",
+    "correct": "Richtig",
+    "incorrect": "Falsch",
+    "ungraded": "Nicht bewertet",
+    "empty": {
+      "title": "Diese Kopie ist noch nicht korrigiert",
+      "body": "Scannen Sie den Stapel und bestätigen Sie ihn — die Details erscheinen hier."
     }
   }
 }

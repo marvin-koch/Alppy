@@ -2,16 +2,17 @@
 
 import {
   AlppyLogo,
+  IconAi,
+  IconBook,
+  IconButton,
   IconClock,
   IconHome,
   IconMatrix,
-  IconAi,
+  IconMenu,
   IconScan,
   IconSettings,
   IconSheet,
-  IconBook,
-  IconMenu,
-  IconButton,
+  IconTrend,
   Sheet,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
@@ -24,7 +25,16 @@ import { ScopeSwitcher } from '@/components/ScopeSwitcher';
 
 interface Destination {
   href: string;
-  labelKey: 'home' | 'classes' | 'sheets' | 'scans' | 'adaptive' | 'sources' | 'settings' | 'timeline';
+  labelKey:
+    | 'home'
+    | 'classes'
+    | 'sheets'
+    | 'scans'
+    | 'results'
+    | 'adaptive'
+    | 'sources'
+    | 'settings'
+    | 'timeline';
   icon: ReactNode;
   primary: boolean;
 }
@@ -34,6 +44,9 @@ const DESTINATIONS: Destination[] = [
   { href: '/classes', labelKey: 'classes', icon: <IconMatrix />, primary: true },
   { href: '/sheets', labelKey: 'sheets', icon: <IconSheet />, primary: true },
   { href: '/scans/new', labelKey: 'scans', icon: <IconScan />, primary: true },
+  // Build, mark, then see how it went: results sit at the end of the daily
+  // loop rather than in the settings tail.
+  { href: '/results', labelKey: 'results', icon: <IconTrend />, primary: true },
   // The agenda is where a teacher goes to find what they did last week, so it
   // sits with the daily destinations rather than in the settings tail.
   { href: '/timeline', labelKey: 'timeline', icon: <IconClock />, primary: false },

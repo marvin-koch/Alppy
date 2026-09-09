@@ -19,6 +19,7 @@ from alppy.scan.grading import (
     DetectedAnswer,
     GradedItem,
     register_grader,
+    score_for,
     ungradeable,
 )
 
@@ -47,7 +48,7 @@ def grade_open_vision(key: AnswerKey, detected: DetectedAnswer) -> GradedItem:
         )
     return GradedItem(
         correct=detected.verdict_correct,
-        score=1.0 if detected.verdict_correct else 0.0,
+        score=score_for(key, correct=detected.verdict_correct),
         gradeable=True,
         outcome=detected.outcome,
         confidence=detected.confidence,

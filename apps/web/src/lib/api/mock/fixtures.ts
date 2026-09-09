@@ -437,12 +437,19 @@ export const sheet: SheetOut = {
   language: 'fr',
   intent: 'révision fractions avant le test',
   layout_version: 'v1',
+  default_points_correct: 1,
+  default_points_penalty: 0.25,
+  // Item 3 is worth more than the rest, so the builder's "modifié" summary and
+  // the printed "(3 pts)" both have something to show in the mock.
   items: [exercises[0], exercises[2], exercises[4], exercises[1], exercises[5]].map((ex, index) => ({
     id: id(610 + index),
     position: index,
     statement_override: null,
     answer_box_lines: null,
     answer_box_fill: null,
+    expected_answer: null,
+    points_correct: index === 2 ? 3 : null,
+    points_penalty: index === 2 ? 0 : null,
     exercise: ex as ExerciseOut,
   })),
   instances: students.slice(0, 3).map((student, index) => ({
@@ -452,6 +459,8 @@ export const sheet: SheetOut = {
     page_count: 1,
     group_label: null,
     has_feedback: false,
+    points_earned: index === 0 ? 5.75 : null,
+    points_possible: 7,
   })),
   blank_pdf_url: null,
   answer_key_pdf_url: null,
@@ -508,6 +517,7 @@ const detections: DetectionOut[] = [
   machine_transcription: raw.open ? '3/4 + 1/8 = 6/8 + 1/8 = 7/8' : null,
   machine_verdict_correct: raw.open ? true : null,
   vision_model: raw.open ? 'claude-sonnet-5' : null,
+  reference_answer: null,
   answer_text: raw.open ? '7/8' : null,
 }));
 
@@ -526,6 +536,9 @@ export const scan: ScanOut = {
   status: 'needs_review',
   error: null,
   job_id: null,
+  revised: false,
+  reopened_at: null,
+  confirmed_at: null,
   created_at: '2026-03-16T07:40:00+01:00',
   pages: [
     {

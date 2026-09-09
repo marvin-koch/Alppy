@@ -362,6 +362,12 @@ def _persist_detections(
         exercise_id: uuid.UUID | None = None
         sheet_item_id: uuid.UUID | None = None
         placed_item = placed.get(detection.item_index)
+        if placed_item is not None and placed_item.part == "statement":
+            # The statement of a split item: its box, and so its reading, is
+            # the continuation on the next page. A row here would be a second
+            # detection of the same exercise, never gradeable, shown to the
+            # teacher as an unreadable answer that was never asked for.
+            continue
         if placed_item is not None:
             try:
                 exercise_id = uuid.UUID(placed_item.item.key)

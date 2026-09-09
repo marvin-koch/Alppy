@@ -27,6 +27,12 @@ from alppy.models.enums import (
     ScanStatus,
     SheetTarget,
 )
+from alppy.sheets.layout import (
+    ANSWER_BOX_MAX_LINES,
+    DEFAULT_POINTS_CORRECT,
+    DEFAULT_POINTS_PENALTY,
+    MAX_ITEM_POINTS,
+)
 from alppy.sheets.layout import MAX_OPTIONS as MAX_MCQ_OPTIONS
 
 Locale = Literal["fr", "de", "en"]
@@ -348,11 +354,31 @@ class SheetItemIn(BaseModel):
     exercise_id: uuid.UUID
     position: int
     statement_override: str | None = None
-    # The written-answer box under an open item: height in 8 mm lines, one of
-    # the four presets the paper reserves room for, and what is printed inside.
-    # Ignored on a bubble item. None means the default; 0 prints no box.
-    answer_box_lines: Literal[0, 3, 5, 8, 12] | None = None
+    # The written-answer box under an open item: height in 8 mm lines, any
+    # number up to the tallest a page can carry (the builder offers presets as
+    # shortcuts), and what is printed inside. Ignored on a bubble item. None
+    # means the default; 0 prints no box.
+    answer_box_lines: Annotated[int, Field(ge=0, le=ANSWER_BOX_MAX_LINES)] | None = None
     answer_box_fill: AnswerBoxFill | None = None
+    # The expected answer for this printing of an open item, optional. Blank
+    # or absent means "use the exercise's own answer if it has one, otherwise
+    # let the grader work it out". Ignored on a bubble item.
+    expected_answer: Annotated[str, Field(max_length=4000)] | None = None
+    # This item's own barème. None means "use the sheet's default". Unlike the
+    # box and the expected answer, these are NOT ignored on a bubble item — a
+    # point value means something on every type, and an `open` item becomes
+    # auto-gradeable the moment a vision verdict lands.
+    points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
+    #: The penalty as a magnitude; the grader applies the sign.
+    points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
+
+    @field_validator("expected_answer")
+    @classmethod
+    def _trim_expected_answer(cls, value: str | None) -> str | None:
+        if value is None:
+            return None
+        cleaned = value.strip()
+        return cleaned or None
 
 
 class SheetCreate(BaseModel):
@@ -363,11 +389,20 @@ class SheetCreate(BaseModel):
     target: SheetTarget = SheetTarget.CLASS
     intent: str | None = None
     items: Annotated[list[SheetItemIn], Field(min_length=1, max_length=64)]
+    #: The barème every item falls back to when it sets none of its own.
+    default_points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] = (
+        DEFAULT_POINTS_CORRECT
+    )
+    default_points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] = (
+        DEFAULT_POINTS_PENALTY
+    )
 
 
 class SheetUpdate(BaseModel):
     title: str | None = None
     items: list[SheetItemIn] | None = None
+    default_points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
+    default_points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
 
 
 class SheetDraftPreview(BaseModel):
@@ -391,6 +426,12 @@ class SheetDraftPreview(BaseModel):
     title: Annotated[str, Field(max_length=200)] = ""
     language: Locale
     items: Annotated[list[SheetItemIn], Field(max_length=64)]
+    default_points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] = (
+        DEFAULT_POINTS_CORRECT
+    )
+    default_points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] = (
+        DEFAULT_POINTS_PENALTY
+    )
 
 
 class SheetItemOut(ApiModel):
@@ -399,6 +440,9 @@ class SheetItemOut(ApiModel):
     statement_override: str | None
     answer_box_lines: int | None = None
     answer_box_fill: AnswerBoxFill | None = None
+    expected_answer: str | None = None
+    points_correct: float | None = None
+    points_penalty: float | None = None
     exercise: ExerciseOut
 
 
@@ -411,6 +455,11 @@ class SheetInstanceOut(ApiModel):
     group_label: str | None = None
     #: Whether this copy has an approved feedback page in the third document.
     has_feedback: bool = False
+    #: Points earned so far, floored at zero, or None when nothing is graded
+    #: yet. A per-item score stays signed in the record; only the total floors.
+    points_earned: float | None = None
+    #: What this copy's own item list is worth in total.
+    points_possible: float = 0.0
 
 
 class SheetOut(ApiModel):
@@ -422,6 +471,8 @@ class SheetOut(ApiModel):
     language: str
     intent: str | None
     layout_version: str
+    default_points_correct: float = DEFAULT_POINTS_CORRECT
+    default_points_penalty: float = DEFAULT_POINTS_PENALTY
     items: list[SheetItemOut] = []
     instances: list[SheetInstanceOut] = []
     blank_pdf_url: str | None = None
@@ -474,6 +525,9 @@ class DetectionOut(ApiModel):
     machine_verdict_correct: bool | None = None
     vision_model: str | None = None
     answer_text: str | None = None
+    # What the machine judged against when no expected answer existed: the
+    # answer it worked out itself. Null when the teacher's answer was used.
+    reference_answer: str | None = None
 
 
 class DetectionCorrection(BaseModel):
@@ -535,7 +589,109 @@ class ScanOut(ApiModel):
     # a still-processing scan as a finished empty one.
     job_id: uuid.UUID | None = None
     pages: list[ScanPageOut] = []
+    # The confirmation history, as three derived facts rather than a fourth
+    # status. `status` still answers "is this pile signed off?"; these answer
+    # "has it been signed off before, and was it taken back?" (D48).
+    #: Signed off, then reopened, then signed off again.
+    revised: bool = False
+    #: Non-null once the pile has been reopened at least once, whatever its
+    #: status is now.
+    reopened_at: datetime | None = None
+    confirmed_at: datetime | None = None
     created_at: datetime
+
+
+class StudentPointsOut(ApiModel):
+    """One student's marks. Field names match ``SheetInstanceOut`` on purpose:
+    the same two numbers, aggregated one level up."""
+
+    student_id: uuid.UUID
+    #: null when nothing has been graded — never rendered as a zero.
+    points_earned: float | None = None
+    points_possible: float = 0.0
+
+
+class ClassSheetPointsOut(ApiModel):
+    sheet_id: uuid.UUID
+    sheet_title: str
+    #: Mean of each graded copy's ratio, 0..1. null when no copy is graded.
+    average_ratio: float | None = None
+    students: list[StudentPointsOut] = []
+
+
+class ClassPointsOut(ApiModel):
+    class_id: uuid.UUID
+    #: Totals across every sheet in scope.
+    students: list[StudentPointsOut] = []
+    sheets: list[ClassSheetPointsOut] = []
+
+
+class ItemConfidenceOut(ApiModel):
+    """How one printed item was read across the class's copies."""
+
+    sheet_item_id: uuid.UUID | None = None
+    exercise_id: uuid.UUID | None = None
+    number: int | None = None
+    statement: str | None = None
+    copies_read: int = 0
+    low_confidence: int = 0
+    ambiguous: int = 0
+    corrected: int = 0
+
+
+class SheetConfidenceOut(ApiModel):
+    sheet_id: uuid.UUID
+    items: list[ItemConfidenceOut] = []
+
+
+class StudentSheetItemOut(ApiModel):
+    """One question, as one student answered it."""
+
+    position: int
+    number: int | None = None
+    exercise_id: uuid.UUID
+    statement: str
+    exercise_type: ExerciseType
+    #: Wears the mandarin accent in the breakdown: an AI-written item is the one
+    #: to read twice before trusting the mark.
+    ai_generated: bool = False
+    options: list[str] = []
+    #: Already readable: "B. 2/3", "Vrai", or the transcription.
+    given: str | None = None
+    given_index: int | None = None
+    expected: str | None = None
+    expected_index: int | None = None
+    outcome: DetectionOutcome | None = None
+    confidence: float | None = None
+    #: null when the item produced no attempt — not the same as wrong.
+    correct: bool | None = None
+    #: null when ungraded. Never rendered as a zero.
+    points_earned: float | None = None
+    points_possible: float = 0.0
+    crop_url: str | None = None
+
+
+class StudentSheetOut(ApiModel):
+    student: StudentOut
+    sheet_id: uuid.UUID
+    sheet_title: str
+    scan_id: uuid.UUID | None = None
+    answered_at: datetime | None = None
+    points_earned: float | None = None
+    points_possible: float = 0.0
+    items: list[StudentSheetItemOut] = []
+
+
+class ScanUnvalidateResponse(ApiModel):
+    """What reopening a pile withdrew, and what it put back."""
+
+    attempts_removed: int
+    #: Recomputed from an older pile that is still confirmed. The difference
+    #: between removed and rederived is the number of items that now have no
+    #: grade at all — which is not the same as a zero.
+    attempts_rederived: int
+    students_affected: int
+    competencies_updated: int
 
 
 class ScanConfirmResponse(ApiModel):

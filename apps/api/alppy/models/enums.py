@@ -147,6 +147,10 @@ class EventKind(StrEnum):
     SHEET_PRINTED = "sheet_printed"
     SCAN_UPLOADED = "scan_uploaded"
     SCAN_CONFIRMED = "scan_confirmed"
+    #: A confirmed pile put back into review. The counterpart of
+    #: SCAN_CONFIRMED, and the reason the agenda can show that a set of grades
+    #: was withdrawn rather than silently changing underneath the teacher.
+    SCAN_REOPENED = "scan_reopened"
     ADAPTIVE_PROPOSED = "adaptive_proposed"
     ADAPTIVE_EXPORTED = "adaptive_exported"
     FEEDBACK_WRITTEN = "feedback_written"

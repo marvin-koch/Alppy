@@ -41,12 +41,123 @@ def _mm(v: float) -> int:
     return round(v * PX_PER_MM)
 
 
+def draw_mark(
+    img: Image,
+    centre: tuple[int, int],
+    radius: int,
+    *,
+    style: str = "fill",
+    pencil: float = 0.9,
+    seed: int = 0,
+    thickness_frac: float = 0.18,
+) -> None:
+    """The student's own mark inside one bubble.
+
+    ``fill`` is the original: a solid disc at 75% of the radius, which is what
+    the detector's density thresholds were tuned against.
+
+    ``cross`` is a hand-drawn X — two strokes near the diagonals, each one
+    wobbled by a few degrees and stopping short of the ring by a random margin,
+    because nobody draws a clean X in a 5 mm circle. The imperfection is the
+    point: a geometrically perfect cross would test the detector against a
+    shape it will never actually be handed.
+    """
+    shade = int(PAPER * (1.0 - pencil))
+    if style == "fill":
+        cv2.circle(img, centre, int(radius * 0.75), shade, thickness=-1)
+        return
+    if style != "cross":
+        raise ValueError(f"unknown mark style {style!r}")
+
+    rng = np.random.default_rng(seed)
+    # `thickness_frac` defaults to ~0.45 mm at 8 px/mm: a ballpoint.
+    # Deliberately thin — a fatter stroke covers enough of the disc for the
+    # density measure to catch it alone, and the shape test this harness
+    # exists to exercise would never run. Tests that want a finer pen (the
+    # case density genuinely cannot read) pass a smaller fraction.
+    thickness = max(1, round(radius * thickness_frac))
+    cx, cy = centre
+    for base in (45.0, 135.0):
+        angle = np.radians(base + float(rng.uniform(-12.0, 12.0)))
+        dx, dy = np.cos(angle), np.sin(angle)
+        # Each arm reaches most of the way out, by its own amount.
+        r0 = radius * float(rng.uniform(0.72, 0.95))
+        r1 = radius * float(rng.uniform(0.72, 0.95))
+        # ...from a start point a little off the exact centre.
+        ox = float(rng.uniform(-0.12, 0.12)) * radius
+        oy = float(rng.uniform(-0.12, 0.12)) * radius
+        cv2.line(
+            img,
+            (round(cx + ox - dx * r0), round(cy + oy - dy * r0)),
+            (round(cx + ox + dx * r1), round(cy + oy + dy * r1)),
+            shade,
+            thickness=thickness,
+            lineType=cv2.LINE_AA,
+        )
+
+
+def draw_stray_line(
+    img: Image,
+    item_index: int,
+    option_index: int,
+    *,
+    angle_deg: float = 40.0,
+    pencil: float = 0.75,
+) -> None:
+    """One stroke straight through a bubble the student did not choose.
+
+    A rested pen, a ruled line, a crossing-out that overshot. It puts real ink
+    inside the disc, so the density measure sees something; only the shape test
+    can tell it is one stroke and not two."""
+    cx, cy = L.bubble_centre_mm(item_index, option_index)
+    centre = (_mm(cx), _mm(cy))
+    radius = round(L.BUBBLE_D_MM / 2.0 * PX_PER_MM)
+    angle = np.radians(angle_deg)
+    dx, dy = np.cos(angle), np.sin(angle)
+    reach = radius * 1.4
+    cv2.line(
+        img,
+        (round(centre[0] - dx * reach), round(centre[1] - dy * reach)),
+        (round(centre[0] + dx * reach), round(centre[1] + dy * reach)),
+        int(PAPER * (1.0 - pencil)),
+        thickness=max(1, round(radius * 0.28)),
+        lineType=cv2.LINE_AA,
+    )
+
+
+def draw_smudge(
+    img: Image, item_index: int, option_index: int, *, pencil: float = 0.35, seed: int = 0
+) -> None:
+    """An erased answer: grey, spread out, with no straight edge anywhere.
+
+    The case that justifies looking at the outer band rather than the whole
+    disc — a vigorous rubbing-out can spread ink in every direction, and only
+    "is it arranged as strokes" separates it from a real mark."""
+    cx, cy = L.bubble_centre_mm(item_index, option_index)
+    centre = (_mm(cx), _mm(cy))
+    radius = round(L.BUBBLE_D_MM / 2.0 * PX_PER_MM)
+    rng = np.random.default_rng(seed)
+    shade = int(PAPER * (1.0 - pencil))
+    for _ in range(9):
+        ox = float(rng.uniform(-0.75, 0.75)) * radius
+        oy = float(rng.uniform(-0.75, 0.75)) * radius
+        cv2.circle(
+            img,
+            (round(centre[0] + ox), round(centre[1] + oy)),
+            max(1, round(radius * 0.22)),
+            shade,
+            thickness=-1,
+        )
+
+
 def render_page(
     uid: str,
     option_counts: list[int],
     marked: list[int | None],
     *,
     pencil: float = 0.9,
+    mark_style: str = "fill",
+    seed: int = 0,
 ) -> SyntheticSheet:
     """Draw one canonical page.
 
@@ -91,8 +202,16 @@ def render_page(
             radius = round(L.BUBBLE_D_MM / 2.0 * PX_PER_MM)
             cv2.circle(img, centre, radius, INK, thickness=1)
             if marked[item_index] == oi:
-                shade = int(PAPER * (1.0 - pencil))
-                cv2.circle(img, centre, int(radius * 0.75), shade, thickness=-1)
+                draw_mark(
+                    img,
+                    centre,
+                    radius,
+                    style=mark_style,
+                    pencil=pencil,
+                    # Per bubble, so a page of crosses is a page of different
+                    # crosses rather than the same one stamped sixteen times.
+                    seed=seed * 1000 + item_index * 10 + oi,
+                )
 
     return SyntheticSheet(image=img, uid=uid, option_counts=option_counts, marked=marked)
 

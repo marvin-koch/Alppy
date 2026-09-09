@@ -112,16 +112,19 @@ class PhysicalPage:
 _STRINGS: Final[dict[str, dict[str, str]]] = {
     "fr": {
         "code": "Code élève",
-        "instructions": (
-            "Remplis une seule bulle par ligne dans la grille de réponses en bas de page. "
-            "Pour une réponse écrite, écris dans le cadre."
+        "instructions_bubbles": (
+            "Remplis ou croise une seule case par ligne dans la grille de réponses "
+            "en bas de page."
         ),
+        "instructions_written": "Pour une réponse écrite, écris dans le cadre.",
         "answers": "Grille de réponses",
-        "written": "dans le cadre",
         "expected": "Réponse attendue :",
+        "points_unit": "pts",
+        "points_unit_one": "pt",
         "page": "Page",
         "layout": "mise en page",
         "ai": "IA",
+        "continued": "suite",
         "legend": "Légende des paliers",
         "key_badge": "CORRIGÉ",
         "key_suffix": "corrigé",
@@ -136,16 +139,19 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
     },
     "de": {
         "code": "Schülercode",
-        "instructions": (
-            "Fülle pro Zeile genau ein Feld im Antwortraster unten auf der Seite aus. "
-            "Eine schriftliche Antwort schreibst du in den Kasten."
+        "instructions_bubbles": (
+            "Fülle oder kreuze pro Zeile genau ein Feld im Antwortraster unten auf "
+            "der Seite an."
         ),
+        "instructions_written": "Eine schriftliche Antwort schreibst du in den Kasten.",
         "answers": "Antwortraster",
-        "written": "im Kasten",
         "expected": "Erwartete Antwort:",
+        "points_unit": "Pkt.",
+        "points_unit_one": "Pkt.",
         "page": "Seite",
         "layout": "Layout",
         "ai": "KI",
+        "continued": "Fortsetzung",
         "legend": "Legende der Stufen",
         "key_badge": "LÖSUNG",
         "key_suffix": "Lösung",
@@ -160,16 +166,19 @@ _STRINGS: Final[dict[str, dict[str, str]]] = {
     },
     "en": {
         "code": "Student code",
-        "instructions": (
-            "Fill in exactly one bubble per row in the answer grid at the foot of the page. "
-            "Write a written answer inside its box."
+        "instructions_bubbles": (
+            "Fill in or cross exactly one box per row in the answer grid at the foot "
+            "of the page."
         ),
+        "instructions_written": "Write a written answer inside its box.",
         "answers": "Answer grid",
-        "written": "in the box",
         "expected": "Expected answer:",
+        "points_unit": "pts",
+        "points_unit_one": "pt",
         "page": "Page",
         "layout": "layout",
         "ai": "AI",
+        "continued": "continued",
         "legend": "Mastery legend",
         "key_badge": "ANSWER KEY",
         "key_suffix": "answer key",
@@ -417,7 +426,24 @@ def physical_pages(sheet_data: SheetData) -> list[PhysicalPage]:
     ]
 
 
-def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
+def _points_label(points: float, strings: dict[str, str]) -> str:
+    """"(2 pts)", "(1 pt)", or "" when the item is worth nothing.
+
+    Formatted here rather than in the template so the conventions live in one
+    place: a whole number prints whole (2, not 2.0), anything else keeps one
+    decimal — as fine as a barème ever gets — and the unit agrees in number,
+    which French and English need and German does not ("Pkt." either way).
+
+    An item worth 0 prints no label at all. A "(0 pts)" beside a question is a
+    thing to explain to thirty teenagers; silence is not."""
+    if points <= 0:
+        return ""
+    value = int(points) if float(points).is_integer() else round(points, 1)
+    unit = strings["points_unit_one"] if value == 1 else strings["points_unit"]
+    return f"({value} {unit})"
+
+
+def _item_context(placed: Any, *, letters: str, strings: dict[str, str]) -> dict[str, Any]:
     item = placed.item
     options: list[dict[str, str]] = []
     if item.type is ExerciseType.MCQ or item.options:
@@ -440,17 +466,19 @@ def _item_context(placed: Any, *, letters: str) -> dict[str, Any]:
     return {
         "item_index": placed.item_index,
         "number": placed.number,
+        "part": placed.part,
         "type": item.type.value,
         "statement": item.statement,
         "ai_generated": item.ai_generated,
         "options": options,
         "is_open": item.type is ExerciseType.OPEN,
-        "open_lines": max(0, item.open_lines),
+        "open_lines": max(0, item.open_lines) if placed.prints_box else 0,
         "box_fill": item.box_fill.value,
         # The height is decided once, here, and written inline: pagination
         # reserved exactly this many millimetres.
         "box_height_mm": _fmt(box_height_mm(item) or 0.0),
         "answer_text": item.answer_text,
+        "points_label": _points_label(item.points_correct, strings),
         "figure": figure,
     }
 
@@ -496,11 +524,37 @@ def _page_context(physical: PhysicalPage, sheet: SheetData, *, is_key: bool) -> 
         "uid_cells": bits_to_cells(bits),
         # NB: not "items" — Jinja would resolve page.items to dict.items.
         "statements": [
-            _item_context(placed, letters=placed.item.option_letters)
+            _item_context(
+                placed,
+                letters=placed.item.option_letters,
+                strings=strings(sheet.language),
+            )
             for placed in physical.page.items
         ],
-        "rows": [_row_context(placed, is_key=is_key) for placed in physical.page.items],
+        # The grid lists bubble items only. A written answer has its box under
+        # the statement; a grid row saying "in the box" told the student
+        # nothing and, on a page of written items alone, printed an empty grid
+        # with a heading. The detector never reads the grid markup — it reads
+        # bubble positions from `layout.py` by page-local item index, which is
+        # unchanged — so an open item's row can simply not print.
+        "rows": [
+            _row_context(placed, is_key=is_key)
+            for placed in physical.page.items
+            if placed.item.is_gradeable
+        ],
+        "instructions": _instructions(physical, strings(sheet.language)),
     }
+
+
+def _instructions(physical: PhysicalPage, t: dict[str, str]) -> str:
+    """Only the sentence that applies to what this page prints."""
+    kinds = {placed.item.is_gradeable for placed in physical.page.items}
+    parts = []
+    if True in kinds:
+        parts.append(t["instructions_bubbles"])
+    if False in kinds:
+        parts.append(t["instructions_written"])
+    return " ".join(parts)
 
 
 # --------------------------------------------------------------------------

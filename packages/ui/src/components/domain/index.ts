@@ -8,6 +8,22 @@ export { MasteryLegend } from './MasteryLegend';
 export type { MasteryLegendProps } from './MasteryLegend';
 export { AttemptList } from './AttemptList';
 export type { AttemptListProps, AttemptRow, AttemptListLabels } from './AttemptList';
+export { Matrix } from './Matrix';
+export type {
+  MatrixProps,
+  MatrixCellSlot,
+  MatrixRowBase,
+  MatrixColumnBase,
+} from './Matrix';
+export { PointsCell } from './PointsCell';
+export type { PointsCellProps, PointsCellLabelParts } from './PointsCell';
+export { PointsMatrix } from './PointsMatrix';
+export type {
+  PointsMatrixProps,
+  PointsMatrixStudent,
+  PointsMatrixColumn,
+  PointsValue,
+} from './PointsMatrix';
 export { MasteryMatrix } from './MasteryMatrix';
 export type { MasteryMatrixProps, MatrixStudent, MatrixCompetency } from './MasteryMatrix';
 export { MasteryCurve } from './MasteryCurve';
