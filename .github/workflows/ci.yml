@@ -68,6 +68,28 @@ jobs:
       - name: Tests
         run: PYTHONPATH=apps/api pytest apps/api/tests -q
 
+  secrets:
+    name: Secret scan — full history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks scans commits, not the working tree: a shallow clone would
+          # report a clean history because it cannot see one.
+          fetch-depth: 0
+      # The released binary rather than gitleaks-action: the action requires a
+      # paid licence key for a private organisation repository, and a secret
+      # scan that silently stops running the day the repo goes private is worse
+      # than none — it reports success either way.
+      - name: Install gitleaks
+        run: |
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz" \
+            | tar -xz -C /usr/local/bin gitleaks
+        env:
+          GITLEAKS_VERSION: 8.30.1
+      - name: Scan every commit
+        run: gitleaks git --redact --verbose
+
   web:
     name: Web — lint, types, build
     runs-on: ubuntu-latest

@@ -16,6 +16,19 @@ repos:
       - id: check-merge-conflict
       - id: mixed-line-ending
         args: ['--fix=lf']
+      # The history is clean today (no .env has ever been committed, and the
+      # only key-shaped strings are obvious test fakes). Nothing enforced that,
+      # and "clean so far" is not a property — it is an observation that stops
+      # being true once.
+      - id: detect-private-key
+
+  # Catches what detect-private-key cannot: provider API keys, tokens and
+  # connection strings with real credentials in them. Staged content only, so
+  # it costs nothing on a normal commit; the CI job scans the whole history.
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.8.6

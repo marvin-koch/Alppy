@@ -1,0 +1,29 @@
+# Secret-scanning config for the pre-commit hook and the `secrets` CI job.
+#
+# The allowlist is deliberately keyed on the *values*, not on the files that
+# hold them. A path allowlist ("ignore docs/reviews/") would also wave through
+# the next real credential that lands in one of those files, and the whole point
+# of scanning history is to catch the accident nobody meant to make.
+
+title = "Alppy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = """Strings that are credentials in shape but not in fact: they are
+published in this repository on purpose, and every one of them authenticates
+against nothing but a local demo database."""
+regexes = [
+  # apps/api/alppy/seed/demo.py — the demo teacher and colleague logins that
+  # `docker compose up` creates. Published by design so a reviewer can sign in;
+  # the seed now refuses to run outside local/ci (alppy.cli.SEEDABLE_ENVS), so
+  # there is no deployment where knowing this opens anything.
+  '''alppy-demo-2026''',
+  # docs/reviews/F7-review.md — a second account in a `curl localhost` repro for
+  # a tenancy bug, so the finding can be reproduced against a demo stack.
+  '''teacherB-pass-2026''',
+  # apps/api/tests/test_ai_providers.py — fakes asserting that a key is *read*,
+  # never that it works. The tests build a provider and never open a socket.
+  '''sk-ant-set-but-useless-here''',
+]
