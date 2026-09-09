@@ -178,3 +178,46 @@ uploaded, even though it belongs to the school). Two consequences, both enforced
 Multi-school deployments (a teacher who moves schools, a canton piloting across several schools)
 are modelled as separate `School` rows with no implicit relationship between them; any
 cross-school reporting is a deliberate, audited, opt-in feature, not a default query capability.
+
+## 5. Authentication and the session
+
+The pieces are spread across four files by design — `core/security.py` owns the primitives,
+`api/v1/auth.py` the endpoints, `api/deps.py` the per-request check, `web/src/middleware.ts` the
+routing convenience — so this section is the one place that describes them as a whole.
+
+**Passwords.** Argon2id via `argon2-cffi`, at that library's defaults, which are the OWASP-recommended
+parameters. `needs_rehash` is checked on every successful login and the hash upgraded in place, so
+raising the parameters later is a config change rather than a migration. A login for an unknown
+address still verifies against a throwaway hash before failing (`auth.py`), so response time does not
+reveal whether an address exists — the enumeration oracle that would otherwise turn a teacher list
+into a confirmed-user list.
+
+**The session is a signed cookie, not a server-side record.** `issue_session` serialises
+`{"t": teacher_id, "s": school_id}` with `itsdangerous` under `ALPPY_SECRET_KEY` and a fixed salt;
+the cookie is `httpOnly`, `SameSite=Lax`, `Path=/`, `max_age = ALPPY_SESSION_MAX_AGE_S` (12 h), and
+`Secure` whenever `ALPPY_ENV` is `staging` or `production`. There is no session table and therefore
+no server-side revocation: rotating `ALPPY_SECRET_KEY` invalidates every session at once, and that
+is the only lever. `ALPPY_SECRET_KEY` left at its development default is refused at startup
+(`Settings._refuse_unsafe_deployment`) precisely because it is the whole of the authentication
+system — anyone holding it can mint a valid cookie for any teacher in any school.
+
+**The school in the cookie is a claim, and it is re-checked every request.** `get_membership`
+(`api/deps.py`) reads the cookie, resolves the teacher, and then issues a `SELECT` against
+`teacher_school` for the `(teacher_id, school_id)` pair — a query, deliberately, not
+`session.school_id in teacher.schools`, which a stale identity map can answer. A teacher removed
+from a school stops being able to act for it on their next request, not at their next login (D74).
+`POST /auth/school/{id}` proves the membership once and re-issues the cookie naming the new school;
+switching tenant is re-issuing that cookie, not a different kind of session.
+
+**Cross-school failures read as 404, never 403.** A school the teacher does not work at is
+_missing_, following the rule every ownership check here follows: a response must not confirm the
+existence of something it will not open.
+
+**Two documented bypasses, both off by default.** `ALPPY_DEMO_MODE` makes a cookieless request
+resolve to `demo_teacher_email` instead of 401; `NEXT_PUBLIC_ALPPY_DEMO_MODE` stops the Next.js
+middleware redirecting that visitor to `/login`. Both halves are needed for a working demo and
+neither is dangerous alone (D62), and the API flag is refused outright in `staging`/`production`.
+The middleware is a **routing convenience, not the security boundary** — the cookie is `httpOnly`,
+so its mere presence is all the edge can check, and the API answers 401 on a forged or expired one
+regardless of what the edge let through. Every authorisation decision in this product is made in
+`api/deps.py`.
