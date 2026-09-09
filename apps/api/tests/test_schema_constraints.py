@@ -738,3 +738,241 @@ def test_deleting_a_pupil_takes_their_evidence_with_them(db: Session, world: Wor
     assert db.execute(
         sa.select(sa.func.count()).select_from(snapshot).where(snapshot.c.student_id == student.id)
     ).scalar_one() == 0
+
+
+# --------------------------------------------------------------------------
+# The sheet, the copy and the mark
+#
+# These are the rules the printed loop leans on. Each is a CHECK or a UNIQUE
+# that SQLite ignores entirely, so the behaviour suite has never seen one of
+# them fire.
+# --------------------------------------------------------------------------
+def _subject_and_chapter(db: Session, world: World) -> tuple[uuid.UUID, uuid.UUID]:
+    chapter_id = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["chapter"]).values(
+            id=chapter_id, school_id=world.school.id, subject_id=world.french.id,
+            key="fractions", labels={}, position=0,
+        )
+    )
+    return world.french.id, chapter_id
+
+
+def _sheet(db: Session, world: World, **over: object) -> uuid.UUID:
+    subject_id, chapter_id = _subject_and_chapter(db, world)
+    sheet_id = uuid.uuid4()
+    values = {
+        "id": sheet_id, "school_id": world.school.id, "class_id": world.klass.id,
+        "subject_id": subject_id, "chapter_id": chapter_id, "title": "Fractions",
+        "target": "CLASS", "language": "FR", "layout_version": "v1",
+        "default_points_correct": 1.0, "default_points_penalty": 0.0,
+    }
+    values.update(over)
+    db.execute(pg_insert(_TABLES["sheet"]).values(**values))
+    return sheet_id
+
+
+def _exercise(db: Session, world: World) -> uuid.UUID:
+    exercise_id = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["exercise"]).values(
+            id=exercise_id, school_id=world.school.id, subject_id=world.french.id,
+            type="MCQ", origin="TEACHER", language="fr", statement="1/2 + 1/4 ?",
+            difficulty=3,
+        )
+    )
+    return exercise_id
+
+
+def test_a_sheets_points_stay_inside_the_bareme(db: Session, world: World) -> None:
+    """`ck_sheet_default_points_correct` — 0..20.
+
+    The barème is a teacher's own number, but an unbounded one turns a typo
+    ("100" for "1.00") into a sheet total nothing downstream expects.
+    """
+    with pytest.raises(IntegrityError):
+        _sheet(db, world, default_points_correct=25.0)
+        db.flush()
+
+
+def test_a_penalty_is_stored_as_a_magnitude(db: Session, world: World) -> None:
+    """The columns hold a magnitude; `scan.grading.score_for` applies the sign.
+
+    That is the whole reason 0.25 and -0.25 cannot come to mean two different
+    things, and a negative penalty here would reopen it.
+    """
+    with pytest.raises(IntegrityError):
+        _sheet(db, world, default_points_penalty=-0.25)
+        db.flush()
+
+
+def test_two_items_cannot_share_a_position_on_one_sheet(
+    db: Session, world: World
+) -> None:
+    """`uq_sheet_item_position`. Position IS the printed order.
+
+    Two items at position 3 makes the paper's numbering ambiguous, and the
+    detector reads items by index.
+    """
+    sheet_id = _sheet(db, world)
+    exercise_id = _exercise(db, world)
+    db.commit()
+    item = _TABLES["sheet_item"]
+    common = {"school_id": world.school.id, "sheet_id": sheet_id, "exercise_id": exercise_id}
+    db.execute(pg_insert(item).values(id=uuid.uuid4(), position=0, **common))
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(pg_insert(item).values(id=uuid.uuid4(), position=0, **common))
+        db.flush()
+
+
+def test_an_answer_box_cannot_be_taller_than_the_page_allows(
+    db: Session, world: World
+) -> None:
+    """`answer_box_lines` 0..14 — 0 means "no box", 14 is the page's ceiling.
+
+    A box taller than the ceiling would print past `ITEMS_BOTTOM_MM`, and the
+    crop that the scanner takes from it is refused outside that band
+    (DC-print-10).
+    """
+    sheet_id = _sheet(db, world)
+    exercise_id = _exercise(db, world)
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(
+            pg_insert(_TABLES["sheet_item"]).values(
+                id=uuid.uuid4(), school_id=world.school.id, sheet_id=sheet_id,
+                exercise_id=exercise_id, position=1, answer_box_lines=20,
+            )
+        )
+        db.flush()
+
+
+def test_a_pupil_gets_one_printed_copy_per_sheet(db: Session, world: World) -> None:
+    """`uq_instance_student`. An instance IS one printed copy.
+
+    Two for the same pupil means two papers carrying the same UID, and the
+    scan path would have no way to say which pile a page came from.
+    """
+    student = Student(
+        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        home_class_id=world.klass.id, uid="5A_3", number=3,
+        first_name="Luc", last_name="Rey",
+    )
+    db.add(student)
+    sheet_id = _sheet(db, world)
+    db.commit()
+    inst = _TABLES["sheet_instance"]
+    common = {
+        "school_id": world.school.id, "sheet_id": sheet_id, "student_id": student.id,
+        "student_uid": student.uid, "item_plan": [], "page_count": 1,
+    }
+    db.execute(pg_insert(inst).values(id=uuid.uuid4(), **common))
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(pg_insert(inst).values(id=uuid.uuid4(), **common))
+        db.flush()
+
+
+def test_a_sheet_cannot_be_deleted_while_it_has_been_printed(
+    db: Session, world: World
+) -> None:
+    """`Sheet.chapter_id` is RESTRICT the other way round: the CHAPTER is what
+    a sheet protects. Deleting the chapter under a live sheet is refused.
+
+    Without it, a term of worksheets would leave the tree the moment somebody
+    tidied up a Theme.
+    """
+    subject_id, chapter_id = _subject_and_chapter(db, world)
+    db.execute(
+        pg_insert(_TABLES["sheet"]).values(
+            id=uuid.uuid4(), school_id=world.school.id, class_id=world.klass.id,
+            subject_id=subject_id, chapter_id=chapter_id, title="Fractions",
+            target="CLASS", language="FR", layout_version="v1",
+            default_points_correct=1.0, default_points_penalty=0.0,
+        )
+    )
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(sa.delete(_TABLES["chapter"]).where(_TABLES["chapter"].c.id == chapter_id))
+        db.flush()
+
+
+def test_one_attempt_per_pupil_per_exercise_per_sheet(db: Session, world: World) -> None:
+    """`uq_attempt_student_exercise_sheet`.
+
+    Confirming a pile twice must not double a child's evidence — the mastery
+    model weights by count, so a duplicate silently doubles that item's pull.
+    """
+    student = Student(
+        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        home_class_id=world.klass.id, uid="5A_4", number=4,
+        first_name="Ana", last_name="Blanc",
+    )
+    db.add(student)
+    sheet_id = _sheet(db, world)
+    exercise_id = _exercise(db, world)
+    db.commit()
+    attempt = _TABLES["attempt"]
+    common = {
+        "school_id": world.school.id, "student_id": student.id,
+        "exercise_id": exercise_id, "sheet_id": sheet_id,
+        "correct": True, "score": 1.0, "answered_at": sa.func.now(),
+    }
+    db.execute(pg_insert(attempt).values(id=uuid.uuid4(), **common))
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(pg_insert(attempt).values(id=uuid.uuid4(), **common))
+        db.flush()
+
+
+def test_an_exercise_on_a_printed_sheet_cannot_be_deleted(
+    db: Session, world: World
+) -> None:
+    """`SheetItem.exercise_id` is RESTRICT.
+
+    The paper already carries the statement; deleting the row it came from
+    would leave a printed item whose meaning nothing in the database knows.
+    """
+    sheet_id = _sheet(db, world)
+    exercise_id = _exercise(db, world)
+    db.execute(
+        pg_insert(_TABLES["sheet_item"]).values(
+            id=uuid.uuid4(), school_id=world.school.id, sheet_id=sheet_id,
+            exercise_id=exercise_id, position=0,
+        )
+    )
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(sa.delete(_TABLES["exercise"]).where(_TABLES["exercise"].c.id == exercise_id))
+        db.flush()
+
+
+def test_a_mastery_score_is_a_unit_interval(db: Session, world: World) -> None:
+    """`score_unit_interval`. The band thresholds are read against 0..1.
+
+    A stored 85 (a percentage that lost its division) would read as `solid`
+    forever and never decay.
+    """
+    student = Student(
+        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        home_class_id=world.klass.id, uid="5A_5", number=5,
+        first_name="Eva", last_name="Roth",
+    )
+    db.add(student)
+    db.flush()
+    cid = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["competency"]).values(
+            id=cid, curriculum="PER", code="MSN 33", labels={}, cycle=3, subject_key="maths",
+        )
+    )
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(
+            pg_insert(_TABLES["mastery_snapshot"]).values(
+                id=uuid.uuid4(), school_id=world.school.id, student_id=student.id,
+                competency_id=cid, computed_at=sa.func.now(), score=85.0, band="SOLID",
+            )
+        )
+        db.flush()
