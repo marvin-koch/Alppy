@@ -10,8 +10,16 @@ from fastapi.testclient import TestClient
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import PDF_BYTES, PNG_BYTES, Tenant, login, make_exercise
+from test_api_fixtures import (
+    PDF_BYTES,
+    PNG_BYTES,
+    Tenant,
+    login,
+    make_app_client,
+    make_exercise,
+)
 
+from alppy.core.config import Settings
 from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance
 from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus
 
@@ -189,6 +197,28 @@ def test_upload_rejects_an_oversized_file(client: TestClient, tenant: Tenant, sh
     )
     assert response.status_code == 413
     assert response.json()["error"]["code"] == "payload_too_large"
+
+
+def test_upload_rejects_a_pile_of_too_many_files(
+    db: Session, storage, tenant: Tenant, sheet_id: str
+) -> None:
+    """The per-file cap says nothing about how many files arrive together, and
+    every one of them is held in memory for the life of the request."""
+    capped = Settings(
+        env="ci", secret_key="test-secret-key", max_upload_mb=1, max_upload_files=3
+    )
+    with make_app_client(db, storage, capped) as capped_client:
+        login(capped_client, tenant.teacher.email)
+        response = capped_client.post(
+            "/api/v1/scans",
+            files=[("files", (f"IMG_{i:04d}.png", PNG_BYTES, "image/png")) for i in range(4)],
+            data={"sheet_id": sheet_id},
+        )
+    assert response.status_code == 413
+    assert response.json()["error"]["code"] == "payload_too_large"
+    assert response.json()["error"]["details"]["max_files"] == 3
+    # Refused before anything was read: no scan, no job, nothing stored.
+    assert db.execute(select(Scan)).scalars().all() == []
 
 
 def test_upload_rejects_an_empty_file(

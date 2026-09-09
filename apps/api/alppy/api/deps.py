@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import time
 import uuid
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Final, TypeVar
 
@@ -386,6 +386,23 @@ def _sniff(data: bytes, content_type: str) -> bool:
         # ISO-BMFF: a 4-byte box length, then "ftyp", then the brand.
         return data[4:8] == b"ftyp" and data[8:12] in _HEIF_BRANDS
     return any(data.startswith(p) for p in prefixes)
+
+
+def check_upload_count(files: Sequence[UploadFile], settings: Settings) -> None:
+    """Refuse a pile too large to hold, before anything is read.
+
+    `read_upload` bounds one file; nothing bounds how many of them a handler
+    reads into a list, and every payload stays in memory until the request
+    ends. The check has to happen here, ahead of the first `await`, or the
+    bytes are already buffered by the time we could say no.
+    """
+    limit = settings.max_upload_files
+    if len(files) > limit:
+        raise errors.payload_too_large(
+            f"{len(files)} files were uploaded; at most {limit} can be sent at once",
+            max_files=limit,
+            received=len(files),
+        )
 
 
 async def read_upload(

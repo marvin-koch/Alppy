@@ -19,6 +19,7 @@ from alppy.api.deps import (
     SettingsDep,
     StorageDep,
     TeacherDep,
+    check_upload_count,
     read_upload,
     start_job,
 )
@@ -85,6 +86,9 @@ async def upload_scan(
     Registration, UID reading and bubble detection run in the worker; the
     response is the scan row, whose status the client polls.
     """
+    # Before the first read: every payload is bytes held for the life of the
+    # request, so the count is what bounds the memory, not the per-file cap.
+    check_upload_count(files, settings)
     payloads = [await read_upload(f, settings) for f in files]
     scan, job = svc.create_scan(db, scope.school_id, teacher.id, storage, payloads, sheet_id=sheet_id)
     db.commit()

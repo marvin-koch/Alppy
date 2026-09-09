@@ -156,6 +156,17 @@ class Settings(BaseSettings):
 
     # --- Uploads --------------------------------------------------------
     max_upload_mb: int = 50
+    max_upload_files: int = 120
+    """Files per upload, checked before a single byte is read.
+
+    `read_upload` caps each file, but a scan upload is a *list* and every
+    payload is held in memory at once (`UploadPayload` is bytes, never a path),
+    so without a count the ceiling is unbounded. The pile this has to fit is a
+    class set photographed page by page: 30 copies of a four-page sheet is 120
+    files, which is the largest thing a teacher legitimately selects at once.
+    Note the worst case is still `max_upload_files x max_upload_mb`; lower
+    either on a small box.
+    """
     allowed_upload_types: tuple[str, ...] = (
         "application/pdf",
         "image/jpeg",

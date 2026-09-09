@@ -1758,3 +1758,24 @@ With N uvicorn workers a teacher's real ceiling is `rate_per_min × N` — 4 wor
 20/min admit 80/min. Both dependencies say so where the number is chosen, and `.env.example`
 repeats it, because the trap is reading `ALPPY_AI_RATE_LIMIT_PER_MIN=20` as a global 20. The hard
 cost ceiling stays where it was: `ai_max_output_tokens` and the provider account.
+
+### D83 · A pile has a count limit, and it is checked before the first read
+
+`POST /scans` takes `files: list[UploadFile]`, and `read_upload` bounds each one at
+`ALPPY_MAX_UPLOAD_MB` — but nothing bounded how many. Every payload is bytes held for the life of
+the request (`UploadPayload` is documented as "held in memory, never a path", because the scan
+job wants the bytes, not a temp file), so the list comprehension in the handler materialises the
+whole pile at once: 200 files at the 50 MB cap is 10 GB through one API process. The only
+existing check was `create_scan` refusing an *empty* list, and that runs after everything is read.
+
+`ALPPY_MAX_UPLOAD_FILES` defaults to **120**, enforced by `deps.check_upload_count` ahead of the
+first `await` — after that point the bytes are already buffered and refusing costs the same as
+accepting. 120 is a real pile, not a guess: the workflow is photographing a class set page by
+page, and 30 copies of a four-page sheet is 120 files. A 413 (`payload_too_large`, with
+`max_files` and `received` in the details) rather than a 422: it is the same class of refusal as
+the per-file cap, and the client shows it the same way.
+
+**The count is a bound, not the bound.** Worst case is still
+`max_upload_files × max_upload_mb`; a deployment on a small box lowers one or the other, and both
+the setting's docstring and `.env.example` say so rather than leaving the multiplication to be
+rediscovered.
