@@ -19,7 +19,7 @@ from alppy.core.config import Settings
 
 def test_demo_mode_is_off_by_default() -> None:
     """The default is what a deployment gets when nobody thought about it."""
-    assert Settings(env="ci", secret_key="test-secret-key").demo_mode is False
+    assert Settings(_env_file=None, env="ci", secret_key="test-secret-key").demo_mode is False
 
 
 def test_no_cookie_is_still_unauthorized_by_default(
@@ -35,8 +35,23 @@ def test_debug_and_local_env_do_not_turn_demo_mode_on() -> None:
     A flag that can switch itself on from `debug` or `env` is one that
     eventually switches itself on somewhere real.
     """
-    assert Settings(env="local", debug=True, secret_key="test-secret-key").demo_mode is False
-    assert Settings(env="production", secret_key="test-secret-key").demo_mode is False
+    assert (
+        Settings(_env_file=None, env="local", debug=True, secret_key="test-secret-key").demo_mode
+        is False
+    )
+    # Production settings have to be otherwise valid to construct at all now
+    # (`_refuse_unsafe_deployment`), so this says what it always meant: a
+    # correctly configured production deployment still does not get demo mode.
+    assert (
+        Settings(
+            _env_file=None,
+            env="production",
+            secret_key="test-secret-key",
+            s3_secret_key="not-the-default",
+            database_url="postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
+        ).demo_mode
+        is False
+    )
 
 
 def test_with_demo_mode_on_a_cookieless_request_is_the_demo_teacher(

@@ -30,8 +30,37 @@ from alppy.db.session import SessionLocal
 log = get_logger(__name__)
 
 
+#: Environments the demo seed may run in. It is a *demo* dataset: two teacher
+#: accounts whose passwords are constants in `alppy.seed.demo`, a school, and 18
+#: invented students. Idempotency makes re-running it safe; it does not make
+#: running it *here* safe, and those are different questions.
+SEEDABLE_ENVS = frozenset({"local", "ci"})
+
+
 def _seed() -> int:
-    """Run ``alppy.seed.run_seed(db)`` if it exists; skip cleanly otherwise."""
+    """Run ``alppy.seed.run_seed(db)`` if it exists; skip cleanly otherwise.
+
+    Refuses outright in staging and production. `infra/api/entrypoint.sh` calls
+    this on every start of the `serve` role, which is exactly right for
+    `docker compose up` and exactly wrong pointed at a real database: it would
+    plant two logins whose passwords are published in this repository, next to a
+    roster of real children. The guard lives here rather than in the entrypoint
+    because the entrypoint is one caller of several — a console, a migration
+    runbook, a cron — and a rule enforced at one door is not enforced.
+
+    A refusal is a skip, not a failure: the entrypoint treats a non-zero seed as
+    survivable and serves anyway, so exiting 0 keeps the log honest about what
+    happened instead of adding a scary line to a correct deployment.
+    """
+    env = get_settings().env
+    if env not in SEEDABLE_ENVS:
+        log.warning(
+            "seed.refused",
+            env=env,
+            reason="the demo seed creates accounts with published passwords",
+        )
+        return 0
+
     try:
         from alppy.seed import run_seed
     except ImportError:

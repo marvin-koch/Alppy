@@ -29,6 +29,19 @@ _MODEL_PREFIX_OWNER: tuple[tuple[str, str], ...] = (
 )
 
 
+#: The built-in development defaults for the two secrets below. Named here so
+#: the field default and the check that refuses it cannot drift apart: a
+#: renamed literal that only lived in one of the two places would turn the
+#: guard off silently, which is the one failure this guard cannot have.
+DEV_SECRET_KEY = "dev-only-change-me"
+DEV_S3_SECRET_KEY = "alppy-secret"
+
+#: Hosts that mean "this machine". A production database URL naming one of
+#: these is not a database that merely happens to be nearby — it is a laptop's
+#: `.env` that was copied to a server, or a server that never had one.
+_LOCAL_HOSTS = frozenset({"localhost", "127.0.0.1", "::1", "0.0.0.0"})
+
+
 def _known_owner(model: str) -> str | None:
     for prefix, owner in _MODEL_PREFIX_OWNER:
         if model.startswith(prefix):
@@ -43,7 +56,7 @@ class Settings(BaseSettings):
 
     env: Literal["local", "ci", "staging", "production"] = "local"
     debug: bool = False
-    secret_key: str = Field(default="dev-only-change-me", min_length=8)
+    secret_key: str = Field(default=DEV_SECRET_KEY, min_length=8)
     session_cookie: str = "alppy_session"
     session_max_age_s: int = 60 * 60 * 12
 
@@ -81,7 +94,7 @@ class Settings(BaseSettings):
     s3_region: str = "eu-central-1"
     s3_bucket: str = "alppy"
     s3_access_key: str = "alppy"
-    s3_secret_key: str = "alppy-secret"
+    s3_secret_key: str = DEV_S3_SECRET_KEY
 
     # --- AI layer -------------------------------------------------------
     # Provider is configurable by design: a Swiss school may require that no
@@ -176,6 +189,77 @@ class Settings(BaseSettings):
             )
         return self
 
+
+    @model_validator(mode="after")
+    def _refuse_unsafe_deployment(self) -> Settings:
+        """Refuse to boot a real deployment on a laptop's settings.
+
+        Every value checked here is already an environment variable with a
+        development-friendly default, and that combination is the hazard: a
+        deployment gets them by *saying nothing*, so the failure is a silence,
+        not a mistake anyone makes. Each one is separately capable of exposing a
+        roster of children's real names (docs/privacy.md):
+
+        * ``secret_key`` signs the session cookie. Left at the published
+          default, anyone holding this repository can mint a valid session for
+          any teacher in any school.
+        * ``demo_mode`` answers a cookieless request as the demo teacher. It is
+          the only bypass of that cookie, and outside a demo there is nothing
+          for it to bypass *to*.
+        * ``database_url`` pointing at localhost in production is a laptop's
+          ``.env`` that reached a server — the case ``ALPPY_ENV`` exists to make
+          visible, and one that otherwise surfaces as a confusing connection
+          error rather than as the misconfiguration it is.
+        * ``s3_secret_key`` at its default opens the bucket holding scanned
+          answer sheets: photographs of children's handwriting, names included.
+
+        Startup is the only honest place for this. A check at the point of use
+        fires on the first teacher's first request, which is to say after the
+        deployment was announced as working; ``env`` is known before the first
+        connection is opened. Every problem is collected and reported together,
+        because a fresh deployment usually has more than one and finding them
+        one restart at a time is how a checklist gets abandoned half-done.
+
+        ``local`` and ``ci`` are exempt: the defaults are *for* them.
+        """
+        if self.env not in ("staging", "production"):
+            return self
+
+        problems: list[str] = []
+        if self.secret_key == DEV_SECRET_KEY:
+            problems.append(
+                "ALPPY_SECRET_KEY is still the built-in development default; it signs "
+                "the session cookie, so anyone with this repository can forge one"
+            )
+        if self.s3_secret_key == DEV_S3_SECRET_KEY:
+            problems.append(
+                "ALPPY_S3_SECRET_KEY is still the built-in development default; it "
+                "opens the bucket holding scanned answer sheets"
+            )
+        if self.demo_mode:
+            problems.append(
+                "ALPPY_DEMO_MODE is on; it answers a request with no session cookie "
+                "as the demo teacher, which outside a demo is an open roster"
+            )
+        # A Postgres DSN may name several hosts for failover, and any one of them
+        # being local is the same mistake — so check them all, not just the first.
+        local = sorted(
+            {h["host"] for h in self.database_url.hosts() if h["host"] in _LOCAL_HOSTS}
+        )
+        if local:
+            problems.append(
+                f"ALPPY_DATABASE_URL points at {', '.join(local)}; a {self.env} "
+                "deployment reading a local database is a development .env that "
+                "reached a server"
+            )
+
+        if problems:
+            raise ValueError(
+                f"ALPPY_ENV={self.env!r} refuses these settings:\n  - "
+                + "\n  - ".join(problems)
+                + "\nSet each one in the environment, or run with ALPPY_ENV=local."
+            )
+        return self
 
 @lru_cache
 def get_settings() -> Settings:
