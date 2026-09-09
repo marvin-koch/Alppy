@@ -46,8 +46,8 @@ export const teacher: TeacherOut = {
   // Two staffrooms, so the screenshot suite covers the school row rather than
   // only the single-school case where it is deliberately hidden (D74).
   schools: [
-    { id: id(2), name: 'Collège de démonstration', canton: 'VD' },
-    { id: id(3), name: 'Oberstufe Chur', canton: 'GR' },
+    { id: id(2), name: 'Collège de démonstration', canton: 'VD', default_curriculum: 'PER' },
+    { id: id(3), name: 'Oberstufe Chur', canton: 'GR', default_curriculum: 'LP21' },
   ],
   preferences: { locale: 'fr', theme: null, contrast: null, motion: null, calm: null },
 };

@@ -4,6 +4,7 @@ import { Button, Card, Field, Input } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
+import { LockedValue } from '@/components/LockedValue';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import {
   useCreateSubject,
@@ -73,7 +74,9 @@ export function SchoolSettings() {
           />
         </Field>
         <Field label={t('curriculum')} help={t('curriculumLocked')}>
-          <Input value={school?.default_curriculum ?? ''} readOnly disabled />
+          {/* An em dash rather than an empty box: a blank locked field reads
+              as a screen that failed to load, not as a settled value. */}
+          <LockedValue>{school?.default_curriculum ?? '—'}</LockedValue>
         </Field>
         <div className="flex justify-end border-t border-line pt-4">
           <Button

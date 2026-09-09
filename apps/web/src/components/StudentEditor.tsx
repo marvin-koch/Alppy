@@ -5,6 +5,7 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
+import { LockedValue } from '@/components/LockedValue';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import { useDeleteStudent, useUpdateStudent } from '@/lib/api/queries';
 import type { StudentOut, Uuid } from '@/lib/api/types';
@@ -70,7 +71,7 @@ export function StudentEditor({
           <Input value={lastName} onChange={(e) => setLastName(e.target.value)} />
         </Field>
         <Field label={t('uid')} help={t('uidLocked')}>
-          <Input value={student.uid} readOnly disabled />
+          <LockedValue>{student.uid}</LockedValue>
         </Field>
         {error ? <p className="text-body-s text-danger-600">{error}</p> : null}
         <div className="flex flex-wrap items-center gap-3 border-t border-line pt-4">

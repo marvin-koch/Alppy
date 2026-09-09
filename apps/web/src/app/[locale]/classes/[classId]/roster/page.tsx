@@ -59,9 +59,50 @@ export default function RosterPage({
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-1">{t('addStudents')}</h1>
-      <p className="mb-6 text-ink-500">{t('title', { code: klass.data?.code ?? '' })}</p>
+      <h1 className="mb-1">{tstud('heading', { code: klass.data?.code ?? '' })}</h1>
+      <p className="mb-6 text-ink-500">
+        {tstud('count', { count: existing.data?.length ?? 0 })}
+      </p>
 
+      {/* The roster is also where a teacher fixes a misspelt name or removes a
+          pupil who left. Both were unreachable: the paste screen could only
+          ever ADD. Editing opens one pupil at a time — a list of live inputs
+          invites the wrong row being changed. */}
+      {(existing.data ?? []).length > 0 ? (
+        <section className="mt-10">
+          
+          <ul className="flex flex-col gap-2">
+            {(existing.data ?? []).map((student) =>
+              editing === student.id ? (
+                <li key={student.id}>
+                  <StudentEditor
+                    student={student}
+                    classId={classId as Uuid}
+                    onDone={() => setEditing(null)}
+                  />
+                </li>
+              ) : (
+                <li
+                  key={student.id}
+                  className="flex min-h-11 items-center gap-4 rounded-md border border-line bg-surface px-4 py-2"
+                >
+                  <span className="w-20 shrink-0 font-mono text-label text-ink-500">
+                    {student.uid}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {student.first_name} {student.last_name}
+                  </span>
+                  <Button variant="ghost" onClick={() => setEditing(student.id)}>
+                    {tstud('edit')}
+                  </Button>
+                </li>
+              ),
+            )}
+          </ul>
+        </section>
+      ) : null}
+
+      <h2 className="mb-3 mt-10 text-h3">{t('addStudents')}</h2>
       <form onSubmit={submit} noValidate>
         <Card className="mb-4">
           <Field label={t('addStudents')} help={t('rosterHelp')} hideLabel>
@@ -97,43 +138,6 @@ export default function RosterPage({
         </div>
       </form>
 
-      {/* The roster is also where a teacher fixes a misspelt name or removes a
-          pupil who left. Both were unreachable: the paste screen could only
-          ever ADD. Editing opens one pupil at a time — a list of live inputs
-          invites the wrong row being changed. */}
-      {(existing.data ?? []).length > 0 ? (
-        <section className="mt-10">
-          <h2 className="mb-3 text-h3">{tstud('title')}</h2>
-          <ul className="flex flex-col gap-2">
-            {(existing.data ?? []).map((student) =>
-              editing === student.id ? (
-                <li key={student.id}>
-                  <StudentEditor
-                    student={student}
-                    classId={classId as Uuid}
-                    onDone={() => setEditing(null)}
-                  />
-                </li>
-              ) : (
-                <li
-                  key={student.id}
-                  className="flex min-h-11 items-center gap-4 rounded-md border border-line bg-surface px-4 py-2"
-                >
-                  <span className="w-20 shrink-0 font-mono text-label text-ink-500">
-                    {student.uid}
-                  </span>
-                  <span className="min-w-0 flex-1 truncate font-semibold">
-                    {student.first_name} {student.last_name}
-                  </span>
-                  <Button variant="ghost" onClick={() => setEditing(student.id)}>
-                    {tstud('edit')}
-                  </Button>
-                </li>
-              ),
-            )}
-          </ul>
-        </section>
-      ) : null}
     </div>
   );
 }
