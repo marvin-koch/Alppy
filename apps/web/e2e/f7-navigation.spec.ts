@@ -25,10 +25,14 @@ test.describe('the class and subject switcher', () => {
     const scope = root.locator('[data-scope-switcher]');
     await expect(scope).toBeVisible();
 
+    // Three dimensions since D74: school, then class, then discipline. Each
+    // row appears only when it is a real choice, and the fixture teacher has
+    // two of each — so all three render.
     const selects = scope.locator('select');
-    await expect(selects).toHaveCount(2);
-    // Two classes and two subjects in the fixtures, so both render.
-    await expect(selects.first()).toHaveValue(/.+/);
+    await expect(selects).toHaveCount(3);
+    await expect(scope.getByLabel(/école/i)).toHaveValue(/.+/);
+    await expect(scope.getByLabel(/classe/i)).toHaveValue(/.+/);
+    await expect(scope.getByLabel(/discipline/i)).toHaveValue(/.+/);
   });
 
   test('switching class puts it in the URL and survives a reload', async ({
@@ -38,7 +42,9 @@ test.describe('the class and subject switcher', () => {
     await withDisplay(page, {});
     await gotoStable(page, '/fr');
 
-    const classSelect = page.locator('aside [data-scope-switcher] select').first();
+    // By LABEL, never by position: the rail grew a row above this one, and an
+    // index-based selector silently retargeted to the school.
+    const classSelect = page.locator('aside [data-scope-switcher]').getByLabel(/classe/i);
     const before = await classSelect.inputValue();
     await classSelect.selectOption({ index: 1 });
 
@@ -49,8 +55,9 @@ test.describe('the class and subject switcher', () => {
     expect(after).not.toBe(before);
 
     await page.reload();
-    await page.locator('aside [data-scope-switcher] select').first().waitFor();
-    await expect(page.locator('aside [data-scope-switcher] select').first()).toHaveValue(after);
+    const reloaded = page.locator('aside [data-scope-switcher]').getByLabel(/classe/i);
+    await reloaded.waitFor();
+    await expect(reloaded).toHaveValue(after);
   });
 
   test('a bare route reopens the class you were last in', async ({ page }, testInfo) => {
@@ -58,7 +65,7 @@ test.describe('the class and subject switcher', () => {
     await withDisplay(page, {});
     await gotoStable(page, '/fr');
 
-    const rail = () => page.locator('aside [data-scope-switcher] select').first();
+    const rail = () => page.locator('aside [data-scope-switcher]').getByLabel(/classe/i);
     const before = await rail().inputValue();
     await rail().selectOption({ index: 1 });
     // Read the id only once the control has re-rendered, or we capture the old

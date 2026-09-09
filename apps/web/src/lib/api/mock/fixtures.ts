@@ -185,13 +185,20 @@ export function classTree(classId: string): ClassTreeOut {
           days_until_review: 5,
           last_attempt_at: NOW,
         },
-        competences: chapters.map((chapter, index) => ({
+        // The `unfiled` bucket is excluded from the tree by
+        // `primary_competency_id === null`, never by its key — the same two
+        // tests `tree_service` applies, because a school may relabel it. A
+        // mock that mapped every chapter would have invented a Competence
+        // called "Non classé" and put its sheets back into a mastery number.
+        competences: chapters
+          .filter((chapter) => chapter.primary_competency_id !== null)
+          .map((chapter, index) => ({
           competency_id: chapter.primary_competency_id ?? id(200 + index),
           code: competencies[index]?.code ?? `MSN 3${index + 1}`,
           labels: competencies[index]?.labels ?? chapter.labels,
           mastery: themeOf(chapter, index).mastery,
           themes: [themeOf(chapter, index)],
-        })),
+          })),
         unfiled_sheet_count: 2,
         // Rendered even at zero in the picker; non-zero here so the mock shows
         // the counted bucket the constraint requires (DC-content-06).
