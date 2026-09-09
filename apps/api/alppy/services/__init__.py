@@ -249,6 +249,7 @@ def source_section_out(section: SourceSection, *, exercise_count: int = 0) -> So
 def source_out(source: Source, *, exercise_count: int = 0, section_count: int = 0) -> SourceOut:
     return SourceOut(
         id=source.id,
+        subject_id=source.subject_id,
         filename=source.filename,
         title=source.title,
         content_type=source.content_type,

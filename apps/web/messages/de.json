@@ -519,7 +519,18 @@
     "branchKey": "Schlüssel",
     "branchKeyHelp": "Verbindet das Fach mit dem Lehrplan. Einmal gewählt, nie geändert.",
     "create": "Erstellen",
-    "rename": "Umbenennen"
+    "rename": "Umbenennen",
+    "themes": "Themen",
+    "textbooks": "Lehrmittel",
+    "manageBranch": "Themen und Lehrmittel",
+    "unfiledLocked": "«Nicht zugeordnet» lässt sich nicht löschen: dort landen die Blätter, die niemand eingeordnet hat.",
+    "deleteTheme": "«{name}» löschen?",
+    "deleteThemeBody": "Das Thema verschwindet aus dem Programm. Blätter, die dort liegen, müssen zuerst verschoben werden.",
+    "deleteTextbook": "«{name}» löschen?",
+    "deleteTextbookBody": "Das Lehrmittel verschwindet aus dem Regal. Aufgaben daraus würden ihre Herkunft verlieren — deshalb wird das Löschen verweigert, solange es noch welche gibt.",
+    "noTitle": "Ohne Titel",
+    "fileLabel": "Datei",
+    "bookTitle": "Titel"
   },
   "exercise": {
     "type": {

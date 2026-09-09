@@ -120,8 +120,23 @@ export const chapters: ChapterOut[] = [
   competency_ids: (refs as number[]).map((r) => id(200 + r)),
   // The Competence this Theme hangs from: the first code it tags, as the seed
   // loader resolves it for a PER school.
-  primary_competency_id: id(200 + (refs as number[])[0]),
-}));
+  primary_competency_id: id(200 + (refs as number[])[0]) as string | null,
+})).concat([
+  {
+    // The per-subject `unfiled` bucket. It exists in every real school and the
+    // settings screen explains it, so a mock without one showed a sentence
+    // about a row that was not there.
+    //
+    // `primary_competency_id: null` is what keeps it out of the tree and
+    // undeletable — the key alone would not, because a school may relabel it.
+    id: id(299),
+    key: 'unfiled',
+    labels: { fr: 'Non classé', de: 'Nicht zugeordnet', en: 'Unfiled' },
+    position: 999,
+    competency_ids: [],
+    primary_competency_id: null,
+  },
+]);
 
 /**
  * The curriculum tree, built from the chapters above so the mock cannot drift
@@ -312,7 +327,9 @@ export const home: HomeOut = {
 export const sources: SourceOut[] = [
   {
     id: id(400),
+    subject_id: id(10),
     filename: 'mathematiques-9e-cycle3.pdf',
+    title: 'Mathématiques 9e — cycle 3',
     content_type: 'application/pdf',
     size_bytes: 18_432_100,
     language: 'fr',
@@ -326,7 +343,9 @@ export const sources: SourceOut[] = [
   },
   {
     id: id(401),
+    subject_id: id(10),
     filename: 'cahier-exercices-fractions.pdf',
+    title: null,
     content_type: 'application/pdf',
     size_bytes: 4_120_400,
     language: 'fr',

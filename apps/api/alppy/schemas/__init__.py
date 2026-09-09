@@ -251,6 +251,10 @@ class ChapterOut(ApiModel):
 # ------------------------------------------------------------------ sources
 class SourceOut(ApiModel):
     id: uuid.UUID
+    # The Branch this book belongs to. Absent until now, which meant no client
+    # could tell one branch's shelf from another's — the whole corpus read as
+    # one undifferentiated pile.
+    subject_id: uuid.UUID
     filename: str
     # What the teacher calls this book; `filename` is what they uploaded.
     title: str | None = None

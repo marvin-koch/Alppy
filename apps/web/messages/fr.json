@@ -519,7 +519,18 @@
     "branchKey": "Clé",
     "branchKeyHelp": "Sert à relier la branche au plan d'études. Choisie une fois, jamais modifiée.",
     "create": "Créer",
-    "rename": "Renommer"
+    "rename": "Renommer",
+    "themes": "Thèmes",
+    "textbooks": "Manuels",
+    "manageBranch": "Thèmes et manuels",
+    "unfiledLocked": "« Non classé » ne se supprime pas : c'est là que vont les fiches que personne n'a rangées.",
+    "deleteTheme": "Supprimer « {name} » ?",
+    "deleteThemeBody": "Ce thème disparaît du programme. Les fiches qui y sont rangées doivent d'abord être déplacées.",
+    "deleteTextbook": "Supprimer « {name} » ?",
+    "deleteTextbookBody": "Le manuel disparaît de l'étagère. Les exercices qui en proviennent perdraient la trace de leur origine, c'est pourquoi la suppression est refusée tant qu'il en reste.",
+    "noTitle": "Sans titre",
+    "fileLabel": "Fichier",
+    "bookTitle": "Titre"
   },
   "exercise": {
     "type": {

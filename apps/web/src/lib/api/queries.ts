@@ -340,6 +340,57 @@ export function useUpdateSubject(): UseMutationResult<
   });
 }
 
+export function useUpdateChapter(): UseMutationResult<
+  ChapterOut,
+  Error,
+  { chapterId: Uuid; subjectId?: Uuid; body: { labels?: LocalisedText; position?: number } }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chapterId, body }) => api.updateChapter(chapterId, body),
+    onSuccess: (_data, { subjectId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.chapters(subjectId) });
+      // A Theme's name shows on the tree, which is keyed per class.
+      void client.invalidateQueries({ queryKey: ['classTree'] });
+    },
+  });
+}
+
+export function useDeleteChapter(): UseMutationResult<
+  void,
+  Error,
+  { chapterId: Uuid; subjectId?: Uuid }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ chapterId }) => api.deleteChapter(chapterId),
+    onSuccess: (_data, { subjectId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.chapters(subjectId) });
+      void client.invalidateQueries({ queryKey: ['classTree'] });
+    },
+  });
+}
+
+export function useUpdateSource(): UseMutationResult<
+  SourceOut,
+  Error,
+  { sourceId: Uuid; body: { title?: string; language?: string } }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceId, body }) => api.updateSource(sourceId, body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.sources }),
+  });
+}
+
+export function useDeleteSource(): UseMutationResult<void, Error, { sourceId: Uuid }> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sourceId }) => api.deleteSource(sourceId),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.sources }),
+  });
+}
+
 export function useSwitchSchool() {
   const queryClient = useQueryClient();
   return useMutation({

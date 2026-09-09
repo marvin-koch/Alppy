@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { LockedValue } from '@/components/LockedValue';
+import { Link } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import {
   useCreateSubject,
@@ -141,6 +142,11 @@ export function SchoolSettings() {
                   >
                     {t('rename')}
                   </Button>
+                  {/* Themes and textbooks are what a Branch is MADE of, and
+                      there are enough of them to need their own screen. */}
+                  <Link href={`/settings/branches/${subject.id}`} className="text-body-s font-semibold">
+                    {t('manageBranch')}
+                  </Link>
                 </>
               )}
             </li>

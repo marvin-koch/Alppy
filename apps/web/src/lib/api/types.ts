@@ -251,7 +251,11 @@ export interface ClassTreeOut {
 /* ------------------------------------------------------------ sources -- */
 export interface SourceOut {
   id: Uuid;
+  /** The Branch this book belongs to. */
+  subject_id: Uuid;
   filename: string;
+  /** What the teacher calls it; `filename` is what they uploaded. */
+  title: string | null;
   content_type: string;
   size_bytes: number;
   language: string | null;

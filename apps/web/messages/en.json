@@ -519,7 +519,18 @@
     "branchKey": "Key",
     "branchKeyHelp": "Links the branch to the curriculum. Chosen once, never changed.",
     "create": "Create",
-    "rename": "Rename"
+    "rename": "Rename",
+    "themes": "Themes",
+    "textbooks": "Textbooks",
+    "manageBranch": "Themes and textbooks",
+    "unfiledLocked": "\"Unfiled\" cannot be deleted: it is where sheets nobody has filed end up.",
+    "deleteTheme": "Delete \"{name}\"?",
+    "deleteThemeBody": "The theme leaves the programme. Sheets filed in it must be moved first.",
+    "deleteTextbook": "Delete \"{name}\"?",
+    "deleteTextbookBody": "The textbook leaves the shelf. Exercises drawn from it would lose the record of where they came from, which is why deleting is refused while any remain.",
+    "noTitle": "Untitled",
+    "fileLabel": "File",
+    "bookTitle": "Title"
   },
   "exercise": {
     "type": {
