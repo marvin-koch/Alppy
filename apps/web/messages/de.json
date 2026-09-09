@@ -21,7 +21,9 @@
     "switchClass": "Klasse wechseln",
     "switchSubject": "Fach wechseln",
     "timeline": "Agenda",
-    "results": "Resultate"
+    "results": "Resultate",
+    "switchSchool": "Schule wechseln",
+    "currentSchool": "Aktuelle Schule"
   },
   "auth": {
     "signIn": "Anmelden",

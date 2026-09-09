@@ -60,12 +60,22 @@ class TeacherPreferences(ApiModel):
     calm: Literal["on"] | None = None
 
 
+class SchoolOut(ApiModel):
+    id: uuid.UUID
+    name: str
+    canton: str | None = None
+
+
 class TeacherOut(ApiModel):
     id: uuid.UUID
     email: EmailStr
     first_name: str
     last_name: str
+    # The school this SESSION is acting for — not where the account is based
+    # (D74). The client switches tenants on this field.
     school_id: uuid.UUID
+    # Every staffroom this teacher works in, so the rail can offer the switch.
+    schools: list[SchoolOut] = []
     preferences: TeacherPreferences
 
 

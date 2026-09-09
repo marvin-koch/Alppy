@@ -49,6 +49,7 @@ from alppy.seed.demo import (
     DEMO_CLASS_CODE,
     DEMO_ROSTER,
     DEMO_SCHOOL,
+    DEMO_SCHOOL_2,
     DEMO_SECOND_CLASS_CODE,
     DEMO_SECOND_ROSTER,
     DEMO_TEACHER_EMAIL,
@@ -69,6 +70,11 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
 
     school = _get_or_create_school(db)
     teacher = _get_or_create_teacher(db, school)
+    # A second staffroom, so `docker compose up` can actually demonstrate the
+    # switch. Camille works at both; nothing else is seeded there, which is
+    # the honest picture of a teacher who has just been given a second post.
+    second = _get_or_create_second_school(db)
+    class_service.join_school(db, teacher.id, second.id)
     year = _get_or_create_year(db, school, moment)
 
     reference = load_reference_data(db, school_id=school.id)
@@ -147,6 +153,28 @@ def _get_or_create_school(db: Session) -> School:
             name=DEMO_SCHOOL,
             canton="VD",
             default_curriculum=CurriculumKind.PER,
+        )
+        db.add(school)
+        db.flush()
+    return school
+
+
+def _get_or_create_second_school(db: Session) -> School:
+    """The other school Camille teaches at.
+
+    Deliberately a different canton and curriculum: LP21 rather than PER is
+    what makes the pair worth having in a demo — it is the case D56 exists
+    for, where the same chapter is filed under each canton's own code.
+    """
+    school = db.execute(
+        select(School).where(School.name == DEMO_SCHOOL_2)
+    ).scalar_one_or_none()
+    if school is None:
+        school = School(
+            id=uuid.uuid4(),
+            name=DEMO_SCHOOL_2,
+            canton="GR",
+            default_curriculum=CurriculumKind.LP21,
         )
         db.add(school)
         db.flush()

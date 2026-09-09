@@ -71,7 +71,10 @@ export interface TeacherOut {
   email: string;
   first_name: string;
   last_name: string;
+  /** The school this SESSION is acting for — not where the account is based. */
   school_id: Uuid;
+  /** Every staffroom this teacher works in (D74). One entry is the common case. */
+  schools?: SchoolOut[];
   preferences: TeacherPreferences;
 }
 
@@ -97,6 +100,12 @@ export interface StudentCreate {
 
 export interface RosterCreate {
   students: StudentCreate[];
+}
+
+export interface SchoolOut {
+  id: Uuid;
+  name: string;
+  canton: string | null;
 }
 
 export interface ClassTeacherOut {

@@ -22,6 +22,10 @@ DEMO_CLASS_CODE = "7B"
 DEMO_TEACHER_EMAIL = "demo@alppy.ch"
 DEMO_TEACHER_PASSWORD = "alppy-demo-2026"
 DEMO_SCHOOL = "Collège de démonstration"
+# The second staffroom, so a demo can show a teacher switching between them.
+# Another canton on purpose: Chur is LP21 where Sion is PER, which is the pair
+# D56 exists for.
+DEMO_SCHOOL_2 = "Oberstufe Chur"
 
 # A second class for the same teacher, and a colleague with a third.
 #

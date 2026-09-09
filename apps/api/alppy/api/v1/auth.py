@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import uuid
+
 from fastapi import APIRouter, Response, status
 from sqlalchemy import select
 
@@ -11,7 +13,7 @@ from alppy.core.security import hash_password, issue_session, needs_rehash, veri
 from alppy.models import Teacher
 from alppy.models.enums import Locale
 from alppy.schemas import LoginRequest, TeacherOut, TeacherPreferences
-from alppy.services import teacher_out
+from alppy.services import class_service, teacher_out
 
 router = APIRouter(tags=["auth"])
 
@@ -44,7 +46,48 @@ def login(
         path="/",
     )
     db.commit()
-    return teacher_out(teacher, teacher.home_school_id)
+    return teacher_out(
+        teacher,
+        teacher.home_school_id,
+        schools=class_service.schools_for_teacher(db, teacher.id),
+    )
+
+
+@router.post("/auth/school/{school_id}", response_model=TeacherOut)
+def switch_school(
+    school_id: uuid.UUID,
+    teacher: TeacherDep,
+    response: Response,
+    db: DbDep,
+    settings: SettingsDep,
+) -> TeacherOut:
+    """Act for another of this teacher's schools from now on.
+
+    Switching a tenant is re-issuing the cookie, not a new kind of session:
+    the payload has carried ``{"t": teacher_id, "s": school_id}`` since 0001,
+    and since D74 ``get_membership`` is what checks that pair against
+    ``teacher_school`` on every request. So this endpoint's whole job is to
+    prove the membership once and mint a cookie naming the new school.
+
+    A school the teacher does not work at reads as **missing**, not forbidden —
+    the same rule every ownership failure here follows, and the response must
+    not confirm that a school it will not open exists.
+    """
+    schools = class_service.schools_for_teacher(db, teacher.id)
+    target = next((s for s in schools if s.id == school_id), None)
+    if target is None:
+        raise errors.not_found("school", id=str(school_id))
+
+    response.set_cookie(
+        settings.session_cookie,
+        issue_session(teacher.id, target.id, settings=settings),
+        max_age=settings.session_max_age_s,
+        httponly=True,
+        samesite="lax",
+        secure=settings.env in ("staging", "production"),
+        path="/",
+    )
+    return teacher_out(teacher, target.id, schools=schools)
 
 
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -53,8 +96,10 @@ def logout(response: Response, settings: SettingsDep) -> None:
 
 
 @router.get("/auth/me", response_model=TeacherOut)
-def me(teacher: TeacherDep, tenant: TenantDep) -> TeacherOut:
-    return teacher_out(teacher, tenant)
+def me(teacher: TeacherDep, tenant: TenantDep, db: DbDep) -> TeacherOut:
+    return teacher_out(
+        teacher, tenant, schools=class_service.schools_for_teacher(db, teacher.id)
+    )
 
 
 @router.patch("/teachers/me/preferences", response_model=TeacherOut)
@@ -74,4 +119,6 @@ def update_preferences(
     teacher.calm = payload.calm
     db.commit()
     db.refresh(teacher)
-    return teacher_out(teacher, tenant)
+    return teacher_out(
+        teacher, tenant, schools=class_service.schools_for_teacher(db, teacher.id)
+    )

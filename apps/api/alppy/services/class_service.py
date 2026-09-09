@@ -23,6 +23,7 @@ from alppy.core.uid import MAX_STUDENT_NUMBER, InvalidUidError, format_uid
 from alppy.models import (
     Class,
     Scan,
+    School,
     SchoolYear,
     Sheet,
     Student,
@@ -74,6 +75,7 @@ __all__ = [
     "list_subjects",
     "owned_class_ids",
     "reorder_subjects",
+    "schools_for_teacher",
     "student_counts",
     "taught_subject_ids_for_class",
     "teachers_for_class",
@@ -798,6 +800,23 @@ def reorder_subjects(
             .values(position=position)
         )
     db.flush()
+
+
+def schools_for_teacher(db: Session, teacher_id: uuid.UUID) -> list[School]:
+    """Every staffroom this teacher works in, for the switcher.
+
+    Reads ``teacher_school``, never ``home_school_id``: the column says where
+    an account is based, this says where it may act (D74). Ordered by name so
+    the rail does not reshuffle between requests.
+    """
+    return list(
+        db.execute(
+            select(School)
+            .join(teacher_school, teacher_school.c.school_id == School.id)
+            .where(teacher_school.c.teacher_id == teacher_id)
+            .order_by(School.name.asc())
+        ).scalars()
+    )
 
 
 def list_colleagues(db: Session, school_id: uuid.UUID) -> list[Teacher]:

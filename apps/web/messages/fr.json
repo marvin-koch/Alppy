@@ -21,7 +21,9 @@
     "switchClass": "Changer de classe",
     "switchSubject": "Changer de discipline",
     "timeline": "Agenda",
-    "results": "Suivi"
+    "results": "Suivi",
+    "switchSchool": "Changer d'école",
+    "currentSchool": "École courante"
   },
   "auth": {
     "signIn": "Se connecter",

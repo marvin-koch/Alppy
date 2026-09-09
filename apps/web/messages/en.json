@@ -21,7 +21,9 @@
     "switchClass": "Switch class",
     "switchSubject": "Switch subject",
     "timeline": "Agenda",
-    "results": "Results"
+    "results": "Results",
+    "switchSchool": "Switch school",
+    "currentSchool": "Current school"
   },
   "auth": {
     "signIn": "Sign in",

@@ -222,6 +222,17 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     requireAuth();
     return state.teacher;
   }
+  if (method === 'POST' && path.startsWith('/auth/school/')) {
+    requireAuth();
+    const schoolId = path.slice('/auth/school/'.length);
+    const target = (state.teacher.schools ?? []).find((s) => s.id === schoolId);
+    // A school the teacher does not work at is MISSING, not forbidden — the
+    // mock has to answer the way the API does or the client's error path is
+    // never exercised.
+    if (!target) throw new ApiError(404, 'not_found', 'school not found');
+    state.teacher = { ...state.teacher, school_id: target.id };
+    return state.teacher;
+  }
   if (method === 'PATCH' && path === '/teachers/me/preferences') {
     requireAuth();
     state.teacher = {

@@ -242,6 +242,29 @@ export function useStudents(classId: Uuid | null): UseQueryResult<StudentOut[]> 
   });
 }
 
+/**
+ * Switch the tenant this session acts for.
+ *
+ * `invalidateQueries` is not enough and `clear()` is not overkill: after the
+ * cookie is re-issued, every cached id in the client belongs to the school we
+ * just left. Keeping any of it would render one school's classes under
+ * another's name until each query happened to refetch.
+ */
+export function useSwitchSchool() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (schoolId: Uuid) => api.switchSchool(schoolId),
+    onSuccess: () => {
+      try {
+        window.localStorage.removeItem('alppy.scope');
+      } catch {
+        // A private window can refuse storage; the scope simply re-resolves.
+      }
+      queryClient.clear();
+    },
+  });
+}
+
 export function useSubjects(enabled = true): UseQueryResult<SubjectOut[]> {
   return useQuery({ queryKey: queryKeys.subjects, queryFn: api.listSubjects, enabled });
 }

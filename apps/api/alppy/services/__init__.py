@@ -26,6 +26,7 @@ from alppy.models import (
     Job,
     Scan,
     ScanPage,
+    School,
     Sheet,
     SheetInstance,
     SheetItem,
@@ -48,6 +49,7 @@ from alppy.schemas import (
     JobOut,
     ScanOut,
     ScanPageOut,
+    SchoolOut,
     SheetConfidenceOut,
     SheetInstanceOut,
     SheetItemOut,
@@ -85,6 +87,7 @@ __all__ = [
     "job_out",
     "scan_out",
     "scan_page_out",
+    "school_out",
     "sheet_instance_out",
     "sheet_item_out",
     "sheet_out",
@@ -96,7 +99,13 @@ __all__ = [
 ]
 
 
-def teacher_out(teacher: Teacher, school_id: uuid.UUID) -> TeacherOut:
+def school_out(school: School) -> SchoolOut:
+    return SchoolOut(id=school.id, name=school.name, canton=school.canton)
+
+
+def teacher_out(
+    teacher: Teacher, school_id: uuid.UUID, *, schools: list[School] | None = None
+) -> TeacherOut:
     """The signed-in teacher, reported for ONE school.
 
     ``school_id`` is passed rather than read off the row because since D74 a
@@ -111,6 +120,7 @@ def teacher_out(teacher: Teacher, school_id: uuid.UUID) -> TeacherOut:
         first_name=teacher.first_name,
         last_name=teacher.last_name,
         school_id=school_id,
+        schools=[school_out(s) for s in (schools or [])],
         preferences=TeacherPreferences(
             locale=str(teacher.locale),
             theme=teacher.theme,

@@ -24,6 +24,7 @@ and the two carve-outs that are deliberately class-grained and must stay so.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
 import pytest
 from fastapi.testclient import TestClient
@@ -610,3 +611,97 @@ def test_the_colleague_list_carries_no_email(
     rows = client.get("/api/v1/colleagues").json()
     assert {r["id"] for r in rows} >= {str(tenant.teacher.id), str(colleague.teacher.id)}
     assert all("email" not in r for r in rows)
+
+
+# --------------------------------------------------------------------------
+# One teacher, several staffrooms (D74)
+#
+# The schema landed with the assignment work; these are about a teacher
+# actually moving between them, which is the part a cookie has to survive.
+# --------------------------------------------------------------------------
+@pytest.fixture
+def second_school(db: Session, tenant: Tenant) -> object:
+    """Another school Camille also works at, with a class of its own."""
+    from alppy.models import Class, School, SchoolYear
+    from alppy.services import class_service
+
+    school = School(id=uuid.uuid4(), name="Oberstufe Chur", canton="GR")
+    db.add(school)
+    db.flush()
+    year = SchoolYear(
+        id=uuid.uuid4(),
+        school_id=school.id,
+        label="2026/27",
+        starts_on=date(2026, 8, 1),
+        ends_on=date(2027, 7, 31),
+        is_current=True,
+    )
+    db.add(year)
+    db.flush()
+    klass = Class(
+        id=uuid.uuid4(),
+        school_id=school.id,
+        school_year_id=year.id,
+        head_teacher_id=tenant.teacher.id,
+        code="10A",
+    )
+    db.add(klass)
+    class_service.join_school(db, tenant.teacher.id, school.id)
+    db.commit()
+    return school
+
+
+def test_me_lists_every_staffroom_the_teacher_works_in(
+    client: TestClient, tenant: Tenant, second_school: object
+) -> None:
+    login(client, tenant.teacher.email)
+    body = client.get("/api/v1/auth/me").json()
+    assert {s["id"] for s in body["schools"]} == {
+        str(tenant.school.id),
+        str(second_school.id),  # type: ignore[attr-defined]
+    }
+    # And it still says which one this session is acting for.
+    assert body["school_id"] == str(tenant.school.id)
+
+
+def test_switching_school_changes_which_classes_exist(
+    client: TestClient, tenant: Tenant, second_school: object
+) -> None:
+    """The whole point: the same account, a different tenant.
+
+    Every service query already filters on `scope.school_id`; switching is
+    re-issuing the cookie, so this is the test that the tenant really moved
+    rather than the payload merely saying so.
+    """
+    login(client, tenant.teacher.email)
+    before = {row["code"] for row in client.get("/api/v1/classes").json()}
+    assert tenant.school_class.code in before and "10A" not in before
+
+    switched = client.post(f"/api/v1/auth/school/{second_school.id}")  # type: ignore[attr-defined]
+    assert switched.status_code == 200
+    assert switched.json()["school_id"] == str(second_school.id)  # type: ignore[attr-defined]
+
+    after = {row["code"] for row in client.get("/api/v1/classes").json()}
+    assert after == {"10A"}
+
+
+def test_a_school_the_teacher_does_not_work_at_reads_as_missing(
+    client: TestClient, tenant: Tenant, other_tenant: Tenant
+) -> None:
+    """404, not 403 — the response must not confirm the school exists."""
+    login(client, tenant.teacher.email)
+    response = client.post(f"/api/v1/auth/school/{other_tenant.school.id}")
+    assert response.status_code == 404
+    # And the session did not move.
+    assert client.get("/api/v1/auth/me").json()["school_id"] == str(tenant.school.id)
+
+
+def test_switching_back_restores_the_first_school(
+    client: TestClient, tenant: Tenant, second_school: object
+) -> None:
+    login(client, tenant.teacher.email)
+    client.post(f"/api/v1/auth/school/{second_school.id}")  # type: ignore[attr-defined]
+    client.post(f"/api/v1/auth/school/{tenant.school.id}")
+    assert {row["code"] for row in client.get("/api/v1/classes").json()} == {
+        tenant.school_class.code
+    }

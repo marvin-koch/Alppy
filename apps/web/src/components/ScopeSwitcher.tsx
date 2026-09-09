@@ -3,6 +3,7 @@
 import { IconChevronDown, SelectSurface } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
 
+import { useMe, useSwitchSchool } from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
 import type { Uuid } from '@/lib/api/types';
 
@@ -31,9 +32,16 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const locale = useLocale();
   const { classes, subjects, classId, subjectId, setClass, setSubject, isLoading } =
     useScope();
+  const me = useMe();
+  const switchSchool = useSwitchSchool();
+
+  // A teacher at one school never sees a school row: switching is real but
+  // rare, and a control with one option is furniture (D74).
+  const schools = me.data?.schools ?? [];
+  const currentSchool = schools.find((school) => school.id === me.data?.school_id);
 
   if (isLoading) return null;
-  if (classes.length <= 1 && subjects.length <= 1) return null;
+  if (classes.length <= 1 && subjects.length <= 1 && schools.length <= 1) return null;
 
   const current = classes.find((c) => c.id === classId) ?? classes[0];
   const currentSubject = subjects.find((s) => s.id === subjectId) ?? subjects[0];
@@ -47,6 +55,28 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
       className="overflow-hidden rounded-md border border-line bg-surface"
       data-scope-switcher
     >
+      {schools.length > 1 ? (
+        <SelectSurface
+          label={t('switchSchool')}
+          value={me.data?.school_id ?? ''}
+          onChange={(value) => {
+            // Everything below this row belongs to the school we are leaving,
+            // so the mutation clears the cache rather than invalidating it.
+            switchSchool.mutate(value as Uuid);
+            onNavigate?.();
+          }}
+          disabled={switchSchool.isPending}
+          options={schools.map((school) => ({ value: school.id, label: school.name }))}
+        >
+          <span className={`${row} border-b border-line`}>
+            <span className="min-w-0 flex-1 truncate text-body-s font-semibold text-ink-900">
+              {currentSchool?.name ?? ''}
+            </span>
+            <IconChevronDown size={16} className="shrink-0 text-ink-500" />
+          </span>
+        </SelectSurface>
+      ) : null}
+
       {classes.length > 1 ? (
         <SelectSurface
           label={t('switchClass')}

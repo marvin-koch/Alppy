@@ -87,6 +87,17 @@ export const logout = () => apiRequest<void>('/auth/logout', { method: 'POST' })
 
 export const getMe = () => apiRequest<TeacherOut>('/auth/me');
 
+/**
+ * Act for another of this teacher's schools from here on.
+ *
+ * The server re-issues the session cookie, so everything after this request
+ * is already scoped to the new tenant — there is nothing for the client to
+ * carry. Callers must drop every cached query afterwards: the ids in them
+ * belong to the school we just left.
+ */
+export const switchSchool = (schoolId: Uuid) =>
+  apiRequest<TeacherOut>(`/auth/school/${schoolId}`, { method: 'POST' });
+
 export const updatePreferences = (body: Partial<TeacherPreferences>) =>
   apiRequest<TeacherOut>('/teachers/me/preferences', { method: 'PATCH', body });
 
