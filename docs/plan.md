@@ -48,8 +48,8 @@ Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
         ──< ExerciseVariant (per-student generated)
 Sheet (target class|student|group, layout_version, subject, chapter set,
        derived_from_id -> the COMMON sheet this one answers)
-     ──< SheetItem (ordered exercise ref, position, statement_override,
-                    answer_box_lines 3|5|8|12, answer_box_fill lined|grid|blank)
+     ──< SheetItem (ordered exercise ref, position, statement_override, expected_answer,
+                    answer_box_lines 0..14 (presets 3|5|8|12), answer_box_fill lined|grid|blank)
      ──< AnswerBoxPlacement (student_uid × copy_page × item_index -> x/y/w/h mm,
                              measured at render time, replaced on re-render)
      ──< SheetInstance (bound to a student uid, its own item order/variants,

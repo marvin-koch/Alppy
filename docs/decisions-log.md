@@ -630,3 +630,337 @@ pile. The audit log prices them; nothing budgets them yet. Batching several
 crops of one copy into one call is the obvious next step and is deliberately
 not in this change.
 
+
+### D43 · The expected answer of a written item is the teacher's, per sheet item, and optional
+
+Until 2026-09-08 an open item's answer came only from the exercise: extracted
+from the book, or typed when the teacher wrote the exercise in the builder. A
+textbook exercise picked for a sheet had no place to write one, and the grader
+was handed the words "(no expected answer was recorded)" and told to judge
+against them. Three choices, taken without asking.
+
+* **The answer lives on the sheet item, not the exercise.** `SheetItem.
+  expected_answer`, beside `statement_override`, for the same reason the
+  wording does: a teacher who rewords an item for this sheet needs the answer
+  that goes with the rewording, and the corpus keeps the book's own. An empty
+  field falls back to the exercise's `answer_text`; the builder shows that
+  fallback in the field so the teacher sees what the key will print. A
+  bubble item never keeps one — the service drops it, since the answer of an
+  MCQ is the bubble. Not on the exercise, because a PATCH per keystroke on a
+  shared corpus row from inside a draft is the wrong shape, and because the
+  draft is deliberately unsaved until the sheet exists.
+* **No answer means the model works one out, and shows it.** Prompt
+  `grade_open_answer.v2` takes a *reference* block: the teacher's answer,
+  which is then the only authority, or a sentence saying none was given, in
+  which case the model solves the question first, judges against its own
+  answer, and returns that answer. The grader keeps it in
+  `Detection.reference_answer` — only when it had to produce one — and the
+  review card shows it in place of the expected answer, so the teacher can
+  overrule the reference and not merely the tick. A question that cannot be
+  answered from its text (a figure, a table, an open-ended prompt) is told to
+  return a null verdict, which lands as `NOT_GRADEABLE` as before; the
+  never-a-zero rule from D42 is untouched.
+* **The grader reads the sheet item's wording too.** It used to send the
+  exercise's statement even when the printed one was an override. Same
+  lookup, so fixed in passing.
+
+Not done: a way to say "this book exercise has an answer, but grade without
+one". Clearing the field falls back to the book's answer. Nobody has asked.
+
+### D44 · The statement keeps its size; a box that does not fit follows on the next page, at any height
+
+D42 sized a textbook crop to whatever the answer box left, so the item fit a
+page on its own. With a twelve-line box that printed the book's type at a
+size nobody could read (2026-09-08, seen on a real sheet). Two changes, the
+first asked for, the second asked for in the same breath.
+
+* **The box never takes room from the picture.** `figure_room_mm` no longer
+  subtracts the box; the crop prints at its own size up to the D41 ceiling,
+  less only the text printed above it. When statement and box together do
+  not fit a page, the item is placed twice: the statement on its page with no
+  box, and a *continuation* on the next — the number, "(suite)", and the box
+  — each with its own page-local `item_index`. The box is moved whole, never
+  split: a crop cut in two is two crops for the grader. The scan job records
+  no detection for the statement part, so the exercise has one reading, on
+  the page where its box is; the answer key prints the expected answer once,
+  beside the box. Text items split the same way; a statement too tall on its
+  own is still refused. Not a layout version bump: nothing at a fixed
+  coordinate moved.
+* **Any height up to fourteen lines.** The presets stay as shortcuts in the
+  builder; "Personnalisé…" opens a number field. Fourteen is the tallest box
+  that still fits the statement region alone once carried over (133.3 of
+  134 mm), and `ANSWER_BOX_MAX_LINES` lives in `layout.py` beside the other
+  numbers, with a test that fails if the continuation height and the ceiling
+  ever disagree. The check constraint became a range (migration 0013).
+
+### D45 · The builder takes its class and subject from the sidebar, and the sheet list is two piles, not one
+
+The sheets screen listed every sheet as its own card with a status badge,
+most of them called "Nouvelle fiche"; the builder repeated the class and
+subject as two more selects above two tabs, said "Alppy produit toujours
+deux documents" twice on one screen, and pointed its empty state "above" at
+a select. Reworked on 2026-09-08 against the teacher workflows (manual,
+from a book, from a scanned PDF), without dropping a feature.
+
+* **Scope is the sidebar's.** The builder reads `useScope()` and shows
+  "Pour 7B · Mathématiques" as a line under the title. A sheet built under
+  one scope while the sidebar showed another was a sheet for the wrong
+  pupils; one control, one truth.
+* **The title is the heading.** A large borderless input, placeholder =
+  the open chapter's title, which is also what the sheet is called if the
+  teacher types nothing. "Nouvelle fiche" is the fallback of last resort.
+* **The document belongs to its tab.** The select sits on the tab strip,
+  beside "Depuis un document"; before any document is open the books are
+  offered as buttons in the left column, and a teacher with no book is sent
+  to import one.
+* **An open item's settings are one line until opened.** "Cadre de 5
+  lignes, lignes · réponse trouvée par le modèle" summarises the box and
+  the expected answer; a native `<details>` opens the two controls. The
+  defaults are right for most items, and twelve open panels were what made
+  the composer unreadable.
+* **The page budget is the composer's subtitle**, and the preview toggle
+  sits beside it. The overflow warning stays. The "two documents" sentence
+  now appears once, under the generate button, phrased as what you get.
+* **The list is grouped by what is left to do:** "À terminer" (no PDF yet)
+  and "Prêtes à imprimer", each one card with a divided list, a search box
+  once there are more than six. Adaptive sheets carry a chip.
+
+Not done: editing a saved draft in the builder (the API's `PATCH /sheets`
+allows it; the list still opens `/sheets/[id]`), and units/phases from the
+workflow document, which the data model does not have.
+
+### D46 · The teacher's barème is a sheet default with per-item overrides, and it resolves at grading time
+
+Points and penalties had no representation at all: `_grade_choice` returned
+`1.0 if correct else 0.0`, and nothing in the schema, the API or the three
+catalogues knew what an exercise was worth.
+
+* **A sheet-level default plus an optional per-item override**, the shape
+  `answer_box_lines` and `expected_answer` already established. `Sheet`
+  carries `default_points_correct` / `default_points_penalty` NOT NULL;
+  `SheetItem` carries the same pair nullable, where NULL means "follow the
+  sheet". Both are tested with `is not None`, never for truth — a deliberate
+  0 is a real choice (a warm-up worth nothing, an item that costs nothing to
+  get wrong) and reading it as absent hands the item the default back.
+* **The penalty is stored as a magnitude.** `scan.grading.score_for` is the
+  single place the sign is applied, so a teacher who types `0.25` and one who
+  types `-0.25` cannot mean two different things; the schema refuses the
+  negative rather than guessing which was meant.
+* **A blank is never penalised.** D5 already made a blank a graded zero, and
+  every grader settles it before the barème is consulted. An ambiguous item
+  is still not graded at all, so no barème reaches it either.
+* **Points are gated on no exercise type.** Unlike the expected answer, which
+  an MCQ never keeps because its answer is the bubble, a point value is
+  meaningful everywhere — and an `open` item becomes auto-gradeable the moment
+  a verdict arrives through `register_grader`. `open_grading` calls the same
+  `score_for` as the two bubble graders, so the VLM path inherits the barème
+  with no scoring logic of its own to fall out of step.
+* **The mark and the mastery signal stay two quantities.** `Attempt.score`
+  carries the points and may be negative or greater than one; `Attempt.correct`
+  stays the boolean the mastery model reads, and `mastery_service` selects only
+  that column. A barème that could move a mastery band would let a marking
+  scheme silently rewrite what the model believes a child knows.
+* **The total is computed, never stored, and floored at zero.** `SUM(score)`
+  over attempts is as fresh as the attempts themselves; a stored total would be
+  a second place to disagree with them the first time one detection is
+  corrected. Per-item scores stay signed so the teacher can see which answers
+  cost points — only the sum is clamped, because a mark below zero says nothing
+  a report can use.
+* **The barème resolves live, at grading time, not frozen at print time.**
+  Deliberately unlike an answer box's rectangle (I7): a rectangle is a physical
+  fact about a page the browser laid out, and recomputing it crops the wrong
+  pixels from a real photograph. A barème touches no coordinate — it is
+  arithmetic applied after every physical fact is fixed. The correctness key
+  beside it has always resolved live (fix a typo'd answer after printing and
+  the pile grades against the fix), and freezing what an answer is *worth*
+  while leaving what it *is* live would split one question down the middle.
+  Editing it nulls the PDF keys, because the paper prints the points.
+
+Cost: a sheet whose barème changed after printing grades on the new one. That
+is the intent — a teacher who reweights after seeing how a class did wants
+exactly that — but the printed "(1 pt)" on the paper in the pile is then stale,
+and only the "needs re-render" signal says so.
+
+### D47 · A crossed box reads as readily as a filled one, by shape rather than by density
+
+The sheet now tells the student to fill the box **or** cross it. The detector
+was tuned entirely for fills: `FILL_MARKED = 0.35` wants 35% of the disc dark,
+and the whole degradation suite drew marks as a solid disc at 75% radius. A
+hand-drawn X covers roughly a quarter of the sampled area. Left alone, every
+crossed answer in a class would have landed in the uncertain band and been
+handed back to the teacher — the pipeline working perfectly and being useless.
+
+* **Not a layout version bump.** The bubbles do not move. Sheets already
+  printed keep registering against v1, which is the whole reason the geometry
+  was left alone rather than switched to squares.
+* **Shape, via an angular ink profile.** Bin the ink in the OUTER band of the
+  disc by angle and count lobes: a filled disc lights every bin, a stray line
+  gives two lobes 180° apart, a cross gives **four**, a smudge gives none.
+  Two crossing strokes cut the rim in four places at *any* rotation, so there
+  is no angle threshold and a leaning X reads like an upright one. The middle
+  of the disc is excluded deliberately — a cross's own intersection and a
+  rubbed-out answer both put ink there and neither can be told from the other.
+* **A Hough transform was designed and rejected.** It finds the two stroke
+  orientations more literally, but needs seven interacting empirical constants
+  on a 32 px patch and none are derivable. The lobe count needs two, and the
+  docstring explains itself — which matters in a file where `0.82` and `1.6`
+  carry paragraph-long justifications.
+* **`max(fill, mapped_cross)`, and the cross score is gated to exactly 0**
+  unless the structure is confirmed. So for every bubble that is not crossed,
+  `mark` *is* `fill` and every judgement the module made before is unchanged —
+  the 32 existing degradation tests passed untouched, which is the guarantee
+  the gating buys. Blending would drag a real cross back under the threshold,
+  which is the problem being solved: a thin X *should* have low density.
+* **The mapping anchors three points** (`CROSS_BLANK`→`FILL_BLANK`,
+  `CROSS_MARKED`→`FILL_MARKED`, a perfect cross→`FILL_MARKED × 1.6`) so the two
+  scales agree wherever either has a name, and an unmistakable X is not
+  reported as barely-a-mark. The MULTIPLE test keeps working across
+  conventions: a cross and a fill on one item compare on the same scale.
+
+Measured: crosses read at 0.96–1.00 confidence across the full degradation grid
+(rotation, perspective, two-generation photocopy, uneven light, noise, JPEG,
+rescale, phone photo, copier) and down to `pencil=0.45`. A fine-pen cross whose
+density falls *below* `FILL_BLANK` — which D5 would otherwise make a silent
+graded zero — is recovered and read.
+
+Not done: the shape test wants an **X**. A checkmark gives two lobes, not four,
+and reads as low confidence — surfaced to the teacher, never scored zero, but a
+class that ticks rather than crosses will fill the review queue. The printed
+instruction names the two conventions the detector actually knows. Roughly one
+fine-pen cross in twelve is not resolved into four arms either; that reading is
+refused rather than guessed, and `test_a_fine_pen_cross_is_never_silently_scored_zero`
+pins the guarantee that matters — the failure is always "handed back", never
+"scored zero".
+
+### D48 · "Revised" is derived from a count, not a fourth `ScanStatus`
+
+A pile can be signed off, reopened, and signed off again. That is a fact about its
+history, not a status: `Scan.status` answers "is this signed off?" and a revised
+pile still answers yes. Adding a `REVISED` member would turn every
+`is ScanStatus.CONFIRMED` check into a two-member test — three in the service, one
+in the web app, four in the tests — and each one missed silently unlocks a pile.
+`confirmed_at` / `reopened_at` / `confirmation_count` carry the history instead, and
+`revised = confirmation_count > 1` is computed at the edge. Not one existing status
+check moved. Full argument in `docs/features/grading/decisions.md`.
+
+### D49 · Points and mastery are two screens, not two columns of one
+
+The five-band ramp is calibrated — monotonic in greyscale, constant glyph
+luminance — and it encodes decayed evidence about a competency. A score is what the
+barème says one paper was worth. Colouring a score with that ramp asserts a band
+nobody computed. `Matrix` was extracted from `MasteryMatrix` so the two share the
+keyboard model, the sticky column and the contained scroll, and share no vocabulary;
+`MasteryMatrix`'s public props are unchanged.
+
+### D50 · An ungraded result is null, at every level
+
+`null` in the SQL, on the wire, in the TypeScript type, and an em dash in the cell.
+`aggregatePoints` sums `possible` over graded entries only, so an unmarked sheet
+cannot enlarge the denominator. Coalescing to 0 anywhere reads as a failure the
+pupil never had — the same mistake as scoring an unreadable answer zero (D5), one
+altitude up.
+
+### D51 · Reopening re-derives from the detections rather than keeping history
+
+`grade_item` is pure, `Detection` rows survive confirmation, and mastery is already
+a pure recompute over attempts. So reopening deletes the attempts the pile owned
+and replays the grader over the newest *other* still-confirmed reading for each
+freed item. The one fact that had to be stored is `Attempt.confirmed_scan_id`:
+`detection_id` names the reading, not the pile that currently owns the grade. An
+item with no older reading simply has no attempt again — not a zero.
+
+Cost: a confirmed pile is now read-only. Correcting or reverting a reading is
+refused until it is reopened, because the grade was computed from the reading as it
+stood and editing one underneath leaves the two disagreeing. `correct_detection`
+previously had no such guard at all — only the review screen's `readOnly` prop.
+
+
+### D48 · Design rules get numbers and an enforcement column, but not a folder each
+A design-documentation framework was dropped into `docs/design/` proposing three
+documents per component (`README` / `specifications` / `decisions`), a `DC-*`
+constraint register, Figma and Storybook links, semantic versioning of the
+design system, and a design-lead approval gate.
+
+Most of it duplicates what this repo already has, and duplicated documentation
+rots at a different rate from the original. `DESIGN.md` is already the
+specification — tokens, scale, recipes, print geometry — and this log is already
+the decision record, with a stronger format than the one proposed (alternatives
+*and* the revisit condition). Splitting either across ~30 component folders would
+turn one file a reader can hold in their head into thirty they will not open, and
+the values in the example material were generic (`#0066FF`, Inter, 4 px radius,
+14 px body) — the exact opposite of every rule in §2, §3 and §4 here.
+
+**Taken: the constraint layer, which was genuinely missing.** The rules that
+break the product when violated existed only as prose, spread across `DESIGN.md`
+§1 and `CLAUDE.md`. They had no identifier to cite, no statement of what enforces
+them, and no statement of what failure looks like. `docs/design/constraints.md`
+gives each one a `DC-<area>-<nn>` id and three columns; `DESIGN.md` §1 and the
+`CLAUDE.md` rule list now carry the ids, so the prose and the register point at
+each other rather than drifting.
+
+Two of those columns do real work. **Enforced in** is written honestly, so
+`review only` is a visible admission that nothing in CI will catch a rule — the
+register doubles as a list of what is worth automating next. **Failure symptom**
+is the entry gate: a rule with no describable symptom is a preference, and stays
+in `DESIGN.md` as a spec instead. That is what keeps the register from growing
+into a style guide nobody enforces.
+
+**Rejected:** per-component folders (duplicates `DESIGN.md` §6); Figma and
+Storybook links (neither exists); a versioned design system with a changelog and
+an approval gate (a single-maintainer repo where `main` always builds — git is
+the changelog); and every literal value in the example material, per D19 — the
+shipped assets outrank prose, and generic prose outranks nothing.
+
+**Cost:** a rule now lives in two places — its prose in `DESIGN.md` or
+`CLAUDE.md`, its row in the register. The tags are the mitigation, not a fix.
+**Revisit if** the register drifts out of step with the prose twice, at which
+point the prose lists should shrink to pointers and the register become the only
+statement of a load-bearing rule.
+
+### D52 · A results breakdown renders answers, not bubble indices
+
+`_readable_choice` turns a detected index into the letter and option text using the
+same `OptionLetters` / `tf_letters` the sheet was printed with, so the screen says
+what the paper says — V/F on a French sheet, R/F on a German one. Formatting it in
+React would duplicate a print-geometry fact from `layout.py` and the sheet's own
+language, and eventually disagree with the paper.
+
+### D53 · Every graded item has three states, not two
+
+Right, wrong, and never graded. `correct: null` / `points_earned: null` reach the UI
+as a "non noté" badge and a dash. Collapsing the third into "wrong" is the same
+mistake as scoring an unreadable answer zero (D5), shown to the pupil whose paper it
+is.
+
+### D54 · The longest wait in the product gets the loudest indicator
+
+Uploading a pile of 28 photos is tens of megabytes and the only feedback was one
+grey line of text. A teacher who cannot tell whether anything is happening puts the
+phone down, and the upload dies with the page. The busy state is now a panel with a
+count of the files in flight, and it says to keep the page open. The
+processing that follows already had a progress ring on the review screen, fed by the
+job the upload response names.
+
+`ProgressRing` was the wrong component for it: a ring is a *meter* — it reports a level that is
+known — so drawing one at 0 for an upload nobody is measuring says "nothing has happened yet".
+`Spinner`, which already existed privately inside `Button`, is now a shared component and is the
+idiom for an indeterminate wait; the ring stays for jobs that report a real fraction.
+
+### D55 · A job's `message` is a log line, not UI copy
+
+The review screen showed `Job.message` verbatim while a pile was being read, so a
+French teacher was told "queued for registration and detection" beside a meter
+reading 0. Those strings are written for the worker's log and are English by
+construction; nothing in three catalogues could ever translate them.
+
+The waiting state is driven by the job's `status` and `progress` instead — queued
+gets a spinner and "Analyse en attente…", running with a real fraction gets the ring
+and "Lecture des copies…", and a sub-line says what Alppy is doing and that the page
+can be left open. The server string never reaches the screen.
+
+The stage badge follows: it reads "Analyse en cours" while the pile is being read,
+not "À valider", which asked the teacher to act on something that did not exist yet.
+
+And the number is stated once. The ring carries the percentage; the words carry the
+activity. Saying "42" in both was two answers to one question.
+

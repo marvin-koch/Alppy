@@ -1,0 +1,169 @@
+# Platform
+
+**Status:** describes `main` as of 2026-09-09
+**Audience:** developers, LLM agents, reviewers
+
+---
+
+## 1 · What it does
+
+The ground every other feature stands on: who is signed in, which school's rows they may
+see, where slow work runs, where bytes are stored, and what a failure looks like.
+
+```
+  browser
+     │  alppy_session  — an itsdangerous timed signature, host-only cookie
+     ▼
+  api/deps.py::get_current_teacher ──▶ get_tenant ──▶ Scope(school_id, teacher_id)
+     │                                                  │
+     │  every handler takes it; scoped_get() is the     │
+     │  one blessed way to fetch a row by id            │
+     ▼                                                  ▼
+  routers ──▶ services ──▶ models (every row carries school_id)
+     │
+     │  slow work? → write a Job row, worker/queue.enqueue(), return
+     ▼
+  Job(kind, status, progress, message, payload, result, error)
+     │            arq / Redis
+     ▼
+  worker/tasks.py — the ONLY place a model call, OpenCV or Chromium runs
+     │  loads the Job, running → progress callback → succeeded | failed
+     ▼
+  GET /jobs/{id}   the client polls
+
+  storage.py   S3-compatible (MinIO / R2) in production, local filesystem in tests
+  errors.py    one envelope for every failure, with a request id
+```
+
+### Key properties
+
+1. **Tenancy is in the type system.** Everything below a router takes `school_id` as a
+   required argument, so a handler that forgets the tenant does not type-check rather
+   than leaking rows.
+2. **Nothing blocks a request handler on a model call.** Long work goes to arq and
+   reports progress through `Job`.
+3. **The stack runs with one command**, offline, with a demo seed:
+   `docker compose up`.
+
+---
+
+## 2 · Invariants (load-bearing)
+
+| # | Invariant | Enforced in | Why it matters | Failure symptom |
+|---|---|---|---|---|
+| I-platform-01 | The session is a **signed cookie**, no server-side store; a tampered cookie fails the signature. | `core/security.py`, `api/deps.py::get_current_teacher` | The tenant is resolved without a round trip, and cannot be forged | A tampered cookie selecting another school |
+| I-platform-02 | **Every row carries `school_id`**, and `scoped_get` always adds it to the filter — 404, never 403. | `db/base.py::SchoolScopedMixin`, `deps.scoped_get` | Multi-tenant data in a shared corpus | One school reading another's classes, sheets or books |
+| I-platform-03 | **Ownership is per teacher** where it is personal (`owned_class_ids`), on top of tenancy. | `services/class_service.py` | A colleague's class is not your class | A staffroom-wide roster leak |
+| I-platform-04 | Curriculum data (LP21, PER) is the **one deliberate exception** to tenancy. | `models`, D11 | It is public reference data shared by every tenant | Duplicated curricula per school |
+| I-platform-05 | **Nothing blocks a request handler on a model call, OpenCV or Chromium.** | `worker/tasks.py`, every `POST` that returns a `Job` | A class of twenty inside a handler is a timeout with half-written state behind it | 504s and partial batches |
+| I-platform-06 | A `Job` row **without an enqueue is a note nobody reads.** `JobKind` values *are* the task names, asserted at import. | `worker/queue.py::TASK_NAMES`, `enqueue` | The worker listens on Redis and never polls Postgres | A spinner that never stops |
+| I-platform-07 | **A client-supplied filename never becomes a storage path.** | `storage.py::sanitise_filename`, `storage_key` | `../../etc/passwd` | Path traversal in an upload |
+| I-platform-08 | **One error envelope for every failure**, carrying a request id; `message` is for developers, never a teacher-facing string. | `api/errors.py::install_error_handlers` | The client switches on `code`; teacher-facing text is localised client-side | An untranslated internal message shown to a teacher |
+
+---
+
+## 3 · Module map
+
+| Path | Owns | Depends on |
+|---|---|---|
+| `alppy/core/security.py` | Argon2id password hashing, the signed session cookie | argon2-cffi, itsdangerous |
+| `alppy/core/config.py` | `Settings` — providers, models, limits, storage, rate limits | pydantic-settings |
+| `alppy/core/logging.py` | Structured logging | — |
+| `alppy/core/uid.py` | `parse_uid` / `format_uid` — strict, because a misread UID files answers under the wrong child | — |
+| `alppy/api/deps.py` | `get_db`, `get_current_teacher`, `get_tenant`, `Scope`, `scoped_get`, `UploadPayload`, the AI token bucket, `load_optional` | `security`, `models`, `storage` |
+| `alppy/api/errors.py` | `ApiError` and friends, the four handlers, the envelope | FastAPI |
+| `alppy/worker/queue.py` | `enqueue`, `TASK_NAMES` | arq, Redis |
+| `alppy/worker/tasks.py` | Every long job: ingest, extract section, render, process scan, grade open answers, adaptive, feedback | the owning modules, **lazily imported** |
+| `alppy/storage.py` | `Storage` protocol, `LocalStorage`, the S3 backend, `sanitise_filename`, `storage_key` | boto3 (optional) |
+| `alppy/api/v1/health.py` | `/health`, reporting each dependency and never throwing | all of the above |
+| `alppy/db/`, `alembic/versions/` | Session, `Base`, hand-checked migrations | SQLAlchemy 2 |
+| `alppy/seed/`, `alppy/cli.py` | The demo seed, `backfill-events` | — |
+
+---
+
+## 4 · How to extend this feature
+
+**Adding a long-running feature.** Write a pipeline function with the documented
+signature, add a `JobKind` **whose value is the task function's name**, register the task,
+and have the handler write a `Job` and call `enqueue`. The contract:
+
+```python
+def fn(db: Session, job: Job, *, on_progress: ProgressCB) -> dict[str, Any] | None
+```
+
+It may raise freely — any exception is caught, logged, written to `Job.error`, and the
+job marked failed. It must **not** commit or close `db`: the task owns the transaction
+boundary, and reads what it needs from `job.payload` and `job.school_id`.
+
+Tasks import their owning module **lazily, inside the task**, so the worker still starts
+if an optional native dependency is missing in a dev environment.
+
+**Adding a migration.** Migrations reproduce the models, and the unit tests
+**structurally cannot** catch a drift, because they build their schema with
+`create_all()` from those same models. Run the drift gate against a disposable Postgres:
+
+```bash
+ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
+```
+
+### LLM checklist
+
+- [ ] Read §2 — these are not suggestions
+- [ ] Does the new query filter by `school_id`? Did you use `scoped_get`? (I-platform-02)
+- [ ] Is personal data also scoped by teacher? (I-platform-03)
+- [ ] Does a handler now await a model call, OpenCV or Chromium? (I-platform-05 — never)
+- [ ] Did you write a `Job` **and** enqueue it? (I-platform-06)
+- [ ] Does any path build a storage key from a client filename? (I-platform-07 — never)
+- [ ] Does the new failure go through `ApiError`? (I-platform-08)
+- [ ] Did the schema change? Then the drift gate, on a real Postgres
+
+---
+
+## 5 · Privacy & safety
+
+| Data | Where it is handled | Why |
+|---|---|---|
+| Password | Argon2id, OWASP-default parameters, `needs_rehash` for future migration | No password reset needed to change parameters |
+| Session | Signed, host-only cookie; no server-side store | A tampered cookie fails the signature rather than selecting another school |
+| Uploads | Type sniffed from content, size-capped, filename sanitised | I-platform-07 |
+| Files | Tenant-scoped file route; object storage | A crop or page image is a child's handwriting |
+| Rate limit | In-process token bucket per teacher on AI endpoints | A guard against one teacher holding the model budget, not a distributed limiter |
+| Error messages | `message` is for logs and developers | Teacher-facing strings are localised client-side |
+
+Cross-tenant reads return **404, not 403**: telling a stranger that a resource exists is
+itself a leak.
+
+---
+
+## 6 · Testing strategy
+
+| Invariant | Proved by |
+|---|---|
+| I-platform-01 | `test_api_auth.py::test_a_tampered_cookie_is_not_a_session`, `::test_login_does_not_distinguish_an_unknown_email`, `::test_logout_clears_the_session` |
+| I-platform-02 | `test_api_tenancy.py::test_another_schools_class_reads_as_missing`, `::test_listings_never_cross_the_tenant_boundary`, `::test_a_sheet_cannot_reference_another_schools_exercise` |
+| I-platform-03 | `test_api_tenancy.py::test_a_colleagues_class_is_not_listed`, `::test_a_colleagues_roster_never_reaches_another_teacher` |
+| I-platform-04 | `test_api_tenancy.py::test_subjects_stay_shared_across_the_staffroom`, `test_api_infra.py::test_competencies_are_filterable` |
+| I-platform-05 | `test_api_scans.py::test_upload_accepts_a_pdf_and_returns_without_detecting_anything`, `test_jobs_queue.py::test_uploading_a_source_enqueues_the_ingestion_job` |
+| I-platform-06 | `test_jobs_queue.py::test_every_job_kind_names_a_task_the_worker_registers`, `::test_a_dead_queue_fails_the_job_instead_of_leaving_it_queued` |
+| I-platform-07 | `test_api_scans.py::test_a_hostile_filename_never_becomes_a_storage_path`, `test_api_infra.py::test_storage_keys_cannot_escape_their_prefix`, `::test_the_file_route_is_tenant_scoped` |
+| I-platform-08 | `test_api_infra.py::test_every_error_uses_the_same_envelope`, `::test_an_unroutable_path_still_returns_the_envelope`, `::test_the_request_id_is_echoed_when_the_caller_supplies_one` |
+| Rate limit | `test_api_infra.py::test_the_token_bucket_refills_over_time`, `::test_the_bucket_is_per_teacher`, `::test_ai_endpoints_are_rate_limited` |
+| Health | `test_api_infra.py::test_health_never_throws_and_reports_each_dependency` |
+| Schema | `scripts/check-schema-drift.py` — its own CI job, on a real Postgres |
+
+```bash
+PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests/test_api_auth.py \
+  apps/api/tests/test_api_tenancy.py apps/api/tests/test_api_infra.py \
+  apps/api/tests/test_jobs_queue.py apps/api/tests/test_uid.py -q
+```
+
+---
+
+## Companion documents
+
+- [`architecture.md`](architecture.md) — the request path, the job path, storage, errors
+- [`decisions.md`](decisions.md) — D17, D18, D25, D39
+- [`../../architecture.md`](../../architecture.md) — the system view
+- [`../../deploy-cloudflare.md`](../../deploy-cloudflare.md) — the split deployment
+
+**Last updated:** 2026-09-09

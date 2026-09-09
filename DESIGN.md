@@ -14,6 +14,14 @@ These are shipped values, not suggestions. Copy them exactly. The tokens and rec
 
 Read this before writing any UI.
 
+**This file is the spec — what the system is.** The rules that are *load-bearing* are indexed
+separately in [`docs/design/constraints.md`](docs/design/constraints.md), each with an
+identifier (`DC-colour-06`), the thing that actually enforces it, and the symptom you would see
+if it broke. Cite that identifier in code when a line exists because of a rule and would look
+arbitrary without it. Why a given choice was made is in
+[`docs/decisions-log.md`](docs/decisions-log.md) (`D1`…). Spec, constraint, decision — three
+files, three questions.
+
 ---
 
 ## 1. The stance
@@ -23,22 +31,23 @@ everywhere, generous radii, a celebration at the end. The *identity* comes from 
 erasable violet ink pen every pupil in Suisse romande writes with, saturated chalk on a whiteboard,
 and the slate.
 
-Rules that are never broken:
+Rules that are never broken — each is a numbered constraint in
+[`constraints.md`](docs/design/constraints.md):
 
-- **Violet is ink, not a brand colour.** It is the primary, it tints the greys, and it is never
+- **Violet is ink, not a brand colour.** *(DC-colour-05)* It is the primary, it tints the greys, and it is never
   decorative. It marks action.
 - **The neutral leans toward the accent.** Canvas is `#F7F5FF`, not `#F7F7F7`. A pure grey reads as
   a default; a tinted grey reads as a choice.
-- **Elevation is a solid edge, not a blur.** `0 4px 0 0 <edge>`. A button has physical thickness;
+- **Elevation is a solid edge, not a blur.** *(DC-shape-03)* `0 4px 0 0 <edge>`. A button has physical thickness;
   you press down on it.
-- **Mandarin orange is reserved for exactly one feature.** In Alppy that feature is **AI-generated
+- **Mandarin orange is reserved for exactly one feature.** *(DC-colour-06)* In Alppy that feature is **AI-generated
   exercises** (F4). It loses all meaning if it spreads.
-- **Never pure black.** Text is `#1B1735`, a violet-black. Pure black appears only in high contrast
+- **Never pure black.** *(DC-colour-07)* Text is `#1B1735`, a violet-black. Pure black appears only in high contrast
   and in print.
-- **Never colour alone.** Every state band carries colour **and** a label **and** a different tint
+- **Never colour alone.** *(DC-colour-08)* Every state band carries colour **and** a label **and** a different tint
   density. The photocopier is black and white.
-- **No mascot.** Explicit decision.
-- **No icon library, no font CDN.** Icons are drawn in the repo; fonts are self-hosted via
+- **No mascot.** *(DC-brand-11)* Explicit decision.
+- **No icon library, no font CDN.** *(DC-type-05)* Icons are drawn in the repo; fonts are self-hosted via
   `@fontsource-variable`.
 
 ---
@@ -194,13 +203,28 @@ everything else composes with utilities.
 - **Loading / empty / error:** `LoadingState` takes a `shape` that draws the shape of the coming
   page — a lone spinner says nothing about what is arriving. Every screen ships `EmptyState` and
   `ErrorState`.
+- **Waiting is proportional to the wait, and honest about what is known.** A skeleton is for a page
+  arriving in under a second. A longer wait gets a panel that says what is happening. Which
+  indicator depends on whether anyone is measuring: `ProgressRing` is a **meter** and needs a real
+  fraction (a render job reporting progress); `Spinner` is for an indeterminate wait — an upload in
+  flight, answers still being read. A ring drawn at 0 for an unmeasured task says "nothing has
+  happened", which is wrong and discouraging (D54).
+- **Points are not a band.** The five mastery colours are calibrated for decayed competency
+  evidence. A score is a different measurement: `PointsCell` is neutral-faced and states its
+  number, and it shares only the grid shell (`Matrix`) with `MasteryCell` (D49).
+- **Three states, not two, wherever something is graded.** Right, wrong, and *not graded* — the
+  third carries its own word and a dash, never a red badge and a zero (D53).
 
 Build order in `packages/ui`: primitives (Button, IconButton, Card, Panel, Chip, Badge, Pill,
-Avatar, Divider, Tooltip, Popover, Modal, Sheet, Toast, Tabs, Stepper, Skeleton, EmptyState,
-KeyboardHint), forms (Field, Input, Textarea, Select, Checkbox, Radio, Slider, Toggle,
+Avatar, Divider, Tooltip, Popover, Modal, Sheet, Toast, Tabs, Stepper, Skeleton, Spinner,
+EmptyState, KeyboardHint), forms (Field, Input, Textarea, Select, Checkbox, Radio, Slider, Toggle,
 SegmentedControl, CodeInput, RosterInput, FileDrop), then domain (ProgressRing, MasteryMeter,
 MasteryCell/Matrix, MasteryCurve, ConceptTag, WorksheetPrintSheet, ProvenancePanel, ConfidenceBar,
-ScanReviewOverlay, CelebrationOverlay).
+ScanReviewOverlay, CelebrationOverlay, PointsCell/PointsMatrix).
+
+`Matrix` is the headless grid both matrices share — sticky first column, one tab stop, arrows,
+scroll contained to itself. It carries behaviour and no vocabulary, which is what lets a mastery
+band and a points total keep their own meaning while navigating identically.
 
 Headless accessibility primitives (Radix or React Aria) are allowed for focus/ARIA behaviour; no
 styled component kit, no shadcn theme, no lucide/heroicons.

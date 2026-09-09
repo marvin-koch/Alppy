@@ -1,5 +1,9 @@
 # Sheet layout v1
 
+> Geometry only. The feature around it — data model, pagination, rendering,
+> the API, the builder and what the scan pipeline reads back — is specified in
+> [`sheets-spec.md`](sheets-spec.md).
+
 The printed A4 sheet is the deliverable, not a rendering of a screen. Three
 components must agree on its geometry exactly:
 
@@ -94,8 +98,9 @@ question. That trade is recorded as **D1** in
 [`decisions-log.md`](decisions-log.md) and is the decision most worth revisiting
 after watching a class actually use one.
 
-Items of type `open` claim **no** bubbles: they are printed with a ruled answer
-space and are never auto-graded.
+Items of type `open` claim **no** bubbles: they print a delimited answer box
+under the statement instead, and are graded from a verdict rather than from a
+mark — see [`sheets-spec.md`](sheets-spec.md) §7 and §12.
 
 ## The UID grid
 
