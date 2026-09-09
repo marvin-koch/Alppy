@@ -3,24 +3,33 @@
 from __future__ import annotations
 
 import uuid
+from typing import Annotated
 
-from fastapi import APIRouter, status
+from fastapi import APIRouter, Query, status
 
+from alppy.api import errors
 from alppy.api.deps import DbDep, ScopeDep, TeacherDep, TenantDep, scoped_get
-from alppy.models import Subject
+from alppy.models import School, Subject
 from alppy.schemas import (
     BranchOrder,
     ClassCreate,
     ClassOut,
     ClassTeacherOut,
+    ClassUpdate,
     ColleagueOut,
     HomeOut,
     RosterCreate,
+    SchoolOut,
+    SchoolUpdate,
     StudentOut,
+    StudentUpdate,
+    SubjectCreate,
     SubjectOut,
+    SubjectUpdate,
 )
-from alppy.services import class_out, student_out, subject_out
+from alppy.services import class_out, school_out, student_out, subject_out
 from alppy.services import class_service as svc
+from alppy.services import nouns_service as nouns
 
 router = APIRouter(tags=["classes"])
 
@@ -245,3 +254,81 @@ def reorder_branches(
     svc.reorder_subjects(db, scope, school_class, payload.subject_ids)
     db.commit()
     return svc.class_out_with_counts(db, scope, school_class, detail=True)
+
+
+# --------------------------------------------------------------------------
+# Editing the nouns a school owns (D76)
+#
+# Everything below writes to something only the seed could create before. Each
+# route is thin: the refusals live in `nouns_service`, next to the reasons.
+# --------------------------------------------------------------------------
+@router.post("/subjects", response_model=SubjectOut, status_code=status.HTTP_201_CREATED)
+def create_subject(payload: SubjectCreate, scope: ScopeDep, db: DbDep) -> SubjectOut:
+    row = nouns.create_subject(db, scope, key=payload.key, labels=payload.labels)
+    db.commit()
+    return subject_out(row)
+
+
+@router.patch("/subjects/{subject_id}", response_model=SubjectOut)
+def update_subject(
+    subject_id: uuid.UUID, payload: SubjectUpdate, scope: ScopeDep, db: DbDep
+) -> SubjectOut:
+    subject = scoped_get(db, Subject, subject_id, scope.school_id, label="subject")
+    return subject_out(nouns.update_subject(db, scope, subject, labels=payload.labels))
+
+
+@router.patch("/classes/{class_id}", response_model=ClassOut)
+def update_class(
+    class_id: uuid.UUID, payload: ClassUpdate, scope: ScopeDep, db: DbDep
+) -> ClassOut:
+    school_class = svc.get_class(db, scope, class_id)
+    nouns.rename_class(db, scope, school_class, label=payload.label, code=payload.code)
+    db.commit()
+    return svc.class_out_with_counts(db, scope, school_class, detail=True)
+
+
+@router.patch("/schools/me", response_model=SchoolOut)
+def update_school(payload: SchoolUpdate, tenant: TenantDep, db: DbDep) -> SchoolOut:
+    """Rename the school this session acts for.
+
+    `default_curriculum` is not in `SchoolUpdate` and that is deliberate: it
+    was resolved into every `Chapter.primary_competency_id` at seed time (D56),
+    so changing it here would silently re-file the whole tree.
+    """
+    school = db.get(School, tenant)
+    if school is None:
+        raise errors.not_found("school", id=str(tenant))
+    row = nouns.rename_school(db, school, name=payload.name, canton=payload.canton)
+    db.commit()
+    return school_out(row)
+
+
+@router.patch("/students/{student_id}", response_model=StudentOut)
+def update_student(
+    student_id: uuid.UUID, payload: StudentUpdate, scope: ScopeDep, db: DbDep
+) -> StudentOut:
+    student = svc.get_student(db, scope, student_id)
+    nouns.rename_student(
+        db, scope, student, first_name=payload.first_name, last_name=payload.last_name
+    )
+    db.commit()
+    return student_out(student)
+
+
+@router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_student(
+    student_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    confirm: Annotated[str, Query(description="the pupil's own uid, typed back")],
+) -> None:
+    """Destroy a pupil and every attempt, snapshot and printed copy of theirs.
+
+    The only endpoint in Alppy that destroys evidence. `confirm` is the pupil's
+    UID rather than a boolean, so a caller firing at the wrong row fails
+    instead of deleting the wrong child. Unenrolling is `DELETE
+    .../enrollment` and is what almost every caller actually wants.
+    """
+    student = svc.get_student(db, scope, student_id)
+    nouns.delete_student(db, scope, student, confirm_uid=confirm)
+    db.commit()

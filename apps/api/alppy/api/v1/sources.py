@@ -21,12 +21,14 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    ScopeDep,
     SettingsDep,
     StorageDep,
     TeacherDep,
     TenantDep,
     load_optional,
     read_upload,
+    scoped_get,
     start_job,
 )
 from alppy.models import Chapter, Competency, Exercise, Job, Source, SourceSection, Subject
@@ -47,8 +49,10 @@ from alppy.schemas import (
     JobOut,
     SourceOut,
     SourceSectionOut,
+    SourceUpdate,
 )
 from alppy.services import event_service, exercise_out, job_out, source_out, source_section_out
+from alppy.services import nouns_service as nouns
 from alppy.storage import storage_key
 
 router = APIRouter(tags=["sources"])
@@ -495,3 +499,33 @@ def update_exercise(
     db.commit()
     db.refresh(exercise)
     return exercise_out(exercise)
+
+
+@router.patch("/sources/{source_id}", response_model=SourceOut)
+def update_source(
+    source_id: uuid.UUID, payload: SourceUpdate, scope: ScopeDep, db: DbDep
+) -> SourceOut:
+    """Edit a textbook's own metadata.
+
+    Not its `subject_id`: exercises cut from the book carry their own, so
+    re-filing the book would leave every exercise behind under the old Branch.
+    """
+    source = scoped_get(db, Source, source_id, scope.school_id, label="source")
+    row = nouns.update_source(db, scope, source, title=payload.title, language=payload.language)
+    db.commit()
+    return source_out(row)
+
+
+@router.delete("/sources/{source_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_source(source_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> None:
+    """Remove a textbook. Refused while exercises still cite it.
+
+    `Exercise.source_id` is SET NULL, so this would otherwise succeed and
+    quietly strip the provenance from every exercise cut from the book — the
+    one thing `ExerciseOrigin.TEXTBOOK` exists to assert. The stored PDF is
+    left in place: `Storage` has no `delete`, and this is not the route to
+    introduce an untested destructive call on the object store.
+    """
+    source = scoped_get(db, Source, source_id, scope.school_id, label="source")
+    nouns.delete_source(db, scope, source)
+    db.commit()

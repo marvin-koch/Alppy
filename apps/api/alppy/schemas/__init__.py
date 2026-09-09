@@ -64,6 +64,7 @@ class SchoolOut(ApiModel):
     id: uuid.UUID
     name: str
     canton: str | None = None
+    default_curriculum: CurriculumKind | None = None
 
 
 class TeacherOut(ApiModel):
@@ -146,6 +147,51 @@ class ClassOut(ApiModel):
     teachers: list[ClassTeacherOut] = []
 
 
+class SubjectCreate(BaseModel):
+    """A new Branch. `key` is the join key, `labels` is what a teacher reads."""
+
+    key: Annotated[str, Field(min_length=2, max_length=50)]
+    labels: dict[str, str] = {}
+
+
+class SubjectUpdate(BaseModel):
+    """Only the labels. `key` is what `Competency.subject_key` matches on."""
+
+    labels: dict[str, str]
+
+
+class ChapterUpdate(BaseModel):
+    labels: dict[str, str] | None = None
+    position: int | None = None
+    # What the Theme CREDITS (`chapter_competency`) — not where it SITS
+    # (`primary_competency_id`, resolved per school, D56).
+    competency_ids: list[uuid.UUID] | None = None
+
+
+class ClassUpdate(BaseModel):
+    label: str | None = None
+    # Refused once the class has pupils: their UIDs were minted from it and
+    # are printed (I-platform-09).
+    code: Annotated[str, Field(min_length=2, max_length=10)] | None = None
+
+
+class SchoolUpdate(BaseModel):
+    name: Annotated[str, Field(min_length=2, max_length=200)] | None = None
+    canton: Annotated[str, Field(max_length=2)] | None = None
+
+
+class StudentUpdate(BaseModel):
+    """Names only. `uid` and `number` are on paper."""
+
+    first_name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+    last_name: Annotated[str, Field(min_length=1, max_length=100)] | None = None
+
+
+class SourceUpdate(BaseModel):
+    title: Annotated[str, Field(max_length=200)] | None = None
+    language: Annotated[str, Field(max_length=5)] | None = None
+
+
 class BranchOrder(BaseModel):
     """The class's Branch nav order, as one list.
 
@@ -206,6 +252,8 @@ class ChapterOut(ApiModel):
 class SourceOut(ApiModel):
     id: uuid.UUID
     filename: str
+    # What the teacher calls this book; `filename` is what they uploaded.
+    title: str | None = None
     content_type: str
     size_bytes: int
     language: str | None

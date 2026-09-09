@@ -169,6 +169,12 @@ class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
 
 class Subject(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "subject"
+    # Until subjects could only arrive from the seed this never mattered.
+    # A create endpoint makes duplicates reachable, and `Competency.subject_key`
+    # matches `Subject.key` BY STRING — two subjects keyed "mathematics" in one
+    # school would split the curriculum silently, half the competencies
+    # resolving to each. The constraint is the prerequisite, not a tidy-up.
+    __table_args__ = (UniqueConstraint("school_id", "key", name="uq_subject_key"),)
 
     id: Mapped[uuid.UUID] = _pk()
     key: Mapped[str] = mapped_column(String(50), nullable=False)  # "mathematics"
@@ -480,6 +486,10 @@ class Source(Base, TimestampMixin, SchoolScopedMixin):
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
     uploaded_by_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="SET NULL", nullable=True)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
+    # What the teacher calls this book. `filename` is what they happened to
+    # upload ("scan 3 (copy).pdf"), which is provenance, not a name — and it
+    # is the only thing the shelf could show before this column.
+    title: Mapped[str | None] = mapped_column(String(200))
     storage_key: Mapped[str] = mapped_column(String(500), nullable=False)
     content_type: Mapped[str] = mapped_column(String(100), nullable=False)
     size_bytes: Mapped[int] = mapped_column(Integer, nullable=False)

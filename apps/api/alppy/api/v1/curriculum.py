@@ -15,11 +15,12 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from alppy.api import errors
-from alppy.api.deps import DbDep, TenantDep
+from alppy.api.deps import DbDep, ScopeDep, TenantDep, scoped_get
 from alppy.models import Chapter, Competency, Subject
 from alppy.models.enums import CurriculumKind
-from alppy.schemas import ChapterOut, CompetencyOut, LocalisedText
+from alppy.schemas import ChapterOut, ChapterUpdate, CompetencyOut, LocalisedText
 from alppy.services import chapter_out, competency_out
+from alppy.services import nouns_service as svc
 
 router = APIRouter(tags=["curriculum"])
 
@@ -109,3 +110,35 @@ def create_chapter(payload: ChapterCreate, school_id: TenantDep, db: DbDep) -> C
     db.commit()
     db.refresh(chapter)
     return chapter_out(chapter)
+
+
+@router.patch("/chapters/{chapter_id}", response_model=ChapterOut)
+def update_chapter(
+    chapter_id: uuid.UUID, payload: ChapterUpdate, scope: ScopeDep, db: DbDep
+) -> ChapterOut:
+    """Rename a Theme, move it, or change what it credits.
+
+    `competency_ids` is the m2m — what this Theme claims to cover, across both
+    curricula. This is the honest shape of "add a competence I teach": a
+    teacher cannot create a `Competency` (national reference data, shared by
+    every school, D11), but they choose which ones their Theme credits.
+    """
+    chapter = scoped_get(db, Chapter, chapter_id, scope.school_id, label="chapter")
+    row = svc.update_chapter(
+        db,
+        scope,
+        chapter,
+        labels=payload.labels,
+        position=payload.position,
+        competency_ids=payload.competency_ids,
+    )
+    db.commit()
+    return chapter_out(row)
+
+
+@router.delete("/chapters/{chapter_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_chapter(chapter_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> None:
+    """Remove a Theme. Refused while sheets still sit in it, and on `unfiled`."""
+    chapter = scoped_get(db, Chapter, chapter_id, scope.school_id, label="chapter")
+    svc.delete_chapter(db, scope, chapter)
+    db.commit()

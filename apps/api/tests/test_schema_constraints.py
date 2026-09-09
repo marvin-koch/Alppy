@@ -690,3 +690,51 @@ def test_an_exercise_difficulty_stays_between_one_and_five(db: Session, world: W
             )
         )
         db.flush()
+
+
+def test_deleting_a_pupil_takes_their_evidence_with_them(db: Session, world: World) -> None:
+    """The cascade behind the one operation allowed to destroy evidence.
+
+    `data-model.md` §6: `Attempt`, `MasterySnapshot` and `SheetInstance` all
+    cascade from `Student`. The API-level test can only show the pupil is
+    gone — SQLite does not enforce foreign keys (D18), so the cascade is
+    invisible there and a green assertion would mean nothing. Here it is real.
+
+    The mirror of `test_a_class_that_is_someones_home_cannot_be_deleted`:
+    deleting a CLASS must refuse, deleting a STUDENT must cascade. Those two
+    facts are one decision, and they are easy to reverse by accident.
+    """
+    student = Student(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        school_year_id=world.year.id,
+        home_class_id=world.klass.id,
+        uid="5A_9",
+        number=9,
+        first_name="Marie",
+        last_name="Favre",
+    )
+    db.add(student)
+    db.flush()
+    snapshot = _TABLES["mastery_snapshot"]
+    competency = _TABLES["competency"]
+    db.execute(
+        pg_insert(competency).values(
+            id=(cid := uuid.uuid4()), curriculum="PER", code="MSN 32",
+            labels={"fr": "Nombres"}, cycle=3, subject_key="maths",
+        )
+    )
+    db.execute(
+        pg_insert(snapshot).values(
+            id=uuid.uuid4(), school_id=world.school.id, student_id=student.id,
+            competency_id=cid, computed_at=sa.func.now(), score=0.8, band="SOLID",
+        )
+    )
+    db.commit()
+
+    db.execute(sa.delete(Student.__table__).where(Student.id == student.id))
+    db.commit()
+
+    assert db.execute(
+        sa.select(sa.func.count()).select_from(snapshot).where(snapshot.c.student_id == student.id)
+    ).scalar_one() == 0

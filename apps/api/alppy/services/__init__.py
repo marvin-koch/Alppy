@@ -100,7 +100,12 @@ __all__ = [
 
 
 def school_out(school: School) -> SchoolOut:
-    return SchoolOut(id=school.id, name=school.name, canton=school.canton)
+    return SchoolOut(
+        id=school.id,
+        name=school.name,
+        canton=school.canton,
+        default_curriculum=school.default_curriculum,
+    )
 
 
 def teacher_out(
@@ -245,6 +250,7 @@ def source_out(source: Source, *, exercise_count: int = 0, section_count: int = 
     return SourceOut(
         id=source.id,
         filename=source.filename,
+        title=source.title,
         content_type=source.content_type,
         size_bytes=source.size_bytes,
         language=source.language,

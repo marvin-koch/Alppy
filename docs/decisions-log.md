@@ -1542,3 +1542,74 @@ refusing on the home class. Removing a branch from a settings screen is not a te
 "throw away the term's worksheets". **Reordering takes the whole list** and keeps branches the
 caller did not name, because the order is the class's: a partial update from one co-teacher
 must not renumber another's.
+
+### D76 · The teacher edits their own school's nouns, and the curriculum stays read-only
+
+The write surface was create-only: no `PATCH` or `DELETE` existed anywhere for `Class`,
+`Student`, `Subject`, `Chapter`, `School` or `Source`. Everything below is about what the
+new endpoints **refuse**, because a create endpoint makes reachable what a curated seed
+never produced.
+
+**`uq_subject_key` is a prerequisite, not a tidy-up.** `Competency.subject_key` matches
+`Subject.key` by *string*, so two subjects keyed `mathematics` in one school split the
+curriculum silently — half the competencies resolving to each, no error anywhere. The
+constraint had never mattered because subjects only came from the seed. 0022 also refuses
+to run against a school that already holds duplicates rather than merging them: moving
+sheets, chapters and exercises between two subjects is not a migration's decision.
+
+**Renaming is not re-identifying.** A label always. A `key`, a `code` or a `uid` never,
+once paper has been printed from it. So: `Subject.key` is absent from `SubjectUpdate`
+(the curriculum joins on it); `Student.uid` and `number` are absent from `StudentUpdate`
+(I-platform-09); and `Class.code` is editable **only while the class has no pupils** —
+before a roster exists it has minted no UIDs, and a typo made at creation must be fixable.
+
+**`School.default_curriculum` is not editable at all.** It is resolved once, at seed time,
+into every `Chapter.primary_competency_id` (D56). Changing it later leaves every Theme
+hanging from the other curriculum's node — a silent mis-filing of the whole tree, from a
+settings field that looks like a preference.
+
+**"Add a competence I teach" is not curriculum CRUD.** A `Competency` is national
+reference data shared by every school (D11); a teacher cannot create or delete one. What
+they choose is which competencies their Theme *credits* — the `chapter_competency` m2m,
+edited through `PATCH /chapters`. **Rejected: a per-assignment competency selection
+table.** It is a fourth grain, it duplicates what `chapter_competency` already says, and
+it must be maintained by hand for the matrix to stay honest — a stale selection hides a
+competency the child was actually assessed on, which is worse than no selection.
+
+**Deleting a Student is the only operation allowed to destroy evidence**
+(`data-model.md` §6), and it takes the pupil's **UID typed back**, not a boolean: a caller
+firing `?confirm=true` at the wrong row deletes the wrong child. It is restricted to the
+**head teacher of the home class** — a co-teacher reads the pupil, because D73 is
+deliberately class-grained about identity, and that must not extend to erasing another
+teacher's pupil. The first implementation gated on `get_class` and got this wrong; the
+test written for it is what caught it.
+
+**Every other delete refuses with a count.** A Theme holding sheets, a textbook whose
+exercises still cite it. `Sheet.chapter_id` is RESTRICT so the Theme refusal existed
+anyway — as an unreadable 500. `Exercise.source_id` is SET NULL, so the textbook delete
+would have *succeeded* and quietly stripped provenance from every exercise cut from the
+book, which is the one thing `ExerciseOrigin.TEXTBOOK` exists to assert. The stored PDF is
+left in place: `Storage` has no `delete`, and an ordinary button is not where to introduce
+an untested destructive call on the object store.
+
+**A single-student add needs no endpoint.** `POST /classes/{id}/students` already takes a
+list with `min_length=1`. A second write path would duplicate the uid/number arithmetic —
+the one piece of arithmetic in this codebase that gets printed on paper.
+
+### D77 · The corpus is shared for reading, not for deleting
+
+D11 and I-platform-04 share subjects, chapters, textbooks and exercises across the
+staffroom on purpose: a colleague's scan of a textbook is meant to be usable, and every
+read of it is school-wide.
+
+Deleting is not reading. `delete_chapter` and `delete_source` refuse a caller who does not
+hold that branch in any class of this school (`taught_subject_ids_anywhere`). It is the
+one place strict isolation (D75) reaches into the shared corpus, and only because the
+write destroys something.
+
+**Deliberately narrow.** Reads are untouched — a teacher who does not take German still
+lists German chapters, which is what makes the staffroom a staffroom. And it needs no new
+schema, which matters because the honest long-term answer is a `role` column on
+`teacher_school`: that is the same question as who may assign a colleague to a branch
+(D75) and who may rename the school (D76), and it deserves one decision rather than three.
+Until then, "you teach it" is the narrowest defensible rule that already exists in data.
