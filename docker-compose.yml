@@ -82,6 +82,12 @@ services:
       ALPPY_ENV: ${ALPPY_ENV:-local}
       ALPPY_DEBUG: ${ALPPY_DEBUG:-true}
       ALPPY_SECRET_KEY: ${ALPPY_SECRET_KEY:-dev-only-change-me}
+      # Demo mode: a request with no session cookie answers as the demo
+      # teacher, so the app can be clicked through without an account. FALSE
+      # unless you set it — it is the only bypass of the session cookie, and
+      # that cookie is what keeps a roster of children's real names off an open
+      # URL (docs/privacy.md).
+      ALPPY_DEMO_MODE: ${ALPPY_DEMO_MODE:-false}
       ALPPY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-alppy}:${POSTGRES_PASSWORD:-alppy}@postgres:5432/${POSTGRES_DB:-alppy}
       ALPPY_REDIS_URL: redis://redis:6379/0
       ALPPY_S3_ENDPOINT_URL: http://minio:9000

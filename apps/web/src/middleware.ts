@@ -39,6 +39,16 @@ export default function middleware(request: NextRequest) {
   // would redirect the whole screenshot suite to the login screen.
   if (process.env.NEXT_PUBLIC_ALPPY_MOCK === '1') return response;
 
+  // Demo mode: the API answers a cookieless request as the demo teacher
+  // (`Settings.demo_mode`), so there is no session to gate on and this would
+  // redirect every visitor to a login they do not need. Safe to skip precisely
+  // because of what this gate is — a routing convenience, per the note above;
+  // the API stays the authority and is where demo mode is really decided.
+  //
+  // Both halves must be set: the API alone leaves the visitor at /login, the
+  // web alone leaves them in an app whose every request 401s.
+  if (process.env.NEXT_PUBLIC_ALPPY_DEMO_MODE === '1') return response;
+
   const { pathname, search } = request.nextUrl;
   if (isPublic(pathname)) return response;
   if (request.cookies.has(SESSION_COOKIE)) return response;

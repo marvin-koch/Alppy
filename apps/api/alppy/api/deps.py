@@ -60,9 +60,34 @@ SettingsDep = Annotated[Settings, Depends(get_app_settings)]
 StorageDep = Annotated[Storage, Depends(get_object_storage)]
 
 
+def _demo_teacher(db: Session, settings: Settings) -> Teacher:
+    """The teacher a demo instance answers as.
+
+    By email rather than "the first teacher in the table", so an instance that
+    happens to hold two schools cannot silently start answering as whichever
+    one sorts first.
+    """
+    teacher = db.execute(
+        select(Teacher).where(Teacher.email == settings.demo_teacher_email)
+    ).scalar_one_or_none()
+    if teacher is None:
+        # Demo mode is on but the seed has not run. Say so, rather than
+        # returning 401 and sending the reader hunting for a login that would
+        # not have helped.
+        raise errors.unauthorized(
+            "demo mode is on but no demo teacher exists; run the seed",
+        )
+    return teacher
+
+
 def get_current_teacher(request: Request, db: DbDep, settings: SettingsDep) -> Teacher:
     token = request.cookies.get(settings.session_cookie)
     if not token:
+        # The one bypass, and it stays behind an explicit flag that defaults to
+        # False (`Settings.demo_mode`). Everything below this line — the roster,
+        # every child's real name — is what the cookie exists to protect.
+        if settings.demo_mode:
+            return _demo_teacher(db, settings)
         raise errors.unauthorized("no session cookie")
     session = read_session(token, settings=settings)
     if session is None:

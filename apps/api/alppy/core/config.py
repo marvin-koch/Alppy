@@ -47,6 +47,19 @@ class Settings(BaseSettings):
     session_cookie: str = "alppy_session"
     session_max_age_s: int = 60 * 60 * 12
 
+    # --- Demo mode. OFF unless explicitly switched on.
+    #
+    # A request with no session cookie resolves to `demo_teacher_email` instead
+    # of 401, so a demo instance can be clicked through without an account.
+    #
+    # Default False, and deliberately not derived from `env` or `debug`: the
+    # thing this disables is the only guard between an open URL and a roster of
+    # children's real first and last names (`Student.first_name`,
+    # docs/privacy.md). A flag that could switch itself on from some other
+    # signal is one that will eventually switch itself on somewhere real.
+    demo_mode: bool = False
+    demo_teacher_email: str = "demo@alppy.ch"
+
     # Declared as strings and validated into DSNs by pydantic on load; the
     # annotations describe the parsed value, not the literal default.
     database_url: PostgresDsn = Field(
