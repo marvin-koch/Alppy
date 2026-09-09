@@ -120,6 +120,8 @@ outside:
 
 ## Companion reading
 
+- [`../data-model.md`](../data-model.md) — every table, and the three places a
+  column and a join table answer different questions
 - [`../plan.md`](../plan.md) — the product, the milestones, the domain model
 - [`../decisions-log.md`](../decisions-log.md) — the repo-wide D-numbers these
   documents cite
