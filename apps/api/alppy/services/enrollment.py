@@ -28,8 +28,10 @@ without three versions drifting apart.
 from __future__ import annotations
 
 import uuid
+from typing import Any
 
 from sqlalchemy import ColumnElement, Select, and_, or_, select
+from sqlalchemy.orm import QueryableAttribute
 
 from alppy.api.deps import Scope
 from alppy.models import Class, class_student, class_teacher_subject
@@ -68,9 +70,16 @@ def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
     )
 
 
+# A column as either half of `taught_here` may arrive as a mapped attribute
+# (`Sheet.class_id`) or as a plain expression, and SQLAlchemy's stubs do not
+# make the first a subtype of the second. Spelling the union once beats a
+# `type: ignore` at all six call sites.
+ColumnExpr = ColumnElement[Any] | QueryableAttribute[Any]
+
+
 def taught_here(
-    class_col: ColumnElement[uuid.UUID],
-    subject_col: ColumnElement[uuid.UUID],
+    class_col: ColumnExpr,
+    subject_col: ColumnExpr,
     scope: Scope,
 ) -> ColumnElement[bool]:
     """Does this teacher take THIS branch in THIS class — PAIR-GRAINED.
@@ -81,6 +90,13 @@ def taught_here(
     A correlated ``EXISTS`` rather than ``tuple_(a, b).in_(...)``: row-value
     ``IN`` is fine on Postgres, but the suite runs on SQLite (D18) and the
     tenancy predicate is not the place to discover a dialect difference.
+
+    ``ColumnElement[Any]`` because two of the callers pass **nullable**
+    columns (``Event.class_id``, ``Event.subject_area_id``). That is not a
+    weakening: a NULL on either side simply matches no assignment row, which
+    is the right answer — a staffroom event belongs to no class, and a
+    class-level one to no branch, so neither is "taught" by anybody. The
+    caller decides what those rows deserve; see ``api/v1/timeline.py``.
     """
     return (
         select(class_teacher_subject.c.class_id)

@@ -34,17 +34,26 @@ from alppy.models import (
     teacher_school,
 )
 from alppy.models.enums import ScanStatus
-from alppy.schemas import ClassCreate, ClassOut, ClassSummary, HomeOut, RosterCreate
+from alppy.schemas import (
+    ClassCreate,
+    ClassOut,
+    ClassSummary,
+    ClassTeacherOut,
+    HomeOut,
+    RosterCreate,
+)
 from alppy.services import class_out, subject_out, teacher_out
 from alppy.services.enrollment import (
     enrolled_in_owned_classes,
     enrolled_student_ids,
     owned_class_ids,
+    taught_here,
     taught_subject_ids,
 )
 
 __all__ = [
     "add_students",
+    "assign_branch",
     "class_out_with_counts",
     "class_summary",
     "create_class",
@@ -60,11 +69,16 @@ __all__ = [
     "home_students",
     "join_school",
     "list_classes",
+    "list_colleagues",
     "list_students",
     "list_subjects",
     "owned_class_ids",
+    "reorder_subjects",
     "student_counts",
     "taught_subject_ids_for_class",
+    "teachers_for_class",
+    "unassign_branch",
+    "undeclare_subject",
     "unenroll",
 ]
 from alppy.services.mastery_service import band_summary
@@ -508,7 +522,9 @@ def _pending_scan_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
         select(Sheet.class_id, func.count(Scan.id))
         .join(Sheet, Sheet.id == Scan.sheet_id)
         .where(Scan.school_id == scope.school_id)
-        .where(Sheet.class_id.in_(owned_class_ids(scope)))
+        # Pair-grained: "3 piles waiting" must mean three piles THIS teacher
+        # has to mark, not three that happen to sit in a class they share.
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
         .where(Scan.status.in_(PENDING_SCAN_STATUSES))
         .group_by(Sheet.class_id)
     ).all()
@@ -519,7 +535,9 @@ def _last_sheets(db: Session, scope: Scope) -> dict[uuid.UUID, Sheet]:
     rows = db.execute(
         select(Sheet)
         .where(Sheet.school_id == scope.school_id)
-        .where(Sheet.class_id.in_(owned_class_ids(scope)))
+        # Likewise: "last sheet" is the last one the reader made, not a
+        # colleague's history homework showing up on their maths card.
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
         .order_by(Sheet.created_at.asc(), Sheet.title.asc())
     ).scalars()
     return {sheet.class_id: sheet for sheet in rows}  # last write per class wins
@@ -576,9 +594,223 @@ def home(db: Session, scope: Scope, teacher: Teacher) -> HomeOut:
     )
 
 
-def class_out_with_counts(db: Session, scope: Scope, school_class: Class) -> ClassOut:
-    return class_out(
+def get_colleague(db: Session, school_id: uuid.UUID, teacher_id: uuid.UUID) -> Teacher:
+    """One teacher who works at this school, or 404.
+
+    Reads ``teacher_school``, not ``home_school_id``: since D74 a teacher based
+    elsewhere may still work here, and a picker that could not find them would
+    make co-teaching impossible for exactly the people it is for.
+    """
+    row = db.execute(
+        select(Teacher)
+        .join(teacher_school, teacher_school.c.teacher_id == Teacher.id)
+        .where(Teacher.id == teacher_id)
+        .where(teacher_school.c.school_id == school_id)
+    ).scalar_one_or_none()
+    if row is None:
+        raise errors.not_found("teacher", id=str(teacher_id))
+    return row
+
+
+def class_out_with_counts(
+    db: Session, scope: Scope, school_class: Class, *, detail: bool = False
+) -> ClassOut:
+    """One class as the API reports it.
+
+    ``detail`` adds the two fields only the class screen needs: what the class
+    STUDIES (the superset of what the caller takes) and who teaches what. The
+    list route leaves them off, or it would fan out a query per class.
+    """
+    row = class_out(
         school_class,
         student_count=student_counts(db, scope).get(school_class.id, 0),
         subject_ids=taught_subject_ids_for_class(db, scope, school_class.id),
+    )
+    row.head_teacher_id = school_class.head_teacher_id
+    row.is_head = school_class.head_teacher_id == scope.teacher_id
+    if detail:
+        row.declared_subject_ids = declared_subject_ids_for_class(db, scope, school_class.id)
+        row.teachers = teachers_for_class(db, scope, school_class.id)
+    return row
+
+
+# --------------------------------------------------------------------------
+# Who teaches which branch here (D73, D75)
+#
+# D57 deferred this deliberately: "a teacher-facing endpoint to add and reorder
+# branches ... is a real feature with its own review". This is that feature.
+# --------------------------------------------------------------------------
+def assign_branch(
+    db: Session,
+    scope: Scope,
+    school_class: Class,
+    teacher: Teacher,
+    subject: Subject,
+) -> None:
+    """Record that this teacher takes this branch in this class. Idempotent.
+
+    The security-bearing function of the pair, and the reason
+    ``class_teacher_subject`` can safely carry no ``school_id``: the table's
+    teacher end CAN belong to another school, and this is what closes it
+    (I-platform-12). The membership check is against ``teacher_school``, not
+    ``home_school_id`` — since D74 the first is where a teacher may work and
+    the second only where their account is based.
+
+    Declares the branch FIRST, for two reasons: the composite FK onto
+    ``class_subject`` cannot be satisfied otherwise, and assigning history to
+    5A plainly means 5A studies history — which is what a teacher means by it.
+
+    ``ON CONFLICT DO NOTHING``: two colleagues added at once must not race into
+    a duplicate-key error on an ordinary action.
+    """
+    if subject.school_id != school_class.school_id:
+        raise errors.unprocessable("subject belongs to another school")
+    member = db.execute(
+        select(teacher_school.c.school_id)
+        .where(teacher_school.c.teacher_id == teacher.id)
+        .where(teacher_school.c.school_id == school_class.school_id)
+    ).scalar_one_or_none()
+    if member is None:
+        raise errors.unprocessable("teacher does not work at this school")
+
+    declare_subject(db, scope, school_class.id, subject.id)
+    db.execute(
+        pg_insert(class_teacher_subject)
+        .values(class_id=school_class.id, teacher_id=teacher.id, subject_id=subject.id)
+        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
+    )
+    db.flush()
+
+
+def unassign_branch(
+    db: Session,
+    scope: Scope,
+    school_class: Class,
+    teacher_id: uuid.UUID,
+    subject_id: uuid.UUID,
+) -> None:
+    """Drop one assignment. Nothing else moves.
+
+    The sheets, the piles and the attempts all stay exactly where they are;
+    they simply stop being visible to that teacher. Needs no "you cannot remove
+    the last owner" guard because ``head_teacher_id`` is NOT NULL — a class can
+    never become unowned this way, which is the same trick that lets
+    ``unenroll`` refuse only on the home class.
+
+    Deleting an assignment that is not there is a no-op, not an error: the
+    caller's intent is already satisfied.
+    """
+    db.execute(
+        class_teacher_subject.delete()
+        .where(class_teacher_subject.c.class_id == school_class.id)
+        .where(class_teacher_subject.c.teacher_id == teacher_id)
+        .where(class_teacher_subject.c.subject_id == subject_id)
+    )
+    db.flush()
+
+
+def teachers_for_class(
+    db: Session, scope: Scope, class_id: uuid.UUID
+) -> list[ClassTeacherOut]:
+    """Everyone with a footing in this class, and what each of them takes.
+
+    The head teacher appears even when they take nothing — they are still the
+    maître de classe, and a screen that omitted them would suggest the class
+    has no owner.
+    """
+    school_class = get_class(db, scope, class_id)
+    rows = db.execute(
+        select(class_teacher_subject.c.teacher_id, class_teacher_subject.c.subject_id)
+        .where(class_teacher_subject.c.class_id == class_id)
+        .order_by(class_teacher_subject.c.assigned_at.asc())
+    ).all()
+
+    held: dict[uuid.UUID, list[uuid.UUID]] = {school_class.head_teacher_id: []}
+    for teacher_id, subject_id in rows:
+        held.setdefault(teacher_id, []).append(subject_id)
+
+    order = {sid: i for i, sid in enumerate(declared_subject_ids_for_class(db, scope, class_id))}
+    people = db.execute(select(Teacher).where(Teacher.id.in_(held))).scalars().all()
+    return [
+        ClassTeacherOut(
+            teacher_id=t.id,
+            first_name=t.first_name,
+            last_name=t.last_name,
+            # The CLASS's nav order, so two co-teachers never see the same
+            # branches listed differently.
+            subject_ids=sorted(held[t.id], key=lambda s: order.get(s, 10_000)),
+            is_head=t.id == school_class.head_teacher_id,
+        )
+        for t in sorted(people, key=lambda t: (t.last_name, t.first_name))
+    ]
+
+
+def undeclare_subject(
+    db: Session, scope: Scope, school_class: Class, subject_id: uuid.UUID
+) -> None:
+    """Remove a Branch from a class, refusing while it still holds sheets.
+
+    A conflict rather than a cascade, for the same reason ``unenroll`` refuses
+    on the home class: removing the branch would take existing sheets off the
+    tree, and a teacher deleting a row from a settings screen is not saying
+    "throw away the term's worksheets". The assignments beneath it go with it,
+    which the composite FK handles.
+    """
+    held = db.execute(
+        select(func.count(Sheet.id))
+        .where(Sheet.class_id == school_class.id)
+        .where(Sheet.subject_id == subject_id)
+    ).scalar_one()
+    if held:
+        raise errors.conflict(
+            "this branch still holds sheets in this class",
+            sheet_count=str(held),
+        )
+    db.execute(
+        class_subject.delete()
+        .where(class_subject.c.class_id == school_class.id)
+        .where(class_subject.c.subject_id == subject_id)
+    )
+    db.flush()
+
+
+def reorder_subjects(
+    db: Session, scope: Scope, school_class: Class, subject_ids: list[uuid.UUID]
+) -> None:
+    """Set the Branch nav order for a class.
+
+    Order is a property of the CLASS, not of a teacher (D73) — so this is one
+    list, and every co-teacher sees the result. Any branch the caller omits
+    keeps its place after the ones they named, rather than being dropped: a
+    teacher reordering the two branches they can see must not silently
+    renumber a colleague's.
+    """
+    declared = declared_subject_ids_for_class(db, scope, school_class.id)
+    unknown = set(subject_ids) - set(declared)
+    if unknown:
+        raise errors.unprocessable("class does not study one of those branches")
+    ordered = subject_ids + [s for s in declared if s not in subject_ids]
+    for position, subject_id in enumerate(ordered):
+        db.execute(
+            class_subject.update()
+            .where(class_subject.c.class_id == school_class.id)
+            .where(class_subject.c.subject_id == subject_id)
+            .values(position=position)
+        )
+    db.flush()
+
+
+def list_colleagues(db: Session, school_id: uuid.UUID) -> list[Teacher]:
+    """Everyone in this staffroom, for the branch picker.
+
+    Reads ``teacher_school`` rather than ``home_school_id``: a teacher based
+    elsewhere who also works here belongs in the list (D74).
+    """
+    return list(
+        db.execute(
+            select(Teacher)
+            .join(teacher_school, teacher_school.c.teacher_id == Teacher.id)
+            .where(teacher_school.c.school_id == school_id)
+            .order_by(Teacher.last_name.asc(), Teacher.first_name.asc())
+        ).scalars()
     )

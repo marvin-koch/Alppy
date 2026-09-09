@@ -261,3 +261,352 @@ def test_me_reports_the_school_the_session_is_acting_for(
     body = client.get("/api/v1/auth/me").json()
     assert body["school_id"] == str(tenant.school.id)
     assert uuid.UUID(body["school_id"]) == tenant.teacher.home_school_id
+
+
+# --------------------------------------------------------------------------
+# Pair-grained: what a teacher MAKES and MARKS
+#
+# The tests above are about who may open a class. These are about what they
+# find inside it, and they are the ones strict isolation is for.
+# --------------------------------------------------------------------------
+def _make_sheet(client: TestClient, klass: object, subject_id: str, exercise_id: str, title: str) -> str:
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(klass.id),  # type: ignore[attr-defined]
+            "subject_id": subject_id,
+            "title": title,
+            "language": "fr",
+            "items": [{"exercise_id": exercise_id, "position": 0}],
+        },
+    )
+    assert response.status_code in (200, 201), response.text
+    return str(response.json()["id"])
+
+
+@pytest.fixture
+def two_sheets(
+    client: TestClient, db: Session, tenant: Tenant, co_taught: Tenant, history: object
+) -> tuple[str, str]:
+    """One sheet per teacher, in the same class, in different branches."""
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")  # noqa: F405
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    mine = _make_sheet(
+        client, tenant.school_class, str(tenant.subject.id), str(exercise.id), "Fractions"
+    )
+    login(client, co_taught.teacher.email)
+    theirs = _make_sheet(
+        client, tenant.school_class, str(history.id), str(exercise.id), "1848"  # type: ignore[attr-defined]
+    )
+    return mine, theirs
+
+
+def test_a_colleagues_sheet_in_a_shared_class_is_not_listed(
+    client: TestClient, tenant: Tenant, co_taught: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    mine, theirs = two_sheets
+
+    login(client, tenant.teacher.email)
+    listed = {row["id"] for row in client.get("/api/v1/sheets").json()}
+    assert mine in listed and theirs not in listed
+
+    login(client, co_taught.teacher.email)
+    listed = {row["id"] for row in client.get("/api/v1/sheets").json()}
+    assert theirs in listed and mine not in listed
+
+
+def test_a_colleagues_sheet_reads_as_missing_not_forbidden(
+    client: TestClient, tenant: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """404, not 403 — the response must not confirm the id exists.
+
+    Every ownership failure in this codebase is a 404; a 403 here would be the
+    first, and would tell a colleague exactly what they are not allowed to see.
+    """
+    _, theirs = two_sheets
+    login(client, tenant.teacher.email)
+    assert client.get(f"/api/v1/sheets/{theirs}").status_code == 404
+
+
+def test_a_teacher_can_still_open_their_own_sheet(
+    client: TestClient, tenant: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """The boundary's other side. Without it, isolation could be a blanket 404."""
+    mine, _ = two_sheets
+    login(client, tenant.teacher.email)
+    assert client.get(f"/api/v1/sheets/{mine}").status_code == 200
+
+
+def test_building_a_sheet_records_the_branch_the_builder_teaches(
+    client: TestClient, db: Session, tenant: Tenant, co_taught: Tenant, history: object
+) -> None:
+    """`declare_subject` writes both facts, and this is why.
+
+    A teacher who built a sheet in a branch nobody had recorded them teaching
+    would immediately lose it: the branch would not be in their tree, and the
+    sheet would not be in their list. The sheet they just made would be gone.
+    """
+    from alppy.models import class_teacher_subject
+
+    exercise = make_exercise(db, tenant, statement="Qui?")  # noqa: F405
+    db.commit()
+
+    login(client, co_taught.teacher.email)
+    sheet_id = _make_sheet(
+        client, tenant.school_class, str(history.id), str(exercise.id), "1848"  # type: ignore[attr-defined]
+    )
+
+    held = set(
+        db.execute(
+            class_teacher_subject.select().where(
+                class_teacher_subject.c.teacher_id == co_taught.teacher.id
+            )
+        ).all()
+    )
+    assert (tenant.school_class.id, co_taught.teacher.id, history.id) in {  # type: ignore[attr-defined]
+        (r.class_id, r.teacher_id, r.subject_id) for r in held
+    }
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 200
+
+
+def test_a_colleagues_sheet_cannot_be_attached_to_a_pile(
+    client: TestClient, tenant: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """What closes the scan lifecycle hazard structurally.
+
+    An unmatched pile is uploader-only. If a teacher could attach a sheet they
+    do not teach, the pile would become visible to that sheet's owner and
+    vanish from the uploader's list mid-workflow. They cannot, because the
+    attach resolves the sheet through the pair-grained `get_sheet`.
+    """
+    _, theirs = two_sheets
+    login(client, tenant.teacher.email)
+    response = client.get(f"/api/v1/sheets/{theirs}")
+    assert response.status_code == 404
+
+
+def test_the_agenda_shows_a_teacher_only_their_own_branchs_events(
+    client: TestClient, tenant: Tenant, co_taught: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """Class-level events stay shared; branch events do not.
+
+    "Fractions" and "1848" both happened in 5A. Each teacher should see their
+    own in the agenda and not the other's, or the timeline becomes a feed of a
+    colleague's marking.
+    """
+    login(client, tenant.teacher.email)
+    mine = " ".join(e["title"] for e in client.get("/api/v1/timeline").json()["items"])
+    assert "Fractions" in mine and "1848" not in mine
+
+    login(client, co_taught.teacher.email)
+    theirs = " ".join(e["title"] for e in client.get("/api/v1/timeline").json()["items"])
+    assert "1848" in theirs and "Fractions" not in theirs
+
+
+def test_the_home_card_counts_only_what_this_teacher_teaches(
+    client: TestClient, tenant: Tenant, co_taught: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """"Last sheet" must not be a colleague's.
+
+    The home card is the first thing a teacher reads in the morning; a history
+    sheet appearing on it because the two share a class is noise that looks
+    like their own work.
+    """
+    login(client, tenant.teacher.email)
+    cards = {c["class_id"]: c for c in client.get("/api/v1/home").json()["classes"]}
+    card = cards[str(tenant.school_class.id)]
+    assert card["last_sheet_title"] == "Fractions"
+
+    login(client, co_taught.teacher.email)
+    cards = {c["class_id"]: c for c in client.get("/api/v1/home").json()["classes"]}
+    assert cards[str(tenant.school_class.id)]["last_sheet_title"] == "1848"
+
+
+# --------------------------------------------------------------------------
+# The endpoints D57 deferred (D75)
+# --------------------------------------------------------------------------
+def test_a_teacher_can_be_given_a_branch_in_a_class(
+    client: TestClient, tenant: Tenant, colleague: Tenant, history: object
+) -> None:
+    """The whole feature, through the API, from nothing."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{colleague.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+    assert response.status_code == 201
+    holders = {r["teacher_id"]: r for r in response.json()}
+    assert holders[str(colleague.teacher.id)]["subject_ids"] == [str(history.id)]  # type: ignore[attr-defined]
+
+    # And it is real: the colleague can now open the class.
+    login(client, colleague.teacher.email)
+    assert client.get(f"/api/v1/classes/{tenant.school_class.id}").status_code == 200
+
+
+def test_assigning_a_branch_twice_is_not_an_error(
+    client: TestClient, tenant: Tenant, colleague: Tenant, history: object
+) -> None:
+    login(client, tenant.teacher.email)
+    path = (
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{colleague.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+    first = client.post(path)
+    second = client.post(path)
+    assert first.status_code == 201 and second.status_code == 201
+    holders = {r["teacher_id"]: r for r in second.json()}
+    assert holders[str(colleague.teacher.id)]["subject_ids"] == [str(history.id)]  # type: ignore[attr-defined]
+
+
+def test_unassigning_a_branch_that_is_not_there_is_a_no_op(
+    client: TestClient, tenant: Tenant, colleague: Tenant, history: object
+) -> None:
+    """A no-op, not a 500 — the caller's intent is already satisfied."""
+    login(client, tenant.teacher.email)
+    response = client.delete(
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{colleague.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+    assert response.status_code == 200
+
+
+def test_unassigning_takes_the_branch_away_without_touching_the_sheets(
+    client: TestClient, db: Session, tenant: Tenant, co_taught: Tenant, history: object
+) -> None:
+    """Unassigning is not deleting.
+
+    The sheet survives; it simply stops being visible to that teacher. Losing
+    a branch assignment must never destroy a term of worksheets.
+    """
+    from alppy.models import Sheet
+
+    exercise = make_exercise(db, tenant, statement="Qui?")  # noqa: F405
+    db.commit()
+    login(client, co_taught.teacher.email)
+    sheet_id = _make_sheet(
+        client, tenant.school_class, str(history.id), str(exercise.id), "1848"  # type: ignore[attr-defined]
+    )
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 200
+
+    login(client, tenant.teacher.email)
+    client.delete(
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{co_taught.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+
+    login(client, co_taught.teacher.email)
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 404
+    assert db.get(Sheet, uuid.UUID(sheet_id)) is not None
+
+
+def test_a_teacher_from_another_school_cannot_be_assigned(
+    client: TestClient, tenant: Tenant, other_tenant: Tenant, history: object
+) -> None:
+    """I-platform-12, and the reason the table can carry no `school_id`."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{other_tenant.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+    assert response.status_code == 404
+
+
+def test_assigning_into_a_class_you_have_no_footing_in_is_missing(
+    client: TestClient, tenant: Tenant, colleague: Tenant, history: object
+) -> None:
+    login(client, colleague.teacher.email)
+    response = client.post(
+        f"/api/v1/classes/{tenant.school_class.id}"
+        f"/teachers/{colleague.teacher.id}/branches/{history.id}"  # type: ignore[attr-defined]
+    )
+    assert response.status_code == 404
+
+
+def test_the_class_screen_separates_what_it_studies_from_what_you_take(
+    client: TestClient, tenant: Tenant, co_taught: Tenant, history: object
+) -> None:
+    """`subject_ids` is mine, `declared_subject_ids` is the class's.
+
+    Redefining the first would make the Branch nav silently per-viewer; making
+    it the class's would render branches the reader cannot open. Two facts,
+    two fields.
+    """
+    login(client, tenant.teacher.email)
+    body = client.get(f"/api/v1/classes/{tenant.school_class.id}").json()
+    assert body["subject_ids"] == [str(tenant.subject.id)]
+    assert set(body["declared_subject_ids"]) == {str(tenant.subject.id), str(history.id)}  # type: ignore[attr-defined]
+    assert body["is_head"] is True
+
+    login(client, co_taught.teacher.email)
+    body = client.get(f"/api/v1/classes/{tenant.school_class.id}").json()
+    assert body["subject_ids"] == [str(history.id)]  # type: ignore[attr-defined]
+    assert body["is_head"] is False
+
+
+def test_the_head_teacher_is_listed_even_when_they_take_nothing(
+    client: TestClient, db: Session, tenant: Tenant, co_taught: Tenant
+) -> None:
+    """A class always has an owner, and the screen must say who."""
+    from alppy.models import class_teacher_subject
+
+    db.execute(
+        class_teacher_subject.delete().where(
+            class_teacher_subject.c.teacher_id == tenant.teacher.id
+        )
+    )
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    rows = {r["teacher_id"]: r for r in client.get(
+        f"/api/v1/classes/{tenant.school_class.id}/teachers"
+    ).json()}
+    head = rows[str(tenant.teacher.id)]
+    assert head["is_head"] is True and head["subject_ids"] == []
+
+
+def test_a_branch_still_holding_sheets_cannot_be_undeclared(
+    client: TestClient, db: Session, tenant: Tenant, two_sheets: tuple[str, str]
+) -> None:
+    """A conflict with a count, not a cascade.
+
+    Removing the branch from a settings screen must not be a way to throw away
+    the term's worksheets.
+    """
+    login(client, tenant.teacher.email)
+    response = client.delete(
+        f"/api/v1/classes/{tenant.school_class.id}/subjects/{tenant.subject.id}"
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["details"]["sheet_count"] == "1"
+
+
+def test_reordering_branches_keeps_the_ones_you_did_not_name(
+    client: TestClient, tenant: Tenant, co_taught: Tenant, history: object
+) -> None:
+    """Order is the CLASS's, so a partial list must not renumber a colleague's.
+
+    Mme Martin can only see maths; reordering from her screen must leave
+    history in the list rather than dropping it.
+    """
+    login(client, tenant.teacher.email)
+    response = client.put(
+        f"/api/v1/classes/{tenant.school_class.id}/subjects",
+        json={"subject_ids": [str(tenant.subject.id)]},
+    )
+    assert response.status_code == 200
+    assert response.json()["declared_subject_ids"] == [
+        str(tenant.subject.id),
+        str(history.id),  # type: ignore[attr-defined]
+    ]
+
+
+def test_the_colleague_list_carries_no_email(
+    client: TestClient, tenant: Tenant, colleague: Tenant
+) -> None:
+    """A branch picker has no reason to know addresses."""
+    login(client, tenant.teacher.email)
+    rows = client.get("/api/v1/colleagues").json()
+    assert {r["id"] for r in rows} >= {str(tenant.teacher.id), str(colleague.teacher.id)}
+    assert all("email" not in r for r in rows)

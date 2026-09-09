@@ -6,10 +6,14 @@ import uuid
 
 from fastapi import APIRouter, status
 
-from alppy.api.deps import DbDep, ScopeDep, TeacherDep, TenantDep
+from alppy.api.deps import DbDep, ScopeDep, TeacherDep, TenantDep, scoped_get
+from alppy.models import Subject
 from alppy.schemas import (
+    BranchOrder,
     ClassCreate,
     ClassOut,
+    ClassTeacherOut,
+    ColleagueOut,
     HomeOut,
     RosterCreate,
     StudentOut,
@@ -62,7 +66,7 @@ def create_class(
 @router.get("/classes/{class_id}", response_model=ClassOut)
 def get_class(class_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> ClassOut:
     school_class = svc.get_class(db, scope, class_id)
-    return svc.class_out_with_counts(db, scope, school_class)
+    return svc.class_out_with_counts(db, scope, school_class, detail=True)
 
 
 @router.get("/classes/{class_id}/students", response_model=list[StudentOut])
@@ -130,3 +134,114 @@ def unenroll_student(
     svc.unenroll(db, school_class, student)
     db.commit()
     return [student_out(s) for s in svc.list_students(db, scope, class_id)]
+
+
+# --------------------------------------------------------------------------
+# Who teaches which branch here (D75 — the endpoints D57 deferred)
+#
+# Shaped like the enrollment pair above: idempotent, and each returns the LIST
+# the caller wanted to know about rather than the row it wrote.
+# --------------------------------------------------------------------------
+@router.get("/colleagues", response_model=list[ColleagueOut])
+def list_colleagues(tenant: TenantDep, db: DbDep) -> list[ColleagueOut]:
+    """Everyone in this staffroom, for the branch picker.
+
+    ``TenantDep``, not ``ScopeDep``: the staffroom is a school-level fact and
+    carries no ownership. No email in the payload — see ``ColleagueOut``.
+    """
+    return [
+        ColleagueOut(id=t.id, first_name=t.first_name, last_name=t.last_name)
+        for t in svc.list_colleagues(db, tenant)
+    ]
+
+
+@router.get("/classes/{class_id}/teachers", response_model=list[ClassTeacherOut])
+def class_teachers(class_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> list[ClassTeacherOut]:
+    return svc.teachers_for_class(db, scope, class_id)
+
+
+@router.post(
+    "/classes/{class_id}/teachers/{teacher_id}/branches/{subject_id}",
+    response_model=list[ClassTeacherOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def assign_branch(
+    class_id: uuid.UUID,
+    teacher_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+) -> list[ClassTeacherOut]:
+    """Record that a teacher takes this branch in this class.
+
+    Any owner of the class may do this, matching ``enroll``. A head-teacher-only
+    rule is one `if`, but every ownership failure in this codebase is a 404 and
+    this would be the first 403 — worth deciding once, alongside who may rename
+    a school, rather than three times.
+    """
+    school_class = svc.get_class(db, scope, class_id)
+    teacher = svc.get_colleague(db, scope.school_id, teacher_id)
+    subject = scoped_get(db, Subject, subject_id, scope.school_id, label="subject")
+    svc.assign_branch(db, scope, school_class, teacher, subject)
+    db.commit()
+    return svc.teachers_for_class(db, scope, class_id)
+
+
+@router.delete(
+    "/classes/{class_id}/teachers/{teacher_id}/branches/{subject_id}",
+    response_model=list[ClassTeacherOut],
+)
+def unassign_branch(
+    class_id: uuid.UUID,
+    teacher_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+) -> list[ClassTeacherOut]:
+    """Stop a teacher taking this branch here.
+
+    Not a delete of anything else: the sheets, piles and attempts stay, they
+    simply stop being visible to that teacher. A class can never become
+    unowned this way — `head_teacher_id` is NOT NULL.
+    """
+    school_class = svc.get_class(db, scope, class_id)
+    svc.unassign_branch(db, scope, school_class, teacher_id, subject_id)
+    db.commit()
+    return svc.teachers_for_class(db, scope, class_id)
+
+
+@router.post(
+    "/classes/{class_id}/subjects/{subject_id}",
+    response_model=ClassOut,
+    status_code=status.HTTP_201_CREATED,
+)
+def declare_branch(
+    class_id: uuid.UUID, subject_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> ClassOut:
+    """Say this class studies this Branch, and that the caller takes it."""
+    school_class = svc.get_class(db, scope, class_id)
+    svc.declare_subject(db, scope, school_class.id, subject_id)
+    db.commit()
+    return svc.class_out_with_counts(db, scope, school_class, detail=True)
+
+
+@router.delete("/classes/{class_id}/subjects/{subject_id}", response_model=ClassOut)
+def undeclare_branch(
+    class_id: uuid.UUID, subject_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> ClassOut:
+    """Remove a Branch from a class. Refused while it still holds sheets."""
+    school_class = svc.get_class(db, scope, class_id)
+    svc.undeclare_subject(db, scope, school_class, subject_id)
+    db.commit()
+    return svc.class_out_with_counts(db, scope, school_class, detail=True)
+
+
+@router.put("/classes/{class_id}/subjects", response_model=ClassOut)
+def reorder_branches(
+    class_id: uuid.UUID, payload: BranchOrder, scope: ScopeDep, db: DbDep
+) -> ClassOut:
+    """Set the Branch nav order. It is the class's order, not one teacher's."""
+    school_class = svc.get_class(db, scope, class_id)
+    svc.reorder_subjects(db, scope, school_class, payload.subject_ids)
+    db.commit()
+    return svc.class_out_with_counts(db, scope, school_class, detail=True)

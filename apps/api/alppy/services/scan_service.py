@@ -54,7 +54,7 @@ from alppy.schemas import (
     ScanUnvalidateResponse,
 )
 from alppy.services import event_service
-from alppy.services.enrollment import enrolled_student_ids, owned_class_ids
+from alppy.services.enrollment import enrolled_student_ids, taught_here
 from alppy.services.mastery_service import recompute_for_students
 from alppy.storage import Storage, storage_key
 
@@ -64,14 +64,27 @@ CONFIRMABLE_STATUSES = (ScanStatus.UPLOADED, ScanStatus.PROCESSING, ScanStatus.N
 def _owned_scan(scope: Scope) -> Any:
     """A scan this teacher may read.
 
-    Normally that means the pile was printed from a sheet of one of their own
-    classes. But a scan is uploaded *before* its sheet is always known — a pile
+    Normally that means the pile was printed from a sheet in a branch they
+    teach — PAIR-GRAINED since D73, because a sheet belongs to a
+    (class, subject) and a colleague taking another branch in the same class
+    has no business reading the marks on it.
+
+    But a scan is uploaded *before* its sheet is always known — a pile
     photographed with nothing behind it has ``sheet_id IS NULL`` and must stay
     visible to the person who uploaded it, or the "which sheet was this?" step
     becomes unreachable and the upload is orphaned. ``NULL IN (...)`` is never
     true, so that case needs saying out loud (decisions-log D23).
+
+    That second arm is **deliberately not narrowed**, and strict isolation is
+    what makes it obviously right rather than merely convenient: an unmatched
+    pile has no subject at all, so the only person who can say what it is, is
+    the one holding the paper. Nor can the pile later flip out of their list —
+    the sheet is attached through ``sheet_service.get_sheet``, which is itself
+    pair-grained, so a teacher can only attach a sheet they already teach.
     """
-    owned_sheets = select(Sheet.id).where(Sheet.class_id.in_(owned_class_ids(scope)))
+    owned_sheets = select(Sheet.id).where(
+        taught_here(Sheet.class_id, Sheet.subject_id, scope)
+    )
     return or_(
         Scan.sheet_id.in_(owned_sheets),
         and_(Scan.sheet_id.is_(None), Scan.uploaded_by_id == scope.teacher_id),

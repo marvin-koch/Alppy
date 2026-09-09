@@ -96,11 +96,54 @@ class RosterCreate(BaseModel):
     students: Annotated[list[StudentCreate], Field(min_length=1, max_length=40)]
 
 
+class ClassTeacherOut(ApiModel):
+    """One teacher's footing in one class."""
+
+    teacher_id: uuid.UUID
+    first_name: str
+    last_name: str
+    subject_ids: list[uuid.UUID] = []
+    is_head: bool = False
+
+
+class ColleagueOut(ApiModel):
+    """A teacher in the same school, for the branch picker.
+
+    Deliberately no ``email``: a picker has no reason to know colleagues'
+    addresses, and ``TeacherOut`` already exists for the signed-in user.
+    """
+
+    id: uuid.UUID
+    first_name: str
+    last_name: str
+
+
 class ClassOut(ApiModel):
     id: uuid.UUID
     code: str
     label: str | None
     student_count: int = 0
+    # The branches THIS CALLER takes here (D73). Not what the class studies —
+    # the Branch nav must never render a branch the reader cannot open.
+    subject_ids: list[uuid.UUID] = []
+    # What the class STUDIES, the superset. Detail route only: branch
+    # management is the one screen that needs it.
+    declared_subject_ids: list[uuid.UUID] = []
+    head_teacher_id: uuid.UUID | None = None
+    is_head: bool = False
+    # Detail route only — the list route would otherwise fan out one query
+    # per class.
+    teachers: list[ClassTeacherOut] = []
+
+
+class BranchOrder(BaseModel):
+    """The class's Branch nav order, as one list.
+
+    Whole-list rather than a move-to-index, because the order is a property of
+    the class and a partial update from one co-teacher would silently renumber
+    another's branches.
+    """
+
     subject_ids: list[uuid.UUID] = []
 
 

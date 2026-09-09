@@ -304,6 +304,11 @@ def make_tenant(
     )
     db.add(school_class)
     db.flush()
+    # The teacher TAKES this branch here, not merely owns the class. That is
+    # the state migration 0021's backfill produces for every existing class,
+    # and a fixture that skipped it would build a head teacher whose own
+    # sheets are invisible to them (D73).
+    assign_branch(db, school_class, teacher, subject)
 
     students = seat_students(
         db,
@@ -541,6 +546,7 @@ def make_colleague(
     )
     db.add(school_class)
     db.flush()
+    assign_branch(db, school_class, teacher, host.subject)
 
     students = seat_students(
         db,

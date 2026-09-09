@@ -18,13 +18,13 @@ from datetime import datetime
 from typing import Any
 
 from fastapi import APIRouter, Query
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 
 from alppy.api.deps import DbDep, ScopeDep
 from alppy.models import Class, Event, Scan, Sheet, Source, SourceSection
 from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import TimelineEventOut, TimelineFacets, TimelineOut
-from alppy.services.enrollment import owned_class_ids
+from alppy.services.enrollment import owned_class_ids, taught_here
 from alppy.services.event_service import list_events
 
 router = APIRouter(tags=["timeline"])
@@ -88,15 +88,30 @@ def get_timeline(
 ) -> TimelineOut:
     """One page of the agenda, newest first.
 
-    Scoped to the classes this teacher owns, plus the school-wide events that
-    belong to no class — importing a textbook is staffroom work and shows for
-    everyone, a class's scans do not (decisions-log D23).
+    Three kinds of row are visible, and the third is what strict isolation
+    added (D73):
+
+    * events belonging to no class at all — importing a textbook is staffroom
+      work and shows for everyone (D23);
+    * class-level events with no branch — the class was created, a roster was
+      pasted — for anyone with a footing in that class;
+    * everything else only in a branch this teacher actually takes, so a
+      colleague's history scans stay out of a maths teacher's agenda.
     """
     class_ids = list(db.scalars(owned_class_ids(scope)))
+    visibility = or_(
+        Event.class_id.is_(None),
+        and_(
+            Event.class_id.in_(class_ids),
+            Event.subject_area_id.is_(None),
+        ),
+        taught_here(Event.class_id, Event.subject_area_id, scope),
+    )
     events, total, facets = list_events(
         db,
         school_id=scope.school_id,
         class_ids=class_ids,
+        visibility=visibility,
         kinds=kind,
         subject_area_id=subject_id,
         since=since,

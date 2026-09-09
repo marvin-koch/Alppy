@@ -33,7 +33,7 @@ from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import ColumnElement, select
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
@@ -93,6 +93,7 @@ def list_events(
     *,
     school_id: uuid.UUID,
     class_ids: Sequence[uuid.UUID],
+    visibility: ColumnElement[bool] | None = None,
     kinds: Sequence[EventKind] | None = None,
     subject_area_id: uuid.UUID | None = None,
     since: datetime | None = None,
@@ -116,7 +117,12 @@ def list_events(
     common: list[Any] = [Event.school_id == school_id]
     # A teacher sees their own classes' events, plus the school-wide ones that
     # belong to no class (importing a textbook, for instance).
-    if class_ids:
+    if visibility is not None:
+        # Built by the caller, because it is a TENANCY predicate and those live
+        # in `services.enrollment` — one definition, or a new read path invents
+        # a laxer one (I-platform-03, I-platform-11).
+        common.append(visibility)
+    elif class_ids:
         common.append(
             (Event.class_id.in_(list(class_ids))) | (Event.class_id.is_(None))
         )

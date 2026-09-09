@@ -19,6 +19,7 @@ from test_api_fixtures import (
     login,
     make_chapter,
     make_exercise,
+    make_subject,
 )
 
 from alppy.models import (
@@ -298,21 +299,26 @@ def test_branches_are_declared_not_derived_from_sheets(
     tenant: Tenant, db: Session
 ) -> None:
     """The old read was `SELECT DISTINCT sheet.subject_id`, which meant a new
-    class had no Branch level until somebody built it a sheet."""
-    assert class_service.declared_subject_ids_for_class(
-        db, tenant.scope, tenant.school_class.id
-    ) == []
+    class had no Branch level until somebody built it a sheet.
 
-    class_service.declare_subject(
-        db, tenant.scope, tenant.school_class.id, tenant.subject.id
+    Asserted on a SECOND branch: the fixture's own subject is declared when
+    the teacher is assigned to it, which is the state 0021's backfill leaves
+    behind, so a fresh one is what shows the declaration doing the work.
+    """
+    german = make_subject(db, tenant.school, "german")
+    before = class_service.declared_subject_ids_for_class(
+        db, tenant.scope, tenant.school_class.id
     )
+    assert german.id not in before
+
+    class_service.declare_subject(db, tenant.scope, tenant.school_class.id, german.id)
     db.flush()
 
     # No Sheet row exists at all, and the Branch is still there.
     assert db.execute(select(Sheet)).all() == []
     assert class_service.declared_subject_ids_for_class(
         db, tenant.scope, tenant.school_class.id
-    ) == [tenant.subject.id]
+    ) == [*before, german.id]
 
 
 def test_declaring_a_branch_twice_changes_nothing(tenant: Tenant, db: Session) -> None:

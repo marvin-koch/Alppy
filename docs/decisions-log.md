@@ -1490,3 +1490,55 @@ distinct UID namespaces.
 **Rejected: dropping `home_school_id` entirely.** Purer by §2's own test — once the tenant
 comes from the session, nothing needs exactly one answer — but it takes `Teacher` out of the
 mixin *and* leaves `login` with no default school to mint a cookie for.
+
+### D75 · A teacher sees only what they teach, and the branch endpoints ship
+
+D73 made ownership assignment-based. This is the half a teacher can see: reads narrow to the
+branches they take, and there are finally endpoints for saying who takes what — the feature
+D57 named and deferred as "a real feature with its own review".
+
+**Pair-grained, wherever a branch exists.** `sheet_service.get_sheet` and `list_sheets`,
+`scan_service._owned_scan`, `class_service._pending_scan_counts` and `_last_sheets`, and the
+agenda all filter through `taught_here`. A colleague sharing a class is not a colleague
+sharing a subject, and before this a maths teacher's sheet list, grading queue and home card
+were a mixture of their own work and somebody else's.
+
+**Two carve-outs, both because a branch does not exist there even in principle.** The roster
+is names and UIDs, which a co-teacher already knows by standing in the room — and narrowing
+it would mean the history teacher cannot take a register. An **unmatched pile** has no
+subject at all, so it stays with the person holding the paper. That second one was the
+argument that nearly sank strict isolation: a pile that gained a subject later would change
+visibility mid-workflow. It cannot, and the fix is structural rather than a special case —
+the sheet is attached through the now pair-grained `get_sheet`, so a teacher can only ever
+attach a sheet they already teach.
+
+**Rejected: narrowing the student profile.** Kept whole, deliberately. `_owned_student` is
+D69's widening, and a maths teacher noticing a child sinking across every branch is a feature
+of this product. See D73's rejected alternatives.
+
+**The agenda needed three cases, not two.** Events with no class stay staffroom-wide (D23);
+class-level events with no branch — the class was created, a roster pasted — stay visible to
+anyone with a footing; everything else is pair-grained. `event_service.list_events` takes the
+predicate rather than building it, because tenancy predicates live in `services.enrollment`
+and a read path that invents its own is how the rule drifts.
+
+**`ClassOut.subject_ids` now means "mine here", and the class's own list moved to
+`declared_subject_ids`.** Two facts, two fields. Redefining the one field would have made the
+Branch nav silently per-viewer; leaving it as the class's would render branches the reader
+cannot open.
+
+**`declare_subject` writes both facts.** A teacher who built a sheet in a branch nobody had
+recorded them teaching would lose it immediately — not in their tree, not in their list. That
+is D57's own argument for `declare_subject` applied one level down, and it is what keeps the
+table populated with no new step for the teacher.
+
+**Any owner may assign a colleague**, matching `enroll`. A head-teacher-only rule is one
+`if`, but every ownership failure here is a 404 and this would be the first 403. It is the
+same question as who may rename a school and who may delete a chapter, and it deserves
+deciding once — a `role` column on `teacher_school` — rather than three times.
+
+**`undeclare_subject` refuses with a count while sheets exist**, the same shape as `unenroll`
+refusing on the home class. Removing a branch from a settings screen is not a teacher saying
+"throw away the term's worksheets". **Reordering takes the whole list** and keeps branches the
+caller did not name, because the order is the class's: a partial update from one co-teacher
+must not renumber another's.

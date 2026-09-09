@@ -42,21 +42,29 @@ from alppy.services.approval import (
     ensure_printable,
 )
 from alppy.services.class_service import get_class, list_students
-from alppy.services.enrollment import owned_class_ids
+from alppy.services.enrollment import taught_here
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
 def get_sheet(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
-    """One sheet for a class the caller owns, or 404.
+    """One sheet in a branch the caller teaches, or 404.
 
     A sheet carries its class's roster on paper, so it inherits that class's
-    ownership rather than only the school boundary (decisions-log D23).
+    ownership rather than only the school boundary (decisions-log D23) — and
+    since D73 it is **pair-grained**, not class-grained: a sheet belongs to a
+    (class, subject), and a colleague who takes another branch in the same
+    class has no business reading it.
+
+    This is also what makes the scan lifecycle safe rather than special-cased.
+    Attaching a pile to a sheet resolves it through here, so a teacher can only
+    ever attach a sheet they teach — which is why an unmatched pile can never
+    flip out of its uploader's list the moment a sheet is chosen.
     """
     sheet = db.execute(
         select(Sheet)
         .where(Sheet.id == sheet_id)
         .where(Sheet.school_id == scope.school_id)
-        .where(Sheet.class_id.in_(owned_class_ids(scope)))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
     ).scalar_one_or_none()
     if sheet is None:
         raise errors.not_found("sheet", id=str(sheet_id))
@@ -74,7 +82,7 @@ def list_sheets(
     stmt = (
         select(Sheet)
         .where(Sheet.school_id == scope.school_id)
-        .where(Sheet.class_id.in_(owned_class_ids(scope)))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
     )
     if class_id is not None:
         stmt = stmt.where(Sheet.class_id == class_id)

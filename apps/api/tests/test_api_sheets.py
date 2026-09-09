@@ -375,17 +375,22 @@ def test_creating_a_sheet_declares_the_branch_for_the_class(
 
     Asserted against `class_subject` rather than against sheets, so it would
     still fail if the read quietly went back to deriving from sheets.
+
+    The fixture already declares the teacher's own branch — that is what being
+    assigned to teach it means (D73) — so what is proved here is that building
+    a sheet keeps the table current and never duplicates a row.
     """
     exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
     login(client, tenant.teacher.email)
-    assert db.execute(select(class_subject)).all() == []
+    expected = (tenant.school_class.id, tenant.subject.id, 0)
+    assert [(r.class_id, r.subject_id, r.position) for r in db.execute(select(class_subject))] == [
+        expected
+    ]
 
     client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
 
     rows = db.execute(select(class_subject)).all()
-    assert [(r.class_id, r.subject_id, r.position) for r in rows] == [
-        (tenant.school_class.id, tenant.subject.id, 0)
-    ]
+    assert [(r.class_id, r.subject_id, r.position) for r in rows] == [expected]
 
     # A second sheet in the same Branch must not add a second row.
     client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
