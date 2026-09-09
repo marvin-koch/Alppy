@@ -55,6 +55,12 @@ export interface ScopeValue {
   competencyId: Uuid | null;
   chapterId: Uuid | null;
   classes: ClassOut[];
+  /**
+   * The Branches the teacher takes in `currentClass`, in the class's order —
+   * NOT every Branch the school has. Narrowed since D73: a switcher offering
+   * a Branch you do not teach here lands on an empty tree with nothing to say
+   * why. Falls back to the school list only before a class has resolved.
+   */
   subjects: SubjectOut[];
   currentClass: ClassOut | null;
   currentSubject: SubjectOut | null;
@@ -135,7 +141,29 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     searchParams.get('class'),
     stored.classId,
   );
-  const currentSubject = resolve(subjects, searchParams.get('subject'), stored.subjectId);
+  // The Branches this teacher takes IN THE SELECTED CLASS, in the class's own
+  // order — not every Branch the school has.
+  //
+  // `ClassOut.subject_ids` means "mine here" (D73): a class may study history
+  // without this teacher taking it. Resolving against the school-wide list let
+  // the switcher offer a Branch the caller does not teach in the class they are
+  // looking at, which lands on an empty tree with nothing to say why.
+  //
+  // Falls back to the school list only while no class has resolved yet, so the
+  // switcher is never briefly empty on a cold load. An empty result once a
+  // class HAS resolved is a real answer, not a gap: a maitre de classe who
+  // teaches nothing here gets a roster and no Branch level.
+  const classSubjects = useMemo(() => {
+    if (!currentClass) return subjects;
+    return currentClass.subject_ids
+      .map((id) => subjects.find((subject) => subject.id === id))
+      .filter((subject): subject is SubjectOut => subject !== undefined);
+  }, [currentClass, subjects]);
+  const currentSubject = resolve(
+    classSubjects,
+    searchParams.get('subject'),
+    stored.subjectId,
+  );
   // Plain reads: no resolve(), no storage, no "first one" fallback. See the
   // note on ScopeValue for why these two are different from the pair above.
   const competencyId = searchParams.get('competency');
@@ -231,7 +259,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       competencyId,
       chapterId,
       classes,
-      subjects,
+      subjects: classSubjects,
       currentClass,
       currentSubject,
       setClass,
@@ -242,7 +270,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     }),
     [
       classes,
-      subjects,
+      classSubjects,
       currentClass,
       currentSubject,
       competencyId,

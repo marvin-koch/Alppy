@@ -32,12 +32,17 @@ export default function ScansIndexPage() {
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const fmt = useFormatters();
-  const { classId } = useScope();
+  const { classId, subjectId } = useScope();
 
   const { data, isLoading, isError, refetch } = useScans();
-  // Scans carry a sheet, and a sheet carries a class; scoping the list means
-  // resolving that hop here.
-  const sheets = useSheets(classId ?? undefined);
+  // Scans carry a sheet, and a sheet carries a class AND a Branch; scoping the
+  // list means resolving that hop here.
+  //
+  // Narrowed by Branch too since D75: a teacher who takes maths and French in
+  // 7B was shown one queue holding both, mixed with whatever a co-teacher had
+  // scanned. `useSheets` already keys its cache by both, so this costs a
+  // parameter rather than a request.
+  const sheets = useSheets(classId ?? undefined, subjectId ?? undefined);
 
   if (isLoading) return <LoadingState shape="list" label={tc('loading')} rows={4} />;
   if (isError) {
@@ -53,14 +58,22 @@ export default function ScansIndexPage() {
   const sheetTitles = new Map((sheets.data ?? []).map((s) => [s.id, s.title]));
   const scans = (data ?? []).filter(
     // An unattached pile (no sheet yet) still belongs to whoever uploaded it,
-    // so it stays listed rather than being filtered into invisibility.
+    // so it stays listed rather than being filtered into invisibility. It has
+    // no Branch to be narrowed by either — that is why the API leaves it with
+    // its uploader, and why it must not disappear when a Branch is selected.
     (scan) => scan.sheet_id === null || sheetTitles.has(scan.sheet_id),
   );
 
   return (
     <div className="mx-auto max-w-3xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
-        <h1>{t('allScans')}</h1>
+        <div>
+          {/* Not "all": the list is scoped to the class and, since D75, to the
+              Branches this teacher takes. A heading that claims otherwise
+              turns a correct filter into an apparent bug. */}
+          <h1>{t('scopedScans')}</h1>
+          <p className="text-body-s text-ink-500">{t('scopedScansHint')}</p>
+        </div>
         <Link href="/scans/new" className="ard-btn" data-variant="primary">
           {t('newScan')}
         </Link>

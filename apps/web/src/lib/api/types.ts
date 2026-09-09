@@ -99,12 +99,38 @@ export interface RosterCreate {
   students: StudentCreate[];
 }
 
+export interface ClassTeacherOut {
+  teacher_id: Uuid;
+  first_name: string;
+  last_name: string;
+  /** The Branches THIS teacher takes in THIS class. */
+  subject_ids: Uuid[];
+  is_head: boolean;
+}
+
+export interface ColleagueOut {
+  id: Uuid;
+  first_name: string;
+  last_name: string;
+}
+
 export interface ClassOut {
   id: Uuid;
   code: string;
   label: string | null;
   student_count: number;
+  /**
+   * The Branches the CALLER takes here, in the class's own order (D73).
+   * Not what the class studies — a class may study history without you
+   * taking it, and the Branch nav must never offer one you cannot open.
+   */
   subject_ids: Uuid[];
+  /** What the CLASS studies: the superset. Detail route only. */
+  declared_subject_ids?: Uuid[];
+  head_teacher_id?: Uuid | null;
+  is_head?: boolean;
+  /** Detail route only — the list route would fan out a query per class. */
+  teachers?: ClassTeacherOut[];
 }
 
 export interface ClassCreate {

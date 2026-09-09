@@ -19,7 +19,7 @@ import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery, useCurriculumTree, useStudents } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
-import { useScope } from '@/lib/scope';
+import { useClassSubject } from '@/lib/use-class-subject';
 
 /**
  * One Competence, for one class.
@@ -43,11 +43,8 @@ export default function CompetencePage({
   const locale = useLocale();
   const bandLabels = useBandLabels();
 
-  const scope = useScope();
   const klass = useClass(classId as Uuid);
-  const subjectIds = klass.data?.subject_ids ?? [];
-  const subjectId =
-    scope.subjectId && subjectIds.includes(scope.subjectId) ? scope.subjectId : subjectIds[0];
+  const { subjectId } = useClassSubject(klass.data);
 
   const tree = useCurriculumTree(classId as Uuid, subjectId ? { subjectId } : {});
   const students = useStudents(classId as Uuid);

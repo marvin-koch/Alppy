@@ -19,13 +19,18 @@ import { useRouter } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import { useClasses, useSheets, useUploadScan } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
+import { useScope } from '@/lib/scope';
 
 export default function NewScanPage() {
   const t = useTranslations('scans');
   const tc = useTranslations('common');
   const tErr = useTranslations('errors.code');
   const router = useRouter();
-  const sheets = useSheets();
+  const { classId, subjectId } = useScope();
+  // Scoped, not the whole school: uploading a pile means choosing the sheet it
+  // was printed from, and an unscoped list offered a colleague's sheets in
+  // another Branch — which the API now refuses anyway (D75).
+  const sheets = useSheets(classId ?? undefined, subjectId ?? undefined);
   const classes = useClasses();
   const upload = useUploadScan();
   const [sheetId, setSheetId] = useState<Uuid | ''>('');

@@ -380,7 +380,9 @@
     "processingQueued": "Analyse en attente…",
     "processingReading": "Lecture des copies…",
     "processingLabel": "Avancement de l'analyse",
-    "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte."
+    "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte.",
+    "scopedScans": "Vos corrections",
+    "scopedScansHint": "Les piles des branches que vous n'enseignez pas ne sont pas ici."
   },
   "adaptive": {
     "addExercise": "Ajouter un exercice",

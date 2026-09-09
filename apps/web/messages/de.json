@@ -380,7 +380,9 @@
     "processingQueued": "Analyse in Warteschlange…",
     "processingReading": "Kopien werden gelesen…",
     "processingLabel": "Fortschritt der Analyse",
-    "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen."
+    "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen.",
+    "scopedScans": "Ihre Korrekturen",
+    "scopedScansHint": "Stapel aus Fächern, die Sie nicht unterrichten, erscheinen hier nicht."
   },
   "adaptive": {
     "addExercise": "Aufgabe hinzufügen",

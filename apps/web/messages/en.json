@@ -380,7 +380,9 @@
     "processingQueued": "Analysis queued…",
     "processingReading": "Reading the copies…",
     "processingLabel": "Analysis progress",
-    "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open."
+    "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open.",
+    "scopedScans": "Your corrections",
+    "scopedScansHint": "Piles from branches you do not teach are not shown here."
   },
   "adaptive": {
     "addExercise": "Add an exercise",

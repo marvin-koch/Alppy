@@ -21,7 +21,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useClass, useCurriculumTree, useSheets } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useFormatters } from '@/lib/format';
-import { useScope } from '@/lib/scope';
+import { useClassSubject } from '@/lib/use-class-subject';
 
 /** One Theme, for one class: where it sits, what it credits, what was set. */
 export default function ThemePage({
@@ -39,11 +39,8 @@ export default function ThemePage({
   const fmt = useFormatters();
   const bandLabels = useBandLabels();
 
-  const scope = useScope();
   const klass = useClass(classId as Uuid);
-  const subjectIds = klass.data?.subject_ids ?? [];
-  const subjectId =
-    scope.subjectId && subjectIds.includes(scope.subjectId) ? scope.subjectId : subjectIds[0];
+  const { subjectId } = useClassSubject(klass.data);
 
   const tree = useCurriculumTree(classId as Uuid, subjectId ? { subjectId } : {});
   const sheets = useSheets(classId as Uuid, subjectId);

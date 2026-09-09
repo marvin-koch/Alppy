@@ -30,6 +30,7 @@ import {
   useStudents,
 } from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
+import { useClassSubject } from '@/lib/use-class-subject';
 import { useBandLabels, useBandHelp } from '@/lib/bands';
 
 export default function ClassPage({
@@ -45,6 +46,8 @@ export default function ClassPage({
   const ta = useTranslations('a11y');
   const tstud = useTranslations('students');
   const ts = useTranslations('sheets');
+  const tn = useTranslations('nav');
+  const ttree = useTranslations('tree');
   const locale = useLocale();
   const bandLabels = useBandLabels();
   const bandHelp = useBandHelp();
@@ -56,15 +59,11 @@ export default function ClassPage({
 
   const klass = useClass(classId);
   const students = useStudents(classId);
-  // The subject the whole app is scoped to, narrowed to the ones this class
-  // actually has work in. Picking `subject_ids[0]` silently meant a class with
-  // two subjects showed one of them with no way to see which.
+  // The Branch to read this class through. One hook, because three screens
+  // each carried their own copy of the fallback and co-teaching turns that
+  // edge case into the everyday one (D73).
   const scope = useScope();
-  const subjectIds = klass.data?.subject_ids ?? [];
-  const subjectId =
-    scope.subjectId && subjectIds.includes(scope.subjectId)
-      ? scope.subjectId
-      : subjectIds[0];
+  const { subjectId, choices } = useClassSubject(klass.data);
   // Competence and Theme come from the URL (`?competency=&chapter=`), so a
   // teacher can send a colleague a link to exactly this view. They are NOT
   // resolved to "the first one" the way class and subject are — see scope.tsx.
@@ -186,6 +185,36 @@ export default function ClassPage({
           </Link>
         </div>
       </header>
+
+      {/* Two Branches in one class is ordinary now (D73): Camille takes maths
+          AND French in 7B. Without this the only way to say WHICH one the
+          page is showing was the rail, and the breadcrumb named it without
+          offering to change it. One control, only when it is a real choice —
+          a select with one option is furniture, and the crumb already says
+          where you are. */}
+      {choices.length > 1 ? (
+        <div className="mb-4 max-w-xs">
+          <SelectSurface
+            label={tn('switchSubject')}
+            value={subjectId ?? ''}
+            onChange={(value) => scope.setSubject(value as Uuid)}
+            options={scope.subjects.map((subject) => ({
+              value: subject.id,
+              label: crumbLabel(subject.labels, subject.key),
+            }))}
+          >
+            <span className="flex min-h-11 items-center gap-2 rounded-md border border-line bg-surface px-3">
+              <span className="text-label font-semibold uppercase tracking-label text-ink-500">
+                {ttree('branch')}
+              </span>
+              <span className="min-w-0 flex-1 truncate text-body-s font-semibold text-ink-900">
+                {branch ? crumbLabel(branch.labels, branch.subject_key) : ''}
+              </span>
+              <IconChevronDown size={16} className="shrink-0 text-ink-500" />
+            </span>
+          </SelectSurface>
+        </div>
+      ) : null}
 
       {roster.length === 0 ? (
         <EmptyState
