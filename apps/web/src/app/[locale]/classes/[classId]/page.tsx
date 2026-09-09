@@ -1,25 +1,25 @@
 'use client';
 
 import {
+  Breadcrumb,
   Button,
   Card,
   EmptyState,
   ErrorState,
-  Field,
-  IconChevronRight,
   IlloCurve,
+  IconChevronDown,
   LoadingState,
   MasteryLegend,
   MasteryMatrix,
-  Select,
+  SelectSurface,
+  type BreadcrumbItem,
   type MasteryBand,
   type MasteryValue,
 } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { use, useMemo, useState } from 'react';
+import { use, useEffect, useMemo, useState } from 'react';
 
 import { CellDrillDown } from '@/components/CellDrillDown';
-import { CompetenceThemeFilter } from '@/components/CompetenceThemeFilter';
 import { CurriculumTree } from '@/components/CurriculumTree';
 import { Link, useRouter } from '@/i18n/navigation';
 import type { MatrixSort, Uuid } from '@/lib/api/types';
@@ -40,9 +40,10 @@ export default function ClassPage({
   const { classId } = use(params);
   const t = useTranslations('classes');
   const tm = useTranslations('mastery');
-  const tt = useTranslations('tree');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
+  const ta = useTranslations('a11y');
+  const tstud = useTranslations('students');
   const ts = useTranslations('sheets');
   const locale = useLocale();
   const bandLabels = useBandLabels();
@@ -71,6 +72,25 @@ export default function ClassPage({
   const tree = useCurriculumTree(classId, subjectId ? { subjectId } : {});
   const branch =
     tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
+
+  // A stale id from the URL degrades to "everything", never to an arbitrary
+  // node. `scope` deliberately does not validate these — it has no tree — so
+  // the component that fetched one is the one that can. This guard used to
+  // live inside `CompetenceThemeFilter`; it outlived the filter, because a
+  // shared link whose theme has since been renamed away must not silently
+  // return an empty matrix.
+  useEffect(() => {
+    if (tree.isLoading || !branch) return;
+    const competences = branch.competences;
+    if (competencyId && !competences.some((c) => c.competency_id === competencyId)) {
+      setCompetency(null);
+      return;
+    }
+    const themes = competences.flatMap((c) => c.themes);
+    if (chapterId && !themes.some((t) => t.chapter_id === chapterId)) {
+      setChapter(null);
+    }
+  }, [tree.isLoading, branch, competencyId, chapterId, setCompetency, setChapter]);
 
   const mastery = useClassMastery(classId, {
     ...(subjectId ? { subjectId } : {}),
@@ -135,32 +155,36 @@ export default function ClassPage({
   const crumbTheme = (branch?.competences ?? [])
     .flatMap((c) => c.themes)
     .find((t) => t.chapter_id === chapterId);
-  const crumbs = [
-    ...(branch ? [crumbLabel(branch.labels, branch.subject_key)] : []),
-    ...(crumbCompetence ? [crumbCompetence.code] : []),
-    ...(crumbTheme ? [crumbLabel(crumbTheme.labels, crumbTheme.key)] : []),
+  // The hierarchy lives in `?competency=&chapter=`, not in path segments, so a
+  // crumb goes "up" by dropping the narrower parameter rather than by
+  // navigating. The last crumb is where you already are and carries no href.
+  const crumbs: BreadcrumbItem[] = [
+    { label: klass.data?.code ?? '', key: 'class' },
+    ...(branch
+      ? [{ label: crumbLabel(branch.labels, branch.subject_key), key: 'branch' }]
+      : []),
+    ...(crumbCompetence ? [{ label: crumbCompetence.code, key: 'competence' }] : []),
+    ...(crumbTheme
+      ? [{ label: crumbLabel(crumbTheme.labels, crumbTheme.key), key: 'theme' }]
+      : []),
   ];
 
   return (
     <div className="mx-auto max-w-6xl">
-      {/* Where you are in the programme, in words. The hierarchy is carried by
-          `?competency=&chapter=` rather than by path segments, so without this
-          the only thing naming your position is a pair of selects. */}
-      <nav aria-label={tt('title')} className="mb-2 flex flex-wrap items-center gap-1.5 text-body-s font-semibold text-ink-500">
-        <span>{klass.data?.code ?? ''}</span>
-        {crumbs.map((crumb) => (
-          <span key={crumb} className="flex items-center gap-1.5">
-            <IconChevronRight size={14} aria-hidden className="text-ink-300" />
-            <span className="last:text-ink-900">{crumb}</span>
-          </span>
-        ))}
-      </nav>
+      {/* Where you are in the programme, in words. Without it the only thing
+          naming your position is a pair of selects. */}
+      <Breadcrumb items={crumbs} label={ta('breadcrumb')} className="mb-2" />
 
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1>{t('title', { code: klass.data?.code ?? '' })}</h1>
-        <Link href="/sheets/new">
-          <Button variant="primary">{ts('new')}</Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-2">
+          <Link href={`/classes/${classId}/students`}>
+            <Button variant="secondary">{tstud('title')}</Button>
+          </Link>
+          <Link href="/sheets/new">
+            <Button variant="primary">{ts('new')}</Button>
+          </Link>
+        </div>
       </header>
 
       {roster.length === 0 ? (
@@ -178,32 +202,31 @@ export default function ClassPage({
         />
       ) : (
         <>
-          {/* Filter and sort. Both live above the grid because they change what
-              the grid *is*, not how one row reads.
-
-              Card, not Panel: these sit directly on the page canvas, and a Card
-              is the separate object while a Panel is a subdivision of one you
-              are already inside. Using Panel here would be using it as a "less
-              emphatic Card", which is the confusion CLAUDE.md forbids. */}
-          <Card className="mb-4 flex flex-wrap items-end gap-4 py-4">
-            <CompetenceThemeFilter
-              classId={classId}
-              subjectId={subjectId}
-              competencyId={competencyId}
-              chapterId={chapterId}
-              onCompetencyChange={setCompetency}
-              onChapterChange={setChapter}
-            />
-            <Field label={tm('sortBy')}>
-              <Select
-                value={sort}
-                onChange={(event) => setSort(event.target.value as MatrixSort)}
-              >
-                <option value="roster">{tm('sortRoster')}</option>
-                <option value="weakest">{tm('sortWeakest')}</option>
-              </Select>
-            </Field>
-          </Card>
+          {/* Sort sits on the canvas, not in a Card of its own. It shared that
+              Card with the Competence and Theme filters until the tree took
+              those over; one select left alone in a full-width Card reads as a
+              section that lost its contents. A Card is a separate OBJECT
+              (DC-shape-01), and a single control is not one. */}
+          <div className="mb-4 flex flex-wrap items-center gap-3">
+            <SelectSurface
+              className="w-full rounded-md sm:w-64"
+              label={tm('sortBy')}
+              value={sort}
+              onChange={(value) => setSort(value as MatrixSort)}
+              options={[
+                { value: 'roster', label: tm('sortRoster') },
+                { value: 'weakest', label: tm('sortWeakest') },
+              ]}
+            >
+              <span className="flex min-h-11 items-center gap-2 rounded-md border border-line bg-surface px-3">
+                <span className="shrink-0 text-body-s text-ink-500">{tm('sortBy')}</span>
+                <span className="min-w-0 flex-1 truncate text-body-s font-semibold">
+                  {sort === 'weakest' ? tm('sortWeakest') : tm('sortRoster')}
+                </span>
+                <IconChevronDown size={16} className="shrink-0 text-ink-500" />
+              </span>
+            </SelectSurface>
+          </div>
 
           {competencies.length === 0 ? (
             <EmptyState
@@ -237,6 +260,9 @@ export default function ClassPage({
               <CurriculumTree
                 branch={branch}
                 chapterId={chapterId}
+                basePath={`/classes/${classId}`}
+                competencyId={competencyId}
+                onSelectCompetence={setCompetency}
                 onSelectTheme={setChapter}
                 isLoading={tree.isLoading}
               />

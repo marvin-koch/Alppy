@@ -52,7 +52,11 @@
     "reviewScans": "Vérifier les copies",
     "openSheet": "Ouvrir la fiche",
     "createClass": "Créer une classe",
-    "pendingCorrectionsValue": "{count, plural, =0 {Aucune} other {#}}"
+    "pendingCorrectionsValue": "{count, plural, =0 {Aucune} other {#}}",
+    "shapeLabel": "Répartition des bandes en {code}",
+    "actionAttention": "À revoir",
+    "actionScans": "Copies",
+    "shapeHelp": "La barre montre la répartition des bandes sur toutes les paires élève × compétence de la classe — pas une moyenne, une forme."
   },
   "classes": {
     "title": "Classe {code}",
@@ -111,8 +115,8 @@
       "body": "Corrigez une première fiche pour remplir la matrice.",
       "action": "Créer une fiche"
     },
-    "filterChapter": "Chapitre",
-    "allChapters": "Tous les chapitres",
+    "filterChapter": "Thème",
+    "allChapters": "Tous les thèmes",
     "sortBy": "Trier",
     "sortRoster": "Ordre de l'effectif",
     "sortWeakest": "Les plus fragiles d'abord",
@@ -153,7 +157,8 @@
       "body": "Cet élève n'a encore aucune réponse corrigée. Ce n'est pas un zéro : rien n'a encore été évalué."
     },
     "byCompetence": "classé par compétence, puis par thème",
-    "noneInCompetence": "Aucune fiche corrigée sur cette compétence."
+    "noneInCompetence": "Aucune fiche corrigée sur cette compétence.",
+    "notScanned": "Pas encore scannée"
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {aucun exercice extrait} one {# exercice extrait} other {# exercices extraits}}",
@@ -527,13 +532,15 @@
     "next": "Suivant",
     "no": "Non",
     "of": "sur",
+    "openNamed": "Ouvrir {name}",
     "percent": "{value} %",
     "previous": "Précédent",
+    "required": "obligatoire",
     "retry": "Réessayer",
     "save": "Enregistrer",
     "search": "Rechercher",
-    "yes": "Oui",
-    "required": "obligatoire"
+    "showAll": "Tout afficher",
+    "yes": "Oui"
   },
   "errors": {
     "generic": {
@@ -569,7 +576,8 @@
     "sortAscending": "Trier par ordre croissant",
     "sortDescending": "Trier par ordre décroissant",
     "decorative": "Illustration décorative",
-    "progressRing": "Progression : {percent} %"
+    "progressRing": "Progression : {percent} %",
+    "breadcrumb": "Fil d'Ariane"
   },
   "attempts": {
     "title": "Réponses",
@@ -800,5 +808,54 @@
     "unfiledSheets": "{count, plural, =0 {aucune fiche} one {# fiche} other {# fiches}}",
     "unfiledHelp": "Fiches créées avant les thèmes. Ouvrez-en une pour la classer.",
     "empty": "Aucun thème dans cette branche pour l'instant."
+  },
+  "students": {
+    "title": "Élèves",
+    "heading": "Élèves de {code}",
+    "count": "{count, plural, =0 {aucun élève} one {# élève} other {# élèves}}",
+    "assessed": "{assessed} sur {total} évaluées",
+    "weakestNote": "La bande indiquée est la compétence la plus faible déjà évaluée — un ordre de priorité, pas une note globale.",
+    "empty": {
+      "title": "Aucun élève dans cette classe",
+      "body": "Collez la liste de la classe pour commencer à imprimer des fiches."
+    },
+    "attention": "{count} sur {assessed} à revoir",
+    "homeClass": "{code} · origine"
+  },
+  "curriculum": {
+    "themes": "Thèmes",
+    "students": "Élèves",
+    "studentsOnThis": "Sur cette compétence uniquement — un relevé, pas un cumul.",
+    "themesAssessed": "{assessed} thèmes évalués sur {total}",
+    "weakestIs": "le plus faible : {band}",
+    "sitsUnder": "Rattaché à",
+    "credits": "Crédite",
+    "creditsHelp": "Un thème est rattaché à une seule compétence et en crédite plusieurs — c'est ce qui laisse deux régions partager le même thème.",
+    "sheetsFiled": "Fiches classées ici",
+    "noSheetsFiled": "Aucune fiche n'est encore classée sous ce thème.",
+    "state": {
+      "corrected": "Corrigée",
+      "printed": "Imprimée",
+      "draft": "Brouillon"
+    },
+    "competenceMissing": {
+      "title": "Compétence introuvable",
+      "body": "Elle n'appartient peut-être pas à la branche affichée."
+    },
+    "themeMissing": {
+      "title": "Thème introuvable",
+      "body": "Il n'appartient peut-être pas à la branche affichée."
+    }
+  },
+  "sheetDetail": {
+    "filedUnder": "Classée sous",
+    "covers": "Couvre",
+    "answers": "Répond à",
+    "principal": "principale",
+    "corrections": "Corrections",
+    "scanConfirmed": "Pile validée",
+    "scanRevised": "Pile revue",
+    "scanPending": "Pile à relire",
+    "classBand": "La classe sur cette fiche"
   }
 }

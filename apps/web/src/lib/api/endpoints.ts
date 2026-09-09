@@ -52,6 +52,7 @@ import type {
   SourceOut,
   SourceSectionOut,
   StudentOut,
+  SheetMasteryOut,
   StudentProfileOut,
   StudentSheetOut,
   SubjectOut,
@@ -108,6 +109,19 @@ export const listStudents = (classId: Uuid) =>
 
 export const createRoster = (classId: Uuid, body: RosterCreate) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students`, { method: 'POST', body });
+
+/** Seat an existing pupil in another of this teacher's classes. Idempotent,
+ *  and it never touches their uid — that came from their home class (D69). */
+export const enrollStudent = (classId: Uuid, studentId: Uuid) =>
+  apiRequest<StudentOut[]>(`/classes/${classId}/students/${studentId}/enrollment`, {
+    method: 'POST',
+  });
+
+/** Remove a pupil from a class without deleting them. Refused on their home. */
+export const unenrollStudent = (classId: Uuid, studentId: Uuid) =>
+  apiRequest<StudentOut[]>(`/classes/${classId}/students/${studentId}/enrollment`, {
+    method: 'DELETE',
+  });
 
 export const listSubjects = () => apiRequest<SubjectOut[]>('/subjects');
 
@@ -292,6 +306,11 @@ export const getClassMastery = (
       sort: options.sort === 'weakest' ? 'weakest' : undefined,
     },
   });
+
+/** One sheet's band per pupil, plus the class roll-up. Works unchanged on an
+ *  adaptive batch: `Sheet.target` never enters the arithmetic (D72). */
+export const getSheetMastery = (sheetId: Uuid) =>
+  apiRequest<SheetMasteryOut>(`/sheets/${sheetId}/mastery`);
 
 export const getStudentMastery = (studentId: Uuid) =>
   apiRequest<StudentProfileOut>(`/students/${studentId}/mastery`);

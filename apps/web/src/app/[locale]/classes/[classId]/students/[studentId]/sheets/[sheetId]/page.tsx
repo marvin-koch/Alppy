@@ -3,6 +3,7 @@
 import {
   AiBadge,
   Badge,
+  Breadcrumb,
   Button,
   Card,
   EmptyState,
@@ -41,6 +42,7 @@ export default function StudentSheetPage({
   const t = useTranslations('studentSheet');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
+  const a11y = useTranslations('a11y');
   const fmt = useFormatters();
   const { data, isLoading, isError, refetch } = useStudentSheet(studentId, sheetId);
 
@@ -61,9 +63,18 @@ export default function StudentSheetPage({
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <header className="flex flex-col gap-1">
-        <Link href={`/classes/${classId}/students/${studentId}`} className="text-body-s">
-          {t('back')}
-        </Link>
+        <Breadcrumb
+          label={a11y('breadcrumb')}
+          items={[
+            {
+              label: t('back'),
+              href: `/classes/${classId}/students/${studentId}`,
+              key: 'student',
+            },
+            { label: data.sheet_title, key: 'sheet' },
+          ]}
+          renderLink={(item, children) => <Link href={item.href!}>{children}</Link>}
+        />
         <h1 className="text-h1">{data.sheet_title}</h1>
         <p className="text-body-s text-ink-500">{t('title', { student: name })}</p>
       </header>

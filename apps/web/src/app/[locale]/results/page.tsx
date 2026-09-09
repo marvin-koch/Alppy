@@ -145,9 +145,11 @@ export default function ResultsPage() {
         ) : null}
       </header>
 
-      {/* Marks, narrowed to a part of the programme. Card, not Panel: it sits
-          directly on the page canvas, beside the matrix rather than inside it. */}
-      <Card className="flex flex-wrap items-end gap-4">
+      {/* Marks, narrowed to a part of the programme. On the canvas, not in a
+          Card: two controls are not a separate object (DC-shape-01), and a
+          full-width Card around them read as a section whose contents had gone
+          missing. */}
+      <div className="mb-4 flex flex-wrap items-center gap-3">
         <CompetenceThemeFilter
           classId={classId}
           subjectId={subjectId ?? undefined}
@@ -156,7 +158,7 @@ export default function ResultsPage() {
           onCompetencyChange={setCompetency}
           onChapterChange={setChapter}
         />
-      </Card>
+      </div>
 
       {sheets.length === 0 ? (
         <EmptyState

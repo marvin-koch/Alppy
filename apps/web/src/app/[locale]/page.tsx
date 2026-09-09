@@ -9,7 +9,7 @@ import {
   ErrorState,
   IlloSlate,
   LoadingState,
-  MasteryMeter,
+  BandHistogram,
   type MasteryBand,
 } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
@@ -25,6 +25,7 @@ export default function HomePage() {
   const te = useTranslations('errors.generic');
   const locale = useLocale();
   const bandLabels = useBandLabels();
+  const tstud = useTranslations('students');
   const fmt = useFormatters();
   const { data, isLoading, isError, refetch } = useHome();
 
@@ -82,11 +83,6 @@ export default function HomePage() {
       ) : (
         <ul className="grid list-none grid-cols-1 gap-4 p-0 lg:grid-cols-2">
           {classes.map((c) => {
-            // The worst band with any cells in it — what the teacher should
-            // look at first on this class.
-            const worst = (['fading', 'weak', 'ok', 'solid'] as MasteryBand[]).find(
-              (b) => (c.band_counts?.[b] ?? 0) > 0,
-            );
             return (
               <li key={c.class_id}>
                 <Card className="h-full">
@@ -95,9 +91,12 @@ export default function HomePage() {
                       <h2 className="text-h2">
                         <Link
                           href={`/classes/${c.class_id}`}
-                          className="text-ink-900 no-underline hover:text-primary-700"
+                          // A chip is small; the thing a thumb aims at is not.
+                          className="inline-flex min-h-11 items-center gap-2 text-ink-900 no-underline hover:text-primary-700"
                         >
-                          {c.code}
+                          <span className="rounded-sm bg-primary-100 px-2 py-0.5 text-h3 text-primary-700">
+                            {c.code}
+                          </span>
                         </Link>
                       </h2>
                       {c.label ? <p className="text-body-s text-ink-500">{c.label}</p> : null}
@@ -105,67 +104,90 @@ export default function HomePage() {
                     <Badge>{t('students', { count: c.student_count })}</Badge>
                   </div>
 
-                  <dl className="mt-4 grid grid-cols-1 gap-2 text-body-s sm:grid-cols-2">
-                    <div>
-                      <dt className="text-ink-500">{t('lastSheet')}</dt>
-                      <dd className="font-bold">
-                        {c.last_sheet_title ? (
-                          // The overview names the teacher's most recent work;
-                          // it has to be a way in, not a label. Reaching it used
-                          // to mean remembering the URL.
-                          <Link href={`/sheets?class=${c.class_id}`}>{c.last_sheet_title}</Link>
-                        ) : (
-                          t('noSheetYet')
-                        )}
-                        {c.last_sheet_at ? (
-                          <span className="ml-2 font-normal text-ink-500">
-                            {fmt.date(c.last_sheet_at)}
-                          </span>
-                        ) : null}
-                      </dd>
-                    </div>
-                    <div>
-                      {/* The term is the name of the stat. It used to be the
-                          value string rendered with a hard-coded count of 0, so
-                          a class with three pending scans read
-                          "No corrections pending / 3 corrections pending". */}
-                      <dt className="text-ink-500">{t('pendingCorrectionsLabel')}</dt>
-                      <dd className="font-bold" data-numeric>
-                        {c.pending_scans > 0 ? (
-                          <Link href={`/scans?class=${c.class_id}`}>
-                            {t('pendingCorrectionsValue', { count: c.pending_scans })}
-                          </Link>
-                        ) : (
-                          t('pendingCorrectionsValue', { count: c.pending_scans })
-                        )}
-                      </dd>
-                    </div>
-                  </dl>
-
-                  <p className="mt-3 text-body-s text-ink-700">
-                    {t('needAttention', { count: c.students_needing_attention })}
+                  <p className="mt-3 text-body-s">
+                    <span className="text-ink-500">{t('lastSheet')} : </span>
+                    {c.last_sheet_title ? (
+                      // The overview names the teacher's most recent work; it
+                      // has to be a way in, not a label.
+                      <Link href={`/sheets?class=${c.class_id}`}>{c.last_sheet_title}</Link>
+                    ) : (
+                      <span className="text-ink-500">{t('noSheetYet')}</span>
+                    )}
+                    {c.last_sheet_at ? (
+                      <span className="ml-2 text-ink-500">{fmt.date(c.last_sheet_at)}</span>
+                    ) : null}
                   </p>
 
-                  {worst ? (
-                    <div className="mt-3">
-                      <MasteryMeter
-                        band={worst}
-                        score={null}
-                        bandLabel={bandLabels[worst]}
-                        // `band_counts` counts (student x competency) CELLS in
-                        // this band, not answers. Captioning it "23 answers"
-                        // was off by a factor of 24 on the demo class and named
-                        // the wrong quantity entirely.
-                        caption={t('bandCells', { count: c.band_counts?.[worst] ?? 0 })}
-                      />
-                    </div>
-                  ) : null}
+                  {/* The SHAPE of the class, not its average. This card used to
+                      show only the worst band, which on a real roster is
+                      "S'efface" for every class — a constant, not a signal. */}
+                  <BandHistogram
+                    className="mt-4"
+                    counts={c.band_counts as Partial<Record<MasteryBand, number>>}
+                    labels={bandLabels}
+                    label={t('shapeLabel', { code: c.code })}
+                  />
+
+                  {/* Four routes into what the class actually needs. Before
+                      these, the roster, the programme and the new detail pages
+                      were reachable only by remembering a URL. */}
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    <Link
+                      href={`/classes/${c.class_id}/students`}
+                      className="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-body-s font-semibold text-ink-900 no-underline hover:bg-primary-050"
+                    >
+                      {tstud('title')}
+                      <span className="text-ink-500" data-numeric>
+                        {c.student_count}
+                      </span>
+                    </Link>
+                    <Link
+                      href={`/classes/${c.class_id}`}
+                      className="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-body-s font-semibold text-ink-900 no-underline hover:bg-primary-050"
+                    >
+                      {t('actionAttention')}
+                      {c.students_needing_attention > 0 ? (
+                        <span
+                          className="rounded-pill bg-danger-100 px-2 text-label font-bold text-danger-600"
+                          data-numeric
+                        >
+                          {c.students_needing_attention}
+                        </span>
+                      ) : (
+                        <span className="text-ink-500" data-numeric>
+                          0
+                        </span>
+                      )}
+                    </Link>
+                    <Link
+                      href={`/scans?class=${c.class_id}`}
+                      className="flex min-h-11 items-center gap-2 rounded-md border border-line px-3 text-body-s font-semibold text-ink-900 no-underline hover:bg-primary-050"
+                    >
+                      {t('actionScans')}
+                      {c.pending_scans > 0 ? (
+                        <span
+                          className="rounded-pill bg-danger-100 px-2 text-label font-bold text-danger-600"
+                          data-numeric
+                        >
+                          {c.pending_scans}
+                        </span>
+                      ) : (
+                        <span className="text-ink-500" data-numeric>
+                          0
+                        </span>
+                      )}
+                    </Link>
+                  </div>
                 </Card>
               </li>
             );
           })}
         </ul>
       )}
+
+      {classes.length > 0 ? (
+        <p className="mt-5 px-1 text-body-s text-ink-500">{t('shapeHelp')}</p>
+      ) : null}
     </div>
   );
 }

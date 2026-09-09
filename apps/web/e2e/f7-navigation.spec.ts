@@ -88,22 +88,32 @@ test('a stat label never restates its own value', async ({ page }) => {
   await withDisplay(page, {});
   await gotoStable(page, '/fr');
 
-  const row = page.locator('dt', { hasText: 'Corrections en attente' }).first();
-  await expect(row).toBeVisible();
-  const term = (await row.innerText()).trim();
-  const value = (await row.locator('xpath=following-sibling::dd[1]').innerText()).trim();
-  // The <dt> used to render the *value* string with a hard-coded count of 0,
+  // The definition list became a row of action pills when the card gained its
+  // band histogram; the rule did not move, only the markup. A pill still has
+  // to name the stat and show the value as two different strings.
+  const pill = page.locator('a[href*="/scans?class="]').first();
+  await expect(pill).toBeVisible();
+  const text = (await pill.innerText()).trim();
+  const [term, ...rest] = text.split(/\s+/);
+  // The label used to render the *value* string with a hard-coded count of 0,
   // so a class with two pending scans read
   // "No corrections pending / 2 corrections pending".
-  expect(value).not.toBe(term);
+  expect(rest.join(' ')).not.toBe(term);
+  expect(term).not.toMatch(/\d/);
 });
 
 test('the band caption counts competencies, not answers', async ({ page }) => {
   await withDisplay(page, {});
   await gotoStable(page, '/fr');
-  // `band_counts` counts (student x competency) cells. Captioning it
+  // `band_counts` counts (student x competency) CELLS. Captioning it
   // "18 réponses" named the wrong quantity entirely.
-  await expect(page.getByText(/\d+ compétences?/).first()).toBeVisible();
+  //
+  // The five legend numbers no longer each carry a unit — repeating it per
+  // band, per class, would be five noisy captions saying one thing. The bar
+  // names its quantity ONCE instead, and that sentence is what has to be
+  // there: a bar of five numbers that never says what it counts is the same
+  // failure in a quieter voice.
+  await expect(page.getByText(/élève × compétence/)).toBeVisible();
   await expect(page.getByText(/\d+ réponses/)).toHaveCount(0);
 });
 
@@ -112,7 +122,7 @@ test('the pending-corrections count leads somewhere', async ({ page }) => {
   await gotoStable(page, '/fr');
   // The overview counted work it offered no way to reach: there was no
   // `/scans` index at all, and the count was plain text.
-  const link = page.locator('dd a[href*="/scans"]').first();
+  const link = page.locator('a[href*="/scans?class="]').first();
   await expect(link).toBeVisible();
   await link.click();
   await expect(page.locator('h1')).toContainText('corrections');

@@ -82,6 +82,11 @@ export interface StudentOut {
   number: number;
   first_name: string;
   last_name: string;
+  /** The class that MINTED `uid` and `number`. Exactly one, and the one the
+   *  printed identifier comes from — it does not move with enrollment (D69). */
+  home_class_code: string;
+  /** Every class this pupil sits in, home first. Two entries means a visitor. */
+  class_codes: string[];
 }
 
 export interface StudentCreate {
@@ -575,6 +580,17 @@ export interface SheetOut {
   feedback_pdf_url: string | null;
   /** The common sheet whose corrected results produced this one. */
   derived_from_id: Uuid | null;
+  /** Every sheet whose corrected results justified this one, principal first.
+   *  `derived_from_id` is entry 0 — one fact, two access paths (D70). */
+  source_sheet_ids: Uuid[];
+  /** The piles photographed against this sheet. There is no `CorrectedSheet`
+   *  entity: a corrected sheet IS the confirmed scan plus the attempts it
+   *  wrote, so this is the route from a sheet to its corrections. */
+  scans: SheetScanOut[];
+  /** Derived from the items, never stored: what this sheet actually covers.
+   *  Distinct from `chapter_id`, which is the one home Theme (D71). */
+  competency_ids: Uuid[];
+  chapter_ids: Uuid[];
   rendered_at: IsoDateTime | null;
   created_at: IsoDateTime;
 }
@@ -728,6 +744,18 @@ export interface CompetencyMastery {
   history: MasteryPointOut[];
 }
 
+/** One pile photographed against a sheet, as the sheet lists it. Not
+ *  `ScanOut`: that carries every page and detection. */
+export interface SheetScanOut {
+  id: Uuid;
+  status: ScanStatus;
+  /** Signed off, reopened, signed off again (D48). */
+  revised: boolean;
+  confirmed_at: IsoDateTime | null;
+  reopened_at: IsoDateTime | null;
+  created_at: IsoDateTime;
+}
+
 export interface SheetTakenOut {
   sheet_id: Uuid;
   title: string;
@@ -735,6 +763,26 @@ export interface SheetTakenOut {
   attempts_count: number;
   correct_count: number;
   scan_id: Uuid | null;
+  /** The Theme the sheet is FILED under — the teacher's own filing, never one
+   *  inferred from the items. Null only for the `unfiled` bucket. */
+  chapter_id: Uuid | null;
+  /** This pupil's band on this sheet: a roll-up of the sheet's competencies,
+   *  never a mean of its items (I-mastery-11). Null when nothing is tagged. */
+  mastery: TreeMasteryOut | null;
+}
+
+export interface SheetStudentMasteryOut {
+  student_id: Uuid;
+  mastery: TreeMasteryOut;
+}
+
+/** How a class did on one sheet, in the same five bands as everything else. */
+export interface SheetMasteryOut {
+  sheet_id: Uuid;
+  competency_ids: Uuid[];
+  students: SheetStudentMasteryOut[];
+  overall: TreeMasteryOut;
+  computed_at: IsoDateTime;
 }
 
 export interface StudentProfileOut {

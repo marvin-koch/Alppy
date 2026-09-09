@@ -86,7 +86,12 @@ test('the roster name reaches the profile without going through a cell', async (
   await expect(page.locator('h1')).toBeVisible();
 });
 
-test('the chapter filter narrows the columns and the sort reorders the rows', async ({ page }) => {
+test('the programme tree narrows the columns and the sort reorders the rows', async ({
+  page,
+}) => {
+  // The tree IS the filter here. This used to drive a pair of chained selects
+  // that sat beside it doing the same job; the duplication went, the behaviour
+  // did not, so the assertion moved rather than being deleted.
   await withDisplay(page, {});
   await gotoMatrix(page, 'fr');
 
@@ -96,10 +101,12 @@ test('the chapter filter narrows the columns and the sort reorders the rows', as
   const before = await columns();
   const firstBefore = await firstRowName();
 
-  await page.getByLabel('Chapitre').selectOption({ label: 'Fractions' });
+  // A Theme is a `li > button`; a Competence heading is a `header > button`,
+  // and both can contain the word "Fractions".
+  await page.locator('li > button').filter({ hasText: 'Fractions' }).first().click();
   await expect.poll(columns).toBeLessThan(before);
 
-  await page.getByLabel('Chapitre').selectOption({ label: 'Tous les chapitres' });
+  await page.getByRole('button', { name: 'Tout afficher' }).click();
   await expect.poll(columns).toBe(before);
 
   await page.getByLabel('Trier').selectOption({ label: 'Les plus fragiles d\'abord' });

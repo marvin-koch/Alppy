@@ -1,6 +1,11 @@
 'use client';
 
 import {
+  Breadcrumb,
+  Chip,
+  ConceptTag,
+  MasteryBandTag,
+  type MasteryBand,
   Button,
   Card,
   ErrorState,
@@ -13,11 +18,22 @@ import {
   TabsList,
   TabsTrigger,
 } from '@alppy/ui';
-import { useTranslations } from 'next-intl';
+
+import { Link } from '@/i18n/navigation';
+import { useLocale, useTranslations } from 'next-intl';
 import { use, useEffect, useRef, useState } from 'react';
 
 import { API_BASE } from '@/lib/api/client';
-import { useJob, useMarkPrinted, useRenderSheet, useSheet } from '@/lib/api/queries';
+import { useBandLabels } from '@/lib/bands';
+import {
+  useCurriculumTree,
+  useJob,
+  useMarkPrinted,
+  useRenderSheet,
+  useSheet,
+  useSheetMastery,
+  useSheets,
+} from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
 
 export default function SheetPage({ params }: { params: Promise<{ sheetId: string }> }) {
@@ -26,8 +42,20 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   const fmt = useFormatters();
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
+  const tnav = useTranslations('nav');
+  const a11y = useTranslations('a11y');
+  const tsheet = useTranslations('sheetDetail');
+  const tt = useTranslations('tree');
+  const tm = useTranslations('mastery');
+  const locale = useLocale();
+  const bandLabels = useBandLabels();
 
   const sheet = useSheet(sheetId);
+  // The tree names the Theme and the competency codes; the sheet carries only
+  // ids. One request the page was already entitled to make.
+  const tree = useCurriculumTree(sheet.data?.class_id ?? null, {});
+  const sheets = useSheets(sheet.data?.class_id ?? undefined);
+  const mastery = useSheetMastery(sheetId);
   const render = useRenderSheet();
   const [jobId, setJobId] = useState<string | null>(null);
   const job = useJob(jobId);
@@ -83,10 +111,36 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
   }
 
   const s = sheet.data;
+
+  const branchThemes = (tree.data?.branches ?? []).flatMap((b) =>
+    b.competences.flatMap((c) => c.themes),
+  );
+  const homeTheme = s
+    ? (() => {
+        const th = branchThemes.find((x) => x.chapter_id === s.chapter_id);
+        return th ? (th.labels?.[locale] ?? th.labels?.fr ?? th.key) : null;
+      })()
+    : null;
+  const coverage = (tree.data?.branches ?? [])
+    .flatMap((b) => b.competences)
+    .filter((c) => s?.competency_ids.includes(c.competency_id));
+  const sourceTitle = (id: string) =>
+    (sheets.data ?? []).find((x) => x.id === id)?.title ?? id.slice(0, 8);
   const rendering = render.isPending || (job.data && job.data.status !== 'succeeded' && job.data.status !== 'failed');
 
   return (
     <div className="mx-auto max-w-5xl">
+      {/* `data-no-print`: a breadcrumb is a way back, and paper has none. */}
+      <Breadcrumb
+        className="mb-2"
+        data-no-print
+        label={a11y('breadcrumb')}
+        items={[
+          { label: tnav('sheets'), href: '/sheets', key: 'sheets' },
+          { label: s.title, key: 'sheet' },
+        ]}
+        renderLink={(item, children) => <Link href={item.href!}>{children}</Link>}
+      />
       <header className="mb-6 flex flex-wrap items-start justify-between gap-3" data-no-print>
         <div>
           <h1>{s.title}</h1>
@@ -114,6 +168,88 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
           </Button>
         </div>
       </header>
+
+      {/* What this sheet IS, in the vocabulary of the programme: what it
+          covers, what it answers, and where its corrections are. All three
+          were reachable from the API and shown nowhere. */}
+      <Panel className="mb-4 flex flex-col gap-3" data-no-print>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-label uppercase text-ink-500">{tsheet('filedUnder')}</span>
+          {homeTheme ? (
+            <Link href={`/classes/${s.class_id}/themes/${s.chapter_id}`}>
+              {homeTheme}
+            </Link>
+          ) : (
+            <span className="text-body-s text-ink-500">{tt('unfiled')}</span>
+          )}
+        </div>
+
+        {/* Derived from the items, never stored — so it cannot describe a
+            sheet that has since been edited (D71). */}
+        {coverage.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-label uppercase text-ink-500">{tsheet('covers')}</span>
+            {coverage.map((c) => (
+              <ConceptTag key={c.competency_id} code={c.code} />
+            ))}
+          </div>
+        ) : null}
+
+        {/* The principal source is entry 0 of the same set (D70). */}
+        {s.source_sheet_ids.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-label uppercase text-ink-500">{tsheet('answers')}</span>
+            {s.source_sheet_ids.map((id, index) => (
+              <span key={id} className="flex items-center gap-1">
+                <Link href={`/sheets/${id}`}>{sourceTitle(id)}</Link>
+                {index === 0 && s.source_sheet_ids.length > 1 ? (
+                  <Chip>{tsheet('principal')}</Chip>
+                ) : null}
+              </span>
+            ))}
+          </div>
+        ) : null}
+
+        {/* A corrected sheet IS the confirmed scan: there is no separate
+            entity, so this is the route from a sheet to its corrections. */}
+        {s.scans.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-label uppercase text-ink-500">
+              {tsheet('corrections')}
+            </span>
+            {s.scans.map((scan) => (
+              <Link key={scan.id} href={`/scans/${scan.id}`}>
+                {scan.confirmed_at
+                  ? scan.revised
+                    ? tsheet('scanRevised')
+                    : tsheet('scanConfirmed')
+                  : tsheet('scanPending')}
+              </Link>
+            ))}
+          </div>
+        ) : null}
+
+        {/* The class as a whole on this paper — the altitude the model was
+            missing, and the same roll-up the profile shows per pupil. */}
+        {mastery.data && mastery.data.competency_ids.length > 0 ? (
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="text-label uppercase text-ink-500">{tsheet('classBand')}</span>
+            <MasteryBandTag
+              band={mastery.data.overall.band as MasteryBand}
+              label={bandLabels[mastery.data.overall.band as MasteryBand]}
+              caption={
+                mastery.data.overall.child_count > 0 &&
+                mastery.data.overall.assessed_count < mastery.data.overall.child_count
+                  ? tm('coverage', {
+                      assessed: mastery.data.overall.assessed_count,
+                      total: mastery.data.overall.child_count,
+                    })
+                  : undefined
+              }
+            />
+          </div>
+        ) : null}
+      </Panel>
 
       {/* Always two documents. A design that produces only the first has failed. */}
       <Panel className="mb-4" data-no-print>

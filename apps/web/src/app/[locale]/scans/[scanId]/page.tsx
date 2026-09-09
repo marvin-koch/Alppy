@@ -3,6 +3,7 @@
 import {
   AiBadge,
   Badge,
+  Breadcrumb,
   Button,
   Card,
   Checkbox,
@@ -36,7 +37,9 @@ import {
   useJob,
   useScan,
   useScanStudents,
+  useSheet,
 } from '@/lib/api/queries';
+import { Link } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
@@ -86,12 +89,16 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const tErr = useTranslations('errors.code');
+  const tnav = useTranslations('nav');
+  const a11y = useTranslations('a11y');
 
   // The worker reports "page 15 of 28" on the job it was given; the upload
   // screen passes that job through so the teacher can watch it rather than
   // stare at a screen that looks finished and empty.
   const jobId = useSearchParams().get('job');
   const scan = useScan(scanId);
+  // The sheet the pile was printed from, for the breadcrumb and nothing else.
+  const sheet = useSheet(scan.data?.sheet_id ?? null);
   const job = useJob(jobId);
   const students = useScanStudents(scanId);
   const correct = useCorrectDetection(scanId);
@@ -261,6 +268,26 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
   return (
     <div className="mx-auto max-w-5xl">
+      {/* The pile came from a sheet, and "which paper is this?" is the first
+          thing a teacher asks halfway through a correction session. */}
+      <Breadcrumb
+        className="mb-2"
+        label={a11y('breadcrumb')}
+        items={[
+          { label: tnav('scans'), href: '/scans', key: 'scans' },
+          ...(sheet.data
+            ? [
+                {
+                  label: sheet.data.title,
+                  href: `/sheets/${sheet.data.id}`,
+                  key: 'sheet',
+                },
+              ]
+            : []),
+          { label: t('review'), key: 'review' },
+        ]}
+        renderLink={(item, children) => <Link href={item.href!}>{children}</Link>}
+      />
       <header className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
           <div className="flex flex-wrap items-center gap-2">

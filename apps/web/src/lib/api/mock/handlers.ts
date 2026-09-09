@@ -182,7 +182,7 @@ type Json = any;
  * lets a test tell the difference. Test-only: nothing in the app reads it.
  */
 declare global {
-  // eslint-disable-next-line no-var
+   
   var __alppyMockCalls: string[] | undefined;
 }
 
@@ -242,6 +242,12 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
 
   let m = match(path, /^\/classes\/([^/]+)\/students$/);
   if (m) return method === 'POST' ? fx.students : fx.students;
+
+  m = match(path, /^\/sheets\/([^/]+)\/mastery$/);
+  if (m && method === 'GET') return fx.sheetMastery(m[1] ?? '');
+
+  m = match(path, /^\/classes\/([^/]+)\/points$/);
+  if (m && method === 'GET') return fx.classPoints(m[1] ?? '');
 
   m = match(path, /^\/classes\/([^/]+)\/tree$/);
   if (m && method === 'GET') return fx.classTree(m[1] ?? '');

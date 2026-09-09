@@ -8,26 +8,29 @@ import type {
   AdaptiveProposeResponse,
   ChapterOut,
   ClassOut,
+  ClassPointsOut,
   ClassTreeOut,
   CompetencyAttemptsOut,
   CompetencyOut,
   DetectionOut,
   ExerciseOut,
-  ExerciseType,
   ExerciseProposal,
+  ExerciseType,
   HomeOut,
   MasteryBandKey,
   MasteryMatrixOut,
   ScanOut,
+  SheetMasteryOut,
   SheetOut,
+  SheetTakenOut,
   SourceOut,
   SourceSectionOut,
   StudentOut,
   StudentProfileOut,
   SubjectOut,
-  TimelineOut,
   TeacherOut,
-  TreeThemeOut,
+  TimelineOut,
+  TreeThemeOut
 } from '../types';
 
 const NOW = '2026-03-16T08:00:00+01:00';
@@ -61,13 +64,23 @@ const NAMES: Array<[string, string]> = [
   ['Nora', 'Quinche'], ['Samuel', 'Rossier'],
 ];
 
-export const students: StudentOut[] = NAMES.map(([first, last], index) => ({
-  id: id(100 + index),
-  uid: `7B_${String(index + 1).padStart(2, '0')}`,
-  number: index + 1,
-  first_name: first,
-  last_name: last ?? '',
-}));
+export const students: StudentOut[] = NAMES.map(([first, last], index) => {
+  // The last pupil is homed in 9A and sits in 7B as well. A fixture where
+  // everybody is a plain member could never show that a visitor keeps the
+  // identifier their own class minted (D69) — which is the one thing about
+  // enrollment a teacher has to be able to see.
+  const visiting = index === NAMES.length - 1;
+  const home = visiting ? '9A' : '7B';
+  return {
+    id: id(100 + index),
+    uid: `${home}_${String(index + 1).padStart(2, '0')}`,
+    number: index + 1,
+    first_name: first,
+    last_name: last ?? '',
+    home_class_code: home,
+    class_codes: visiting ? ['9A', '7B'] : ['7B'],
+  };
+});
 
 export const competencies: CompetencyOut[] = [
   ['MSN 32', 'Fractions et décimaux', 'Brüche und Dezimalzahlen', 'Fractions and decimals'],
@@ -502,6 +515,22 @@ export const sheet: SheetOut = {
   class_id: id(20),
   subject_id: id(10),
   chapter_id: id(300),
+  // Derived from the items, not stored — the two exercises tagged MSN 32/33.
+  competency_ids: [id(200), id(201)],
+  chapter_ids: [id(300)],
+  // A common sheet answers nothing; only a differentiated batch has a lineage.
+  source_sheet_ids: [],
+  // One pile, signed off — so the theme page can show "Corrigée".
+  scans: [
+    {
+      id: id(800),
+      status: 'confirmed',
+      revised: false,
+      confirmed_at: '2026-03-16T10:00:00+01:00',
+      reopened_at: null,
+      created_at: '2026-03-16T09:30:00+01:00',
+    },
+  ],
   title: 'Fractions — révision avant le test',
   target: 'class',
   language: 'fr',
@@ -688,7 +717,7 @@ export function studentProfile(studentId: string): StudentProfileOut {
 }
 
 /** The sheets behind the profile's history list. */
-const sheetsTaken = [
+const sheetsTaken: SheetTakenOut[] = [
   {
     sheet_id: id(600),
     title: 'Fractions — controle 1',
@@ -696,6 +725,20 @@ const sheetsTaken = [
     attempts_count: 8,
     correct_count: 6,
     scan_id: id(800),
+    chapter_id: id(300),
+    // Complete coverage, so the band carries no ratio: "2 sur 2" says nothing
+    // the band does not (DC-content-07).
+    mastery: {
+      score: 0.78,
+      band: 'ok',
+      attempts_count: 8,
+      provisional: false,
+      assessed_count: 2,
+      child_count: 2,
+      weakest_band: 'ok',
+      days_until_review: 4,
+      last_attempt_at: '2026-03-16T09:10:00+01:00',
+    },
   },
   {
     sheet_id: id(601),
@@ -704,8 +747,111 @@ const sheetsTaken = [
     attempts_count: 10,
     correct_count: 5,
     scan_id: null,
+    chapter_id: id(301),
+    // Partial: one of this sheet's two competencies was never examined, and
+    // that is exactly when the coverage has to be shown.
+    mastery: {
+      score: 0.44,
+      band: 'fading',
+      attempts_count: 10,
+      provisional: false,
+      assessed_count: 1,
+      child_count: 2,
+      weakest_band: 'fading',
+      days_until_review: 0,
+      last_attempt_at: '2026-03-02T09:10:00+01:00',
+    },
   },
 ];
+
+/** Points per pupil and per sheet, for `/results`.
+
+Deterministic like everything else here: a pupil's ratio is derived from their
+index rather than randomised, so the screenshot baselines do not move. Two
+pupils are left `null` on the second sheet on purpose — an ungraded copy is a
+dash, never a zero (D50), and a fixture that grades everybody would let that
+regression through unnoticed. */
+export function classPoints(classId: string): ClassPointsOut {
+  const sheetsOut = [
+    { sheet_id: id(600), sheet_title: 'Fractions — controle 1', possible: 8 },
+    { sheet_id: id(601), sheet_title: 'Proportionnalite — exercices', possible: 10 },
+  ].map((sheet, sheetIndex) => {
+    const perStudent = students.map((student, index) => {
+      const ungraded = sheetIndex === 1 && index % 7 === 3;
+      return {
+        student_id: student.id,
+        points_earned: ungraded ? null : ((index * 3 + sheetIndex * 2) % (sheet.possible + 1)),
+        points_possible: sheet.possible,
+      };
+    });
+    const graded = perStudent.filter((p) => p.points_earned !== null);
+    return {
+      sheet_id: sheet.sheet_id,
+      sheet_title: sheet.sheet_title,
+      average_ratio: graded.length
+        ? graded.reduce((sum, p) => sum + (p.points_earned ?? 0) / p.points_possible, 0) /
+          graded.length
+        : null,
+      students: perStudent,
+    };
+  });
+
+  return {
+    class_id: classId,
+    students: students.map((student) => {
+      const mine = sheetsOut.flatMap((s) =>
+        s.students.filter((p) => p.student_id === student.id),
+      );
+      const graded = mine.filter((p) => p.points_earned !== null);
+      return {
+        student_id: student.id,
+        points_earned: graded.length
+          ? graded.reduce((sum, p) => sum + (p.points_earned ?? 0), 0)
+          : null,
+        points_possible: mine.reduce((sum, p) => sum + p.points_possible, 0),
+      };
+    }),
+    sheets: sheetsOut,
+  };
+}
+
+/** One sheet's band per pupil, plus the class roll-up. Derived from the same
+two competencies the sheet's items carry, so the fixture cannot claim a
+coverage the sheet does not have. */
+export function sheetMastery(sheetId: string): SheetMasteryOut {
+  const covered = [id(200), id(201)];
+  const bands: MasteryBandKey[] = ['solid', 'ok', 'weak', 'fading', 'none'];
+  return {
+    sheet_id: sheetId,
+    competency_ids: covered,
+    students: students.map((student, index) => ({
+      student_id: student.id,
+      mastery: {
+        score: 0.9 - (index % 5) * 0.12,
+        band: bands[index % 5] as MasteryBandKey,
+        attempts_count: 8,
+        provisional: false,
+        assessed_count: index % 4 === 0 ? 1 : 2,
+        child_count: 2,
+        weakest_band: bands[index % 5] as MasteryBandKey,
+        days_until_review: index % 5,
+        last_attempt_at: NOW,
+      },
+    })),
+    overall: {
+      score: 0.66,
+      band: 'weak',
+      attempts_count: 144,
+      provisional: false,
+      assessed_count: 2,
+      child_count: 2,
+      weakest_band: 'fading',
+      days_until_review: 1,
+      last_attempt_at: NOW,
+    },
+    computed_at: NOW,
+  };
+}
 
 /** The drill-down behind one matrix cell. */
 export function competencyAttempts(

@@ -1,14 +1,21 @@
 'use client';
 
-import { Card, MasteryBandTag, Panel } from '@alppy/ui';
+import { Card, IconChevronRight, MasteryBandTag, Panel } from '@alppy/ui';
+
+import { Link } from '@/i18n/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { useBandLabels } from '@/lib/bands';
 import type { TreeBranchOut, Uuid } from '@/lib/api/types';
 
 interface Props {
+  /** Where the detail pages live, e.g. `/classes/{id}`. Omitted, the tree only
+   *  filters — which is all the class dashboard needed before these existed. */
+  basePath?: string;
   branch: TreeBranchOut | null;
+  competencyId: Uuid | null;
   chapterId: Uuid | null;
+  onSelectCompetence: (id: Uuid | null) => void;
   onSelectTheme: (id: Uuid | null) => void;
   isLoading?: boolean;
 }
@@ -27,9 +34,18 @@ interface Props {
  * The API leaves it out of `competences` entirely; this component only ever
  * sees its count.
  */
-export function CurriculumTree({ branch, chapterId, onSelectTheme, isLoading }: Props) {
+export function CurriculumTree({
+  basePath,
+  branch,
+  competencyId,
+  chapterId,
+  onSelectCompetence,
+  onSelectTheme,
+  isLoading,
+}: Props) {
   const tt = useTranslations('tree');
   const tm = useTranslations('mastery');
+  const tc = useTranslations('common');
   const bandLabels = useBandLabels();
   const locale = useLocale();
 
@@ -49,10 +65,23 @@ export function CurriculumTree({ branch, chapterId, onSelectTheme, isLoading }: 
     <Card className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-h3 font-display">{tt('title')}</h2>
-        <MasteryBandTag
-          band={branch.mastery.band}
-          label={tm('branchBand', { band: bandLabels[branch.mastery.band] })}
-        />
+        {competencyId || chapterId ? (
+          <button
+            type="button"
+            onClick={() => {
+              onSelectCompetence(null);
+              onSelectTheme(null);
+            }}
+            className="min-h-11 rounded-md px-2 text-body-s font-semibold text-primary-600 hover:bg-primary-050"
+          >
+            {tc('showAll')}
+          </button>
+        ) : (
+          <MasteryBandTag
+            band={branch.mastery.band}
+            label={tm('branchBand', { band: bandLabels[branch.mastery.band] })}
+          />
+        )}
       </div>
 
       {branch.competences.length === 0 ? (
@@ -64,24 +93,44 @@ export function CurriculumTree({ branch, chapterId, onSelectTheme, isLoading }: 
           {/* A subdivision of the tree card, not a card of its own
               (DC-shape-01): nesting cards here would flatten the hierarchy the
               whole component exists to show. */}
-          <header className="flex flex-col gap-1 border-b border-line pb-2">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-label text-ink-700">{competence.code}</span>
-              <span className="flex-1" />
-              <MasteryBandTag
-                band={competence.mastery.band}
-                label={bandLabels[competence.mastery.band]}
-              />
-            </div>
-            {/* The official curriculum wording, on its own line. It is a whole
-                sentence in the PER, and sharing a row with the band left both
-                truncated to nothing. */}
-            <h3
-              className="text-body-s font-bold leading-snug"
-              title={label(competence.labels, competence.code)}
+          {/* The heading NARROWS. This tree used to sit beside two chained
+              selects that did the same job from a second control, which is the
+              duplication D45 argued against for the builder. The hierarchy is
+              already drawn here, with the bands that tell you where to look —
+              so clicking it is the filter. */}
+          <header className="border-b border-line pb-2">
+            <button
+              type="button"
+              aria-pressed={competence.competency_id === competencyId}
+              onClick={() =>
+                onSelectCompetence(
+                  competence.competency_id === competencyId
+                    ? null
+                    : competence.competency_id,
+                )
+              }
+              className="flex min-h-11 w-full flex-col gap-1 rounded-md px-2 py-1 text-left transition-colors hover:bg-primary-050 aria-pressed:bg-primary-100"
             >
-              {label(competence.labels, competence.code)}
-            </h3>
+              <span className="flex items-center gap-2">
+                <span className="font-mono text-label text-ink-700">
+                  {competence.code}
+                </span>
+                <span className="flex-1" />
+                <MasteryBandTag
+                  band={competence.mastery.band}
+                  label={bandLabels[competence.mastery.band]}
+                />
+              </span>
+              {/* The official curriculum wording, on its own line. It is a whole
+                  sentence in the PER, and sharing a row with the band left both
+                  truncated to nothing. */}
+              <span
+                className="text-body-s font-bold leading-snug"
+                title={label(competence.labels, competence.code)}
+              >
+                {label(competence.labels, competence.code)}
+              </span>
+            </button>
           </header>
 
           <ul className="flex flex-col gap-1">
@@ -94,7 +143,11 @@ export function CurriculumTree({ branch, chapterId, onSelectTheme, isLoading }: 
               // put a full-width caption on every row and buried the names.
               const partial = total > 0 && assessed < total;
               return (
-                <li key={theme.chapter_id}>
+                // The filter and the detail page are two different intents, so
+                // they are two sibling controls. A link nested inside the
+                // button would be interactive content inside a button — not
+                // valid HTML, and a keyboard user could never reach it.
+                <li key={theme.chapter_id} className="flex items-center gap-1">
                   <button
                     type="button"
                     aria-current={active ? 'true' : undefined}
@@ -121,6 +174,17 @@ export function CurriculumTree({ branch, chapterId, onSelectTheme, isLoading }: 
                       </span>
                     ) : null}
                   </button>
+                  {basePath ? (
+                    <Link
+                      href={`${basePath}/themes/${theme.chapter_id}`}
+                      aria-label={tc('openNamed', {
+                        name: label(theme.labels, theme.key),
+                      })}
+                      className="flex min-h-11 w-11 shrink-0 items-center justify-center rounded-md text-ink-500 no-underline transition-colors hover:bg-primary-050 hover:text-primary-700"
+                    >
+                      <IconChevronRight size={16} aria-hidden />
+                    </Link>
+                  ) : null}
                 </li>
               );
             })}

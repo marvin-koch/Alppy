@@ -56,6 +56,7 @@ import type {
   SourceOut,
   SourceSectionOut,
   StudentOut,
+  SheetMasteryOut,
   StudentProfileOut,
   StudentSheetOut,
   SubjectOut,
@@ -114,6 +115,7 @@ export const queryKeys = {
     ] as const,
   classTree: (id: Uuid, options: { subjectId?: Uuid; studentId?: Uuid } = {}) =>
     ['classes', id, 'tree', options.subjectId ?? null, options.studentId ?? null] as const,
+  sheetMastery: (sheetId: Uuid) => ['sheet-mastery', sheetId] as const,
   studentMastery: (id: Uuid) => ['students', id, 'mastery'] as const,
   competencyAttempts: (studentId: Uuid, competencyId: Uuid) =>
     ['students', studentId, 'mastery', 'attempts', competencyId] as const,
@@ -346,6 +348,40 @@ export function useStudentMastery(studentId: Uuid | null): UseQueryResult<Studen
     queryKey: queryKeys.studentMastery(studentId ?? ''),
     queryFn: () => api.getStudentMastery(studentId as Uuid),
     enabled: Boolean(studentId),
+  });
+}
+
+export function useSheetMastery(sheetId: Uuid | null): UseQueryResult<SheetMasteryOut> {
+  return useQuery({
+    queryKey: queryKeys.sheetMastery(sheetId ?? ''),
+    queryFn: () => api.getSheetMastery(sheetId as Uuid),
+    enabled: Boolean(sheetId),
+  });
+}
+
+/** Seat a pupil in another class. Invalidates every roster-shaped cache: the
+ *  matrix, the tree and the home counts all read the enrolled set now. */
+export function useEnrollStudent(classId: Uuid | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: Uuid) => api.enrollStudent(classId as Uuid, studentId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
+      void client.invalidateQueries({ queryKey: ['classes'] });
+      void client.invalidateQueries({ queryKey: queryKeys.home });
+    },
+  });
+}
+
+export function useUnenrollStudent(classId: Uuid | null) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (studentId: Uuid) => api.unenrollStudent(classId as Uuid, studentId),
+    onSuccess: () => {
+      void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
+      void client.invalidateQueries({ queryKey: ['classes'] });
+      void client.invalidateQueries({ queryKey: queryKeys.home });
+    },
   });
 }
 

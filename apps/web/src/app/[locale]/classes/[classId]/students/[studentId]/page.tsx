@@ -1,9 +1,12 @@
 'use client';
 
 import {
+  Breadcrumb,
   Button,
   Card,
+  Chip,
   ConceptTag,
+  MasteryBandTag,
   EmptyState,
   ErrorState,
   IlloCurve,
@@ -14,10 +17,11 @@ import {
   type MasteryBand,
 } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { use } from 'react';
+import { use, useMemo } from 'react';
 
 import { Link } from '@/i18n/navigation';
-import { useCurriculumTree, useStudentMastery } from '@/lib/api/queries';
+import { useClass, useCurriculumTree, useStudentMastery } from '@/lib/api/queries';
+import type { SheetTakenOut, Uuid } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
 
@@ -37,17 +41,55 @@ export default function StudentPage({
   const { classId, studentId } = use(params);
   const t = useTranslations('student');
   const tm = useTranslations('mastery');
+  const tt = useTranslations('tree');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const a11y = useTranslations('a11y');
+  const tstud = useTranslations('students');
   const locale = useLocale();
   const fmt = useFormatters();
   const bandLabels = useBandLabels();
 
   const { data, isLoading, isError, refetch } = useStudentMastery(studentId);
+  const klass = useClass(classId as Uuid);
   // The same tree the class dashboard shows, narrowed to this child, so the
   // headings carry their own bands rather than the class's.
   const tree = useCurriculumTree(classId, { studentId });
+
+
+  // Group the history by the Theme each sheet is filed under. The tree is
+  // already fetched for the gaps/strengths headings, so the labels cost
+  // nothing extra; a sheet whose Theme is not in this Branch — or which sits
+  // in `unfiled` — falls into one honest "other" group rather than being
+  // hidden or given a guessed heading.
+  const sheetGroups = useMemo(() => {
+    const themeLabel = new Map<string, string>();
+    for (const b of tree.data?.branches ?? []) {
+      for (const competence of b.competences) {
+        for (const theme of competence.themes) {
+          themeLabel.set(
+            theme.chapter_id,
+            theme.labels?.[locale] ?? theme.labels?.fr ?? theme.key,
+          );
+        }
+      }
+    }
+    const order: string[] = [];
+    const bucket = new Map<string, SheetTakenOut[]>();
+    for (const sheet of data?.sheets ?? []) {
+      const key = sheet.chapter_id ?? 'unfiled';
+      if (!bucket.has(key)) {
+        bucket.set(key, []);
+        order.push(key);
+      }
+      bucket.get(key)?.push(sheet);
+    }
+    return order.map((key) => ({
+      key,
+      label: themeLabel.get(key) ?? tt('unfiled'),
+      sheets: bucket.get(key) ?? [],
+    }));
+  }, [data?.sheets, tree.data, locale, tt]);
 
   if (isLoading || tree.isLoading) return <LoadingState shape="profile" label={tc('loading')} />;
   if (isError || !data) {
@@ -166,9 +208,30 @@ export default function StudentPage({
 
   return (
     <div className="mx-auto max-w-4xl">
-      <p className="mb-3 text-body-s">
-        <Link href={`/classes/${classId}`}>{t('backToClass')}</Link>
-      </p>
+      {/* A route back up, not just back one: from a pupil you often want the
+          class, and from the class the roster. A single "retour" link could
+          only ever offer the nearest of those. */}
+      <Breadcrumb
+        className="mb-3"
+        label={a11y('breadcrumb')}
+        items={[
+          {
+            label: klass.data?.code ?? '',
+            href: `/classes/${classId}`,
+            key: 'class',
+          },
+          {
+            label: tstud('title'),
+            href: `/classes/${classId}/students`,
+            key: 'roster',
+          },
+          {
+            label: `${data.student.first_name} ${data.student.last_name}`.trim(),
+            key: 'student',
+          },
+        ]}
+        renderLink={(item, children) => <Link href={item.href!}>{children}</Link>}
+      />
 
       <header className="mb-6 flex flex-wrap items-center gap-4">
         {/* The ring carries the band, not the action violet: it is a reading of
@@ -194,9 +257,29 @@ export default function StudentPage({
             {data.student.first_name} {data.student.last_name}
           </h1>
           {/* The uid is what appears on paper and in every prompt; the teacher
-              needs to be able to match a sheet to this page. */}
-          <p className="mono text-body-s text-ink-500" data-numeric>
-            {data.student.uid}
+              needs to be able to match a sheet to this page.
+
+              The class chips sit beside it and only when there is more than
+              one: a pupil who sits in a single class does not need to be told
+              which. When there ARE two, the first is the home — the class that
+              minted this identifier, which is why a 9A code can head a 7B
+              roster (D69). */}
+          <p className="flex flex-wrap items-center gap-2">
+            <span className="font-mono text-body-s text-ink-500" data-numeric>
+              {data.student.uid}
+            </span>
+            {data.student.class_codes.length > 1
+              ? data.student.class_codes.map((code) => (
+                  <Chip
+                    key={code}
+                    variant={code === data.student.home_class_code ? 'primary' : 'neutral'}
+                  >
+                    {code === data.student.home_class_code
+                      ? tstud('homeClass', { code })
+                      : code}
+                  </Chip>
+                ))
+              : null}
           </p>
         </div>
       </header>
@@ -255,45 +338,84 @@ export default function StudentPage({
             </Card>
           ) : null}
 
-          {/* Which papers produced all this. Every row is a route back to the
-              sheet and, when there is one, to the scan it was read from. */}
+          {/* Which papers produced all this, grouped by the Theme each sheet
+              is FILED under — the teacher's own filing, never one inferred
+              from the items (I-sheets-11). A term reads as three or four
+              teaching units instead of a flat list of twelve papers.
+
+              Every row carries the pupil's band ON THAT SHEET: a roll-up of
+              the sheet's competencies, not a mean of its items
+              (I-mastery-11) — and the mark beside it stays a mark, because a
+              barème and a band are two different quantities. */}
           <Card className="mt-4">
             <h2 className="mb-3 text-h3">{t('history')}</h2>
             {data.sheets.length === 0 ? (
               <p className="text-body-s text-ink-500">{t('noSheets')}</p>
             ) : (
-              <ul className="flex list-none flex-col gap-2 p-0">
-                {data.sheets.map((sheet) => (
-                  <li
-                    key={sheet.sheet_id}
-                    className="flex flex-wrap items-baseline justify-between gap-2 border-b border-line pb-2 last:border-0"
-                  >
-                    <span className="flex flex-wrap items-baseline gap-2">
-                      {/* The pupil's OWN copy, not the class-wide sheet: from a
-                          profile, "this sheet" means the paper they sat. */}
-                      <Link
-                        href={`/classes/${classId}/students/${studentId}/sheets/${sheet.sheet_id}`}
-                      >
-                        {sheet.title}
-                      </Link>
-                      <time className="text-body-s text-ink-500" data-numeric>
-                        {fmt.date(sheet.answered_at)}
-                      </time>
-                    </span>
-                    <span className="flex flex-wrap items-baseline gap-3 text-body-s text-ink-500">
-                      <span data-numeric>
-                        {t('sheetScore', {
-                          correct: sheet.correct_count,
-                          total: sheet.attempts_count,
-                        })}
+              <div className="flex flex-col gap-5">
+                {sheetGroups.map((group) => (
+                  <section key={group.key}>
+                    <h3 className="mb-2 flex flex-wrap items-baseline gap-2 text-body-s font-bold text-ink-700">
+                      {group.label}
+                      <span className="font-normal text-ink-500">
+                        {tt('sheetCount', { count: group.sheets.length })}
                       </span>
-                      {sheet.scan_id ? (
-                        <Link href={`/scans/${sheet.scan_id}`}>{t('openScan')}</Link>
-                      ) : null}
-                    </span>
-                  </li>
+                    </h3>
+                    <ul className="flex list-none flex-col gap-2 p-0">
+                      {group.sheets.map((sheet) => (
+                        <li
+                          key={sheet.sheet_id}
+                          className="flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2 last:border-0"
+                        >
+                          <span className="flex min-w-0 flex-col gap-0.5">
+                            {/* The pupil's OWN copy, not the class-wide sheet:
+                                from a profile, "this sheet" means the paper
+                                they sat. */}
+                            <Link
+                              href={`/classes/${classId}/students/${studentId}/sheets/${sheet.sheet_id}`}
+                            >
+                              {sheet.title}
+                            </Link>
+                            <span className="flex flex-wrap items-baseline gap-3 text-body-s text-ink-500">
+                              <time data-numeric>{fmt.date(sheet.answered_at)}</time>
+                              <span data-numeric>
+                                {t('sheetScore', {
+                                  correct: sheet.correct_count,
+                                  total: sheet.attempts_count,
+                                })}
+                              </span>
+                              {sheet.scan_id ? (
+                                <Link href={`/scans/${sheet.scan_id}`}>
+                                  {t('openScan')}
+                                </Link>
+                              ) : (
+                                <span>{t('notScanned')}</span>
+                              )}
+                            </span>
+                          </span>
+                          {sheet.mastery ? (
+                            <MasteryBandTag
+                              band={sheet.mastery.band as MasteryBand}
+                              label={bandLabels[sheet.mastery.band as MasteryBand]}
+                              // Coverage only when it is INCOMPLETE: "2 sur 2"
+                              // says nothing the band does not (DC-content-07).
+                              caption={
+                                sheet.mastery.child_count > 0 &&
+                                sheet.mastery.assessed_count < sheet.mastery.child_count
+                                  ? tm('coverage', {
+                                      assessed: sheet.mastery.assessed_count,
+                                      total: sheet.mastery.child_count,
+                                    })
+                                  : undefined
+                              }
+                            />
+                          ) : null}
+                        </li>
+                      ))}
+                    </ul>
+                  </section>
                 ))}
-              </ul>
+              </div>
             )}
           </Card>
         </>
