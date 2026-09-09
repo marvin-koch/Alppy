@@ -33,13 +33,16 @@ def class_points(
     scope: ScopeDep,
     db: DbDep,
     subject_id: Annotated[uuid.UUID | None, Query()] = None,
+    chapter_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> ClassPointsOut:
     """What this class scored, per student and per sheet.
 
     ``points_earned`` is null, never 0, for a student with nothing graded yet —
     a term with two of five sheets marked must not read as three failures.
     """
-    report = sheet_svc.class_points_totals(db, scope, class_id, subject_id=subject_id)
+    report = sheet_svc.class_points_totals(
+        db, scope, class_id, subject_id=subject_id, chapter_id=chapter_id
+    )
     return class_points_out(class_id, report)
 
 

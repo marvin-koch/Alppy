@@ -511,3 +511,51 @@ def test_a_manual_exercise_cannot_borrow_another_school_s_chapter(
         },
     )
     assert response.status_code == 404, response.text
+
+
+# --- the untagged bucket ---------------------------------------------------
+def test_the_untagged_bucket_is_selectable_and_distinct_from_no_filter(
+    client, db: Session, tenant: Tenant, book: tuple[Source, list[SourceSection]]
+) -> None:
+    """`chapter_id=none` is what keeps every exercise reachable.
+
+    Theme is the builder's root now, and `Exercise.chapter_id` is inferred and
+    null on a large minority of a real textbook's rows. Without a selector for
+    those rows they would have no way to be listed at all — the exact failure
+    ExercisePicker's docstring used to prevent by having no theme filter.
+    """
+    from test_api_fixtures import make_chapter
+
+    source, sections = book
+    chapter = make_chapter(db, tenant, key="fractions", competencies=[tenant.competency])
+
+    tagged = make_exercise(db, tenant, statement="Une fraction bien rangee.")
+    tagged.source_id = source.id
+    tagged.source_section_id = sections[0].id
+    tagged.chapter_id = chapter.id
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    base = f"/api/v1/sources/{source.id}/exercises"
+
+    only_tagged = client.get(f"{base}?chapter_id={chapter.id}").json()
+    assert [i["id"] for i in only_tagged["items"]] == [str(tagged.id)]
+
+    untagged = client.get(f"{base}?chapter_id=none&limit=100").json()
+    ids = {i["id"] for i in untagged["items"]}
+    assert str(tagged.id) not in ids
+    # The 25 exercises the fixture never tagged are exactly what this returns.
+    assert untagged["total"] == 25
+
+    # And absence of the parameter is a THIRD answer: everything.
+    everything = client.get(f"{base}?limit=100").json()
+    assert everything["total"] == 26
+
+
+def test_a_chapter_id_that_is_neither_a_uuid_nor_the_sentinel_is_refused(
+    client, db: Session, tenant: Tenant, book: tuple[Source, list[SourceSection]]
+) -> None:
+    source, _sections = book
+    login(client, tenant.teacher.email)
+    response = client.get(f"/api/v1/sources/{source.id}/exercises?chapter_id=fractions")
+    assert response.status_code == 422

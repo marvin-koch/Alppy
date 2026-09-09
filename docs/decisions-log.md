@@ -964,3 +964,183 @@ not "À valider", which asked the teacher to act on something that did not exist
 And the number is stated once. The ring carries the percentage; the words carry the
 activity. Saying "42" in both was two answers to one question.
 
+
+### D56 · A Theme hangs from ONE Competence, chosen per school, and still tags many
+
+`chapter_competency` is a many-to-many on purpose: it is what lets the chapter
+"Pythagore" carry `MSN 31.2`, `MSN 31.1`, `MA.2.A.2` and `MA.2.C.1` at once, so a
+teacher in Sion and a teacher in Chur can share a chapter while each reports against
+their own official text (`docs/curriculum.md` §3). That design stays.
+
+But a many-to-many cannot say where a chapter *sits* in a tree. Navigation and
+roll-up both need exactly one parent per node, and picking "the first tagged
+competency" would have made the tree depend on JSON array order.
+
+So `Chapter.primary_competency_id` is a new, nullable FK: the single canonical
+parent. Because `Chapter` is already school-scoped — every school gets its own copy
+of the seeded chapters — "per school, per curriculum" needs one column, not two:
+`chapters.json` carries `primary_competency_code` keyed by curriculum, and the seed
+loader resolves whichever one matches `School.default_curriculum`. A PER school files
+Pythagore under `MSN 31.2`; an LP21 school files the same chapter under `MA.2.A.2`;
+both still credit all four codes for mastery.
+
+The primary must be one of the chapter's own `competency_codes`, and the loader
+raises if it is not — otherwise a chapter could sit in a branch it does not teach.
+
+Cost: one more field to keep in step in the seed data, and a second concept
+("primary" vs "tagged") that a reader has to hold. The alternative was reversing the
+cross-curriculum design outright, which would have split the seven seeded chapters
+into fourteen and made a shared chapter impossible.
+
+Revisit if a school ever needs to teach both curricula at once, which would make
+`default_curriculum` the wrong place to resolve from.
+
+### D57 · A class declares the Branches it studies; it no longer infers them
+
+`class_service.subject_ids_for_class` was `SELECT DISTINCT sheet.subject_id`. That is
+circular: the Branch level of the navigation only existed once a sheet had been built
+inside one, so a brand-new class opened onto nothing and the teacher had no way to say
+"7B does maths, French and German" except by making a sheet.
+
+`class_subject` (class_id, subject_id, position) makes it a fact. It is backfilled from
+exactly the query it replaces, ordered by `MIN(sheet.created_at)` — first-use order,
+which is what the column means, not alphabetical.
+
+Nothing new is asked of the teacher: `sheet_service.create_sheet` calls
+`class_service.declare_subject`, which is the one place a class and a subject first
+meet. So the table stays populated the way the derived query stayed correct, and the
+insert is `ON CONFLICT DO NOTHING` so two sheets created at once in a new subject
+cannot race into a duplicate-key error on an ordinary action.
+
+Rejected for this pass: a teacher-facing endpoint to add and reorder branches. It is a
+real feature with its own review; `declare_subject` alone restores current behaviour and
+removes the circularity.
+
+### D58 · A rolled-up band is an evidence-weighted mean, and it says its own coverage
+
+`docs/mastery-model.md` §6 said plainly that competencies were treated as independent —
+there was no aggregation above `(student, competency)` at all. A Branch → Competence →
+Theme navigation needs a number at every level, so `roll_up_mastery` is new work.
+
+**Rule: the evidence-weighted mean of the children's scores, weighted by
+`effective_n`.** Two alternatives were rejected:
+
+*Worst-band-wins* would make every Theme read as the worst thing in it. With three or
+four competencies per chapter that is "amber or red, always" — a constant, not a signal.
+`_weakest_first` sorts *students* by their weakest cell; that is a triage order, not a
+claim that a group's mastery equals its minimum.
+
+*Plain mean* would let a competency backed by one lucky guess pull the aggregate as hard
+as one backed by twenty confirmed attempts. `compute_mastery` already refuses to do that
+a level down — it is what `effective_n` and `MIN_EVIDENCE` are for.
+
+A never-assessed child has `effective_n == 0` and contributes no weight, so "not yet seen
+is a band, not a zero" holds one level up unchanged. When every child is unassessed the
+roll-up is `NONE`, through the same `band_for(has_attempts=False)` path the leaf uses.
+
+Rejected early, and worth recording because it is the obvious idea: **pooling the raw
+attempts** of every competency in a Theme and running `compute_mastery` once. It is
+simpler and it is wrong — one recency would be derived from the mixture, so a competency
+practised last week would launder the staleness of one last touched in June, in a model
+whose whole purpose is fading. Pooling across *students* is fine and is what
+`mastery_service.pool_by_competency` does; pooling across competencies is not.
+
+Two costs, documented rather than hidden. `score == accuracy × recency` holds at a leaf
+and **not** at a roll-up: `score` is the mean of already-decayed scores, and
+`accuracy`/`recency` are means kept for display, so re-multiplying them would decay the
+same evidence twice. And `days_until_review` is the *earliest* of the assessed children's
+rather than a re-derivation — a weighted mix of differently-aged decay curves has no
+closed form worth shipping, and "whichever competency comes due first" is the more useful
+thing to act on anyway.
+
+Because an aggregate band can hide its own coverage — green over one assessed competency
+and green over three look identical — `TreeMasteryOut` also carries `assessed_count`,
+`child_count` and `weakest_band`, and the UI shows them beside the band (DC-colour-08 at
+a level where a bare colour is most tempting).
+
+### D59 · The builder is rooted on the Theme, and "Sans thème" is what keeps that honest
+
+`ExercisePicker`'s docstring promised a property — **nothing is unreachable** — and kept
+it by *not* offering a curriculum-theme filter at all: `Exercise.chapter_id` is inferred
+(`ingest.pipeline._chapter_for`) and null on a large minority of a real textbook's rows,
+so filtering on it hid exercises without saying so.
+
+The hierarchy makes Theme the builder's root, which reverses that. The property does not
+go away; it changes from being guaranteed by omission to being guaranteed by design:
+
+- `ThemePicker` pins a **counted "Sans thème (N)" row at the root of its tree**, sibling
+  to every Competence rather than nested inside one, **rendered even when N is zero**.
+- Choosing it sends `chapter_id=none` — a real sentinel, distinct from the parameter
+  being absent. Absent means "no theme filter"; `none` means "the untagged ones". Without
+  that third answer those rows would have no selector at all.
+- A sheet can never be *filed* under it. It is a corpus question, not a filing.
+
+If that row is removed, or hidden when its count is zero, untagged exercises silently
+become unreachable again — which is the exact regression the original decision existed to
+prevent. It has a constraint id (`DC-content-06`) for that reason.
+
+Note this pseudo-node is **not** the `unfiled` Chapter (D60): that one is where a sheet
+nobody has filed is stored; this one is a filter over exercises. Two similar names, two
+different objects.
+
+### D60 · Every sheet has a home Theme, and "unfiled" is the honest one
+
+`Sheet.chapter_id` is NOT NULL: a sheet's place in the tree is a fact, not something each
+screen re-derives from its items.
+
+Existing sheets have nothing to backfill from. The tempting source — a majority vote over
+`sheet_item → exercise.chapter_id` — is itself the unreliable inference above, and
+promoting a second-hand guess into a teacher-facing filing the teacher never confirmed is
+exactly what `Exercise.approved_at` and `MisconceptionNote.approved_at` exist to prevent
+elsewhere. So every existing sheet moves to a per-subject `unfiled` chapter, which says
+the true thing, and the teacher re-files it when they care (`PATCH /sheets/{id}` gained
+`chapter_id` for that, and it is the path that matters most the week this ships).
+
+`unfiled` is identified by its `key` but **excluded by `primary_competency_id IS NULL`**.
+Those are deliberately two different tests: a school may relabel the bucket, and a rename
+must not readmit unfiled sheets into a mastery number.
+
+It is created eagerly by migration 0016 and by the reference seed, and **lazily** by
+`chapter_service.ensure_unfiled_chapter` when a subject somehow has none. The laziness is
+the point: a missing structural row would otherwise surface as a 422 on an ordinary "new
+sheet", which the teacher can neither understand nor fix. A missing infrastructure row is
+ours to repair, not theirs to report.
+
+A differentiated batch inherits its source sheet's Theme rather than falling back to
+`unfiled`: the reprise on fractions belongs next to the sheet whose results justified it,
+and a Theme inferred from its generated items would scatter one teaching unit across the
+tree.
+
+### D61 · `/adaptive/batch` validates `source_sheet_id`, and a chapter key is unique per subject
+
+Two corrections found while reviewing D56–D60, both worth recording because each
+changes an observable behaviour.
+
+**`source_sheet_id` is now resolved through `sheet_service.get_sheet`**, which carries
+the school *and* ownership check (D23). `/adaptive/batch` performs none of its own —
+unlike `/adaptive/feedback`, which has called `get_sheet` all along. Before this the
+id was filtered on `school_id` alone when inheriting the parent's Theme, and not at
+all when stored on `derived_from_id`; `sheets/render.py` reads that column and prints
+the source sheet's title onto the feedback page, so a colleague's — or another
+school's — sheet title could reach paper it has no business being on. A sheet the
+caller cannot see is now a 404, where it used to be silently accepted.
+
+**`uq_chapter_key` on `(school_id, subject_id, key)`.** `chapter_service.
+ensure_unfiled_chapter` is called on the first sheet ever created in a subject, which
+is exactly when the bucket does not exist yet; two of those at once both saw nothing
+and both inserted, and the subject's unfiled sheets then split silently between two
+buckets with no error. The constraint makes the `ON CONFLICT DO NOTHING` mean
+something.
+
+`POST /chapters` never checked for a duplicate key, so existing data may violate the
+new constraint. Migration 0016 **renames** the later rows (`fractions` → `fractions-2`)
+rather than deleting them: a teacher's chapter, and whatever `Exercise.chapter_id`
+points at it, is not a migration's to throw away. The endpoint now returns 409 rather
+than letting the constraint surface as a 500.
+
+Also noted and deliberately not "fixed": two subjects declared for the same class in
+the same instant can be assigned the same `class_subject.position`, because the
+primary key is `(class_id, subject_id)` and `ON CONFLICT` cannot serialise that. Rather
+than locking a row on an ordinary sheet creation, `subject_ids_for_class` breaks the
+tie on `subject_id`, so the branch order is arbitrary in that rare case but never
+wobbles between requests.

@@ -128,6 +128,78 @@ export interface ChapterOut {
   labels: LocalisedText;
   position: number;
   competency_ids: Uuid[];
+  /**
+   * The single canonical Competence this Theme hangs from in the navigation
+   * tree. Null ONLY on the per-subject `unfiled` bucket — which is what keeps
+   * that bucket out of the tree and out of every roll-up.
+   */
+  primary_competency_id: Uuid | null;
+}
+
+/* --------------------------------------------------- the curriculum tree -- */
+/**
+ * A rolled-up band, from `roll_up_mastery`. The SAME five bands as a matrix
+ * cell, so a Theme or a Branch needs no second colour vocabulary — render it
+ * with the shipped tokens, glyph and written label exactly like a leaf.
+ *
+ * `score` is a weighted mean of the children's already-decayed scores, so it
+ * is NOT `accuracy * recency` at this level, and `days_until_review` is the
+ * earliest of the children's rather than a re-derivation. Both are documented
+ * in docs/mastery-model.md §6.
+ */
+export interface TreeMasteryOut {
+  score: number;
+  band: MasteryBandKey;
+  attempts_count: number;
+  provisional: boolean;
+  /** Assessed children over total — the coverage behind the band. */
+  assessed_count: number;
+  child_count: number;
+  /** The worst band among the assessed children, or null when none were. */
+  weakest_band: MasteryBandKey | null;
+  days_until_review: number | null;
+  last_attempt_at: string | null;
+}
+
+export interface TreeThemeOut {
+  chapter_id: Uuid;
+  key: string;
+  labels: LocalisedText;
+  position: number;
+  sheet_count: number;
+  /** Every competency this Theme credits, for grouping a competency list. */
+  competency_ids: Uuid[];
+  mastery: TreeMasteryOut;
+}
+
+export interface TreeCompetenceOut {
+  competency_id: Uuid;
+  code: string;
+  labels: LocalisedText;
+  mastery: TreeMasteryOut;
+  themes: TreeThemeOut[];
+}
+
+export interface TreeBranchOut {
+  subject_id: Uuid;
+  subject_key: string;
+  labels: LocalisedText;
+  mastery: TreeMasteryOut;
+  competences: TreeCompetenceOut[];
+  /** Sheets in the `unfiled` bucket. Never rolled into `mastery` above. */
+  unfiled_sheet_count: number;
+  /**
+   * Exercises in this Branch with no chapter at all — a different thing from
+   * `unfiled_sheet_count`. The builder shows this as a counted "Sans thème"
+   * bucket so no exercise becomes unreachable behind the Theme filter.
+   */
+  unfiled_exercise_count: number;
+}
+
+export interface ClassTreeOut {
+  class_id: Uuid;
+  branches: TreeBranchOut[];
+  computed_at: string;
 }
 
 /* ------------------------------------------------------------ sources -- */
@@ -250,7 +322,13 @@ export interface ExerciseListOut {
 
 export interface ExerciseQuery {
   section_id?: Uuid;
-  chapter_id?: Uuid;
+  /**
+   * A Theme, or the literal `'none'` for exercises the book left untagged.
+   * The sentinel is what keeps ExercisePicker's "nothing is unreachable"
+   * promise true now that Theme is the builder's root: absence of the
+   * parameter means "no theme filter", `'none'` means "the untagged ones".
+   */
+  chapter_id?: Uuid | 'none';
   type?: ExerciseType;
   difficulty?: number;
   q?: string;
@@ -319,6 +397,9 @@ export interface SheetItemIn {
 export interface SheetCreate {
   class_id: Uuid;
   subject_id: Uuid;
+  /** The Theme to file it under. Omitted means "not filed yet" — the API
+   *  falls back to the subject's `unfiled` bucket rather than guessing. */
+  chapter_id?: Uuid | null;
   title: string;
   language: ApiLocale;
   target: SheetTarget;
@@ -331,6 +412,8 @@ export interface SheetCreate {
 
 export interface SheetUpdate {
   title?: string;
+  /** Re-filing a sheet under the right Theme. */
+  chapter_id?: Uuid;
   items?: SheetItemIn[];
   default_points_correct?: number;
   default_points_penalty?: number;
@@ -470,6 +553,8 @@ export interface SheetOut {
   id: Uuid;
   class_id: Uuid;
   subject_id: Uuid;
+  /** Required: every sheet has a home Theme, even if it is `unfiled`. */
+  chapter_id: Uuid;
   title: string;
   target: SheetTarget;
   language: string;

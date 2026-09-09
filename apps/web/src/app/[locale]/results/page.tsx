@@ -19,6 +19,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { useClassPoints, useStudents } from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
 import { aggregatePoints, pointsRatio, type PointsSummary } from '@/lib/points';
+import { CompetenceThemeFilter } from '@/components/CompetenceThemeFilter';
 import { useScope } from '@/lib/scope';
 
 /** The synthetic right-hand column: everything so far, added up. */
@@ -41,10 +42,14 @@ export default function ResultsPage() {
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const fmt = useFormatters();
-  const { classId, subjectId, currentClass } = useScope();
+  const { classId, subjectId, currentClass, competencyId, chapterId, setCompetency, setChapter } =
+    useScope();
   const router = useRouter();
 
-  const points = useClassPoints(classId, subjectId ? { subjectId } : {});
+  const points = useClassPoints(classId, {
+    ...(subjectId ? { subjectId } : {}),
+    ...(chapterId ? { chapterId } : {}),
+  });
   const students = useStudents(classId);
 
   const byStudent = useMemo(() => {
@@ -139,6 +144,19 @@ export default function ResultsPage() {
           </p>
         ) : null}
       </header>
+
+      {/* Marks, narrowed to a part of the programme. Card, not Panel: it sits
+          directly on the page canvas, beside the matrix rather than inside it. */}
+      <Card className="flex flex-wrap items-end gap-4">
+        <CompetenceThemeFilter
+          classId={classId}
+          subjectId={subjectId ?? undefined}
+          competencyId={competencyId}
+          chapterId={chapterId}
+          onCompetencyChange={setCompetency}
+          onChapterChange={setChapter}
+        />
+      </Card>
 
       {sheets.length === 0 ? (
         <EmptyState

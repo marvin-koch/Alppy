@@ -73,10 +73,11 @@ def list_sheets(
     db: DbDep,
     storage: StorageDep,
     class_id: Annotated[uuid.UUID | None, Query()] = None,
+    subject_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[SheetOut]:
     return [
         sheet_out(s, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, s))
-        for s in svc.list_sheets(db, scope, class_id=class_id)
+        for s in svc.list_sheets(db, scope, class_id=class_id, subject_id=subject_id)
     ]
 
 

@@ -69,6 +69,7 @@ Chromium over print markup to produce two PDFs and one row per measured answer b
 | I-sheets-07 | An answer box is cropped **where it printed** — from `AnswerBoxPlacement` — never recomputed from `SheetItem`. | `sheets/render.py::_persist_answer_box_placements`, `services/scan_processing.py::_placements_by_uid` | An edit after printing would move what the scanner crops | Crops drift; one student's answers read against another item |
 | I-sheets-08 | A crop **never leaves the statement region** (`ITEMS_TOP_MM..ITEMS_BOTTOM_MM`). | `sheets/render.py::_check_box_inside_statement_region` | Above that line sits the header, which carries the UID | A student identifier reaches a model provider inside an image |
 | I-sheets-09 | An item that does not fit is **refused, not clipped**; a box that does not fit **follows on the next page** at its full height. The statement never shrinks. | `sheets/pagination.py::ItemTooTallError`, `continuation_height_mm` | Paper does not scroll, and student-facing text has a floor | A statement runs off the bottom edge, unreadably |
+| I-sheets-11 | Every sheet has a **home Theme** (`chapter_id`, NOT NULL). Omitting it means `unfiled`; it is never inferred from the items. | `sheet_service::_resolve_chapter` | `Exercise.chapter_id` is itself a guess, and a guess promoted to a filing is one the teacher never confirmed | A sheet is quietly filed under a chapter its teacher never chose, and the tree says so with confidence |
 | I-sheets-10 | The render is **deterministic**: copies ordered by UID, no clock in the markup, page numbers derived. | `sheets/render.py::build_sheet_data`, `_stamp`, `html.physical_pages` | A re-render must reproduce the pile that was printed | Two renders of one sheet produce different papers |
 
 > Note on I-sheets-10: the PDF *bytes* differ between runs — Chromium stamps a
@@ -151,6 +152,7 @@ error naming exactly which items are waiting for a decision.
 | I-sheets-07 | `test_answer_box_placement.py::test_rendering_a_sheet_records_one_placement_per_box_per_copy`, `test_answer_box_crop.py::test_the_crop_is_cut_from_the_registered_page_even_off_a_phone_photo` |
 | I-sheets-08 | `test_answer_box_crop.py::test_the_rectangle_sits_inside_the_statement_region`, `::test_a_box_off_the_page_is_refused` |
 | I-sheets-09 | `test_sheet_output.py::test_a_statement_taller_than_the_page_is_refused_not_clipped`, `::test_the_box_never_shrinks_the_picture_it_moves_to_the_next_page`, `::test_the_tallest_allowed_box_still_fits_a_page_when_carried_over` |
+| I-sheets-11 | `test_api_sheets.py::test_a_sheet_created_without_a_theme_lands_in_unfiled`, `::test_a_theme_from_another_subject_is_refused`, `::test_a_sheet_can_be_refiled_after_the_fact` |
 | I-sheets-10 | `test_sheet_output.py::test_preview_returns_the_real_printed_document` (the preview and the PDF are one document), `test_api_sheets.py::test_patching_a_sheet_replaces_items_and_invalidates_the_render`. Determinism itself is asserted against the HTML, never the PDF bytes |
 
 ```bash

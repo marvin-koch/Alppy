@@ -10,6 +10,7 @@ import {
 } from '@tanstack/react-query';
 import * as api from './endpoints';
 import type {
+  ClassTreeOut,
   AdaptiveApproveRequest,
   AdaptiveApproveResponse,
   AdaptiveBatchRequest,
@@ -96,8 +97,8 @@ export const queryKeys = {
   students: (id: Uuid) => ['classes', id, 'students'] as const,
   // The prefix ['classes', id, 'mastery'] is what confirming a scan
   // invalidates, so every filter/sort variant has to hang off it.
-  classPoints: (id: Uuid, options: { subjectId?: Uuid } = {}) =>
-    ['classes', id, 'points', options.subjectId ?? null] as const,
+  classPoints: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid } = {}) =>
+    ['classes', id, 'points', options.subjectId ?? null, options.chapterId ?? null] as const,
   sheetConfidence: (id: Uuid) => ['sheets', id, 'confidence'] as const,
   studentSheet: (studentId: Uuid, sheetId: Uuid) =>
     ['students', studentId, 'sheets', sheetId] as const,
@@ -110,6 +111,8 @@ export const queryKeys = {
       options.chapterId ?? null,
       options.sort ?? 'roster',
     ] as const,
+  classTree: (id: Uuid, options: { subjectId?: Uuid; studentId?: Uuid } = {}) =>
+    ['classes', id, 'tree', options.subjectId ?? null, options.studentId ?? null] as const,
   studentMastery: (id: Uuid) => ['students', id, 'mastery'] as const,
   competencyAttempts: (studentId: Uuid, competencyId: Uuid) =>
     ['students', studentId, 'mastery', 'attempts', competencyId] as const,
@@ -135,7 +138,8 @@ export const queryKeys = {
       query.offset ?? 0,
       query.limit ?? DEFAULT_PAGE_SIZE,
     ] as const,
-  sheets: (classId?: Uuid) => ['sheets', classId ?? null] as const,
+  sheets: (classId?: Uuid, subjectId?: Uuid) =>
+    ['sheets', classId ?? null, subjectId ?? null] as const,
   scans: (sheetId?: Uuid) => ['scans', sheetId ?? null] as const,
   sheet: (id: Uuid) => ['sheets', id] as const,
   scan: (id: Uuid) => ['scans', id] as const,
@@ -267,7 +271,7 @@ export function useCreateRoster(
 /* ------------------------------------------------------------ reports --- */
 export function useClassPoints(
   classId: Uuid | null,
-  options: { subjectId?: Uuid } = {},
+  options: { subjectId?: Uuid; chapterId?: Uuid } = {},
 ): UseQueryResult<ClassPointsOut> {
   return useQuery({
     queryKey: queryKeys.classPoints(classId ?? '', options),
@@ -303,6 +307,24 @@ export function useClassMastery(
   return useQuery({
     queryKey: queryKeys.classMastery(classId ?? '', options),
     queryFn: () => api.getClassMastery(classId as Uuid, options),
+    enabled: Boolean(classId),
+  });
+}
+
+/**
+ * The curriculum tree for one class.
+ *
+ * `studentId` narrows every band to that child's own attempts — the same
+ * computation over a shorter list, not a different rule — which is what lets
+ * the student profile group by the same tree the class dashboard shows.
+ */
+export function useCurriculumTree(
+  classId: Uuid | null,
+  options: { subjectId?: Uuid; studentId?: Uuid } = {},
+): UseQueryResult<ClassTreeOut> {
+  return useQuery({
+    queryKey: queryKeys.classTree(classId ?? '', options),
+    queryFn: () => api.getClassTree(classId as Uuid, options),
     enabled: Boolean(classId),
   });
 }
@@ -394,10 +416,10 @@ export function useUploadSource(): UseMutationResult<
 }
 
 /* ------------------------------------------------------------- sheets --- */
-export function useSheets(classId?: Uuid): UseQueryResult<SheetOut[]> {
+export function useSheets(classId?: Uuid, subjectId?: Uuid): UseQueryResult<SheetOut[]> {
   return useQuery({
-    queryKey: queryKeys.sheets(classId),
-    queryFn: () => api.listSheets(classId),
+    queryKey: queryKeys.sheets(classId, subjectId),
+    queryFn: () => api.listSheets(classId, subjectId),
   });
 }
 

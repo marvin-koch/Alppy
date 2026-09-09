@@ -222,6 +222,9 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   let m = match(path, /^\/classes\/([^/]+)\/students$/);
   if (m) return method === 'POST' ? fx.students : fx.students;
 
+  m = match(path, /^\/classes\/([^/]+)\/tree$/);
+  if (m && method === 'GET') return fx.classTree(m[1] ?? '');
+
   m = match(path, /^\/classes\/([^/]+)\/mastery$/);
   if (m && method === 'GET') {
     if (m[1] === fx.classes[1]?.id) {

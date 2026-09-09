@@ -16,8 +16,10 @@ from alppy.mastery.model import (
     BAND_SOLID,
     BAND_WEAK,
     HALF_LIFE_DAYS,
+    MIN_EVIDENCE,
     RECENCY_FLOOR,
     AttemptInput,
+    MasteryResult,
     band_for,
     compute_accuracy,
     compute_mastery,
@@ -25,6 +27,7 @@ from alppy.mastery.model import (
     days_until_review,
     decay,
     difficulty_weight,
+    roll_up_mastery,
 )
 from alppy.models.enums import BAND_ORDER, MasteryBand
 
@@ -285,3 +288,116 @@ def test_evidence_ageing_is_unaffected_by_the_retention_constant(now: datetime) 
     old_then_new = [A(False, 21, now=now), A(True, 0, now=now)]
     accuracy, _ = compute_accuracy(old_then_new, now)
     assert accuracy == pytest.approx(1 / 1.5, abs=0.02)
+
+
+# --- rolling up above a competency ---------------------------------------
+# `roll_up_mastery` is what a Theme, a Competence and a Branch band are made
+# of. These tests encode the pedagogical claims, not the arithmetic: what a
+# parent band is allowed to say about the children under it.
+def _result(
+    score: float,
+    *,
+    effective_n: float,
+    band: MasteryBand | None = None,
+    days: int | None = None,
+    last: datetime | None = None,
+) -> MasteryResult:
+    return MasteryResult(
+        score=score,
+        band=band or band_for(score, has_attempts=effective_n > 0),
+        accuracy=score,
+        recency=1.0,
+        attempts_count=int(effective_n) or 0,
+        effective_n=effective_n,
+        provisional=effective_n < MIN_EVIDENCE,
+        last_attempt_at=last,
+        days_until_review=days,
+    )
+
+
+def test_a_roll_up_weights_by_evidence_not_by_child_count(now: datetime) -> None:
+    """Twenty confirmed attempts must outweigh one lucky guess.
+
+    A plain mean would put this Theme at 0.50 and call it fragile, which is the
+    exact failure `effective_n` exists to prevent one level down.
+    """
+    strong = _result(0.95, effective_n=20.0)
+    fluke = _result(0.05, effective_n=0.5)
+    rolled = roll_up_mastery([strong, fluke])
+    assert rolled.score == pytest.approx((0.95 * 20 + 0.05 * 0.5) / 20.5)
+    assert rolled.score > 0.90
+    assert rolled.band is MasteryBand.SOLID
+
+
+def test_a_never_assessed_child_does_not_drag_a_roll_up_down(now: datetime) -> None:
+    """"Not yet seen is a band, not a zero" holds one level up too."""
+    seen = _result(0.88, effective_n=6.0)
+    unseen = _result(0.0, effective_n=0.0, band=MasteryBand.NONE)
+    assert roll_up_mastery([seen, unseen]).score == pytest.approx(seen.score)
+    assert roll_up_mastery([seen, unseen]).band is seen.band
+
+
+def test_a_roll_up_of_only_unassessed_children_is_none_not_fading() -> None:
+    unseen = [_result(0.0, effective_n=0.0, band=MasteryBand.NONE) for _ in range(3)]
+    rolled = roll_up_mastery(unseen)
+    assert rolled.band is MasteryBand.NONE
+    assert rolled.effective_n == 0.0
+    assert rolled.provisional is True
+
+
+def test_an_empty_roll_up_matches_a_competency_with_no_attempts(now: datetime) -> None:
+    """A Theme with no competencies reads exactly like one nobody has tried."""
+    empty = roll_up_mastery([])
+    leaf = compute_mastery([], now)
+    assert (empty.band, empty.score, empty.provisional) == (
+        leaf.band,
+        leaf.score,
+        leaf.provisional,
+    )
+
+
+def test_a_roll_up_is_provisional_on_the_summed_evidence() -> None:
+    """Individually thin children can still add up to enough to trust."""
+    thin = [_result(0.9, effective_n=1.0) for _ in range(3)]
+    assert all(c.provisional for c in thin)
+    assert roll_up_mastery(thin).provisional is False
+    assert roll_up_mastery(thin[:1]).provisional is True
+
+
+def test_a_roll_up_comes_due_when_its_earliest_child_does() -> None:
+    """The Theme needs revising when the first competency inside it does."""
+    soon = _result(0.8, effective_n=4.0, days=3)
+    later = _result(0.8, effective_n=4.0, days=40)
+    assert roll_up_mastery([soon, later]).days_until_review == 3
+    # A child that was never assessed predicts nothing, and must not be read
+    # as "due today".
+    unseen = _result(0.0, effective_n=0.0, band=MasteryBand.NONE)
+    assert roll_up_mastery([later, unseen]).days_until_review == 40
+
+
+def test_a_roll_up_score_is_not_accuracy_times_recency(now: datetime) -> None:
+    """The one invariant that holds at a leaf and deliberately not here.
+
+    `score` is the weighted mean of the children's ALREADY-decayed scores.
+    Re-multiplying by the mean recency would decay the same evidence twice —
+    documented in docs/mastery-model.md §6 so nobody "fixes" it back.
+    """
+    fresh = MasteryResult(
+        score=1.0, band=MasteryBand.SOLID, accuracy=1.0, recency=1.0,
+        attempts_count=4, effective_n=4.0, provisional=False,
+        last_attempt_at=now, days_until_review=30,
+    )
+    stale = MasteryResult(
+        score=0.25, band=MasteryBand.FADING, accuracy=0.5, recency=0.5,
+        attempts_count=4, effective_n=4.0, provisional=False,
+        last_attempt_at=now - timedelta(days=120), days_until_review=0,
+    )
+    mixed = roll_up_mastery([fresh, stale])
+
+    # The mean of the children's scores...
+    assert mixed.score == pytest.approx(0.625)
+    # ...which is NOT the product of the means of their factors.
+    assert mixed.accuracy == pytest.approx(0.75)
+    assert mixed.recency == pytest.approx(0.75)
+    assert mixed.accuracy * mixed.recency == pytest.approx(0.5625)
+    assert mixed.score != pytest.approx(mixed.accuracy * mixed.recency)

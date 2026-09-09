@@ -151,6 +151,30 @@ def load_attempt_inputs(
     return dict(grouped)
 
 
+def pool_by_competency(
+    grouped: dict[Key, list[AttemptInput]],
+) -> dict[uuid.UUID, list[AttemptInput]]:
+    """Drop the student half of the key and concatenate.
+
+    Turns per-student attempts into class-wide ones WITHOUT inventing a second
+    aggregation rule: the pooled list still goes through the unchanged
+    ``compute_mastery``, so "how is 7B doing on MSN 33.2" is computed by the
+    same recency- and difficulty-weighted formula as "how is Lina doing on MSN
+    33.2", just fed a longer list. A single-student call is the degenerate
+    one-element case of the same fold.
+
+    Note this pools across STUDENTS, never across competencies — pooling raw
+    attempts from two competencies would derive one recency from the mixture,
+    and a competency practised last week would launder the staleness of one
+    last touched in June. Combining competencies is ``roll_up_mastery``'s job,
+    and it works on results, each of which carries its own honest recency.
+    """
+    pooled: dict[uuid.UUID, list[AttemptInput]] = defaultdict(list)
+    for (_student_id, competency_id), attempts in grouped.items():
+        pooled[competency_id].extend(attempts)
+    return dict(pooled)
+
+
 def latest_snapshots(
     db: Session, school_id: uuid.UUID, student_ids: list[uuid.UUID]
 ) -> dict[Key, MasterySnapshot]:

@@ -35,12 +35,33 @@ import type { ClassOut, SubjectOut, Uuid } from '@/lib/api/types';
 export interface ScopeValue {
   classId: Uuid | null;
   subjectId: Uuid | null;
+  /**
+   * The Competence and Theme in view, from `?competency=` and `?chapter=`.
+   *
+   * Deliberately NOT resolved the way class and subject are. `resolve()` falls
+   * back to "the first one you have", which is right for a class — some class
+   * must always be showing — and wrong here: the correct default for a filter
+   * is "everything", so a stale or unknown id must degrade to null, never to
+   * an arbitrary chapter that silently narrows a matrix.
+   *
+   * They are also NOT persisted. "Which class am I teaching" is sticky across
+   * sessions; "which chapter was I looking at yesterday" is not, and a
+   * remembered one would silently re-root a fresh sheet builder.
+   *
+   * Validating them against real data belongs to whichever component fetched
+   * the tree, not here — `ScopeProvider` must not fetch a curriculum tree on
+   * every route, including the ones that never render one.
+   */
+  competencyId: Uuid | null;
+  chapterId: Uuid | null;
   classes: ClassOut[];
   subjects: SubjectOut[];
   currentClass: ClassOut | null;
   currentSubject: SubjectOut | null;
   setClass: (id: Uuid) => void;
   setSubject: (id: Uuid) => void;
+  setCompetency: (id: Uuid | null) => void;
+  setChapter: (id: Uuid | null) => void;
   /** True until the class list has arrived; the switcher renders disabled. */
   isLoading: boolean;
 }
@@ -115,6 +136,10 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     stored.classId,
   );
   const currentSubject = resolve(subjects, searchParams.get('subject'), stored.subjectId);
+  // Plain reads: no resolve(), no storage, no "first one" fallback. See the
+  // note on ScopeValue for why these two are different from the pair above.
+  const competencyId = searchParams.get('competency');
+  const chapterId = searchParams.get('chapter');
 
   // Persist whatever we settled on, so the next bare route reopens here.
   //
@@ -135,7 +160,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   }, [currentClass, currentSubject, classesQuery.isLoading, subjectsQuery.isLoading]);
 
   const push = useCallback(
-    (key: 'class' | 'subject', id: Uuid) => {
+    (key: 'class' | 'subject' | 'competency' | 'chapter', id: Uuid) => {
       const next = new URLSearchParams(searchParams.toString());
       next.set(key, id);
       // `replace`, not `push`: switching class is changing what you are looking
@@ -166,21 +191,53 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   const setSubject = useCallback(
     (id: Uuid) => {
       writeStored({ ...readStored(), subjectId: id });
-      push('subject', id);
+      // A Competence and a Theme belong to exactly one Branch, so carrying
+      // either across a subject change would filter on another subject's
+      // curriculum — the same reason the builder already clears its source and
+      // section here.
+      const next = new URLSearchParams(searchParams.toString());
+      next.set('subject', id);
+      next.delete('competency');
+      next.delete('chapter');
+      router.replace(`${pathname}?${next.toString()}`);
     },
-    [push],
+    [pathname, router, searchParams],
   );
+
+  const setParam = useCallback(
+    (key: 'competency' | 'chapter', id: Uuid | null) => {
+      const next = new URLSearchParams(searchParams.toString());
+      if (id === null) next.delete(key);
+      else next.set(key, id);
+      // A Theme belongs to one Competence; changing the Competence cannot
+      // leave a Theme from the previous one selected underneath it.
+      if (key === 'competency') next.delete('chapter');
+      const qs = next.toString();
+      router.replace(qs ? `${pathname}?${qs}` : pathname);
+    },
+    [pathname, router, searchParams],
+  );
+
+  const setCompetency = useCallback(
+    (id: Uuid | null) => setParam('competency', id),
+    [setParam],
+  );
+  const setChapter = useCallback((id: Uuid | null) => setParam('chapter', id), [setParam]);
 
   const value = useMemo<ScopeValue>(
     () => ({
       classId: currentClass?.id ?? null,
       subjectId: currentSubject?.id ?? null,
+      competencyId,
+      chapterId,
       classes,
       subjects,
       currentClass,
       currentSubject,
       setClass,
       setSubject,
+      setCompetency,
+      setChapter,
       isLoading: classesQuery.isLoading || subjectsQuery.isLoading,
     }),
     [
@@ -188,8 +245,12 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       subjects,
       currentClass,
       currentSubject,
+      competencyId,
+      chapterId,
       setClass,
       setSubject,
+      setCompetency,
+      setChapter,
       classesQuery.isLoading,
       subjectsQuery.isLoading,
     ],
@@ -210,12 +271,16 @@ export function useScope(): ScopeValue {
   return {
     classId: null,
     subjectId: null,
+    competencyId: null,
+    chapterId: null,
     classes: [],
     subjects: [],
     currentClass: null,
     currentSubject: null,
     setClass: () => {},
     setSubject: () => {},
+    setCompetency: () => {},
+    setChapter: () => {},
     isLoading: false,
   };
 }

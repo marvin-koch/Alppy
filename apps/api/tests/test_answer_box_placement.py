@@ -124,7 +124,8 @@ def test_rendering_a_sheet_records_one_placement_per_box_per_copy(
     free = make_exercise(db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None)
     sheet = Sheet(
         id=uuid.uuid4(), school_id=tenant.school.id, class_id=tenant.school_class.id,
-        subject_id=tenant.subject.id, created_by_id=tenant.teacher.id, title="Contrôle",
+        subject_id=tenant.subject.id, chapter_id=tenant.unfiled_chapter_id,
+        created_by_id=tenant.teacher.id, title="Contrôle",
         target=SheetTarget.CLASS, language="fr", layout_version="v1",
     )
     db.add(sheet)

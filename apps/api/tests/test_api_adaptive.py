@@ -130,3 +130,53 @@ def test_batch_rejects_an_unknown_student(
         },
     )
     assert response.status_code == 404
+
+
+def test_a_batch_cannot_derive_from_a_sheet_the_caller_cannot_see(
+    client: TestClient, tenant: Tenant, colleague: Tenant, db: Session
+) -> None:
+    """`source_sheet_id` gets the ownership check every other path gives it.
+
+    `/adaptive/batch` performs none of its own, and the id was previously stored
+    on `derived_from_id` unvalidated — `render.py` prints that sheet's title on
+    the feedback page, so a colleague's (or another school's) sheet title could
+    reach paper it has no business being on.
+    """
+    exercise = make_exercise(db, tenant, statement="pour Lea")
+
+    # A sheet belonging to the colleague, in the same school.
+    login(client, colleague.teacher.email)
+    theirs = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(colleague.school_class.id),
+            "subject_id": str(colleague.subject.id),
+            "title": "Leur controle",
+            "language": "fr",
+            "items": [{"exercise_id": str(exercise.id), "position": 0}],
+        },
+    )
+    assert theirs.status_code == 201
+    foreign_sheet_id = theirs.json()["id"]
+
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/adaptive/batch",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Serie differenciee",
+            "language": "fr",
+            "source_sheet_id": foreign_sheet_id,
+            "plans": [
+                {
+                    "student_id": str(tenant.students[0].id),
+                    "student_uid": tenant.students[0].uid,
+                    "targeted_competency_ids": [str(tenant.competency.id)],
+                    "retrieved": [_proposal(exercise)],
+                    "generated": [],
+                },
+            ],
+        },
+    )
+    assert response.status_code == 404

@@ -124,6 +124,19 @@ class Subject(Base, TimestampMixin, SchoolScopedMixin):
     labels: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)
 
 
+class_subject = Table(
+    "class_subject",
+    Base.metadata,
+    Column("class_id", PgUUID(as_uuid=True), ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
+    Column("subject_id", PgUUID(as_uuid=True), ForeignKey("subject.id", ondelete="CASCADE"), primary_key=True),
+    # Display order in the class's Branch nav: the order the class STARTED
+    # studying each subject, not alphabetical. No column default — every write
+    # path goes through ``class_service.declare_subject``, which computes the
+    # next free position, the same convention ``SheetItem.position`` follows.
+    Column("position", Integer, nullable=False),
+)
+
+
 class Class(Base, TimestampMixin, SchoolScopedMixin):
     """A teaching group. ``code`` is the Swiss short form, e.g. "7B"."""
 
@@ -140,6 +153,15 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
 
     students: Mapped[list[Student]] = relationship(
         back_populates="school_class", cascade="all, delete-orphan"
+    )
+    # The Branches this class studies — declared, not inferred. Until D57 this
+    # was `SELECT DISTINCT sheet.subject_id`, which meant a brand-new class had
+    # no Branch level to navigate at all until somebody built it a sheet.
+    #
+    # viewonly: appending here cannot know the next `position`, so writes go
+    # through ``class_service.declare_subject`` instead.
+    subjects: Mapped[list[Subject]] = relationship(
+        secondary=class_subject, order_by=class_subject.c.position, viewonly=True
     )
 
 
@@ -213,18 +235,77 @@ exercise_competency = Table(
 )
 
 
+UNFILED_CHAPTER_KEY = "unfiled"
+"""The Theme a sheet nobody has filed belongs to, one per subject.
+
+``Sheet.chapter_id`` is NOT NULL, so a sheet always has a home; this is the
+honest one to give it when the teacher has not chosen. Lives here rather than
+in the seed loader because the read paths need the discriminator and a service
+must not import the seeder to get it.
+
+Note this key identifies the row; what keeps it OUT of the tree and the
+roll-up is ``primary_competency_id IS NULL``. Those are deliberately two
+different tests: a school may relabel the bucket, and a rename must not
+readmit it to a mastery number.
+"""
+
+
 class Chapter(Base, TimestampMixin, SchoolScopedMixin):
     """The teacher's textbook-oriented grouping, mapped to competencies."""
 
     __tablename__ = "chapter"
+    __table_args__ = (
+        # A subject has ONE chapter per key, and in particular one `unfiled`
+        # bucket. Without this, two concurrent "new sheet" calls in a subject
+        # that has none yet both see nothing and both insert one, and the
+        # subject's unfiled sheets then split silently across two buckets.
+        UniqueConstraint("school_id", "subject_id", "key", name="uq_chapter_key"),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    # The single canonical parent this chapter HANGS FROM in the navigation
+    # tree: Branch -> Competence -> Theme. The Competence node is this
+    # competency's own ``parent_id`` (or itself, when the primary is already
+    # top-level).
+    #
+    # Deliberately NOT the same thing as ``competencies`` below, and the
+    # difference is the whole design (D56). ``competencies``
+    # (chapter_competency) is the TAGGING set that mastery credit flows
+    # through — one chapter legitimately spans two curricula, which is why
+    # `plane_geometry_pythagoras` carries MSN 31.1, MSN 31.2, MA.2.A.2 and
+    # MA.2.C.1 at once (docs/curriculum.md §3). Rolling the Competence level
+    # up through that set would leak a chapter's evidence into branches its
+    # primary never belongs to. This column is the narrower fact: ONE node,
+    # resolved per school from ``School.default_curriculum`` at seed time, so
+    # a Romand and a Deutschschweiz school file the same chapter under their
+    # own official code without either needing a second column.
+    #
+    # NULL for the per-subject `unfiled` chapter and for nothing else. That is
+    # what excludes it from the tree and from the roll-up — `tree_service`
+    # filters on IS NOT NULL rather than string-matching ``key``, so a school
+    # that renames the bucket cannot accidentally readmit it.
+    primary_competency_id: Mapped[uuid.UUID | None] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("competency.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     key: Mapped[str] = mapped_column(String(80), nullable=False)
     labels: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)
     position: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
 
-    competencies: Mapped[list[Competency]] = relationship(secondary=chapter_competency)
+    # selectin, like `primary_competency` below: `tree_service` walks this set
+    # for every chapter of a branch to collect the competencies a Theme can
+    # credit, which was one query per chapter under the default lazy load.
+    competencies: Mapped[list[Competency]] = relationship(
+        secondary=chapter_competency, lazy="selectin"
+    )
+    # selectin: the tree endpoint loads every chapter of a subject at once and
+    # needs each one's parent to group by Competence. One extra query beats N.
+    primary_competency: Mapped[Competency | None] = relationship(
+        foreign_keys=[primary_competency_id], lazy="selectin"
+    )
 
 
 # --------------------------------------------------------------------------
@@ -459,6 +540,17 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     id: Mapped[uuid.UUID] = _pk()
     class_id: Mapped[uuid.UUID] = _fk("class.id")
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    # The Theme this sheet is filed under — a fact the teacher states, or that
+    # ``create_sheet`` states for them by falling back to the subject's
+    # `unfiled` chapter. Never inferred from the items: `Exercise.chapter_id`
+    # is itself a guess (see SourceSection's docstring) and promoting a guess
+    # into a teacher-facing filing the teacher never confirmed is exactly what
+    # `approved_at` exists to prevent elsewhere.
+    #
+    # RESTRICT, not the module's usual CASCADE: a class's printed sheets,
+    # scans and attempts must not evaporate because a chapter was deleted —
+    # the same reasoning as ``SheetItem.exercise_id``.
+    chapter_id: Mapped[uuid.UUID] = _fk("chapter.id", ondelete="RESTRICT")
     created_by_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="SET NULL", nullable=True)
     title: Mapped[str] = mapped_column(String(200), nullable=False)
     target: Mapped[SheetTarget] = mapped_column(
@@ -499,6 +591,7 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     feedback_pdf_key: Mapped[str | None] = mapped_column(String(500))
     rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    chapter: Mapped[Chapter] = relationship()
     items: Mapped[list[SheetItem]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan", order_by="SheetItem.position"
     )
@@ -975,6 +1068,67 @@ class ModelCall(Base, TimestampMixin, SchoolScopedMixin):
     error: Mapped[str | None] = mapped_column(Text)
 
 
+class PromptLog(Base, TimestampMixin, SchoolScopedMixin):
+    """The full text of a model call, for debugging. Off unless a school asks.
+
+    Deliberately NOT ``ModelCall``. That table is the audit trail: content-free
+    by construction, safe to keep indefinitely, and what a DPO or auditor is
+    shown to answer "did any of our data go to provider X" (docs/privacy.md §3).
+    Putting prompt text in it would make the audit log the leak it exists to
+    detect. This is the other thing — an engineer's window on what was actually
+    sent — and it earns a different lifetime, a different default and a
+    different consent story.
+
+    Three properties it must keep:
+
+    * **Off by default** (``ALPPY_AI_PROMPT_LOG_ENABLED``). A school opts in.
+    * **Written only after the PII gate passed.** A prompt that fired
+      ``PiiLeakError`` is by definition the one carrying a roster name; that row
+      records the refusal and no content at all.
+    * **Swept.** ``ALPPY_AI_PROMPT_LOG_RETENTION_DAYS`` and
+      ``python -m alppy.cli purge-prompt-logs``. Passing the gate is not the same
+      as containing no student data: a UID plus a class roster re-identifies, and
+      a wrong answer is a fact about a child.
+
+    ``model_call_id`` ties a row to its content-free twin, so an auditor reading
+    ``model_call`` alone still sees a complete list of calls.
+    """
+
+    __tablename__ = "prompt_log"
+    __table_args__ = (
+        Index("ix_prompt_log_school_created", "school_id", "created_at"),
+        Index("ix_prompt_log_purpose_created", "purpose", "created_at"),
+        Index("ix_prompt_log_request", "request_id"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    model_call_id: Mapped[uuid.UUID | None] = _fk(
+        "model_call.id", nullable=True, ondelete="SET NULL"
+    )
+    job_id: Mapped[uuid.UUID | None] = _fk("job.id", nullable=True, ondelete="SET NULL")
+    sheet_id: Mapped[uuid.UUID | None] = _fk("sheet.id", nullable=True, ondelete="SET NULL")
+    request_id: Mapped[str | None] = mapped_column(String(64))
+    """Correlates the calls of one propose run, one ingest, one grading pass.
+
+    A string rather than a foreign key because the unit of work is not always a
+    row: a synchronous request has no ``Job``."""
+
+    provider: Mapped[str] = mapped_column(String(40), nullable=False)
+    model: Mapped[str] = mapped_column(String(80), nullable=False)
+    purpose: Mapped[str] = mapped_column(String(60), nullable=False)
+    prompt_name: Mapped[str | None] = mapped_column(String(80))
+    prompt_version: Mapped[str | None] = mapped_column(String(20))
+    prompt_sha256: Mapped[str] = mapped_column(String(64), nullable=False)
+    system_text: Mapped[str | None] = mapped_column(Text)
+    user_text: Mapped[str | None] = mapped_column(Text)
+    response_text: Mapped[str | None] = mapped_column(Text)
+    input_tokens: Mapped[int | None] = mapped_column(Integer)
+    output_tokens: Mapped[int | None] = mapped_column(Integer)
+    latency_ms: Mapped[int | None] = mapped_column(Integer)
+    ok: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    error: Mapped[str | None] = mapped_column(Text)
+
+
 class Job(Base, TimestampMixin, SchoolScopedMixin):
     """Background work. Request handlers never block on a model call."""
 
@@ -995,6 +1149,7 @@ class Job(Base, TimestampMixin, SchoolScopedMixin):
 
 
 __all__ = [
+    "UNFILED_CHAPTER_KEY",
     "AnswerBoxPlacement",
     "Attempt",
     "Base",
@@ -1009,6 +1164,7 @@ __all__ = [
     "MasterySnapshot",
     "MisconceptionNote",
     "ModelCall",
+    "PromptLog",
     "Scan",
     "ScanPage",
     "School",
@@ -1023,5 +1179,6 @@ __all__ = [
     "Subject",
     "Teacher",
     "chapter_competency",
+    "class_subject",
     "exercise_competency",
 ]

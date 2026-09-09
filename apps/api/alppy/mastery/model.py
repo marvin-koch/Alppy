@@ -219,3 +219,84 @@ def compute_mastery(attempts: Sequence[AttemptInput], now: datetime) -> MasteryR
         last_attempt_at=last,
         days_until_review=days_until_review(accuracy, last, now),
     )
+
+
+def roll_up_mastery(children: Sequence[MasteryResult]) -> MasteryResult:
+    """Combine several competency results into one, for a Theme or a Branch.
+
+    Applied recursively: Theme = roll-up of its competencies, Competence =
+    roll-up of its Themes, Branch = roll-up of its Competences. One rule, three
+    levels, so a teacher who trusts a cell does not have to learn a second
+    philosophy for the row above it.
+
+    **Evidence-weighted mean of the children's scores**, weighted by
+    ``effective_n``. Two alternatives were rejected (D58):
+
+    *Worst-band-wins* would make every Theme read as the worst thing inside it.
+    With three or four competencies per chapter that is "amber or red, always",
+    which is a constant rather than a signal. ``_weakest_first`` sorts STUDENTS
+    by their weakest cell — that is a triage order, not a claim that a group's
+    mastery equals its minimum.
+
+    *Plain mean* would let a competency backed by one lucky guess pull the
+    aggregate exactly as hard as one backed by twenty confirmed attempts.
+    ``compute_mastery`` already refuses to do that a level down — it is what
+    ``effective_n`` and ``MIN_EVIDENCE`` are for — so an unweighted parent
+    would reintroduce the problem the leaf model was built to avoid.
+
+    A never-assessed child has ``effective_n == 0`` and so contributes no
+    weight at all: "not yet seen is a band, not a zero" (docs/mastery-model.md
+    §2) holds one level up unchanged. When every child is unassessed the
+    roll-up is itself ``NONE``, via the same ``band_for(has_attempts=False)``
+    path the leaf uses — literally the same code, not a parallel rule.
+
+    Two honest breaks, documented rather than hidden, both in
+    docs/mastery-model.md §6:
+
+    * ``score == accuracy * recency`` holds at a leaf and **not** here.
+      ``score`` is the weighted mean of the children's already-decayed scores;
+      ``accuracy`` and ``recency`` are weighted means of theirs, kept for
+      display only. Re-multiplying them would decay the evidence twice.
+    * ``days_until_review`` is the EARLIEST of the assessed children's, not a
+      re-derivation. A weighted mix of differently-aged decay curves has no
+      closed form worth shipping, and "this Theme's next revision is whichever
+      competency inside it comes due first" is both a defensible bound and the
+      more useful thing for a teacher to act on.
+    """
+    assessed = [c for c in children if c.effective_n > 0.0]
+    if not assessed:
+        return MasteryResult(
+            score=0.0,
+            band=MasteryBand.NONE,
+            accuracy=0.0,
+            recency=0.0,
+            attempts_count=sum(c.attempts_count for c in children),
+            effective_n=0.0,
+            provisional=True,
+            last_attempt_at=None,
+            days_until_review=None,
+        )
+
+    total_w = sum(c.effective_n for c in assessed)
+    score = sum(c.score * c.effective_n for c in assessed) / total_w
+    accuracy = sum(c.accuracy * c.effective_n for c in assessed) / total_w
+    recency = sum(c.recency * c.effective_n for c in assessed) / total_w
+
+    lasts = [c.last_attempt_at for c in assessed if c.last_attempt_at is not None]
+    dues = [c.days_until_review for c in assessed if c.days_until_review is not None]
+
+    return MasteryResult(
+        score=max(0.0, min(1.0, score)),
+        band=band_for(score, has_attempts=True),
+        accuracy=accuracy,
+        recency=recency,
+        attempts_count=sum(c.attempts_count for c in children),
+        effective_n=total_w,
+        # The same constant as a leaf, against the SUMMED evidence: a Theme
+        # whose competencies are each provisional on their own may well have
+        # enough evidence together, and one built from a single lucky guess
+        # still says so.
+        provisional=total_w < MIN_EVIDENCE,
+        last_attempt_at=max(lasts) if lasts else None,
+        days_until_review=min(dues) if dues else None,
+    )

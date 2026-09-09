@@ -122,7 +122,17 @@
       "body": "Aucune compétence de ce chapitre n'a encore été évaluée dans cette classe.",
       "action": "Voir tous les chapitres"
     },
-    "cellLabelNotAssessed": "{student}, {competency} : {band}"
+    "cellLabelNotAssessed": "{student}, {competency} : {band}",
+    "filterCompetency": "Compétence",
+    "allCompetences": "Toutes les compétences",
+    "coverage": "{assessed} sur {total} compétences évaluées",
+    "weakestInside": "le plus fragile : {band}",
+    "branchBand": "Branche · {band}",
+    "emptyScope": {
+      "title": "Rien à afficher ici",
+      "body": "Aucune copie corrigée pour cette compétence ou ce thème.",
+      "action": "Voir toute la branche"
+    }
   },
   "student": {
     "profile": "Profil de l'élève",
@@ -141,7 +151,9 @@
     "notAssessed": {
       "title": "Pas encore évalué",
       "body": "Cet élève n'a encore aucune réponse corrigée. Ce n'est pas un zéro : rien n'a encore été évalué."
-    }
+    },
+    "byCompetence": "classé par compétence, puis par thème",
+    "noneInCompetence": "Aucune fiche corrigée sur cette compétence."
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {aucun exercice extrait} one {# exercice extrait} other {# exercices extraits}}",
@@ -233,7 +245,12 @@
       "drafts": "À terminer",
       "draftsHint": "Les PDF ne sont pas encore générés.",
       "ready": "Prêtes à imprimer"
-    }
+    },
+    "unfiledTheme": "Non classé",
+    "unfiledThemeHelp": "Fiches créées avant que les thèmes existent. Ouvrez-en une pour la classer — rien n'a été deviné à votre place.",
+    "groupGeneral": "Fiches générales",
+    "groupPersonalized": "Fiches personnalisées",
+    "fileIt": "Classer"
   },
   "scans": {
     "title": "Corrections",
@@ -645,7 +662,15 @@
     "overflowHelp": "Plus de seize exercices : la fiche tiendra sur {count} pages au minimum.",
     "boxSummary": "{count, plural, one {Cadre d'une ligne} other {Cadre de # lignes}}",
     "answerSummaryGiven": "réponse attendue donnée",
-    "answerSummaryModel": "réponse trouvée par le modèle"
+    "answerSummaryModel": "réponse trouvée par le modèle",
+    "theme": "Thème",
+    "changeTheme": "Changer de thème",
+    "themePlaceholder": "Choisissez un thème",
+    "themeRequired": "Choisissez un thème pour cette fiche avant de générer.",
+    "themeModalTitle": "Choisir un thème",
+    "unfiledBucket": "Sans thème ({count})",
+    "unfiledBucketHelp": "Exercices que le manuel n'a pas rattachés à un thème",
+    "unfiledCannotFile": "« Sans thème » sert à retrouver ces exercices, pas à ranger une fiche."
   },
   "newExercise": {
     "title": "Ajouter un exercice",
@@ -751,5 +776,16 @@
       "title": "Cette copie n'a pas encore été corrigée",
       "body": "Scannez la pile, puis validez-la : le détail apparaîtra ici."
     }
+  },
+  "tree": {
+    "title": "Programme",
+    "branch": "Branche",
+    "competence": "Compétence",
+    "theme": "Thème",
+    "sheetCount": "{count, plural, =0 {aucune fiche} one {# fiche} other {# fiches}}",
+    "unfiled": "Non classé",
+    "unfiledSheets": "{count, plural, =0 {aucune fiche} one {# fiche} other {# fiches}}",
+    "unfiledHelp": "Fiches créées avant les thèmes. Ouvrez-en une pour la classer.",
+    "empty": "Aucun thème dans cette branche pour l'instant."
   }
 }

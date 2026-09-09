@@ -53,6 +53,9 @@ from alppy.storage import storage_key
 
 router = APIRouter(tags=["sources"])
 
+UNTAGGED_CHAPTER = "none"
+"""The `chapter_id` sentinel for exercises with no chapter at all."""
+
 PDF_ONLY = ("application/pdf",)
 
 
@@ -295,7 +298,7 @@ def list_source_exercises(
     school_id: TenantDep,
     db: DbDep,
     section_id: Annotated[uuid.UUID | None, Query()] = None,
-    chapter_id: Annotated[uuid.UUID | None, Query()] = None,
+    chapter_id: Annotated[str | None, Query()] = None,
     type: Annotated[ExerciseType | None, Query()] = None,
     difficulty: Annotated[int | None, Query(ge=1, le=5)] = None,
     q: Annotated[str | None, Query(max_length=200)] = None,
@@ -323,8 +326,20 @@ def list_source_exercises(
     ]
     if section_id is not None:
         common.append(Exercise.source_section_id == section_id)
-    if chapter_id is not None:
-        common.append(Exercise.chapter_id == chapter_id)
+    # `chapter_id` is a uuid, or the literal "none" for rows the ingest could
+    # not tag at all. The sentinel is what makes the builder's counted
+    # "Sans thème" bucket reachable: absent means "no theme filter", "none"
+    # means "the untagged ones", and without the distinction those exercises
+    # would have no selector at all now that Theme is the picker's root.
+    if chapter_id == UNTAGGED_CHAPTER:
+        common.append(Exercise.chapter_id.is_(None))
+    elif chapter_id is not None:
+        try:
+            common.append(Exercise.chapter_id == uuid.UUID(chapter_id))
+        except ValueError as exc:
+            raise errors.unprocessable(
+                "chapter_id must be a uuid or 'none'", chapter_id=chapter_id
+            ) from exc
     if difficulty is not None:
         common.append(Exercise.difficulty == difficulty)
     if q and q.strip():

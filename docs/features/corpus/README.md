@@ -60,6 +60,7 @@ of the book's page** rather than a transcription of it.
 | I-corpus-07 | **Every page belongs to exactly one section**, and sections are contiguous and gapless. | `ingest/sections.py::detect_sections` | An exercise with a null section vanishes from the builder's primary filter | Exercises that exist and cannot be found |
 | I-corpus-08 | Extraction is **grounded-only**: an ungrounded provider yields no exercises. | `ai/providers.py::TRANSCRIPTION_PURPOSES` | An invented exercise would carry a real book's provenance | Fiction attributed to a teacher's textbook |
 | I-corpus-09 | Eager extraction stops **before** a section it cannot finish whole. | `ingest/pipeline.py::_extract_eagerly` | Half a chapter is the worst outcome available | The teacher sees exercises and cannot tell the back half is missing |
+| I-corpus-10 | A Theme's **primary** competency decides where it sits; its **tagged** competencies decide what it credits. The primary must be one of the tagged. | `seed/loader.py::_load_chapters` (raises naming the chapter) | Rolling up through the tagging set would leak a chapter's evidence into a curriculum branch its primary never belongs to | A PER school's Pythagore chapter appears under an LP21 area, or under two areas at once |
 
 ---
 
@@ -130,6 +131,7 @@ and are served through a tenant-scoped file route.
 | I-corpus-07 | `test_source_sections.py::test_every_page_belongs_to_exactly_one_section`, `::test_a_document_with_no_headings_is_still_one_whole_section`, `::test_a_running_head_is_not_a_heading`, `::test_an_exercise_line_is_not_mistaken_for_a_heading` |
 | I-corpus-08 | `test_ingest_grounding.py::test_the_offline_provider_returns_nothing_for_grounded_purposes`, `::test_a_prose_only_document_yields_no_invented_exercises` |
 | I-corpus-09 | `test_ingest_regions.py::test_without_a_model_the_section_keeps_its_button_and_says_why`, `::test_reading_a_section_on_demand_tags_the_rows_that_are_there` |
+| I-corpus-10 | `test_seed_hierarchy.py::test_a_theme_hangs_from_its_own_schools_curriculum`, `::test_every_seeded_theme_has_a_primary_and_it_is_one_of_its_own_tags`, `::test_a_theme_with_no_primary_for_this_curriculum_fails_loudly` |
 
 ```bash
 PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests/test_chunk.py \

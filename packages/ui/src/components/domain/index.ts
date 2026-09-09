@@ -4,6 +4,8 @@ export { MasteryMeter } from './MasteryMeter';
 export type { MasteryMeterProps } from './MasteryMeter';
 export { MasteryCell, BandGlyph } from './MasteryCell';
 export type { MasteryCellProps, MasteryCellLabelParts, BandGlyphProps } from './MasteryCell';
+export { MasteryBandTag } from './MasteryBandTag';
+export type { MasteryBandTagProps } from './MasteryBandTag';
 export { MasteryLegend } from './MasteryLegend';
 export type { MasteryLegendProps } from './MasteryLegend';
 export { AttemptList } from './AttemptList';

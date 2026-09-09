@@ -1,5 +1,6 @@
 import { apiRequest, apiRequestText } from './client';
 import type {
+  ClassTreeOut,
   AdaptiveApproveRequest,
   AdaptiveApproveResponse,
   AdaptiveBatchRequest,
@@ -186,8 +187,8 @@ export const getSheet = (sheetId: Uuid) => apiRequest<SheetOut>(`/sheets/${sheet
 
 /** Every sheet the teacher has built. Without this a sheet was reachable only
  *  by the redirect that follows creating it. */
-export const listSheets = (classId?: Uuid) =>
-  apiRequest<SheetOut[]>('/sheets', { query: { class_id: classId } });
+export const listSheets = (classId?: Uuid, subjectId?: Uuid) =>
+  apiRequest<SheetOut[]>('/sheets', { query: { class_id: classId, subject_id: subjectId } });
 
 export const listScans = (sheetId?: Uuid) =>
   apiRequest<ScanOut[]>('/scans', { query: { sheet_id: sheetId } });
@@ -248,9 +249,12 @@ export const revertDetection = (scanId: Uuid, detectionId: Uuid) =>
   });
 
 /* ------------------------------------------------------------ reports --- */
-export const getClassPoints = (classId: Uuid, options: { subjectId?: Uuid } = {}) =>
+export const getClassPoints = (
+  classId: Uuid,
+  options: { subjectId?: Uuid; chapterId?: Uuid } = {},
+) =>
   apiRequest<ClassPointsOut>(`/classes/${classId}/points`, {
-    query: { subject_id: options.subjectId },
+    query: { subject_id: options.subjectId, chapter_id: options.chapterId },
   });
 
 export const getStudentSheet = (studentId: Uuid, sheetId: Uuid) =>
@@ -260,6 +264,21 @@ export const getSheetConfidence = (sheetId: Uuid) =>
   apiRequest<SheetConfidenceOut>(`/sheets/${sheetId}/confidence`);
 
 /* ------------------------------------------------------------ mastery --- */
+/**
+ * Branch -> Competence -> Theme, every node carrying a rolled-up band.
+ *
+ * Lives under `/classes/{id}/` and not under `/subjects/` because the bands
+ * are a fact about THIS class's attempts, not about the curriculum: the same
+ * tree read for 7B and for 9A returns different numbers on the same nodes.
+ */
+export const getClassTree = (
+  classId: Uuid,
+  options: { subjectId?: Uuid; studentId?: Uuid } = {},
+) =>
+  apiRequest<ClassTreeOut>(`/classes/${classId}/tree`, {
+    query: { subject_id: options.subjectId, student_id: options.studentId },
+  });
+
 export const getClassMastery = (
   classId: Uuid,
   options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {},

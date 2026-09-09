@@ -199,7 +199,65 @@ information.
   a future grader can supply a fraction.
 - **Competencies are treated as independent.** Mastery of "add fractions" tells
   the model nothing about "compare fractions", though the curriculum says it
-  should.
+  should. §7 aggregates them for *display*; it does not make one competency's
+  evidence inform another's.
+- **A rolled-up score is not `accuracy × recency`.** That invariant holds at a
+  leaf and deliberately not above it — see §7. The two factors are still
+  reported at a roll-up, as weighted means, for display only.
+- **A rolled-up `days_until_review` is the earliest of its children's**, not a
+  re-derivation. A weighted mix of differently-aged decay curves has no closed
+  form worth shipping; the earliest child is a defensible bound and the more
+  useful thing for a teacher to act on.
 
 Every one of these is a deliberate MVP trade, listed again in
 [`handover.md`](handover.md).
+
+## 7. Rolling up above a competency
+
+`(student, competency)` is the only grain the model computes. A Theme, a
+Competence and a Branch each need a band too, and `roll_up_mastery`
+(`alppy/mastery/model.py`) is the one function that makes them — applied
+recursively, so there is one rule to understand rather than three:
+
+```
+Theme      = roll_up([compute_mastery(attempts) for each competency it tags])
+Competence = roll_up([theme.mastery for each Theme under it])
+Branch     = roll_up([competence.mastery for each Competence under it])
+```
+
+**The rule is the evidence-weighted mean of the children's scores, weighted by
+`effective_n`.** It is the direct generalisation of what `compute_accuracy`
+already does one level down: weight by evidence, not by the count of things.
+
+A never-assessed child has `effective_n == 0` and so contributes nothing —
+"not yet seen is a band, not a zero" (§2) holds unchanged one level up. If every
+child is unassessed the roll-up is `NONE`, through the same `band_for` path the
+leaf uses. `provisional` reuses the same `MIN_EVIDENCE` against the *summed*
+evidence, so three individually thin competencies can together be enough to
+trust, and one lucky guess still is not.
+
+### Why not pool the attempts?
+
+The obvious simplification is to concatenate every attempt in a Theme and call
+`compute_mastery` once. It is wrong, and the reason is recency. A student who
+drilled *comparing* fractions last week and *adding* fractions six months ago
+would get one recency derived from the mixture: the fresh half launders the
+stale half, and a model whose whole purpose is fading stops fading. Each
+competency has to be scored with its own honest recency first, and only then
+combined.
+
+Pooling across **students** is a different thing and is fine —
+`mastery_service.pool_by_competency` does exactly that, so "how is 7B doing on
+`MSN 33.2`" runs through the same formula as "how is Lina doing on `MSN 33.2`",
+just fed a longer list.
+
+### Why the aggregate says its own coverage
+
+A band alone cannot distinguish a Theme where all three competencies are solid
+from one where a single competency is solid and two were never examined. Both
+render green. So the API sends `assessed_count`, `child_count` and
+`weakest_band` alongside every rolled-up band, and the UI shows them — the
+`DC-colour-08` rule ("never colour alone") at the level where a bare colour is
+most tempting and least honest.
+
+Rejected alternatives, and why, are recorded in `docs/decisions-log.md` D58.

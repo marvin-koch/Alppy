@@ -34,8 +34,16 @@ Every table has `id` (UUID), `created_at`, `updated_at`.
 School ──< Teacher (locale, theme, contrast, motion, calm)
        ──< SchoolYear ──< Class (code "7B") ──< Student (uid "7B_15", first/last name)
        ──< Subject
+Class ──>< Subject                                 (class_subject, ordered by
+      first use — the Branches a class DECLARES it studies, not inferred; D57)
 Curriculum (LP21 | PER) ──< Competency (hierarchical, code, subject, cycle)
-Chapter (teacher grouping) ──>< Competency        (chapter_competency)
+Chapter (teacher grouping) ──>< Competency        (chapter_competency — what it
+                                                   CREDITS, both curricula)
+        ──> Competency  primary_competency_id      (where it SITS in the tree:
+                                                    one node, resolved per school
+                                                    from default_curriculum; NULL
+                                                    only on the `unfiled` bucket.
+                                                    D56, D60)
 Source (uploaded PDF) ──< SourceChunk (text, page, embedding vector(1024))
                       ──< SourceSection (the book's own chapter: title, label,
                           page range, extracted_at — read on demand)
@@ -46,7 +54,8 @@ Exercise (type mcq|true_false|open, origin textbook|ai_generated|teacher,
           the page, cut by the region detector; see decisions-log D40)
         ──>< Competency                            (exercise_competency)
         ──< ExerciseVariant (per-student generated)
-Sheet (target class|student|group, layout_version, subject, chapter set,
+Sheet (target class|student|group, layout_version, subject,
+       chapter_id NOT NULL -> its home Theme, `unfiled` when nobody filed it (D60),
        derived_from_id -> the COMMON sheet this one answers)
      ──< SheetItem (ordered exercise ref, position, statement_override, expected_answer,
                     answer_box_lines 0..14 (presets 3|5|8|12), answer_box_fill lined|grid|blank)
@@ -62,6 +71,23 @@ Attempt (student × exercise × sheet_instance, correct, score, answered_at)
 MasterySnapshot (student × competency × computed_at, score [0,1], band)
 ModelCall (audit: provider, model, prompt hash, tokens, latency, cost, no PII)
 ```
+
+**The teaching hierarchy**, which the navigation, the dashboards and the student
+profile all read the same way:
+
+```
+Class  ──  Branch      = Subject, via class_subject
+       ──  Competence  = the PARENT of a chapter's primary_competency
+                         (or the primary itself when it is already top-level)
+       ──  Theme       = Chapter, via primary_competency_id
+       ──  Sheets      = Sheet.chapter_id
+```
+
+`GET /classes/{id}/tree` returns it with a rolled-up mastery band on every node
+(`roll_up_mastery`, `docs/mastery-model.md` §7). The `unfiled` chapter is excluded
+from the tree by `primary_competency_id IS NULL` and surfaced separately as
+`unfiled_sheet_count`, so sheets nobody has filed stay findable without entering a
+mastery number.
 
 `open` exercises print a delimited **answer box** (height and fill chosen per `SheetItem`).
 The render job measures where every box landed and writes one `AnswerBoxPlacement` per copy and

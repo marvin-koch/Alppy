@@ -8,6 +8,7 @@ import type {
   AdaptiveProposeResponse,
   ChapterOut,
   ClassOut,
+  ClassTreeOut,
   CompetencyAttemptsOut,
   CompetencyOut,
   DetectionOut,
@@ -15,6 +16,7 @@ import type {
   ExerciseType,
   ExerciseProposal,
   HomeOut,
+  MasteryBandKey,
   MasteryMatrixOut,
   ScanOut,
   SheetOut,
@@ -25,6 +27,7 @@ import type {
   SubjectOut,
   TimelineOut,
   TeacherOut,
+  TreeThemeOut,
 } from '../types';
 
 const NOW = '2026-03-16T08:00:00+01:00';
@@ -96,7 +99,73 @@ export const chapters: ChapterOut[] = [
   labels: { fr: String(fr), de: String(de), en: String(en) },
   position: index,
   competency_ids: (refs as number[]).map((r) => id(200 + r)),
+  // The Competence this Theme hangs from: the first code it tags, as the seed
+  // loader resolves it for a PER school.
+  primary_competency_id: id(200 + (refs as number[])[0]),
 }));
+
+/**
+ * The curriculum tree, built from the chapters above so the mock cannot drift
+ * from them. Each chapter's primary competency stands in for its Competence —
+ * these fixtures have no competency parents, and D56's documented fallback is
+ * that a top-level primary is its own Competence node.
+ */
+export function classTree(classId: string): ClassTreeOut {
+  const bands: MasteryBandKey[] = ['solid', 'ok', 'weak', 'fading'];
+  const themeOf = (chapter: ChapterOut, index: number): TreeThemeOut => ({
+    chapter_id: chapter.id,
+    key: chapter.key,
+    labels: chapter.labels,
+    position: chapter.position,
+    sheet_count: (index % 3) + 1,
+    competency_ids: chapter.competency_ids,
+    mastery: {
+      score: 0.9 - index * 0.12,
+      band: bands[index % bands.length] as MasteryBandKey,
+      attempts_count: 12 - index,
+      provisional: false,
+      assessed_count: Math.max(1, chapter.competency_ids.length - (index % 2)),
+      child_count: chapter.competency_ids.length,
+      weakest_band: bands[index % bands.length] as MasteryBandKey,
+      days_until_review: 7 + index,
+      last_attempt_at: NOW,
+    },
+  });
+
+  return {
+    class_id: classId,
+    computed_at: NOW,
+    branches: [
+      {
+        subject_id: id(10),
+        subject_key: 'mathematics',
+        labels: { fr: 'Mathématiques', de: 'Mathematik', en: 'Mathematics' },
+        mastery: {
+          score: 0.72,
+          band: 'weak',
+          attempts_count: 38,
+          provisional: false,
+          assessed_count: 4,
+          child_count: 4,
+          weakest_band: 'fading',
+          days_until_review: 5,
+          last_attempt_at: NOW,
+        },
+        competences: chapters.map((chapter, index) => ({
+          competency_id: chapter.primary_competency_id ?? id(200 + index),
+          code: competencies[index]?.code ?? `MSN 3${index + 1}`,
+          labels: competencies[index]?.labels ?? chapter.labels,
+          mastery: themeOf(chapter, index).mastery,
+          themes: [themeOf(chapter, index)],
+        })),
+        unfiled_sheet_count: 2,
+        // Rendered even at zero in the picker; non-zero here so the mock shows
+        // the counted bucket the constraint requires (DC-content-06).
+        unfiled_exercise_count: 3,
+      },
+    ],
+  };
+}
 
 /* Deterministic pseudo-random, so the matrix looks real and never moves. */
 function pseudoScore(studentIndex: number, competencyIndex: number): number {
@@ -432,6 +501,7 @@ export const sheet: SheetOut = {
   id: id(600),
   class_id: id(20),
   subject_id: id(10),
+  chapter_id: id(300),
   title: 'Fractions — révision avant le test',
   target: 'class',
   language: 'fr',

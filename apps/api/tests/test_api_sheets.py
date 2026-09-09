@@ -6,10 +6,12 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import Tenant, login, make_exercise
+from test_api_fixtures import Tenant, login, make_chapter, make_exercise
 
+from alppy.models import UNFILED_CHAPTER_KEY, Chapter, Subject, class_subject
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
@@ -279,3 +281,112 @@ def test_editing_the_barème_invalidates_the_rendered_pdf(
     assert response.status_code == 200, response.text
     assert response.json()["rendered_at"] is None
     assert response.json()["default_points_penalty"] == 1.0
+
+
+# --- filing a sheet under a Theme ----------------------------------------
+def test_a_sheet_created_without_a_theme_lands_in_unfiled(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Omitting `chapter_id` says "not filed yet", and that is a real answer.
+
+    The alternative — inferring a Theme from the items' own inferred
+    `Exercise.chapter_id` — would promote a guess into a teacher-facing filing
+    the teacher never confirmed.
+    """
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    login(client, tenant.teacher.email)
+
+    response = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+    assert response.status_code == 201
+
+    chapter = db.get(Chapter, uuid.UUID(response.json()["chapter_id"]))
+    assert chapter is not None
+    assert chapter.key == UNFILED_CHAPTER_KEY
+    # Excluded from the tree and the roll-up by the NULL, not by the key.
+    assert chapter.primary_competency_id is None
+
+
+def test_a_sheet_can_be_filed_under_a_theme_of_its_own_subject(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    chapter = make_chapter(db, tenant, key="fractions", competencies=[tenant.competency])
+    login(client, tenant.teacher.email)
+
+    payload = _sheet_payload(tenant, [str(exercise.id)]) | {"chapter_id": str(chapter.id)}
+    response = client.post("/api/v1/sheets", json=payload)
+    assert response.status_code == 201
+    assert response.json()["chapter_id"] == str(chapter.id)
+
+
+def test_a_theme_from_another_subject_is_refused(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """A Theme in another Branch would file the sheet where the tree cannot
+    show it, so it is a caller bug rather than a valid state."""
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    other_subject = Subject(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        key="german",
+        labels={"fr": "Allemand", "de": "Deutsch", "en": "German"},
+    )
+    db.add(other_subject)
+    db.flush()
+    foreign = Chapter(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        subject_id=other_subject.id,
+        key="deklination",
+        labels={"fr": "d", "de": "d", "en": "d"},
+        position=0,
+    )
+    db.add(foreign)
+    db.commit()
+    login(client, tenant.teacher.email)
+
+    payload = _sheet_payload(tenant, [str(exercise.id)]) | {"chapter_id": str(foreign.id)}
+    response = client.post("/api/v1/sheets", json=payload)
+    assert response.status_code == 422
+
+
+def test_a_sheet_can_be_refiled_after_the_fact(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The path that matters the day this ships, when everything is unfiled."""
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    chapter = make_chapter(db, tenant, key="fractions", competencies=[tenant.competency])
+    login(client, tenant.teacher.email)
+
+    created = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+    sheet_id = created.json()["id"]
+
+    response = client.patch(
+        f"/api/v1/sheets/{sheet_id}", json={"chapter_id": str(chapter.id)}
+    )
+    assert response.status_code == 200
+    assert response.json()["chapter_id"] == str(chapter.id)
+
+
+def test_creating_a_sheet_declares_the_branch_for_the_class(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The Branch level of the navigation is kept populated from here.
+
+    Asserted against `class_subject` rather than against sheets, so it would
+    still fail if the read quietly went back to deriving from sheets.
+    """
+    exercise = make_exercise(db, tenant, statement="1/2 + 1/4 ?")
+    login(client, tenant.teacher.email)
+    assert db.execute(select(class_subject)).all() == []
+
+    client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+
+    rows = db.execute(select(class_subject)).all()
+    assert [(r.class_id, r.subject_id, r.position) for r in rows] == [
+        (tenant.school_class.id, tenant.subject.id, 0)
+    ]
+
+    # A second sheet in the same Branch must not add a second row.
+    client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+    assert len(db.execute(select(class_subject)).all()) == 1

@@ -168,6 +168,8 @@ Source: `CLAUDE.md`; `DESIGN.md` §1; [`docs/privacy.md`](../privacy.md).
 | DC-content-03 | Layouts survive German — the longest of the three locales. | `locales.spec.ts` | Buttons that fit in French and overflow in German. |
 | DC-content-04 | AI-generated content is **marked** with the accent, and only generated content is. | review only | See DC-colour-06 — this is its enforcement in the UI. |
 | DC-content-05 | AI-generated exercises are never printed without teacher approval (`Exercise.approved_at`). | `sheet_service` + tests | A model's mistake reaches thirty children with the school's name on it. |
+| DC-content-06 | The builder's Theme picker always shows a **counted "Sans thème" row at the root of the tree, even at zero**, and it sends `chapter_id=none`. | `ThemePicker` + `test_source_sections.py` | `Exercise.chapter_id` is null on a large minority of a real textbook, so those exercises vanish from the picker with nothing said (D59). |
+| DC-content-07 | A rolled-up band (Theme, Competence, Branch) always carries its written label, and carries its **coverage** — assessed over total — **whenever that coverage is incomplete**. | `MasteryBandTag` (`label` is a required prop) + `CurriculumTree` | A Theme reads "acquis" on one assessed competency out of three, and the two nobody examined are invisible (D58, DC-colour-08). Printing "3 sur 3" on every row instead says nothing and buries the theme names, which is how the signal gets tuned out. |
 
 **Adjacent invariants, enforced elsewhere.** The rules governing grading, mastery, and
 what reaches a model provider are *not* design constraints and are not restated here:

@@ -63,7 +63,8 @@ python -m alppy.cli backfill-events   # rebuild the agenda from existing timesta
 | `apps/api/alppy/ingest/regions.py` | Exercise regions cut from the page geometry (label, crop, `SUITE ▶`) |
 | `apps/api/alppy/scan/answer_box.py` | A written-answer box cut from the registered page, Alppy's own ink removed |
 | `apps/api/alppy/services/open_answer_grading.py` | The vision grader job: one call per crop, nothing left pending |
-| `apps/api/alppy/mastery/model.py` | The mastery model, pure functions |
+| `apps/api/alppy/mastery/model.py` | The mastery model, pure functions (`roll_up_mastery` is the only aggregation above a competency) |
+| `apps/api/alppy/services/tree_service.py` | `Class → Branch → Competence → Theme`, with a band on every node |
 | `apps/api/alppy/ai/` | Provider-agnostic AI layer, versioned prompts, PII gate |
 | `packages/ui/src/design/` | Tokens, base, motion, print, recipes |
 | `packages/shared` | Types generated from the OpenAPI document |
@@ -116,6 +117,41 @@ because a leak is a caller bug. See [`docs/privacy.md`](docs/privacy.md).
 
 **AI-generated exercises are never printed without teacher approval** *(DC-content-05)*
 (`Exercise.approved_at`).
+
+**A Theme sits under ONE Competence and credits many.** `Chapter.primary_competency_id`
+is where a chapter *sits* in `Class → Branch → Competence → Theme → Sheet`; the
+`chapter_competency` many-to-many is what it *credits*. They are not
+interchangeable — rolling mastery up through the m2m would leak a chapter's
+evidence into a curriculum branch its primary never belongs to. The primary is
+resolved **per school** from `School.default_curriculum`, which is what lets Sion
+and Chur share one chapter (D56, `docs/curriculum.md` §3.1).
+
+**The `unfiled` bucket is excluded by `primary_competency_id IS NULL`, never by its
+`key`.** A school may relabel it; a rename must not readmit sheets nobody has filed
+into a mastery number. And a sheet is never auto-filed by inferring a Theme from its
+items: `Exercise.chapter_id` is itself a guess, and promoting a guess into a filing
+the teacher never confirmed is what `approved_at` exists to prevent (D60).
+
+**A rolled-up band never travels alone.** *(DC-content-07)* A Theme, Competence or
+Branch band always carries its written label, and carries its coverage — assessed
+over total — whenever that coverage is *incomplete*. Green over one assessed
+competency and green over three look identical otherwise. Showing "3 sur 3" as well
+is not more honest, only louder: it says nothing the band does not, and it crowds
+out the theme names. `MasteryBandTag` takes `label` as a *required* prop so a caller
+cannot produce a bare coloured pill by omitting an argument.
+
+**Never pool attempts across competencies.** `roll_up_mastery` combines
+`MasteryResult`s, each already carrying its own recency. Concatenating the raw
+attempts instead derives one recency from the mixture, so a competency practised
+last week launders the staleness of one last touched in June — in the model whose
+whole purpose is fading. Pooling across *students* is fine and is what
+`mastery_service.pool_by_competency` does (D58, `docs/mastery-model.md` §7).
+
+**The builder's Theme picker always shows a counted "Sans thème" row, even at zero.**
+*(DC-content-06)* `Exercise.chapter_id` is null on a large minority of a real
+textbook, so `chapter_id=none` is a real sentinel, distinct from the parameter being
+absent. `ExercisePicker` used to keep "nothing is unreachable" by having no theme
+filter at all; now that Theme is its root, that row is what keeps the promise (D59).
 
 **A written answer is graded on a verdict, never on a heuristic.** The vision
 grader (`alppy/scan/open_grading.py`, installed through `register_grader`)

@@ -14,8 +14,14 @@ from typing import Annotated, Literal
 from fastapi import APIRouter, Query
 
 from alppy.api.deps import DbDep, ScopeDep
-from alppy.schemas import CompetencyAttemptsOut, MasteryMatrixOut, StudentProfileOut
+from alppy.schemas import (
+    ClassTreeOut,
+    CompetencyAttemptsOut,
+    MasteryMatrixOut,
+    StudentProfileOut,
+)
 from alppy.services import mastery_service as svc
+from alppy.services import tree_service
 
 router = APIRouter(tags=["mastery"])
 
@@ -43,6 +49,30 @@ def class_mastery(
         subject_id=subject_id,
         chapter_id=chapter_id,
         sort=sort,
+    )
+
+
+@router.get("/classes/{class_id}/tree", response_model=ClassTreeOut)
+def class_tree(
+    class_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    subject_id: Annotated[uuid.UUID | None, Query()] = None,
+    student_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> ClassTreeOut:
+    """Branch -> Competence -> Theme, each node carrying a rolled-up band.
+
+    Lives in this router rather than in `classes` for the reason at the top of
+    the file: the tree decays exactly like the matrix, so it has to be computed
+    from attempts rather than read out of `MasterySnapshot`.
+
+    Pooled across the whole roster by default. ``student_id`` narrows it to one
+    child — the same computation over a shorter attempt list, not a different
+    rule. ``subject_id`` narrows to one Branch, for a builder that already
+    knows which subject it is composing in.
+    """
+    return tree_service.class_tree(
+        db, scope, class_id, subject_id=subject_id, student_id=student_id
     )
 
 

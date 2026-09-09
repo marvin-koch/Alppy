@@ -17,7 +17,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { use } from 'react';
 
 import { Link } from '@/i18n/navigation';
-import { useStudentMastery } from '@/lib/api/queries';
+import { useCurriculumTree, useStudentMastery } from '@/lib/api/queries';
 import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
 
@@ -45,8 +45,11 @@ export default function StudentPage({
   const bandLabels = useBandLabels();
 
   const { data, isLoading, isError, refetch } = useStudentMastery(studentId);
+  // The same tree the class dashboard shows, narrowed to this child, so the
+  // headings carry their own bands rather than the class's.
+  const tree = useCurriculumTree(classId, { studentId });
 
-  if (isLoading) return <LoadingState shape="profile" label={tc('loading')} />;
+  if (isLoading || tree.isLoading) return <LoadingState shape="profile" label={tc('loading')} />;
   if (isError || !data) {
     return (
       <ErrorState
@@ -61,18 +64,76 @@ export default function StudentPage({
   const percent = Math.round((data.overall_score ?? 0) * 100);
   const overallBand = assessed ? bandOf(data.overall_score ?? 0) : 'none';
 
+  /**
+   * Group a flat competency list under the Competence and Theme it belongs to.
+   *
+   * The tree is read for THIS student (`studentId`), so the headings carry the
+   * child's own rolled-up bands rather than the class's. A competency the tree
+   * does not place — an exercise tagged with a code no chapter claims — keeps
+   * its own group at the end rather than disappearing, the same rule the
+   * builder's untagged bucket follows.
+   */
+  const groups = (items: typeof data.strengths) => {
+    const placement = new Map<string, { competence: string; theme: string }>();
+    for (const branch of tree.data?.branches ?? []) {
+      for (const competence of branch.competences) {
+        const competenceLabel = `${competence.code} · ${
+          competence.labels?.[locale] ?? competence.labels?.fr ?? competence.code
+        }`;
+        for (const theme of competence.themes) {
+          const themeLabel = theme.labels?.[locale] ?? theme.labels?.fr ?? theme.key;
+          for (const id of theme.competency_ids ?? []) {
+            placement.set(id, { competence: competenceLabel, theme: themeLabel });
+          }
+        }
+      }
+    }
+    const out = new Map<string, { competence: string; theme: string; items: typeof items }>();
+    for (const item of items) {
+      const at = placement.get(item.competency.id);
+      const key = at ? `${at.competence}\u0000${at.theme}` : '';
+      const bucket = out.get(key);
+      if (bucket) bucket.items.push(item);
+      else
+        out.set(key, {
+          competence: at?.competence ?? '',
+          theme: at?.theme ?? '',
+          items: [item],
+        });
+    }
+    return [...out.values()];
+  };
+
   const section = (
     titleText: string,
     items: typeof data.strengths,
     emptyText: string,
   ) => (
     <Card>
-      <h2 className="mb-3 text-h3">{titleText}</h2>
+      <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+        <h2 className="text-h3">{titleText}</h2>
+        <p className="text-body-s text-ink-500">{t('byCompetence')}</p>
+      </div>
       {items.length === 0 ? (
         <p className="text-body-s text-ink-500">{emptyText}</p>
       ) : (
+        groups(items).map((group) => (
+          <section
+            key={`${group.competence}-${group.theme}`}
+            className="mb-4 flex flex-col gap-2 last:mb-0"
+          >
+            {/* Headings, not nested Cards: these are subdivisions of the card
+                they sit in (DC-shape-01). */}
+            {group.competence ? (
+              <h3 className="border-b border-line pb-1 text-body-s font-bold text-ink-700">
+                {group.competence}
+              </h3>
+            ) : null}
+            {group.theme ? (
+              <h4 className="text-label text-ink-500">{group.theme}</h4>
+            ) : null}
         <ul className="flex list-none flex-col gap-3 p-0">
-          {items.map((item) => (
+          {group.items.map((item) => (
             <li key={item.competency.id} className="flex flex-col gap-1">
               <div className="flex flex-wrap items-center gap-2">
                 <ConceptTag code={item.competency.code} />
@@ -97,6 +158,8 @@ export default function StudentPage({
             </li>
           ))}
         </ul>
+          </section>
+        ))
       )}
     </Card>
   );

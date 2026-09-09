@@ -81,6 +81,7 @@ def _sheet(
         school_id=tenant.school.id,
         class_id=tenant.school_class.id,
         subject_id=tenant.subject.id,
+        chapter_id=tenant.unfiled_chapter_id,
         created_by_id=tenant.teacher.id,
         title="Fractions",
         target=SheetTarget.CLASS,

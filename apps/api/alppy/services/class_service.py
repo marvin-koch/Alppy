@@ -14,12 +14,22 @@ import uuid
 from datetime import UTC, date, datetime
 
 from sqlalchemy import Select, func, select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
 from alppy.core.uid import MAX_STUDENT_NUMBER, InvalidUidError, format_uid
-from alppy.models import Class, Scan, SchoolYear, Sheet, Student, Subject, Teacher
+from alppy.models import (
+    Class,
+    Scan,
+    SchoolYear,
+    Sheet,
+    Student,
+    Subject,
+    Teacher,
+    class_subject,
+)
 from alppy.models.enums import ScanStatus
 from alppy.schemas import ClassCreate, ClassOut, ClassSummary, HomeOut, RosterCreate
 from alppy.services import class_out, subject_out, teacher_out
@@ -142,18 +152,56 @@ def student_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
 
 
 def subject_ids_for_class(db: Session, scope: Scope, class_id: uuid.UUID) -> list[uuid.UUID]:
-    """Subjects this class has sheets for.
+    """The Branches this class studies, in the order it met them.
 
-    There is no Class-Subject association table in the model, so "the subjects
-    of a class" is derived from what has actually been taught to it.
+    Declared in ``class_subject``, not derived. Until D57 this was
+    `SELECT DISTINCT sheet.subject_id`, which was circular: the Branch level of
+    the navigation only existed once somebody had already built a sheet inside
+    one, so a new class opened onto nothing. ``declare_subject`` keeps the
+    table current from the one place a class and a subject first meet.
+
+    The ownership filter is joined in here rather than trusting the caller's
+    ``class_id``, the same as every other read in this module.
     """
     rows = db.execute(
-        select(Sheet.subject_id)
-        .where(Sheet.school_id == scope.school_id)
-        .where(Sheet.class_id == class_id)
-        .distinct()
+        select(class_subject.c.subject_id)
+        .join(Class, Class.id == class_subject.c.class_id)
+        .where(Class.id == class_id)
+        .where(Class.school_id == scope.school_id)
+        .where(Class.teacher_id == scope.teacher_id)
+        # `subject_id` breaks a tie: two subjects first taught in the same
+        # instant can be assigned the same position (the PK is
+        # (class_id, subject_id), so ON CONFLICT cannot serialise that), and a
+        # branch list whose order wobbles between requests is worse than one
+        # whose tie is resolved arbitrarily but consistently.
+        .order_by(class_subject.c.position.asc(), class_subject.c.subject_id.asc())
     ).scalars()
     return list(rows)
+
+
+def declare_subject(
+    db: Session, scope: Scope, class_id: uuid.UUID, subject_id: uuid.UUID
+) -> None:
+    """Record that this class studies this Branch. Idempotent.
+
+    Called from ``sheet_service.create_sheet`` — the one place a class and a
+    subject first come together — so the Branch list stays populated with no
+    new step for the teacher, exactly as the old derived query did implicitly.
+
+    ``ON CONFLICT DO NOTHING`` rather than a read-then-write: two sheets
+    created in the same new subject at once would otherwise race into a
+    duplicate-key error on a perfectly ordinary action.
+    """
+    next_position = db.execute(
+        select(func.coalesce(func.max(class_subject.c.position), -1) + 1).where(
+            class_subject.c.class_id == class_id
+        )
+    ).scalar_one()
+    db.execute(
+        pg_insert(class_subject)
+        .values(class_id=class_id, subject_id=subject_id, position=next_position)
+        .on_conflict_do_nothing(index_elements=["class_id", "subject_id"])
+    )
 
 
 def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCreate) -> Class:

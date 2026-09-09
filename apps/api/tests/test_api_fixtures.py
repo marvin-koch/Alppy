@@ -26,7 +26,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.engine import Engine
 from sqlalchemy.ext.compiler import compiles
-from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.orm import Session, object_session, sessionmaker
 from sqlalchemy.pool import StaticPool
 
 
@@ -94,6 +94,22 @@ class Tenant:
         self.school_class = school_class
         self.students = students
         self.competency = competency
+
+    @property
+    def unfiled_chapter_id(self) -> uuid.UUID:
+        """The subject's `unfiled` Theme.
+
+        ``Sheet.chapter_id`` is NOT NULL, so a fixture that builds a Sheet row
+        directly needs a chapter. Resolved lazily through the same service the
+        product uses, so the fixture cannot drift from it.
+        """
+        from alppy.services.chapter_service import ensure_unfiled_chapter
+
+        session = object_session(self.subject)
+        assert session is not None
+        return ensure_unfiled_chapter(
+            session, school_id=self.school.id, subject_id=self.subject.id
+        ).id
 
     @property
     def scope(self) -> Scope:
@@ -338,9 +354,18 @@ def make_chapter(
     key: str,
     competencies: list[Competency],
     position: int = 0,
+    primary_competency: Competency | None = None,
 ) -> Chapter:
     """A chapter grouping competencies, so the matrix filter has something to
-    narrow to."""
+    narrow to.
+
+    ``primary_competency`` is the canonical parent the navigation tree hangs
+    this Theme from. Defaults to the first tagged competency: a chapter with no
+    primary is the `unfiled` bucket, which the tree deliberately excludes, and
+    a fixture that silently produced one would make tree tests assert on an
+    empty tree for the wrong reason.
+    """
+    primary = primary_competency or (competencies[0] if competencies else None)
     chapter = Chapter(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
@@ -348,6 +373,7 @@ def make_chapter(
         key=key,
         labels={"fr": key, "de": key, "en": key},
         position=position,
+        primary_competency_id=primary.id if primary is not None else None,
     )
     chapter.competencies = competencies
     db.add(chapter)
@@ -370,6 +396,7 @@ def make_paper_trail(
         school_id=tenant.school.id,
         class_id=tenant.school_class.id,
         subject_id=tenant.subject.id,
+        chapter_id=tenant.unfiled_chapter_id,
         title="Fractions, controle 1",
         target=SheetTarget.CLASS,
         language="fr",

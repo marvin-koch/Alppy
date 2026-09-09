@@ -122,7 +122,17 @@
       "body": "In dieser Klasse wurde noch keine Kompetenz aus diesem Kapitel beurteilt.",
       "action": "Alle Kapitel anzeigen"
     },
-    "cellLabelNotAssessed": "{student}, {competency}: {band}"
+    "cellLabelNotAssessed": "{student}, {competency}: {band}",
+    "filterCompetency": "Kompetenz",
+    "allCompetences": "Alle Kompetenzen",
+    "coverage": "{assessed} von {total} Kompetenzen beurteilt",
+    "weakestInside": "am schwächsten: {band}",
+    "branchBand": "Fach · {band}",
+    "emptyScope": {
+      "title": "Hier gibt es nichts zu zeigen",
+      "body": "Keine korrigierten Arbeiten zu dieser Kompetenz oder diesem Thema.",
+      "action": "Ganzes Fach anzeigen"
+    }
   },
   "student": {
     "profile": "Profil",
@@ -141,7 +151,9 @@
     "notAssessed": {
       "title": "Noch nicht beurteilt",
       "body": "Von dieser Schülerin oder diesem Schüler liegt noch keine korrigierte Antwort vor. Das ist keine Null: es wurde schlicht noch nichts beurteilt."
-    }
+    },
+    "byCompetence": "nach Kompetenz, dann nach Thema",
+    "noneInCompetence": "Keine korrigierten Arbeiten zu dieser Kompetenz."
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {keine Aufgabe extrahiert} one {# Aufgabe extrahiert} other {# Aufgaben extrahiert}}",
@@ -233,7 +245,12 @@
       "drafts": "Noch fertigzustellen",
       "draftsHint": "Die PDFs sind noch nicht erzeugt.",
       "ready": "Bereit zum Drucken"
-    }
+    },
+    "unfiledTheme": "Nicht zugeordnet",
+    "unfiledThemeHelp": "Blätter aus der Zeit vor den Themen. Öffnen Sie eines, um es zuzuordnen — es wurde nichts für Sie erraten.",
+    "groupGeneral": "Allgemeine Blätter",
+    "groupPersonalized": "Personalisierte Blätter",
+    "fileIt": "Zuordnen"
   },
   "scans": {
     "title": "Korrekturen",
@@ -645,7 +662,15 @@
     "overflowHelp": "Mehr als sechzehn Aufgaben: Das Blatt braucht mindestens {count} Seiten.",
     "boxSummary": "{count, plural, one {Rahmen mit einer Zeile} other {Rahmen mit # Zeilen}}",
     "answerSummaryGiven": "erwartete Antwort angegeben",
-    "answerSummaryModel": "Antwort wird vom Modell ermittelt"
+    "answerSummaryModel": "Antwort wird vom Modell ermittelt",
+    "theme": "Thema",
+    "changeTheme": "Thema wechseln",
+    "themePlaceholder": "Thema wählen",
+    "themeRequired": "Wählen Sie ein Thema für dieses Blatt, bevor Sie es erzeugen.",
+    "themeModalTitle": "Thema wählen",
+    "unfiledBucket": "Ohne Thema ({count})",
+    "unfiledBucketHelp": "Aufgaben, die das Lehrmittel keinem Thema zugeordnet hat",
+    "unfiledCannotFile": "«Ohne Thema» dient dazu, diese Aufgaben zu finden, nicht dazu, ein Blatt abzulegen."
   },
   "newExercise": {
     "title": "Aufgabe hinzufügen",
@@ -751,5 +776,16 @@
       "title": "Diese Kopie ist noch nicht korrigiert",
       "body": "Scannen Sie den Stapel und bestätigen Sie ihn — die Details erscheinen hier."
     }
+  },
+  "tree": {
+    "title": "Lehrplan",
+    "branch": "Fach",
+    "competence": "Kompetenz",
+    "theme": "Thema",
+    "sheetCount": "{count, plural, =0 {keine Blätter} one {# Blatt} other {# Blätter}}",
+    "unfiled": "Nicht zugeordnet",
+    "unfiledSheets": "{count, plural, =0 {keine Blätter} one {# Blatt} other {# Blätter}}",
+    "unfiledHelp": "Vor den Themen erstellte Blätter. Öffnen Sie eines, um es zuzuordnen.",
+    "empty": "In diesem Fach gibt es noch keine Themen."
   }
 }

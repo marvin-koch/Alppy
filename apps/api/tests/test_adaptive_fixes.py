@@ -646,6 +646,7 @@ def _adaptive_sheet(world: World) -> Any:
     """A minimal differentiated sheet: two students, two items each."""
     from alppy.models import Sheet, SheetInstance, SheetItem
     from alppy.models.enums import SheetTarget
+    from alppy.services.chapter_service import ensure_unfiled_chapter
     from alppy.sheets.layout import LAYOUT_VERSION
 
     ids = list(world.exercises.values())[:2]
@@ -654,6 +655,9 @@ def _adaptive_sheet(world: World) -> Any:
         school_id=world.school_id,
         class_id=world.class_id,
         subject_id=world.subject_id,
+        chapter_id=ensure_unfiled_chapter(
+            world.db, school_id=world.school_id, subject_id=world.subject_id
+        ).id,
         title="Batch",
         target=SheetTarget.STUDENT,
         language="fr",

@@ -38,15 +38,18 @@ from sqlalchemy.orm import Session
 from alppy.ai.client import AiClient
 from alppy.core.logging import get_logger
 from alppy.models import (
+    UNFILED_CHAPTER_KEY,
     Chapter,
     Competency,
     Exercise,
+    School,
     Source,
     SourceChunk,
     SourceSection,
     Subject,
 )
 from alppy.models.enums import CurriculumKind, ExerciseOrigin, ExerciseType, JobStatus
+from alppy.services import chapter_service
 
 log = get_logger(__name__)
 
@@ -80,6 +83,10 @@ class ReferenceLoadResult:
     subject_ids: dict[str, uuid.UUID] = field(default_factory=dict)
     competency_ids: dict[str, uuid.UUID] = field(default_factory=dict)
     chapter_ids: dict[str, uuid.UUID] = field(default_factory=dict)
+    #: The per-subject `unfiled` bucket, keyed by subject key. Every sheet
+    #: whose teacher has not filed it lands here; `sheet.chapter_id` is NOT
+    #: NULL, so this row has to exist before a sheet can be created at all.
+    unfiled_chapter_ids: dict[str, uuid.UUID] = field(default_factory=dict)
     subjects_created: int = 0
     competencies_created: int = 0
     chapters_created: int = 0
@@ -152,12 +159,23 @@ def load_reference_data(
         db, school_id=school_id, keys=subject_keys
     )
     result.competency_ids, result.competencies_created = _load_competencies(db, competency_rows)
+
+    # Before the chapters: a sheet cannot be created without a chapter_id, and
+    # the fallback has to exist for every subject the school now has.
+    result.unfiled_chapter_ids = chapter_service.ensure_unfiled_chapters(
+        db, school_id=school_id, subject_ids=result.subject_ids
+    )
+
+    school = db.get(School, school_id)
+    if school is None:
+        raise SeedError(f"school '{school_id}' does not exist")
     result.chapter_ids, result.chapters_created = _load_chapters(
         db,
         school_id=school_id,
         rows=chapter_rows,
         subject_ids=result.subject_ids,
         competency_ids=result.competency_ids,
+        curriculum=school.default_curriculum,
     )
     db.flush()
     log.info(
@@ -249,6 +267,49 @@ def _load_competencies(
     return {code: row.id for code, row in by_code.items()}, created
 
 
+UNFILED_POSITION = 999
+"""Past every seeded chapter's 0..6, so `ORDER BY position` puts it last
+without a second query to filter it out."""
+
+UNFILED_LABELS: dict[str, str] = {
+    "fr": "Non classé",
+    "de": "Nicht zugeordnet",
+    "en": "Unfiled",
+}
+
+
+def _ensure_unfiled_chapters(
+    db: Session, *, school_id: uuid.UUID, subject_ids: dict[str, uuid.UUID]
+) -> dict[str, uuid.UUID]:
+    """One `unfiled` Chapter per subject. Idempotent by (school, subject, key)."""
+    existing = {
+        row.subject_id: row
+        for row in db.scalars(
+            select(Chapter).where(
+                Chapter.school_id == school_id, Chapter.key == UNFILED_CHAPTER_KEY
+            )
+        )
+    }
+    out: dict[str, uuid.UUID] = {}
+    for subject_key, subject_id in subject_ids.items():
+        row = existing.get(subject_id)
+        if row is None:
+            row = Chapter(
+                id=uuid.uuid4(),
+                school_id=school_id,
+                subject_id=subject_id,
+                key=UNFILED_CHAPTER_KEY,
+            )
+            db.add(row)
+        row.labels = dict(UNFILED_LABELS)
+        row.position = UNFILED_POSITION
+        # Never a parent, never in the tree, never in a roll-up.
+        row.primary_competency_id = None
+        out[subject_key] = row.id
+    db.flush()
+    return out
+
+
 def _load_chapters(
     db: Session,
     *,
@@ -256,9 +317,15 @@ def _load_chapters(
     rows: Sequence[dict[str, Any]],
     subject_ids: dict[str, uuid.UUID],
     competency_ids: dict[str, uuid.UUID],
+    curriculum: CurriculumKind,
 ) -> tuple[dict[str, uuid.UUID], int]:
     existing = {
-        row.key: row for row in db.scalars(select(Chapter).where(Chapter.school_id == school_id))
+        row.key: row
+        for row in db.scalars(
+            select(Chapter).where(
+                Chapter.school_id == school_id, Chapter.key != UNFILED_CHAPTER_KEY
+            )
+        )
     }
     by_id = {row.id: row for row in db.scalars(select(Competency))}
     out: dict[str, uuid.UUID] = {}
@@ -286,10 +353,38 @@ def _load_chapters(
             row = Chapter(id=uuid.uuid4(), school_id=school_id, key=key, subject_id=subject_id)
             db.add(row)
             created += 1
+        # The canonical parent for this school's curriculum. A chapter tags
+        # competencies from BOTH curricula on purpose (docs/curriculum.md §3);
+        # exactly one of them is where this school files it.
+        primary = entry.get("primary_competency_code")
+        if not isinstance(primary, dict):
+            raise SeedError(
+                f"chapter '{key}': primary_competency_code must be an object "
+                f"keyed by curriculum"
+            )
+        primary_code = primary.get(curriculum.value)
+        if not primary_code:
+            raise SeedError(
+                f"chapter '{key}' has no primary_competency_code for curriculum "
+                f"'{curriculum.value}'"
+            )
+        primary_id = competency_ids.get(primary_code)
+        if primary_id is None:
+            raise SeedError(
+                f"chapter '{key}' primary_competency_code references unknown "
+                f"competency code '{primary_code}'"
+            )
+        if primary_code not in codes:
+            raise SeedError(
+                f"chapter '{key}' primary_competency_code '{primary_code}' is not "
+                f"among its own competency_codes"
+            )
+
         row.subject_id = subject_id
         row.labels = _localised(entry, "labels", "chapter", key)
         row.position = position
         row.competencies = competencies
+        row.primary_competency_id = primary_id
         out[key] = row.id
 
     db.flush()

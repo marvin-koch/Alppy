@@ -158,6 +158,7 @@ def chapter_out(chapter: Chapter) -> ChapterOut:
         labels=dict(chapter.labels or {}),
         position=chapter.position,
         competency_ids=[c.id for c in chapter.competencies],
+        primary_competency_id=chapter.primary_competency_id,
     )
 
 
@@ -279,6 +280,7 @@ def sheet_out(
         id=sheet.id,
         class_id=sheet.class_id,
         subject_id=sheet.subject_id,
+        chapter_id=sheet.chapter_id,
         title=sheet.title,
         target=sheet.target,
         language=sheet.language,

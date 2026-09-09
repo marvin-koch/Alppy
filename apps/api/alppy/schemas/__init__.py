@@ -137,6 +137,10 @@ class ChapterOut(ApiModel):
     labels: LocalisedText
     position: int
     competency_ids: list[uuid.UUID] = []
+    #: The single canonical parent this Theme hangs from in the navigation
+    #: tree. NULL only on the per-subject `unfiled` bucket, which is what
+    #: keeps it out of the tree and the roll-up.
+    primary_competency_id: uuid.UUID | None = None
 
 
 # ------------------------------------------------------------------ sources
@@ -384,6 +388,11 @@ class SheetItemIn(BaseModel):
 class SheetCreate(BaseModel):
     class_id: uuid.UUID
     subject_id: uuid.UUID
+    #: The Theme to file this sheet under. Optional at the boundary even though
+    #: the column is NOT NULL: omitting it means "not filed yet", and the
+    #: service falls back to the subject's `unfiled` chapter rather than
+    #: guessing one from the items.
+    chapter_id: uuid.UUID | None = None
     title: Annotated[str, Field(min_length=1, max_length=200)]
     language: Locale
     target: SheetTarget = SheetTarget.CLASS
@@ -400,6 +409,9 @@ class SheetCreate(BaseModel):
 
 class SheetUpdate(BaseModel):
     title: str | None = None
+    #: Re-filing a sheet under the right Theme. Needed in practice the moment
+    #: the hierarchy ships, when every existing sheet is `unfiled`.
+    chapter_id: uuid.UUID | None = None
     items: list[SheetItemIn] | None = None
     default_points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
     default_points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
@@ -466,6 +478,8 @@ class SheetOut(ApiModel):
     id: uuid.UUID
     class_id: uuid.UUID
     subject_id: uuid.UUID
+    #: Required, mirroring the NOT NULL column. Every sheet has a home.
+    chapter_id: uuid.UUID
     title: str
     target: SheetTarget
     language: str
@@ -722,6 +736,83 @@ class MasteryMatrixOut(ApiModel):
     students: list[StudentOut]
     competencies: list[CompetencyOut]
     cells: list[MasteryCell]
+    computed_at: datetime
+
+
+# ------------------------------------------------- the curriculum tree
+class TreeMasteryOut(ApiModel):
+    """A rolled-up band. The SAME five bands as a matrix cell, deliberately.
+
+    ``roll_up_mastery`` returns a ``MasteryResult`` through the same
+    ``band_for`` thresholds, so a Theme or a Branch needs no new colour, no new
+    label set and no second reading of DC-colour-08 — the shipped band tokens,
+    glyphs and written labels already cover it.
+
+    Two fields do NOT mean at this level what they mean on a cell, and the
+    difference is documented in docs/mastery-model.md §6 rather than papered
+    over: ``score`` is a weighted mean of the children's already-decayed
+    scores, so it is NOT ``accuracy * recency`` here; ``days_until_review`` is
+    the earliest of the children's, not a re-derivation.
+    """
+
+    score: float
+    band: MasteryBand
+    attempts_count: int
+    provisional: bool
+    #: Assessed children over total children — the coverage behind the band.
+    #: A Theme can read "acquis" on one competency while two others were never
+    #: examined, and the band alone cannot say so.
+    assessed_count: int = 0
+    child_count: int = 0
+    #: The worst band among the assessed children, so a strong aggregate can
+    #: still show what is weakest inside it.
+    weakest_band: MasteryBand | None = None
+    days_until_review: int | None = None
+    last_attempt_at: datetime | None = None
+
+
+class TreeThemeOut(ApiModel):
+    chapter_id: uuid.UUID
+    key: str
+    labels: LocalisedText
+    position: int
+    sheet_count: int
+    #: Every competency this Theme credits — the tagging set, not just the
+    #: primary. A student profile groups its competency rows by looking each
+    #: one up here, and an exercise legitimately carries a code from the other
+    #: curriculum, so the narrower set would drop rows on the floor.
+    competency_ids: list[uuid.UUID] = []
+    mastery: TreeMasteryOut
+
+
+class TreeCompetenceOut(ApiModel):
+    competency_id: uuid.UUID
+    code: str
+    labels: LocalisedText
+    mastery: TreeMasteryOut
+    themes: list[TreeThemeOut] = []
+
+
+class TreeBranchOut(ApiModel):
+    subject_id: uuid.UUID
+    subject_key: str
+    labels: LocalisedText
+    mastery: TreeMasteryOut
+    competences: list[TreeCompetenceOut] = []
+    #: Sheets filed under this subject's `unfiled` chapter. Never rolled into
+    #: `mastery` above, surfaced so the teacher can still find them.
+    unfiled_sheet_count: int = 0
+    #: Exercises in this Branch that carry NO chapter at all. Distinct from
+    #: `unfiled_sheet_count`: that counts sheets nobody filed, this counts
+    #: corpus rows the ingest could not tag. The builder needs it to render a
+    #: counted "Sans thème" bucket, which is what keeps every exercise
+    #: reachable now that Theme is the picker's root.
+    unfiled_exercise_count: int = 0
+
+
+class ClassTreeOut(ApiModel):
+    class_id: uuid.UUID
+    branches: list[TreeBranchOut] = []
     computed_at: datetime
 
 

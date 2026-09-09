@@ -21,6 +21,7 @@ from alppy.api import errors
 from alppy.api.deps import Scope
 from alppy.models import (
     Attempt,
+    Chapter,
     Exercise,
     MisconceptionNote,
     Sheet,
@@ -31,7 +32,7 @@ from alppy.models import (
 )
 from alppy.models.enums import EventKind, EventSubject, ExerciseType, SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
-from alppy.services import event_service
+from alppy.services import chapter_service, class_service, event_service
 from alppy.services.approval import (
     UnapprovedExerciseError,
     UnapprovedFeedbackError,
@@ -65,6 +66,7 @@ def list_sheets(
     *,
     class_id: uuid.UUID | None = None,
     subject_id: uuid.UUID | None = None,
+    chapter_id: uuid.UUID | None = None,
 ) -> list[Sheet]:
     stmt = (
         select(Sheet)
@@ -75,6 +77,8 @@ def list_sheets(
         stmt = stmt.where(Sheet.class_id == class_id)
     if subject_id is not None:
         stmt = stmt.where(Sheet.subject_id == subject_id)
+    if chapter_id is not None:
+        stmt = stmt.where(Sheet.chapter_id == chapter_id)
     return list(db.execute(stmt.order_by(Sheet.created_at.desc())).scalars())
 
 
@@ -85,6 +89,48 @@ def _require_subject(db: Session, school_id: uuid.UUID, subject_id: uuid.UUID) -
     if subject is None:
         raise errors.not_found("subject", id=str(subject_id))
     return subject
+
+
+def _resolve_chapter(
+    db: Session,
+    school_id: uuid.UUID,
+    subject_id: uuid.UUID,
+    chapter_id: uuid.UUID | None,
+) -> Chapter:
+    """The Theme this sheet is filed under.
+
+    ``Sheet.chapter_id`` is NOT NULL, but omitting it at the API boundary is a
+    real, supported case: the teacher has not filed this yet. That falls back
+    to the subject's `unfiled` bucket, which says the true thing, rather than
+    to a majority vote over the items' own inferred ``Exercise.chapter_id`` —
+    that column is a guess, null on a large minority of real textbook rows,
+    and promoting a guess into a filing the teacher never confirmed is what
+    ``approved_at`` exists to prevent elsewhere.
+    """
+    if chapter_id is not None:
+        chapter = db.execute(
+            select(Chapter)
+            .where(Chapter.id == chapter_id)
+            .where(Chapter.school_id == school_id)
+        ).scalar_one_or_none()
+        if chapter is None:
+            raise errors.not_found("chapter", id=str(chapter_id))
+        if chapter.subject_id != subject_id:
+            # A Theme from another Branch is a caller bug, not a valid state:
+            # it would put the sheet somewhere the tree can never show it.
+            raise errors.unprocessable(
+                "chapter belongs to another subject",
+                chapter_id=str(chapter_id),
+                subject_id=str(subject_id),
+            )
+        return chapter
+
+    # Created eagerly by migration 0016 and by the reference seed; created here
+    # if a subject somehow reached the database without one. A missing
+    # structural row must not surface as a 422 on an ordinary "new sheet".
+    return chapter_service.ensure_unfiled_chapter(
+        db, school_id=school_id, subject_id=subject_id
+    )
 
 
 def _load_exercises(
@@ -186,12 +232,17 @@ def create_sheet(db: Session, scope: Scope, teacher_id: uuid.UUID, payload: Shee
     school_id = scope.school_id
     school_class = get_class(db, scope, payload.class_id)
     _require_subject(db, school_id, payload.subject_id)
+    chapter = _resolve_chapter(db, school_id, payload.subject_id, payload.chapter_id)
+    # The one place a class and a subject first meet, and therefore the one
+    # place that keeps the Branch level of the navigation populated (D57).
+    class_service.declare_subject(db, scope, school_class.id, payload.subject_id)
 
     sheet = Sheet(
         id=uuid.uuid4(),
         school_id=school_id,
         class_id=school_class.id,
         subject_id=payload.subject_id,
+        chapter_id=chapter.id,
         created_by_id=teacher_id,
         title=payload.title,
         target=payload.target,
@@ -231,6 +282,12 @@ def update_sheet(
     sheet = get_sheet(db, scope, sheet_id)
     if payload.title is not None:
         sheet.title = payload.title
+    if payload.chapter_id is not None:
+        # Re-filing under a different Theme. Does NOT invalidate the render:
+        # the chapter is where the sheet is filed, and it prints nothing.
+        sheet.chapter_id = _resolve_chapter(
+            db, school_id, sheet.subject_id, payload.chapter_id
+        ).id
     # A barème edit changes the paper: every statement prints what it is worth.
     # So it invalidates the render exactly as an item edit does — otherwise the
     # teacher downloads a PDF whose "(1 pt)" disagrees with how it will grade.
@@ -315,18 +372,44 @@ def create_adaptive_sheet(
     # assigning it. A batch built from more than one personalised group is
     # exactly what it was reserved for.
     grouped = (payload.group_count or 0) > 1
+
+    # The sheet this batch answers, resolved through `get_sheet` so it carries
+    # the school AND ownership check (D23) — `/adaptive/batch` performs none of
+    # its own. Before this it was filtered on `school_id` alone for the chapter
+    # lookup and not at all for `derived_from_id`, so a foreign id was stored
+    # verbatim and `render.py` later printed that sheet's title onto a feedback
+    # page. A 404 is the right answer to a sheet the caller cannot see.
+    parent = (
+        get_sheet(db, scope, payload.source_sheet_id)
+        if payload.source_sheet_id is not None
+        else None
+    )
+
+    # A differentiated batch answers a common sheet, so it belongs to the same
+    # Theme: the reprise on fractions is filed under fractions, next to the
+    # sheet whose results justified it. Only when the batch answers nothing
+    # does it fall back to `unfiled` — and never to a Theme inferred from the
+    # generated items, which would scatter one teaching unit across the tree.
+    parent_chapter_id = (
+        parent.chapter_id
+        if parent is not None and parent.subject_id == payload.subject_id
+        else None
+    )
+    chapter = _resolve_chapter(db, school_id, payload.subject_id, parent_chapter_id)
+
     sheet = Sheet(
         id=uuid.uuid4(),
         school_id=school_id,
         class_id=school_class.id,
         subject_id=payload.subject_id,
+        chapter_id=chapter.id,
         created_by_id=teacher_id,
         title=payload.title,
         target=SheetTarget.GROUP if grouped else SheetTarget.STUDENT,
         language=payload.language,
         intent="adaptive batch",
         layout_version=LAYOUT_VERSION,
-        derived_from_id=payload.source_sheet_id,
+        derived_from_id=parent.id if parent is not None else None,
     )
     db.add(sheet)
     db.flush()
@@ -507,6 +590,7 @@ def class_points_totals(
     class_id: uuid.UUID,
     *,
     subject_id: uuid.UUID | None = None,
+    chapter_id: uuid.UUID | None = None,
 ) -> ClassPointsReport:
     """Every sheet of a class, rolled up per student and per sheet.
 
@@ -519,7 +603,9 @@ def class_points_totals(
     """
     school_id = scope.school_id
     get_class(db, scope, class_id)
-    sheets = list_sheets(db, scope, class_id=class_id, subject_id=subject_id)
+    sheets = list_sheets(
+        db, scope, class_id=class_id, subject_id=subject_id, chapter_id=chapter_id
+    )
     if not sheets:
         return ClassPointsReport(students={}, sheets=[])
 

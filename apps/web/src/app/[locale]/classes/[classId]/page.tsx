@@ -6,6 +6,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  IconChevronRight,
   IlloCurve,
   LoadingState,
   MasteryLegend,
@@ -18,9 +19,16 @@ import { useLocale, useTranslations } from 'next-intl';
 import { use, useMemo, useState } from 'react';
 
 import { CellDrillDown } from '@/components/CellDrillDown';
+import { CompetenceThemeFilter } from '@/components/CompetenceThemeFilter';
+import { CurriculumTree } from '@/components/CurriculumTree';
 import { Link, useRouter } from '@/i18n/navigation';
 import type { MatrixSort, Uuid } from '@/lib/api/types';
-import { useChapters, useClass, useClassMastery, useStudents } from '@/lib/api/queries';
+import {
+  useClass,
+  useClassMastery,
+  useCurriculumTree,
+  useStudents,
+} from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
 import { useBandLabels, useBandHelp } from '@/lib/bands';
 
@@ -32,6 +40,7 @@ export default function ClassPage({
   const { classId } = use(params);
   const t = useTranslations('classes');
   const tm = useTranslations('mastery');
+  const tt = useTranslations('tree');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const ts = useTranslations('sheets');
@@ -40,7 +49,6 @@ export default function ClassPage({
   const bandHelp = useBandHelp();
   const router = useRouter();
 
-  const [chapterId, setChapterId] = useState<Uuid | ''>('');
   const [sort, setSort] = useState<MatrixSort>('roster');
   // Which cell the drill-down is showing. Null closes it.
   const [drill, setDrill] = useState<{ studentId: Uuid; competencyId: Uuid } | null>(null);
@@ -56,10 +64,14 @@ export default function ClassPage({
     scope.subjectId && subjectIds.includes(scope.subjectId)
       ? scope.subjectId
       : subjectIds[0];
-  // Without a subject there is no chapter list to filter by. Asking anyway sent
-  // `?subject_id=undefined` and filled the picker with every chapter in the
-  // school.
-  const chapters = useChapters(subjectId);
+  // Competence and Theme come from the URL (`?competency=&chapter=`), so a
+  // teacher can send a colleague a link to exactly this view. They are NOT
+  // resolved to "the first one" the way class and subject are — see scope.tsx.
+  const { competencyId, chapterId, setCompetency, setChapter } = scope;
+  const tree = useCurriculumTree(classId, subjectId ? { subjectId } : {});
+  const branch =
+    tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
+
   const mastery = useClassMastery(classId, {
     ...(subjectId ? { subjectId } : {}),
     ...(chapterId ? { chapterId } : {}),
@@ -113,11 +125,38 @@ export default function ClassPage({
   // The server owns the row order (roster or weakest-first); fall back to the
   // roster only before the first matrix response has landed.
   const rows = matrixStudents.length > 0 ? matrixStudents : roster;
-  const isFiltered = chapterId !== '';
+  const isFiltered = chapterId !== null || competencyId !== null;
+
+  const crumbLabel = (labels: Record<string, string> | undefined, fallback: string) =>
+    labels?.[locale] ?? labels?.fr ?? fallback;
+  const crumbCompetence = branch?.competences.find(
+    (c) => c.competency_id === competencyId,
+  );
+  const crumbTheme = (branch?.competences ?? [])
+    .flatMap((c) => c.themes)
+    .find((t) => t.chapter_id === chapterId);
+  const crumbs = [
+    ...(branch ? [crumbLabel(branch.labels, branch.subject_key)] : []),
+    ...(crumbCompetence ? [crumbCompetence.code] : []),
+    ...(crumbTheme ? [crumbLabel(crumbTheme.labels, crumbTheme.key)] : []),
+  ];
 
   return (
     <div className="mx-auto max-w-6xl">
-      <header className="mb-6 flex flex-wrap items-center justify-between gap-3">
+      {/* Where you are in the programme, in words. The hierarchy is carried by
+          `?competency=&chapter=` rather than by path segments, so without this
+          the only thing naming your position is a pair of selects. */}
+      <nav aria-label={tt('title')} className="mb-2 flex flex-wrap items-center gap-1.5 text-body-s font-semibold text-ink-500">
+        <span>{klass.data?.code ?? ''}</span>
+        {crumbs.map((crumb) => (
+          <span key={crumb} className="flex items-center gap-1.5">
+            <IconChevronRight size={14} aria-hidden className="text-ink-300" />
+            <span className="last:text-ink-900">{crumb}</span>
+          </span>
+        ))}
+      </nav>
+
+      <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1>{t('title', { code: klass.data?.code ?? '' })}</h1>
         <Link href="/sheets/new">
           <Button variant="primary">{ts('new')}</Button>
@@ -146,20 +185,15 @@ export default function ClassPage({
               is the separate object while a Panel is a subdivision of one you
               are already inside. Using Panel here would be using it as a "less
               emphatic Card", which is the confusion CLAUDE.md forbids. */}
-          <Card className="mb-4 flex flex-wrap items-end gap-4">
-            <Field label={tm('filterChapter')}>
-              <Select
-                value={chapterId}
-                onChange={(event) => setChapterId(event.target.value as Uuid | '')}
-              >
-                <option value="">{tm('allChapters')}</option>
-                {(chapters.data ?? []).map((chapter) => (
-                  <option key={chapter.id} value={chapter.id}>
-                    {chapter.labels?.[locale] ?? chapter.labels?.fr ?? chapter.key}
-                  </option>
-                ))}
-              </Select>
-            </Field>
+          <Card className="mb-4 flex flex-wrap items-end gap-4 py-4">
+            <CompetenceThemeFilter
+              classId={classId}
+              subjectId={subjectId}
+              competencyId={competencyId}
+              chapterId={chapterId}
+              onCompetencyChange={setCompetency}
+              onChapterChange={setChapter}
+            />
             <Field label={tm('sortBy')}>
               <Select
                 value={sort}
@@ -174,11 +208,18 @@ export default function ClassPage({
           {competencies.length === 0 ? (
             <EmptyState
               illustration={<IlloCurve />}
-              title={isFiltered ? tm('emptyChapter.title') : tm('empty.title')}
-              description={isFiltered ? tm('emptyChapter.body') : tm('empty.body')}
+              title={isFiltered ? tm('emptyScope.title') : tm('empty.title')}
+              description={isFiltered ? tm('emptyScope.body') : tm('empty.body')}
               action={
                 isFiltered ? (
-                  <Button onClick={() => setChapterId('')}>{tm('emptyChapter.action')}</Button>
+                  <Button
+                    onClick={() => {
+                      setCompetency(null);
+                      setChapter(null);
+                    }}
+                  >
+                    {tm('emptyScope.action')}
+                  </Button>
                 ) : (
                   <Link href="/sheets/new">
                     <Button variant="primary">{tm('empty.action')}</Button>
@@ -188,14 +229,19 @@ export default function ClassPage({
             />
           ) : null}
 
-          {/* The legend carries the same three channels the cells do — tint,
-              glyph and word — or it explains nothing. It stays on the page even
-              when the grid is empty, so the vocabulary is always available. */}
-          <Card className="mb-4">
-            <h2 className="mb-2 text-label text-ink-500">{tm('legend')}</h2>
-            <MasteryLegend bandLabels={bandLabels} bandHelp={bandHelp} />
-          </Card>
-
+          {/* The tree beside the grid: the programme on the left, this
+              class's answers on the right. Stacks on a phone, where the tree
+              becomes the drill-down and the matrix scrolls under it. */}
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+            <div className="lg:w-[22rem] lg:shrink-0">
+              <CurriculumTree
+                branch={branch}
+                chapterId={chapterId}
+                onSelectTheme={setChapter}
+                isLoading={tree.isLoading}
+              />
+            </div>
+            <div className="min-w-0 flex-1">
           {competencies.length > 0 ? (
             <Card flush>
               <MasteryMatrix
@@ -252,6 +298,21 @@ export default function ClassPage({
               />
             </Card>
           ) : null}
+            </div>
+          </div>
+
+          {/* Below the grid, not above it: the legend explains the marks, so it
+              costs nothing to read second, and a full-width card above the fold
+              pushed the grid itself off the screen.
+
+              Outside the matrix card on purpose. It stays on the page when the
+              grid is empty, which is exactly when a teacher has not yet learnt
+              the vocabulary (`mastery.spec.ts::a student with no attempts is
+              not shown as a zero`). */}
+          <Card className="mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 py-4">
+            <h2 className="text-label text-ink-500">{tm('legend')}</h2>
+            <MasteryLegend bandLabels={bandLabels} bandHelp={bandHelp} />
+          </Card>
         </>
       )}
 

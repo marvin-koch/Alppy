@@ -38,6 +38,11 @@ interface Props {
   /** The indexed documents, offered as the first step when none is open. */
   sources: SourceOut[];
   onChooseSource: (id: Uuid) => void;
+  /**
+   * The Theme chosen in `ThemePicker`, or `'none'` for the untagged bucket.
+   * Undefined leaves the list unfiltered by theme.
+   */
+  themeFilter?: Uuid | 'none';
 }
 
 /**
@@ -45,17 +50,31 @@ interface Props {
  *
  * Two properties this component exists to keep.
  *
- * **Nothing is unreachable.** Filtering happens server-side on the book's own
- * chapter, which every row carries. There is deliberately no second filter on
- * the inferred curriculum theme: the chapter the teacher picked already says
- * what they are teaching, and a theme is legitimately null on many rows, so a
- * filter on it hid exercises without saying so.
+ * **Nothing is unreachable.** This used to be guaranteed by NOT filtering on
+ * the curriculum theme at all: `Exercise.chapter_id` is inferred, it is null
+ * on a large minority of a real textbook's rows, and a filter on it hid those
+ * exercises without saying so.
+ *
+ * Since D59 the Theme IS the builder's root, so the same property has to be
+ * kept by design rather than by omission: `ThemePicker` pins a counted
+ * "Sans thème" row at the root of its tree, always rendered, and choosing it
+ * sends `chapter_id=none` — which is why the sentinel exists and why it is
+ * distinct from the parameter simply being absent. If that row is ever
+ * removed, or hidden when its count is zero, untagged exercises silently
+ * become unreachable again.
  *
  * **Ticks survive filter changes.** The selection lives in `draft`, never in
  * this list. A teacher who ticks three exercises, searches for a fourth, and
  * finds the first three gone has lost work.
  */
-export function ExercisePicker({ sourceId, section, draft, sources, onChooseSource }: Props) {
+export function ExercisePicker({
+  sourceId,
+  section,
+  draft,
+  sources,
+  onChooseSource,
+  themeFilter,
+}: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
   const tx = useTranslations('exercise');
@@ -77,18 +96,19 @@ export function ExercisePicker({ sourceId, section, draft, sources, onChooseSour
   // result set that now has one page shows an empty list and no explanation.
   useEffect(() => {
     setOffset(0);
-  }, [type, difficulty, debounced, section?.id]);
+  }, [type, difficulty, debounced, section?.id, themeFilter]);
 
   const query = useMemo(
     () => ({
       ...(section ? { section_id: section.id } : {}),
+      ...(themeFilter ? { chapter_id: themeFilter } : {}),
       ...(type ? { type } : {}),
       ...(difficulty ? { difficulty } : {}),
       ...(debounced ? { q: debounced } : {}),
       offset,
       limit: DEFAULT_PAGE_SIZE,
     }),
-    [section, type, difficulty, debounced, offset],
+    [section, themeFilter, type, difficulty, debounced, offset],
   );
 
   const exercises = useSourceExercises(sourceId, query);

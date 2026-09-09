@@ -74,6 +74,17 @@ def create_chapter(payload: ChapterCreate, school_id: TenantDep, db: DbDep) -> C
     if subject is None:
         raise errors.not_found("subject", id=str(payload.subject_id))
 
+    # `uq_chapter_key` would otherwise surface as an IntegrityError 500. A key
+    # already used in this subject is a caller mistake worth naming.
+    clash = db.execute(
+        select(Chapter)
+        .where(Chapter.school_id == school_id)
+        .where(Chapter.subject_id == payload.subject_id)
+        .where(Chapter.key == payload.key)
+    ).scalar_one_or_none()
+    if clash is not None:
+        raise errors.conflict("a chapter with this key already exists", key=payload.key)
+
     competencies: list[Competency] = []
     if payload.competency_ids:
         competencies = list(

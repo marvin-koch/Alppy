@@ -107,3 +107,42 @@ question", which is the part mastery genuinely needs.
             whether a once-mastered competency now reads as 'never seen' (I-mastery-04)"
 }
 ```
+
+
+## 2026-09-09 · Rolling mastery up above a competency
+
+**Affected invariants:** I-mastery-09, I-mastery-10 (new). I-mastery-01 is now
+explicitly leaf-only.
+**Repo decision:** D58.
+
+**Background.** `(student, competency)` was the only grain the model computed, and
+§6 of `docs/mastery-model.md` said so plainly. The `Class → Branch → Competence →
+Theme` navigation needs a band at every level, so aggregation is new work rather
+than something already computed and merely unexposed.
+
+**Considered alternatives.**
+
+*Pool the raw attempts of a Theme and call `compute_mastery` once.* Simplest, and
+wrong: one recency would be derived from the mixture, so a competency practised
+last week launders the staleness of one last touched in June. Rejected on the
+model's own terms — fading is the point of `RECENCY_HALF_LIFE_DAYS`.
+
+*Worst-band-wins.* With three or four competencies per chapter every Theme would
+read amber or red permanently — a constant, not a signal. `_weakest_first` sorts
+students for triage; it does not claim a group equals its minimum.
+
+*Plain mean.* Would let one lucky guess weigh as much as twenty confirmed
+attempts, reintroducing exactly what `effective_n` and `MIN_EVIDENCE` prevent a
+level down.
+
+**Tradeoff.** The evidence-weighted mean costs two honest breaks, both documented
+in `docs/mastery-model.md` §6 rather than hidden: `score == accuracy × recency`
+does not hold above a leaf, and `days_until_review` becomes the earliest child's
+rather than a re-derivation. In exchange no new tunable constant enters a model
+whose every constant is individually justified, and the five bands and their
+thresholds are unchanged — so no new colour vocabulary, and DC-colour-08 needs no
+re-litigating.
+
+**Revisit** if a Theme's competencies ever need explicit weights (a chapter where
+one competency is the point and two are incidental). Today every child is weighted
+purely by the evidence behind it.

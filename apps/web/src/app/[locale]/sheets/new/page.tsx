@@ -24,6 +24,11 @@ import { ProposeTab } from '@/components/sheet-builder/ProposeTab';
 import { SectionPicker } from '@/components/sheet-builder/SectionPicker';
 import { SheetComposer } from '@/components/sheet-builder/SheetComposer';
 import {
+  ThemePicker,
+  canFile,
+  type ThemeSelection,
+} from '@/components/sheet-builder/ThemePicker';
+import {
   draftHasMixedLanguages,
   draftLanguage,
   toSheetItemIn,
@@ -31,7 +36,13 @@ import {
 } from '@/components/sheet-builder/useDraftSheet';
 import { Link, useRouter } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import { useChapters, useCreateSheet, useSourceSections, useSources } from '@/lib/api/queries';
+import {
+  useChapters,
+  useCreateSheet,
+  useCurriculumTree,
+  useSourceSections,
+  useSources,
+} from '@/lib/api/queries';
 import type { SourceSectionOut, Uuid } from '@/lib/api/types';
 import { useScope } from '@/lib/scope';
 
@@ -60,12 +71,23 @@ export default function SheetBuilderPage() {
   const chapters = useChapters(activeSubject || undefined);
 
   const [title, setTitle] = useState('');
+  // The Theme this sheet is about — the builder's root. `'unfiled'` narrows
+  // the exercise list to what the book left untagged; it is NOT a place a
+  // sheet can be filed, so `canFile` gates the generate button below.
+  const [theme, setTheme] = useState<ThemeSelection>(null);
   const [sourceId, setSourceId] = useState<Uuid | ''>('');
   const [section, setSection] = useState<SourceSectionOut | null>(null);
   const [adding, setAdding] = useState(false);
   // Closed by default: the two working columns get the room, and the page
   // count the teacher needs while choosing lives in the composer instead.
   const [previewOpen, setPreviewOpen] = useState(false);
+
+  // Only for the "Sans thème" count in the picker: how many exercises in this
+  // Branch the ingest could not tag with a chapter at all.
+  const tree = useCurriculumTree(activeClass || null, activeSubject ? { subjectId: activeSubject } : {});
+  const unfiledExerciseCount =
+    tree.data?.branches.find((b) => b.subject_id === activeSubject)
+      ?.unfiled_exercise_count ?? 0;
 
   const draft = useDraftSheet();
   const create = useCreateSheet();
@@ -76,6 +98,7 @@ export default function SheetBuilderPage() {
   useEffect(() => {
     setSourceId('');
     setSection(null);
+    setTheme(null);
   }, [activeSubject]);
 
   const readySources = useMemo(
@@ -120,6 +143,7 @@ export default function SheetBuilderPage() {
       {
         class_id: activeClass,
         subject_id: activeSubject,
+        chapter_id: canFile(theme) ? theme.chapter_id : null,
         title: effectiveTitle,
         language: sheetLanguage,
         target: 'class',
@@ -144,6 +168,11 @@ export default function SheetBuilderPage() {
           {apiErrorMessage(create.error, te) || ts('createFailed')}
         </p>
       ) : null}
+      {!canFile(theme) && draft.count > 0 ? (
+        <p className="text-body-s text-warn-600" role="status">
+          {t('themeRequired')}
+        </p>
+      ) : null}
       <Button
         variant="primary"
         block
@@ -151,7 +180,9 @@ export default function SheetBuilderPage() {
         onClick={onCreate}
         loading={create.isPending}
         busyLabel={ts('generating')}
-        disabled={draft.count === 0}
+        // A new sheet must be filed under a real Theme. `unfiled` exists to
+        // FIND untagged exercises, not to store a sheet nobody classified.
+        disabled={draft.count === 0 || !canFile(theme)}
       >
         {t('generate')}
       </Button>
@@ -236,6 +267,19 @@ export default function SheetBuilderPage() {
         ) : null}
       </header>
 
+      {/* The root of the builder: which Theme is this sheet about. Above the
+          tabs, because it governs both of them — the document tab's exercise
+          list and the propose tab's default chapters. */}
+      <div className="mb-4">
+        <ThemePicker
+          classId={activeClass || null}
+          subjectId={activeSubject || undefined}
+          selection={theme}
+          onSelect={setTheme}
+          unfiledExerciseCount={unfiledExerciseCount}
+        />
+      </div>
+
       <Tabs defaultValue="document">
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <TabsList className="mb-0">
@@ -285,6 +329,13 @@ export default function SheetBuilderPage() {
                 <ExercisePicker
                   sourceId={sourceId || null}
                   section={section}
+                  themeFilter={
+                    theme === 'unfiled'
+                      ? 'none'
+                      : canFile(theme)
+                        ? theme.chapter_id
+                        : undefined
+                  }
                   draft={draft}
                   sources={readySources}
                   onChooseSource={(id) => {

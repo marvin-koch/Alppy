@@ -75,6 +75,45 @@ Chapters are teacher-owned in the full product (a teacher can create their own
 chapters and attach competencies of their choosing); this seed provides 7 built-in
 chapters as the demo/starting corpus.
 
+### 3.1 The primary competency: where a chapter *sits*, as opposed to what it credits
+
+The many-to-many above answers "what does this chapter develop". It cannot answer
+"where does this chapter belong in a tree", and the navigation added in D56 needs
+exactly one parent per node: `Class → Branch → Competence → Theme → Sheet`.
+
+`Chapter.primary_competency_id` is that one node. It is deliberately narrower than
+`competency_codes` and does not replace it:
+
+| | `competency_codes` (m2m) | `primary_competency_id` |
+|---|---|---|
+| Answers | what this chapter credits | where this chapter sits |
+| Cardinality | many, across both curricula | exactly one (or NULL) |
+| Used by | mastery credit, retrieval, matrix filters | the navigation tree, the roll-up |
+
+Because `Chapter` is school-scoped — `_load_chapters` writes a row per school — "one
+per school, per curriculum" needs one column rather than two. `chapters.json` carries
+`primary_competency_code` keyed by curriculum, and the loader resolves whichever one
+matches that school's `School.default_curriculum`:
+
+```json
+"key": "plane_geometry_pythagoras",
+"competency_codes": ["MSN 31.2", "MSN 31.1", "MA.2.A.2", "MA.2.C.1"],
+"primary_competency_code": { "PER": "MSN 31.2", "LP21": "MA.2.A.2" }
+```
+
+A school in Sion files that chapter under `MSN 31.2`; a school in Chur files the same
+chapter under `MA.2.A.2`. **Both still credit all four codes**, so §4's account of how
+mastery aggregates is unchanged — the primary decides placement, never credit.
+
+The loader requires the primary to be one of the chapter's own `competency_codes`, and
+raises naming the chapter if it is not: a chapter must not sit in a branch it does not
+teach.
+
+`primary_competency_id` is NULL on exactly one kind of row — the per-subject `unfiled`
+chapter (D60), the bucket a sheet nobody has filed lives in. That NULL, not the row's
+`key`, is what excludes it from the tree and from every roll-up, so a school that
+relabels the bucket cannot accidentally readmit it to a mastery number.
+
 ## 4. Exercises, and how mastery aggregates across curricula
 
 Each `Exercise` carries `competency_codes` (a list — an exercise can address more than

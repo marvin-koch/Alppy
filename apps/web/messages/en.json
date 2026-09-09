@@ -122,7 +122,17 @@
       "body": "No competency from this chapter has been assessed in this class yet.",
       "action": "Show all chapters"
     },
-    "cellLabelNotAssessed": "{student}, {competency}: {band}"
+    "cellLabelNotAssessed": "{student}, {competency}: {band}",
+    "filterCompetency": "Competence",
+    "allCompetences": "All competences",
+    "coverage": "{assessed} of {total} competences assessed",
+    "weakestInside": "weakest: {band}",
+    "branchBand": "Branch · {band}",
+    "emptyScope": {
+      "title": "Nothing to show here",
+      "body": "No corrected work for this competence or theme.",
+      "action": "Show the whole branch"
+    }
   },
   "student": {
     "profile": "Student profile",
@@ -141,7 +151,9 @@
     "notAssessed": {
       "title": "Not assessed yet",
       "body": "This student has no marked answers yet. That is not a zero: nothing has been assessed."
-    }
+    },
+    "byCompetence": "grouped by competence, then by theme",
+    "noneInCompetence": "No corrected work on this competence."
   },
   "sources": {
     "exercisesFound": "{count, plural, =0 {no exercises extracted} one {# exercise extracted} other {# exercises extracted}}",
@@ -233,7 +245,12 @@
       "drafts": "To finish",
       "draftsHint": "The PDFs are not generated yet.",
       "ready": "Ready to print"
-    }
+    },
+    "unfiledTheme": "Unfiled",
+    "unfiledThemeHelp": "Sheets made before themes existed. Open one to file it — nothing was guessed on your behalf.",
+    "groupGeneral": "General sheets",
+    "groupPersonalized": "Personalised sheets",
+    "fileIt": "File it"
   },
   "scans": {
     "title": "Corrections",
@@ -645,7 +662,15 @@
     "overflowHelp": "More than sixteen exercises: the sheet will take at least {count} pages.",
     "boxSummary": "{count, plural, one {One-line box} other {#-line box}}",
     "answerSummaryGiven": "expected answer given",
-    "answerSummaryModel": "answer worked out by the model"
+    "answerSummaryModel": "answer worked out by the model",
+    "theme": "Theme",
+    "changeTheme": "Change theme",
+    "themePlaceholder": "Choose a theme",
+    "themeRequired": "Choose a theme for this sheet before generating.",
+    "themeModalTitle": "Choose a theme",
+    "unfiledBucket": "No theme ({count})",
+    "unfiledBucketHelp": "Exercises the textbook did not attach to a theme",
+    "unfiledCannotFile": "“No theme” is for finding these exercises, not for filing a sheet."
   },
   "newExercise": {
     "title": "Add an exercise",
@@ -751,5 +776,16 @@
       "title": "This copy has not been marked yet",
       "body": "Scan the pile and confirm it — the breakdown appears here."
     }
+  },
+  "tree": {
+    "title": "Curriculum",
+    "branch": "Branch",
+    "competence": "Competence",
+    "theme": "Theme",
+    "sheetCount": "{count, plural, =0 {no sheets} one {# sheet} other {# sheets}}",
+    "unfiled": "Unfiled",
+    "unfiledSheets": "{count, plural, =0 {no sheets} one {# sheet} other {# sheets}}",
+    "unfiledHelp": "Sheets made before themes existed. Open one to file it.",
+    "empty": "No themes in this branch yet."
   }
 }
