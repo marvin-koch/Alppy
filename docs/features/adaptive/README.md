@@ -89,6 +89,7 @@ Three targeting modes, one planner:
 | I-adaptive-11 | **A model never decides the partition alone.** `cluster_students` runs first as the seed and again as the fallback; a partition that drops a child, seats one twice, invents an id, empties a group or misses the requested count is **rejected, not repaired**. | `services/adaptive_clustering.py::_validate` | The rule has to be one a teacher can state to a parent (D33). A regrouping nobody can justify is worse than none | A child in no group, or in two |
 | I-adaptive-12 | **A batched call's failure is isolated.** Per plan for a content failure; for a transport failure the chunk is retried **once, split into single-plan calls**. | `generate_for_asks` | Batching makes I-adaptive-09 untrue by construction unless it is bought back | One provider hiccup empties eight sheets |
 | I-adaptive-13 | **Nothing blocks a request handler on a model call.** Proposing writes a `Job` and returns 202; the proposal is read from `GET /adaptive/proposal/{job_id}`. | `api/v1/adaptive.py`, `worker/tasks.py::propose_adaptive` | CLAUDE.md states it outright, and a class of twenty-four was twenty-four sequential provider calls with a browser waiting | A timeout with a half-written batch behind it |
+| I-adaptive-14 | **`derived_from_id` is where a sheet hangs; `sheet_source` is what it is about.** Position 0 of the set IS the column, written together. Every source is ownership-checked, not just the principal. | `services/sheet_service.py::set_sources`, `create_adaptive_sheet` | A reprise answers a test *and* the worksheets whose gaps it revisits; one column could only name one of them. The feedback page prints the principal, so the two must never disagree | A sheet whose feedback page names one parent and whose lineage draws another; or a colleague's sheet title on paper, from position 2 (D61 at the wrong altitude) |
 
 ---
 
@@ -184,6 +185,7 @@ cross it on the model's behalf.
 | I-adaptive-11 | `test_grouping_model.py` (whole file — 13 tests), in particular `::test_a_partition_that_leaves_a_student_out_is_rejected`, `::test_the_offline_provider_refuses_to_invent_a_partition` |
 | I-adaptive-12 | `test_adaptive_batching.py::test_a_failed_batch_is_split_into_one_call_per_plan_rather_than_shortening_everyone`, `::test_a_plan_missing_from_the_response_is_reported_and_the_others_survive`, `test_adaptive_fixes.py::test_one_students_failure_does_not_cost_the_rest_of_the_batch` |
 | I-adaptive-13 | `test_api_adaptive.py::test_proposing_returns_a_job_rather_than_blocking_on_the_model`, `::test_a_second_propose_while_one_is_running_does_not_start_a_second_run` |
+| I-adaptive-14 | `test_api_adaptive.py::test_a_batch_records_every_sheet_it_answers`, `::test_a_batch_that_answers_one_sheet_still_reads_the_old_way`, `::test_a_lineage_never_names_the_same_sheet_twice`, `::test_every_sheet_in_a_lineage_gets_the_ownership_check` |
 | Sheet-scoped targeting | `test_performance_summary.py` (whole file — 10 tests), in particular `::test_items_no_competency_could_be_attributed_to_are_counted_and_said_so` |
 
 ```bash

@@ -27,13 +27,21 @@ sheet is the focal deliverable; everything else exists to make it possible and t
 
 ## 3. Domain model as implemented
 
-Tenancy: every row carries `school_id` (and `teacher_id` where ownership is personal).
+The full model, table by table, is [`data-model.md`](data-model.md); this is the
+sketch. Tenancy: every row carries `school_id` (and `teacher_id` where ownership
+is personal).
 Every table has `id` (UUID), `created_at`, `updated_at`.
 
 ```
 School ──< Teacher (locale, theme, contrast, motion, calm)
        ──< SchoolYear ──< Class (code "7B") ──< Student (uid "7B_15", first/last name)
        ──< Subject
+Class ──<  Student   home_class_id                 (the class that MINTED the uid
+      and the number: exactly one, NOT NULL, RESTRICT — deleting it is refused
+      rather than cascading a term of evidence away. D69)
+Class ──>< Student                                 (class_student — who SITS where.
+      A pupil attends several of one teacher's classes, and a roster, a matrix,
+      a tree and a printed pile all mean THIS set, never the home. D69)
 Class ──>< Subject                                 (class_subject, ordered by
       first use — the Branches a class DECLARES it studies, not inferred; D57)
 Curriculum (LP21 | PER) ──< Competency (hierarchical, code, subject, cycle)

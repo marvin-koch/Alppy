@@ -84,3 +84,49 @@ def add_students(
     created = svc.add_students(db, scope, school_class, payload)
     db.commit()
     return [student_out(s) for s in created]
+
+
+@router.post(
+    "/classes/{class_id}/students/{student_id}/enrollment",
+    response_model=list[StudentOut],
+    status_code=status.HTTP_201_CREATED,
+)
+def enroll_student(
+    class_id: uuid.UUID, student_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> list[StudentOut]:
+    """Seat an existing pupil in another of this teacher's classes.
+
+    Deliberately not part of the roster paste: that mints a UID and a number
+    and is how a pupil comes to EXIST. This one says a pupil who already exists
+    also sits here — their identifier is untouched, which is what keeps every
+    sheet already in a pile decodable (I-platform-09).
+
+    Idempotent, and returns the roster rather than the enrollment: what the
+    caller wanted to know is who is in the room now.
+    """
+    school_class = svc.get_class(db, scope, class_id)
+    student = svc.get_student(db, scope, student_id)
+    svc.enroll(db, school_class, student)
+    db.commit()
+    return [student_out(s) for s in svc.list_students(db, scope, class_id)]
+
+
+@router.delete(
+    "/classes/{class_id}/students/{student_id}/enrollment",
+    response_model=list[StudentOut],
+)
+def unenroll_student(
+    class_id: uuid.UUID, student_id: uuid.UUID, scope: ScopeDep, db: DbDep
+) -> list[StudentOut]:
+    """Take a pupil out of a class without touching their record.
+
+    Not a delete: the pupil, their UID, their attempts and their snapshots all
+    survive — they simply stop appearing in this class's roster, matrix and
+    tree. Refused on the pupil's own home class, which is where the UID came
+    from and is a NOT NULL column.
+    """
+    school_class = svc.get_class(db, scope, class_id)
+    student = svc.get_student(db, scope, student_id)
+    svc.unenroll(db, school_class, student)
+    db.commit()
+    return [student_out(s) for s in svc.list_students(db, scope, class_id)]

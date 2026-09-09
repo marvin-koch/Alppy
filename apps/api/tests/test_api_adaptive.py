@@ -251,3 +251,139 @@ def test_a_batch_cannot_derive_from_a_sheet_the_caller_cannot_see(
         },
     )
     assert response.status_code == 404
+
+
+# --------------------------------------------------------------------------
+# Lineage (D70) — a sheet may answer several sheets, one of them the principal
+# --------------------------------------------------------------------------
+def _own_sheet(client: TestClient, tenant: Tenant, exercise: Exercise, title: str) -> str:
+    response = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": title,
+            "language": "fr",
+            "items": [{"exercise_id": str(exercise.id), "position": 0}],
+        },
+    )
+    assert response.status_code == 201
+    return str(response.json()["id"])
+
+
+def _batch(client: TestClient, tenant: Tenant, exercise: Exercise, **extra: object) -> dict:
+    response = client.post(
+        "/api/v1/adaptive/batch",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Reprise",
+            "language": "fr",
+            "plans": [
+                {
+                    "student_id": str(tenant.students[0].id),
+                    "student_uid": tenant.students[0].uid,
+                    "targeted_competency_ids": [str(tenant.competency.id)],
+                    "retrieved": [_proposal(exercise)],
+                    "generated": [],
+                }
+            ],
+            **extra,
+        },
+    )
+    assert response.status_code == 201, response.text
+    return dict(response.json())
+
+
+def test_a_batch_records_every_sheet_it_answers(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    exercise = make_exercise(db, tenant, statement="fractions")
+    login(client, tenant.teacher.email)
+    first = _own_sheet(client, tenant, exercise, "Controle")
+    second = _own_sheet(client, tenant, exercise, "Fiche 2")
+
+    batch = _batch(client, tenant, exercise, source_sheet_ids=[first, second])
+
+    # The whole evidence set, in the order the teacher named it...
+    assert batch["source_sheet_ids"] == [first, second]
+    # ...and the principal is entry 0, reachable the old way too. One fact,
+    # two access paths, and they must never disagree (D70).
+    assert batch["derived_from_id"] == first
+
+
+def test_a_batch_that_answers_one_sheet_still_reads_the_old_way(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """`source_sheet_id` alone keeps working, and lands in both places."""
+    exercise = make_exercise(db, tenant, statement="fractions")
+    login(client, tenant.teacher.email)
+    parent = _own_sheet(client, tenant, exercise, "Controle")
+
+    batch = _batch(client, tenant, exercise, source_sheet_id=parent)
+
+    assert batch["derived_from_id"] == parent
+    assert batch["source_sheet_ids"] == [parent]
+
+
+def test_a_lineage_never_names_the_same_sheet_twice(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """A repeat is a teacher clicking twice, not a second piece of evidence."""
+    exercise = make_exercise(db, tenant, statement="fractions")
+    login(client, tenant.teacher.email)
+    parent = _own_sheet(client, tenant, exercise, "Controle")
+
+    batch = _batch(
+        client, tenant, exercise, source_sheet_id=parent, source_sheet_ids=[parent, parent]
+    )
+
+    assert batch["source_sheet_ids"] == [parent]
+
+
+def test_every_sheet_in_a_lineage_gets_the_ownership_check(
+    client: TestClient, tenant: Tenant, colleague: Tenant, db: Session
+) -> None:
+    """Not just the principal — D61's rule applies to the whole set.
+
+    A foreign sheet buried at position 2 would otherwise reach the lineage
+    unvalidated, and the sheet detail page names every one of them.
+    """
+    exercise = make_exercise(db, tenant, statement="pour Lea")
+    login(client, colleague.teacher.email)
+    theirs = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(colleague.school_class.id),
+            "subject_id": str(colleague.subject.id),
+            "title": "Leur controle",
+            "language": "fr",
+            "items": [{"exercise_id": str(exercise.id), "position": 0}],
+        },
+    )
+    assert theirs.status_code == 201
+    foreign = str(theirs.json()["id"])
+
+    login(client, tenant.teacher.email)
+    mine = _own_sheet(client, tenant, exercise, "Mon controle")
+
+    response = client.post(
+        "/api/v1/adaptive/batch",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Reprise",
+            "language": "fr",
+            "source_sheet_ids": [mine, foreign],
+            "plans": [
+                {
+                    "student_id": str(tenant.students[0].id),
+                    "student_uid": tenant.students[0].uid,
+                    "targeted_competency_ids": [str(tenant.competency.id)],
+                    "retrieved": [_proposal(exercise)],
+                    "generated": [],
+                }
+            ],
+        },
+    )
+    assert response.status_code == 404

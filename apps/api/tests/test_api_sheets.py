@@ -390,3 +390,101 @@ def test_creating_a_sheet_declares_the_branch_for_the_class(
     # A second sheet in the same Branch must not add a second row.
     client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
     assert len(db.execute(select(class_subject)).all()) == 1
+
+
+# --------------------------------------------------------------------------
+# Derived coverage (D71) and sheet-level mastery (D72)
+# --------------------------------------------------------------------------
+def test_a_sheets_coverage_is_derived_from_its_items(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """No `sheet_competency` table — the items are the only source of truth."""
+    tagged = make_exercise(db, tenant, statement="tagged")
+    untagged = make_exercise(db, tenant, statement="untagged", with_competency=False)
+    login(client, tenant.teacher.email)
+
+    created = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(tagged.id), str(untagged.id)])
+    )
+    assert created.status_code == 201
+    assert created.json()["competency_ids"] == [str(tenant.competency.id)]
+
+
+def test_a_sheets_coverage_follows_an_item_edit(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The reason it is derived: a stored set would go stale here."""
+    tagged = make_exercise(db, tenant, statement="tagged")
+    untagged = make_exercise(db, tenant, statement="untagged", with_competency=False)
+    login(client, tenant.teacher.email)
+
+    created = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(tagged.id)]))
+    sheet_id = created.json()["id"]
+    assert created.json()["competency_ids"] == [str(tenant.competency.id)]
+
+    patched = client.patch(
+        f"/api/v1/sheets/{sheet_id}",
+        json={"items": [{"exercise_id": str(untagged.id), "position": 0}]},
+    )
+    assert patched.status_code == 200
+    assert patched.json()["competency_ids"] == []
+
+
+def test_a_sheet_reports_a_band_per_student_and_one_for_the_class(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    exercise = make_exercise(db, tenant, statement="fractions")
+    login(client, tenant.teacher.email)
+    created = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+    sheet_id = created.json()["id"]
+
+    response = client.get(f"/api/v1/sheets/{sheet_id}/mastery")
+    assert response.status_code == 200
+    body = response.json()
+
+    assert body["competency_ids"] == [str(tenant.competency.id)]
+    assert {s["student_id"] for s in body["students"]} == {str(s.id) for s in tenant.students}
+
+    # Nobody has sat it yet, so every band is `none` — never-assessed is a
+    # band, not a zero, at this altitude too (I-mastery-03).
+    assert {s["mastery"]["band"] for s in body["students"]} == {"none"}
+    assert body["overall"]["band"] == "none"
+    # And the coverage travels with it (DC-content-07).
+    assert body["overall"]["child_count"] == 1
+    assert body["overall"]["assessed_count"] == 0
+
+
+def test_a_sheet_band_ignores_the_bareme(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """I-mastery-08 at the new altitude: a marking scheme must not move a band."""
+    from alppy.models import Attempt, Sheet
+
+    exercise = make_exercise(db, tenant, statement="fractions")
+    login(client, tenant.teacher.email)
+    created = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)]))
+    sheet_id = uuid.UUID(created.json()["id"])
+
+    db.add(
+        Attempt(
+            id=uuid.uuid4(),
+            school_id=tenant.school.id,
+            student_id=tenant.students[0].id,
+            exercise_id=exercise.id,
+            sheet_id=sheet_id,
+            correct=True,
+            score=0.0,  # a barème of nothing...
+            difficulty=3,
+            answered_at=datetime.now(UTC),
+        )
+    )
+    db.commit()
+
+    body = client.get(f"/api/v1/sheets/{sheet_id}/mastery").json()
+    theirs = next(
+        s for s in body["students"] if s["student_id"] == str(tenant.students[0].id)
+    )
+    # ...still a correct answer, so still a solid band.
+    assert theirs["mastery"]["band"] == "solid"
+    assert theirs["mastery"]["assessed_count"] == 1
+    assert db.get(Sheet, sheet_id) is not None

@@ -59,6 +59,8 @@ see, where slow work runs, where bytes are stored, and what a failure looks like
 | I-platform-06 | A `Job` row **without an enqueue is a note nobody reads.** `JobKind` values *are* the task names, asserted at import. | `worker/queue.py::TASK_NAMES`, `enqueue` | The worker listens on Redis and never polls Postgres | A spinner that never stops |
 | I-platform-07 | **A client-supplied filename never becomes a storage path.** | `storage.py::sanitise_filename`, `storage_key` | `../../etc/passwd` | Path traversal in an upload |
 | I-platform-08 | **One error envelope for every failure**, carrying a request id; `message` is for developers, never a teacher-facing string. | `api/errors.py::install_error_handlers` | The client switches on `code`; teacher-facing text is localised client-side | An untranslated internal message shown to a teacher |
+| I-platform-09 | A student's **UID is minted by their home class** (`Student.home_class_id`) and never changes when they are enrolled elsewhere. | `services/class_service.py::add_students`, `sheets/uid_code.py`, `uq_student_uid` | The UID is printed on paper and read by the detector; a UID that moved with enrollment would orphan every sheet already in a pile | Last term's pile decodes to the wrong child, or to nobody |
+| I-platform-10 | **Enrollment widens who may read a student, never which school or year.** `enroll` asserts the student and the class share `school_id` **and** `school_year_id`. | `services/class_service.py::enroll`, `owned_class_ids` | I-platform-02 and I-platform-03 must survive a student belonging to several classes | A roster leak across the staffroom, or a UID whose per-year uniqueness no longer holds |
 
 ---
 
@@ -72,6 +74,7 @@ see, where slow work runs, where bytes are stored, and what a failure looks like
 | `alppy/core/uid.py` | `parse_uid` / `format_uid` — strict, because a misread UID files answers under the wrong child | — |
 | `alppy/api/deps.py` | `get_db`, `get_current_teacher`, `get_tenant`, `Scope`, `scoped_get`, `UploadPayload`, the AI token bucket, `load_optional` | `security`, `models`, `storage` |
 | `alppy/api/errors.py` | `ApiError` and friends, the four handlers, the envelope | FastAPI |
+| `alppy/services/enrollment.py` | `owned_class_ids`, `enrolled_student_ids`, `enrolled_in_owned_classes` — the three subqueries every scoped read funnels through. Its own module because `class_service` imports `mastery_service`, and both sides of that edge need them | `models` only |
 | `alppy/worker/queue.py` | `enqueue`, `TASK_NAMES` | arq, Redis |
 | `alppy/worker/tasks.py` | Every long job: ingest, extract section, render, process scan, grade open answers, adaptive, feedback | the owning modules, **lazily imported** |
 | `alppy/storage.py` | `Storage` protocol, `LocalStorage`, the S3 backend, `sanitise_filename`, `storage_key` | boto3 (optional) |
@@ -115,6 +118,8 @@ ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
 - [ ] Did you write a `Job` **and** enqueue it? (I-platform-06)
 - [ ] Does any path build a storage key from a client filename? (I-platform-07 — never)
 - [ ] Does the new failure go through `ApiError`? (I-platform-08)
+- [ ] Does this read the roster? Then it wants **enrolled** students, not the home class (I-platform-09)
+- [ ] Does a new write create an enrollment? Then it asserts school **and** school year (I-platform-10)
 - [ ] Did the schema change? Then the drift gate, on a real Postgres
 
 ---
@@ -147,6 +152,8 @@ itself a leak.
 | I-platform-06 | `test_jobs_queue.py::test_every_job_kind_names_a_task_the_worker_registers`, `::test_a_dead_queue_fails_the_job_instead_of_leaving_it_queued` |
 | I-platform-07 | `test_api_scans.py::test_a_hostile_filename_never_becomes_a_storage_path`, `test_api_infra.py::test_storage_keys_cannot_escape_their_prefix`, `::test_the_file_route_is_tenant_scoped` |
 | I-platform-08 | `test_api_infra.py::test_every_error_uses_the_same_envelope`, `::test_an_unroutable_path_still_returns_the_envelope`, `::test_the_request_id_is_echoed_when_the_caller_supplies_one` |
+| I-platform-09 | `test_api_classes.py::test_a_co_enrolled_student_keeps_the_uid_their_home_class_minted`, `::test_a_roster_paste_numbers_around_a_visiting_student`, `::test_a_student_cannot_leave_the_class_that_minted_their_uid`, `test_scan_processing.py::test_a_co_enrolled_students_page_is_graded_not_flagged` |
+| I-platform-10 | `test_api_tenancy.py::test_enrollment_never_crosses_a_school`, `::test_enrollment_never_crosses_a_school_year`, `::test_a_co_enrolled_student_is_readable_by_both_their_teachers` |
 | Rate limit | `test_api_infra.py::test_the_token_bucket_refills_over_time`, `::test_the_bucket_is_per_teacher`, `::test_ai_endpoints_are_rate_limited` |
 | Health | `test_api_infra.py::test_health_never_throws_and_reports_each_dependency` |
 | Schema | `scripts/check-schema-drift.py` — its own CI job, on a real Postgres |

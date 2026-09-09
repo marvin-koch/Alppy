@@ -52,6 +52,7 @@ from alppy.schemas import (
     SheetInstanceOut,
     SheetItemOut,
     SheetOut,
+    SheetScanOut,
     SourceOut,
     SourceSectionOut,
     StudentOut,
@@ -113,12 +114,19 @@ def teacher_out(teacher: Teacher) -> TeacherOut:
 
 
 def student_out(student: Student) -> StudentOut:
+    home = student.home_class.code
+    # Home first, then the rest in code order. A roster reads the first chip as
+    # "whose pupil this is" and the others as "and also sits here", so the
+    # order is part of the meaning rather than a display detail.
+    others = sorted(c.code for c in student.classes if c.code != home)
     return StudentOut(
         id=student.id,
         uid=student.uid,
         number=student.number,
         first_name=student.first_name,
         last_name=student.last_name,
+        home_class_code=home,
+        class_codes=[home, *others],
     )
 
 
@@ -297,6 +305,29 @@ def sheet_out(
         answer_key_pdf_url=_url(storage, sheet.answer_key_pdf_key),
         feedback_pdf_url=_url(storage, sheet.feedback_pdf_key),
         derived_from_id=sheet.derived_from_id,
+        source_sheet_ids=[s.id for s in sheet.sources],
+        scans=[
+            SheetScanOut(
+                id=scan.id,
+                status=scan.status,
+                revised=scan.confirmation_count > 1,
+                confirmed_at=scan.confirmed_at,
+                reopened_at=scan.reopened_at,
+                created_at=scan.created_at,
+            )
+            for scan in sheet.scans
+        ],
+        # Derived from the items, never stored: a `sheet_competency` table
+        # would have to be rewritten on every edit and could then disagree with
+        # the items it claims to describe. Distinct from `chapter_id` above,
+        # which is the one home Theme the teacher stated (I-sheets-11).
+        competency_ids=sorted(
+            {c.id for i in sheet.items for c in i.exercise.competencies}, key=str
+        ),
+        chapter_ids=sorted(
+            {i.exercise.chapter_id for i in sheet.items if i.exercise.chapter_id is not None},
+            key=str,
+        ),
         rendered_at=sheet.rendered_at,
         created_at=sheet.created_at,
     )

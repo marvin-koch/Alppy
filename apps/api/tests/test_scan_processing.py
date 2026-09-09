@@ -100,7 +100,10 @@ def _sheet(
                 position=position,
             )
         )
-    for student in tenant.students:
+    # The ENROLLED roster, the way `sheet_service.create_sheet` binds it — not
+    # `tenant.students`, which is only the pupils this class is home to. A
+    # visiting pupil sits the lesson and needs a copy (D69).
+    for student in tenant.school_class.roster:
         chosen = (plans or {}).get(student.uid, list(range(len(exercises))))
         db.add(
             SheetInstance(
@@ -295,7 +298,7 @@ def test_a_discarded_page_does_not_block_confirmation(
 def test_a_page_from_another_class_is_flagged_and_not_graded(
     db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from alppy.models import Class, Student
+    from alppy.models import Class, Student, class_student
 
     other = Class(
         id=uuid.uuid4(),
@@ -307,17 +310,23 @@ def test_a_page_from_another_class_is_flagged_and_not_graded(
     )
     db.add(other)
     db.flush()
-    db.add(
-        Student(
-            id=uuid.uuid4(),
-            school_id=tenant.school.id,
-            class_id=other.id,
-            school_year_id=tenant.school_class.school_year_id,
-            uid="9A_04",
-            number=4,
-            first_name="Tim",
-            last_name="Frei",
-        )
+    outsider = Student(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        home_class_id=other.id,
+        school_year_id=tenant.school_class.school_year_id,
+        uid="9A_04",
+        number=4,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(outsider)
+    db.flush()
+    # Seated in 9A and nowhere else. That is what makes them an outsider now:
+    # not the home class differing, but the absence of an enrollment in the
+    # class this sheet was printed for (D69).
+    db.execute(
+        class_student.insert(), [{"class_id": other.id, "student_id": outsider.id}]
     )
     db.flush()
 
@@ -574,7 +583,7 @@ def test_a_corrupt_upload_raises_so_the_job_records_a_failure(
 def test_manual_assignment_is_limited_to_the_sheets_own_class(
     db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    from alppy.models import Class, Student
+    from alppy.models import Class, Student, class_student
 
     other = Class(
         id=uuid.uuid4(),
@@ -589,7 +598,7 @@ def test_manual_assignment_is_limited_to_the_sheets_own_class(
     outsider = Student(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
-        class_id=other.id,
+        home_class_id=other.id,
         school_year_id=tenant.school_class.school_year_id,
         uid="9A_04",
         number=4,
@@ -597,6 +606,13 @@ def test_manual_assignment_is_limited_to_the_sheets_own_class(
         last_name="Frei",
     )
     db.add(outsider)
+    db.flush()
+    # Seated in 9A and nowhere else. That is what makes them an outsider now:
+    # not the home class differing, but the absence of an enrollment in the
+    # class this sheet was printed for (D69).
+    db.execute(
+        class_student.insert(), [{"class_id": other.id, "student_id": outsider.id}]
+    )
     db.flush()
 
     sheet, _ = _sheet(db, tenant, answers=[0, 1])
@@ -1546,3 +1562,109 @@ def test_a_confirmed_pile_refuses_both_correction_and_revert(
     )
     db.commit()
     assert detection.outcome is DetectionOutcome.CORRECTED
+
+
+def test_a_co_enrolled_students_page_is_graded_not_flagged(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The regression D69 exists to prevent.
+
+    A pupil homed in 9A who also sits in 7B legitimately sat this 7B paper.
+    Testing the HOME class here would flag them foreign, and the branch that
+    follows clears every detection on the page — their answers gone, silently,
+    with no error anywhere for the teacher to see.
+    """
+    from alppy.models import Class, Student, class_student
+
+    other = Class(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        school_year_id=tenant.school_class.school_year_id,
+        teacher_id=tenant.teacher.id,
+        code="9A",
+        label="Autre",
+    )
+    db.add(other)
+    db.flush()
+    visitor = Student(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        home_class_id=other.id,
+        school_year_id=tenant.school_class.school_year_id,
+        uid="9A_04",
+        number=4,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(visitor)
+    db.flush()
+    # Homed in 9A, seated in BOTH.
+    db.execute(
+        class_student.insert(),
+        [
+            {"class_id": other.id, "student_id": visitor.id},
+            {"class_id": tenant.school_class.id, "student_id": visitor.id},
+        ],
+    )
+    db.flush()
+
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = [
+        *_render_copy(db, sheet, tenant.students[0].uid),
+        render_page("9A_04", [4, 4], [0, 1], pencil=0.95).image,
+    ]
+    scan = _run(db, storage, tenant, sheet, images, monkeypatch)
+
+    page = db.query(ScanPage).filter(ScanPage.detected_uid == "9A_04").one()
+    assert page.wrong_class is False
+    assert page.detections != []
+
+    # And their answers reach mastery like anyone else's.
+    result = scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert result.attempts_created == 4
+
+
+def test_a_co_enrolled_student_is_offered_for_manual_assignment(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from alppy.models import Class, Student, class_student
+
+    other = Class(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        school_year_id=tenant.school_class.school_year_id,
+        teacher_id=tenant.teacher.id,
+        code="9A",
+        label="Autre",
+    )
+    db.add(other)
+    db.flush()
+    visitor = Student(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        home_class_id=other.id,
+        school_year_id=tenant.school_class.school_year_id,
+        uid="9A_04",
+        number=4,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(visitor)
+    db.flush()
+    db.execute(
+        class_student.insert(),
+        [
+            {"class_id": other.id, "student_id": visitor.id},
+            {"class_id": tenant.school_class.id, "student_id": visitor.id},
+        ],
+    )
+    db.flush()
+
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = _render_copy(db, sheet, tenant.students[0].uid)
+    blank = np.full_like(images[0], 255)
+    scan = _run(db, storage, tenant, sheet, [*images, blank], monkeypatch)
+
+    offered = {s.uid for s in scan_service.assignable_students(db, tenant.scope, scan.id)}
+    assert "9A_04" in offered

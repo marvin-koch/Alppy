@@ -8,6 +8,7 @@ over 24 instances is not something a request should hold a connection open for.
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
@@ -29,12 +30,14 @@ from alppy.schemas import (
     JobOut,
     SheetCreate,
     SheetDraftPreview,
+    SheetMasteryOut,
     SheetOut,
     SheetProposeRequest,
     SheetProposeResponse,
+    SheetStudentMastery,
     SheetUpdate,
 )
-from alppy.services import event_service, job_out, sheet_out
+from alppy.services import event_service, job_out, mastery_service, sheet_out
 from alppy.services import sheet_service as svc
 from alppy.services.class_service import get_class
 
@@ -298,4 +301,45 @@ def mark_printed(
     db.refresh(sheet)
     return sheet_out(
         sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
+    )
+
+
+@router.get("/sheets/{sheet_id}/mastery", response_model=SheetMasteryOut)
+def sheet_mastery(
+    sheet_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+) -> SheetMasteryOut:
+    """How the class did on one sheet, in the product's five bands.
+
+    The altitude the model was missing. `MasterySnapshot` answers "how is this
+    child doing on X" and the tree answers it for a Theme; nothing answered
+    "how did they do on *this sheet*" without leaving the product's vocabulary
+    for a percentage.
+
+    Computed from attempts, not read from a snapshot, for the same reason the
+    matrix is: the score decays, so a sheet opened on Friday must not show
+    Monday's numbers.
+
+    Works unchanged on an adaptive batch — `Sheet.target` does not enter the
+    arithmetic — which is what makes "adaptive sheet mastery" the same
+    function rather than a second one that could drift from it.
+    """
+    sheet = svc.get_sheet(db, scope, sheet_id)
+    competency_ids, _chapter_ids = svc.sheet_coverage(db, scope.school_id, sheet.id)
+    student_ids = [i.student_id for i in sheet.instances]
+
+    return SheetMasteryOut(
+        sheet_id=sheet.id,
+        competency_ids=competency_ids,
+        students=[
+            SheetStudentMastery(student_id=sid, mastery=m)
+            for sid, m in mastery_service.sheet_mastery(
+                db, scope.school_id, sheet.id, student_ids, competency_ids
+            ).items()
+        ],
+        overall=mastery_service.sheet_mastery_overall(
+            db, scope.school_id, sheet.id, student_ids, competency_ids
+        ),
+        computed_at=datetime.now(UTC),
     )

@@ -1145,6 +1145,38 @@ than locking a row on an ordinary sheet creation, `subject_ids_for_class` breaks
 tie on `subject_id`, so the branch order is arbitrary in that rare case but never
 wobbles between requests.
 
+### D62 · Demo mode is a flag that defaults to off, in both halves
+
+A demo instance should not ask for an account. The obvious implementation —
+delete the session check — is the wrong one: `Student.first_name`/`last_name`
+hold children's real names, and the session cookie is the only thing between
+those and anyone with the URL (docs/privacy.md).
+
+So it is a flag, `Settings.demo_mode`, default **False**, and deliberately not
+derived from `env` or `debug`. A flag that can switch itself on from another
+signal is one that eventually switches itself on somewhere real; the test
+`test_debug_and_local_env_do_not_turn_demo_mode_on` pins that.
+
+It is a fallback for the ABSENCE of a cookie, never an override of one. A
+teacher who signs in on a demo instance is still themselves, or the ownership
+rules every read depends on (D23) would answer for somebody else.
+
+**Both halves have to be set, and they are separate on purpose.**
+`ALPPY_DEMO_MODE` opens the API; `NEXT_PUBLIC_ALPPY_DEMO_MODE` tells the web
+middleware to stop redirecting to `/login`. The middleware gate is a routing
+convenience rather than the security boundary — its own docstring has said so
+since it was written, and the cookie is `httpOnly`, so presence is all the edge
+can check. Setting only the API leaves a visitor stranded at `/login`; setting
+only the web drops them into an app whose every request 401s. Neither half is
+dangerous alone, which is the point: the dangerous state needs two deliberate
+acts, not one.
+
+The demo teacher is resolved by email (`demo_teacher_email`) rather than "the
+first teacher in the table", so an instance holding two schools cannot quietly
+start answering as whichever sorts first. If demo mode is on and no such
+teacher exists the API says so instead of returning 401, which would send the
+reader hunting for a login that could not have helped.
+
 ### D63 · Adaptive targeting reads the sheet the teacher just corrected
 
 Targeting read all-time `MasterySnapshot` rows; `source_sheet_id` was on the request and
@@ -1244,3 +1276,125 @@ claim it had read a textbook page.
 **Rejected:** an HTTP endpoint to read it. The store holds prompt content and exposing it
 needs an authorisation story that does not exist yet; the query path is SQL and the CLI.
 
+### D69 · A student sits in many classes, and exactly one of them minted their UID
+
+`student.class_id` carried two facts that only looked like one while a child belonged to
+a single class: **whose pupil is this** and **which classes does this pupil attend**. A
+teacher who takes 7B for maths and also runs a support group could express neither
+separately, and every roster, matrix, tree and printed pile read the first as though it
+were the second.
+
+Split the way D56 split `Chapter`: where a row *sits* is a column, what it *belongs to*
+is a join table. `student.home_class_id` is the class that minted `uid` (`7B_15`) and
+`number`; `class_student` is who actually sits where. The UID stays single-valued and
+home-minted, which is why nothing in the print or scan path changed — the identifier on
+paper is a fact about the pupil's home, unique per (school, school_year), and the
+detector decodes it exactly as before.
+
+**The column was renamed rather than kept.** A dozen read sites had to be judged one at a
+time as "enrolled" or "home", and under the old name every site nobody reviewed would
+have gone on compiling with the old meaning. The worst of them, `scan_processing`'s
+`wrong_class` test, *clears every detection on the page*: a co-enrolled pupil's answers
+would have disappeared with no error anywhere for the teacher to see. Renaming turned
+each unreviewed site into an `AttributeError` the suite catches instead.
+
+`home_class_id` is **RESTRICT** where `class_id` was CASCADE. Deleting a class deleted
+its students, and `attempt`, `mastery_snapshot` and `sheet_instance` all cascade from
+there — a term of evidence gone for a child who was also sitting elsewhere. Unenrolling
+drops one join row and refuses on the home class; deleting a student stays the only
+operation allowed to destroy evidence.
+
+**Ownership (D23) is unchanged but now reads over a set of classes.** A pupil co-enrolled
+in two teachers' classes is readable by both — that is the feature — and `enroll` asserts
+that the student and the class share a school *and* a school year, because
+`uq_student_uid` is scoped per year and an enrollment spanning two would make a printed
+UID ambiguous. A reviewer reading `_owned_student` in isolation will otherwise read the
+widening as a regression.
+
+**Rejected:** per-enrollment state beyond `enrolled_at`. The moment `left_at` exists,
+every roster read grows a temporal predicate and every test needs an injectable clock.
+Leaving a class is a deleted row.
+
+**Shipped in two parts.** The migration backfills one enrollment per student equal to
+their home, and nothing can create a second until the enroll/unenroll endpoints ship — so
+this release is provably behaviour-preserving on a change that touches the scan path.
+
+### D70 · A sheet answers several sheets, and one of them is the principal
+
+`Sheet.derived_from_id` held one parent. A reprise legitimately answers more than one
+thing — the test whose results triggered it, and the earlier worksheets whose gaps it
+revisits — and there was nowhere to say so.
+
+`sheet_source` is the set; the column stays, because they are different facts. The column
+is where the sheet **hangs**: what the feedback page prints, what the tree draws, what D61
+validates. The table is what it is **about**. Position 0 is the principal and is the same
+sheet as the column — `sheet_service.set_sources` writes both together, because a sheet
+whose feedback page names one parent while its lineage draws another is worse than one
+with no lineage at all. D56's shape a third time, after `Chapter.primary_competency_id`
+and `Student.home_class_id` (D69).
+
+**Every source gets D61's ownership check, not just the principal.** D61 closed the hole
+on a single `source_sheet_id`; a list reopens it at position 2, and a colleague's sheet
+title reaching a printed feedback page is the exact failure D61 exists to prevent.
+
+`AdaptiveBatchRequest` keeps `source_sheet_id` alongside the new `source_sheet_ids`, and
+`resolved_source_ids()` folds the two — an older client keeps working, and a caller that
+sends both gets one de-duplicated lineage with the principal first.
+
+**Rejected:** the table alone, without the column. Targeting, the feedback page and the
+chapter fallback each need exactly one answer, and "the row at position 0" is a worse way
+to ask than a foreign key — it demotes a constraint to a convention.
+
+**Not done here:** targeting still reads the principal only. D63 builds gaps from one
+corrected sheet and that is unchanged; the set records what the teacher says the batch
+answers.
+
+### D71 · A sheet's Competences and Themes are derived, not stored
+
+The obvious schema is `sheet_competency` and `sheet_chapter` join tables. Rejected: they
+would have to be rewritten on every item edit, and between the edit and the rewrite —
+or after any path that forgets — they describe a sheet that no longer exists. Two
+answers to "what does this sheet cover?", one of them stale, is worse than one answer
+that costs a join.
+
+`SheetItem -> Exercise -> exercise_competency` already holds it, and
+`exercise_competency` is a real many-to-many that the mastery model already reads. So
+`sheet_service.sheet_coverage` derives both sets and `SheetOut` carries them as
+`competency_ids` / `chapter_ids`.
+
+`Sheet.chapter_id` is untouched and stays the sheet's single home Theme (D60,
+I-sheets-11). The two are deliberately different: the home is what the teacher **stated**
+and what the tree files the sheet under; the coverage is what the items **reach**. A
+sheet in `unfiled` still covers whatever its exercises cover, and inferring a filing from
+the second would be exactly the guess-promoted-to-a-fact D60 refuses.
+
+An item no one tagged contributes nothing rather than a guessed Theme — `Exercise.chapter_id`
+is itself an inference and null on a large minority of a real textbook.
+
+### D72 · A sheet gets a band, and it is a roll-up, not a mean
+
+`MasterySnapshot` answers "how is this child doing on X"; the tree answers it for a
+Theme, a Competence and a Branch. Nothing answered "how did this child do on **this
+sheet**" without leaving the five bands for a percentage — which is what the original
+brief asked for, and what would have put a second scoring rule in a product whose whole
+claim is that a band means one thing everywhere.
+
+`mastery_service.sheet_mastery` is the existing arithmetic at a new altitude: attempts
+bucketed **per competency**, each bucket scored by `compute_mastery`, and only then
+combined by `roll_up_mastery`. The grouping is the invariant — a mean over raw item
+correctness derives one recency from a mixture, which is I-mastery-10 broken one level
+up. `sheet_mastery_overall` pools across **students** through the existing
+`pool_by_competency`, which is the combination the model does allow.
+
+Every competency the sheet covers is a child, including those with no evidence.
+`compute_mastery([])` is the NONE band: it weighs nothing in the roll-up (I-mastery-09)
+but counts toward `child_count`, so the coverage a teacher reads is honest rather than
+being silently about the two competencies that happened to be examined (DC-content-07).
+
+**Adaptive-sheet mastery is the same function.** `Sheet.target` never enters the
+arithmetic, so "adaptive sheet mastery" needed no second implementation that could drift
+from the first.
+
+**Computed, not stored.** No `SheetMastery` table, for the reason `api/v1/mastery.py`
+already gives about the matrix: the score decays with time, so a sheet opened on Friday
+must not show Monday's numbers.

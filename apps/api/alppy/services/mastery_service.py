@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import uuid
 from collections import defaultdict
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from typing import Final
 
@@ -24,7 +25,12 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
-from alppy.mastery.model import AttemptInput, MasteryResult, compute_mastery
+from alppy.mastery.model import (
+    AttemptInput,
+    MasteryResult,
+    compute_mastery,
+    roll_up_mastery,
+)
 from alppy.models import (
     Attempt,
     Chapter,
@@ -36,8 +42,10 @@ from alppy.models import (
     Scan,
     ScanPage,
     Sheet,
+    SheetItem,
     Student,
     chapter_competency,
+    class_student,
     exercise_competency,
 )
 from alppy.models.enums import BAND_ORDER, DetectionOutcome, MasteryBand
@@ -50,8 +58,10 @@ from alppy.schemas import (
     MasteryPoint,
     SheetTaken,
     StudentProfileOut,
+    TreeMasteryOut,
 )
 from alppy.services import competency_out, student_out
+from alppy.services.enrollment import enrolled_student_ids
 
 ATTENTION_BANDS: Final[frozenset[MasteryBand]] = frozenset(
     {MasteryBand.WEAK, MasteryBand.FADING}
@@ -93,6 +103,49 @@ def _chapter_competency_ids(
             .where(Chapter.id == chapter_id)
             .where(Chapter.school_id == school_id)
         ).scalars()
+    )
+
+
+_BAND_SEVERITY: dict[MasteryBand, int] = {
+    MasteryBand.FADING: 0,
+    MasteryBand.WEAK: 1,
+    MasteryBand.OK: 2,
+    MasteryBand.SOLID: 3,
+    MasteryBand.NONE: 4,
+}
+
+
+def weakest_assessed_band(children: list[MasteryResult]) -> MasteryBand | None:
+    """The worst band among children that were actually assessed.
+
+    NONE is not a weakness — it is the absence of evidence — so it is filtered
+    out here rather than sorted last, matching ``_weakest_first``'s reading of
+    the same distinction one level down.
+    """
+    assessed = [c.band for c in children if c.effective_n > 0.0]
+    if not assessed:
+        return None
+    return min(assessed, key=lambda b: _BAND_SEVERITY[b])
+
+
+def mastery_out(rolled: MasteryResult, children: list[MasteryResult]) -> TreeMasteryOut:
+    """Serialise a roll-up together with the coverage behind it.
+
+    The band alone would let a Theme read "acquis" while two of its three
+    competencies were never examined. `assessed_count` / `child_count` and
+    `weakest_band` are the companions that stop a colour travelling alone
+    (DC-colour-08) at a level where the number is an aggregate.
+    """
+    return TreeMasteryOut(
+        score=rolled.score,
+        band=rolled.band,
+        attempts_count=rolled.attempts_count,
+        provisional=rolled.provisional,
+        assessed_count=sum(1 for c in children if c.effective_n > 0.0),
+        child_count=len(children),
+        weakest_band=weakest_assessed_band(children),
+        days_until_review=rolled.days_until_review,
+        last_attempt_at=rolled.last_attempt_at,
     )
 
 
@@ -207,7 +260,7 @@ def _student_ids_for_class(
     stmt = (
         select(Student)
         .where(Student.school_id == school_id)
-        .where(Student.class_id == class_id)
+        .where(Student.id.in_(enrolled_student_ids(class_id)))
         .order_by(Student.number.asc())
     )
     return list(db.execute(stmt).scalars())
@@ -410,12 +463,18 @@ def _owned_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
     A student profile names a child and lists their every answer, so it follows
     the same ownership rule as the class they sit in (decisions-log D23).
     """
+    # Through ENROLLMENT, not the home class: a child co-enrolled in this
+    # teacher's class is theirs to read even when another teacher's class
+    # minted the uid. Widened deliberately, and only here — the school filter
+    # above it is what keeps the widening inside one tenant (I-platform-10).
     student = db.execute(
         select(Student)
-        .join(Class, Class.id == Student.class_id)
+        .join(class_student, class_student.c.student_id == Student.id)
+        .join(Class, Class.id == class_student.c.class_id)
         .where(Student.id == student_id)
         .where(Student.school_id == scope.school_id)
         .where(Class.teacher_id == scope.teacher_id)
+        .limit(1)
     ).scalar_one_or_none()
     if student is None:
         raise errors.not_found("student", id=str(student_id))
@@ -514,7 +573,7 @@ def _sheets_taken(
     outer join per attempt and the row count here is a handful of sheets.
     """
     rows = db.execute(
-        select(Attempt, Sheet.title, Scan.id)
+        select(Attempt, Sheet.title, Scan.id, Sheet.chapter_id)
         .join(Sheet, Sheet.id == Attempt.sheet_id)
         .outerjoin(Detection, Detection.id == Attempt.detection_id)
         .outerjoin(ScanPage, ScanPage.id == Detection.scan_page_id)
@@ -526,7 +585,7 @@ def _sheets_taken(
     ).all()
 
     by_sheet: dict[uuid.UUID, SheetTaken] = {}
-    for attempt, title, scan_id in rows:
+    for attempt, title, scan_id, chapter_id in rows:
         answered = _aware(attempt.answered_at)
         if answered is None or attempt.sheet_id is None:  # pragma: no cover - NOT NULL
             continue
@@ -539,6 +598,7 @@ def _sheets_taken(
                 attempts_count=1,
                 correct_count=1 if attempt.correct else 0,
                 scan_id=scan_id,
+                chapter_id=chapter_id,
             )
             continue
         taken.attempts_count += 1
@@ -549,7 +609,38 @@ def _sheets_taken(
         if taken.scan_id is None:
             taken.scan_id = scan_id
 
+    # One band per sheet, through the same roll-up the sheet endpoint uses, so
+    # the profile and `GET /sheets/{id}/mastery` cannot disagree about a pupil.
+    for sheet_id, taken in by_sheet.items():
+        competency_ids = _sheet_competency_ids(db, school_id, sheet_id)
+        if not competency_ids:
+            continue
+        taken.mastery = sheet_mastery(
+            db, school_id, sheet_id, [student_id], competency_ids
+        ).get(student_id)
+
     return sorted(by_sheet.values(), key=lambda s: s.answered_at, reverse=True)
+
+
+def _sheet_competency_ids(
+    db: Session, school_id: uuid.UUID, sheet_id: uuid.UUID
+) -> list[uuid.UUID]:
+    """The competencies one sheet's items touch.
+
+    The same derivation as `sheet_service.sheet_coverage`, kept here rather
+    than imported: `sheet_service` imports this module, so the arrow only goes
+    one way. Duplicating four lines of query beats an import cycle.
+    """
+    return list(
+        db.execute(
+            select(exercise_competency.c.competency_id)
+            .join(Exercise, Exercise.id == exercise_competency.c.exercise_id)
+            .join(SheetItem, SheetItem.exercise_id == Exercise.id)
+            .where(SheetItem.sheet_id == sheet_id)
+            .where(SheetItem.school_id == school_id)
+            .distinct()
+        ).scalars()
+    )
 
 
 def _history(
@@ -645,3 +736,76 @@ def band_summary(
         if snap.band in ATTENTION_BANDS:
             needing.add(student_id)
     return counts, len(needing)
+
+
+def sheet_mastery(
+    db: Session,
+    school_id: uuid.UUID,
+    sheet_id: uuid.UUID,
+    student_ids: Sequence[uuid.UUID],
+    competency_ids: Sequence[uuid.UUID],
+    *,
+    now: datetime | None = None,
+) -> dict[uuid.UUID, TreeMasteryOut]:
+    """One band per student for one sheet, rolled up from its competencies.
+
+    The altitude the model was missing: `MasterySnapshot` answers "how is this
+    child doing on X", the tree answers it for a Theme or a Branch, and nothing
+    answered "how did this child do on *this sheet*" in the product's own
+    vocabulary.
+
+    The arithmetic is the existing one, and the grouping is the whole point.
+    Attempts are bucketed **per competency** first, each bucket scored by
+    `compute_mastery`, and only the results combined by `roll_up_mastery` — a
+    mean over raw item correctness would derive one recency from a mixture and
+    break I-mastery-10 at a new altitude, in the model whose purpose is fading.
+
+    Every competency the sheet covers appears as a child, including those it
+    got no evidence for: `compute_mastery([])` is the NONE band, which weighs
+    nothing in the roll-up (I-mastery-09) but does count toward the coverage
+    the caller has to show (DC-content-07).
+
+    `Attempt.score` is never read here, only `correct` — a barème must not be
+    able to move a band (I-mastery-08).
+    """
+    at = now or datetime.now(UTC)
+    ids = list(student_ids)
+    covered = list(competency_ids)
+    if not ids:
+        return {}
+
+    grouped = load_attempt_inputs(db, school_id, ids, sheet_id=sheet_id, as_of=at)
+
+    out: dict[uuid.UUID, TreeMasteryOut] = {}
+    for student_id in ids:
+        children = [
+            compute_mastery(grouped.get((student_id, cid), []), at) for cid in covered
+        ]
+        out[student_id] = mastery_out(roll_up_mastery(children), children)
+    return out
+
+
+def sheet_mastery_overall(
+    db: Session,
+    school_id: uuid.UUID,
+    sheet_id: uuid.UUID,
+    student_ids: Sequence[uuid.UUID],
+    competency_ids: Sequence[uuid.UUID],
+    *,
+    now: datetime | None = None,
+) -> TreeMasteryOut:
+    """The whole class on one sheet, as one band.
+
+    Pooled across STUDENTS through the existing `pool_by_competency` — sound,
+    and the same fold a single student goes through — then rolled up across
+    competencies through `roll_up_mastery`. Never the other way round: pooling
+    raw attempts across competencies is the one combination the model forbids
+    (I-mastery-10).
+    """
+    at = now or datetime.now(UTC)
+    ids = list(student_ids)
+    covered = list(competency_ids)
+    grouped = load_attempt_inputs(db, school_id, ids, sheet_id=sheet_id, as_of=at) if ids else {}
+    pooled = pool_by_competency(grouped)
+    children = [compute_mastery(pooled.get(cid, []), at) for cid in covered]
+    return mastery_out(roll_up_mastery(children), children)

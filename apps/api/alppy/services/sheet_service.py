@@ -29,6 +29,8 @@ from alppy.models import (
     SheetItem,
     Student,
     Subject,
+    exercise_competency,
+    sheet_source,
 )
 from alppy.models.enums import EventKind, EventSubject, ExerciseType, SheetTarget
 from alppy.schemas import AdaptiveBatchRequest, SheetCreate, SheetItemIn, SheetUpdate
@@ -39,7 +41,8 @@ from alppy.services.approval import (
     ensure_notes_printable,
     ensure_printable,
 )
-from alppy.services.class_service import get_class, list_students, owned_class_ids
+from alppy.services.class_service import get_class, list_students
+from alppy.services.enrollment import owned_class_ids
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
@@ -313,6 +316,85 @@ def update_sheet(
     return sheet
 
 
+def sheet_coverage(
+    db: Session, school_id: uuid.UUID, sheet_id: uuid.UUID
+) -> tuple[list[uuid.UUID], list[uuid.UUID]]:
+    """The Competences and Themes a sheet's items actually touch.
+
+    Derived, never stored. A `sheet_competency` table would have to be rewritten
+    on every item edit and could then disagree with the items it claims to
+    describe — two answers to "what does this sheet cover?", one of them stale.
+    The items are the only source of truth there is.
+
+    Deliberately NOT the same thing as ``Sheet.chapter_id``. That is the one
+    home Theme the teacher STATED (I-sheets-11), and it stays the sheet's
+    filing; this is the wider set the items reach into, which is what a sheet
+    detail page shows and what the sheet-level roll-up scores over. A sheet
+    filed under `unfiled` still covers whatever its exercises cover.
+    """
+    competency_ids = list(
+        db.execute(
+            select(exercise_competency.c.competency_id)
+            .join(Exercise, Exercise.id == exercise_competency.c.exercise_id)
+            .join(SheetItem, SheetItem.exercise_id == Exercise.id)
+            .where(SheetItem.sheet_id == sheet_id)
+            .where(SheetItem.school_id == school_id)
+            .distinct()
+        ).scalars()
+    )
+    # `scalars()` cannot narrow the Optional away for mypy even though the
+    # WHERE clause already has: the filter is SQL, the type is Python.
+    chapter_ids: list[uuid.UUID] = list(
+        db.execute(
+            select(Exercise.chapter_id)
+            .join(SheetItem, SheetItem.exercise_id == Exercise.id)
+            .where(SheetItem.sheet_id == sheet_id)
+            .where(SheetItem.school_id == school_id)
+            # `Exercise.chapter_id` is itself an inference and is null on a
+            # large minority of a real textbook. An untagged item contributes
+            # no Theme rather than a guessed one.
+            .where(Exercise.chapter_id.is_not(None))
+            .distinct()
+        )
+        .scalars()
+        .all()  # type: ignore[arg-type]  # NOT NULL is enforced by the WHERE above
+    )
+    return sorted(competency_ids, key=str), sorted(chapter_ids, key=str)
+
+
+def set_sources(db: Session, sheet: Sheet, sources: list[Sheet]) -> None:
+    """Record every sheet whose results justified this one, principal first.
+
+    ``derived_from_id`` and ``sheet_source`` position 0 are the same fact
+    reached two ways, so they are written together and asserted equal — a
+    lineage where the feedback page names one sheet and the tree draws another
+    is worse than no lineage at all (D70).
+    """
+    db.execute(sheet_source.delete().where(sheet_source.c.sheet_id == sheet.id))
+    if not sources:
+        sheet.derived_from_id = None
+        return
+
+    seen: list[Sheet] = []
+    for candidate in sources:
+        # A sheet cannot answer itself, and a repeat is a teacher clicking
+        # twice, not a second piece of evidence.
+        if candidate.id == sheet.id or any(candidate.id == s.id for s in seen):
+            continue
+        seen.append(candidate)
+
+    sheet.derived_from_id = seen[0].id if seen else None
+    if seen:
+        db.execute(
+            sheet_source.insert(),
+            [
+                {"sheet_id": sheet.id, "source_sheet_id": s.id, "position": position}
+                for position, s in enumerate(seen)
+            ],
+        )
+    db.flush()
+
+
 def create_adaptive_sheet(
     db: Session, scope: Scope, teacher_id: uuid.UUID, payload: AdaptiveBatchRequest
 ) -> Sheet:
@@ -379,11 +461,11 @@ def create_adaptive_sheet(
     # lookup and not at all for `derived_from_id`, so a foreign id was stored
     # verbatim and `render.py` later printed that sheet's title onto a feedback
     # page. A 404 is the right answer to a sheet the caller cannot see.
-    parent = (
-        get_sheet(db, scope, payload.source_sheet_id)
-        if payload.source_sheet_id is not None
-        else None
-    )
+    # Every sheet this batch answers, principal first. Each one goes through
+    # `get_sheet`, so a source the caller cannot see is a 404 rather than an id
+    # stored verbatim (D61).
+    sources = [get_sheet(db, scope, sid) for sid in payload.resolved_source_ids()]
+    parent = sources[0] if sources else None
 
     # A differentiated batch answers a common sheet, so it belongs to the same
     # Theme: the reprise on fractions is filed under fractions, next to the
@@ -413,6 +495,7 @@ def create_adaptive_sheet(
     )
     db.add(sheet)
     db.flush()
+    set_sources(db, sheet, sources)
 
     _replace_items(
         db,

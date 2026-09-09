@@ -43,6 +43,7 @@ from alppy.core.logging import get_logger
 from alppy.db.session import SessionLocal
 from alppy.models import Job
 from alppy.models.enums import JobStatus
+from alppy.services.enrollment import enrolled_student_ids
 
 log = get_logger(__name__)
 
@@ -370,7 +371,10 @@ async def generate_feedback(ctx: dict[str, Any], job_id: str) -> None:
         students = list(
             db.scalars(
                 select(Student)
-                .where(Student.school_id == job.school_id, Student.class_id == class_id)
+                .where(
+                    Student.school_id == job.school_id,
+                    Student.id.in_(enrolled_student_ids(class_id)),
+                )
                 .order_by(Student.number)
             )
         )

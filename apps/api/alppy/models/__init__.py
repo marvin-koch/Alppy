@@ -26,6 +26,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    func,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -137,6 +138,28 @@ class_subject = Table(
 )
 
 
+class_student = Table(
+    "class_student",
+    Base.metadata,
+    Column("class_id", PgUUID(as_uuid=True), ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
+    Column("student_id", PgUUID(as_uuid=True), ForeignKey("student.id", ondelete="CASCADE"), primary_key=True),
+    # When this child joined this class. Provenance, not a state machine —
+    # there is deliberately no `left_at`: the moment one exists every roster
+    # read grows a temporal predicate and every test needs an injectable
+    # clock. Leaving a class is a deleted row (``class_service.unenroll``).
+    Column("enrolled_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # NOT school-scoped, like `class_subject` and `chapter_competency`: both
+    # ends already are, and every read joins through a Class already filtered
+    # on the session's school. Tenancy holds transitively (I-platform-02).
+    #
+    # The composite PK's btree only answers class-first lookups. The reverse
+    # direction — "which classes is this student in" — is the TENANCY query
+    # (`mastery_service._owned_student`), which runs on every student-profile
+    # request, so it gets its own index.
+    Index("ix_class_student_student_id", "student_id"),
+)
+
+
 class Class(Base, TimestampMixin, SchoolScopedMixin):
     """A teaching group. ``code`` is the Swiss short form, e.g. "7B"."""
 
@@ -151,8 +174,22 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     label: Mapped[str | None] = mapped_column(String(120))
 
-    students: Mapped[list[Student]] = relationship(
-        back_populates="school_class", cascade="all, delete-orphan"
+    # The children this class is HOME to — the ones whose UID it minted. No
+    # delete-orphan any more: with enrollment a student removed from this list
+    # is not homeless, and deleting a class must never destroy a term of
+    # evidence for a child who also sits in another one. `home_class_id` is
+    # RESTRICT, so a class cannot be deleted while it is anyone's home.
+    home_students: Mapped[list[Student]] = relationship(back_populates="home_class")
+
+    # Everyone who sits in this class, home or visiting. This is what a roster,
+    # a matrix, a tree and a printed pile all mean by "the students" — see
+    # `class_service.list_students`.
+    #
+    # viewonly for the same reason `subjects` is: appending cannot assert that
+    # the student shares this class's school AND school year, and that
+    # assertion is I-platform-10. Writes go through `class_service.enroll`.
+    roster: Mapped[list[Student]] = relationship(
+        secondary=class_student, order_by="Student.number", viewonly=True
     )
     # The Branches this class studies — declared, not inferred. Until D57 this
     # was `SELECT DISTINCT sheet.subject_id`, which meant a brand-new class had
@@ -179,14 +216,23 @@ class Student(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    class_id: Mapped[uuid.UUID] = _fk("class.id")
+    # The class that MINTED this student's uid and number — not the set of
+    # classes they attend, which is `class_student`. The split is D69, and it
+    # is the same shape as `Chapter.primary_competency_id` (D56): where a row
+    # sits is one fact, what it belongs to is another.
+    #
+    # RESTRICT, not the module's usual CASCADE: deleting a class must not
+    # delete a child who also sits elsewhere, and deleting a student is the
+    # only operation allowed to destroy attempts and snapshots.
+    home_class_id: Mapped[uuid.UUID] = _fk("class.id", ondelete="RESTRICT")
     school_year_id: Mapped[uuid.UUID] = _fk("school_year.id")
     uid: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    school_class: Mapped[Class] = relationship(back_populates="students")
+    home_class: Mapped[Class] = relationship(back_populates="home_students")
+    classes: Mapped[list[Class]] = relationship(secondary=class_student, viewonly=True)
 
 
 # --------------------------------------------------------------------------
@@ -524,6 +570,36 @@ class ExerciseVariant(Base, TimestampMixin, SchoolScopedMixin):
 # --------------------------------------------------------------------------
 # Sheets
 # --------------------------------------------------------------------------
+sheet_source = Table(
+    "sheet_source",
+    Base.metadata,
+    Column("sheet_id", PgUUID(as_uuid=True), ForeignKey("sheet.id", ondelete="CASCADE"), primary_key=True),
+    # SET NULL is not available on a composite primary key, so a source sheet
+    # that is deleted takes the lineage row with it. The chain shortens; it
+    # never points at a sheet that is gone.
+    Column(
+        "source_sheet_id",
+        PgUUID(as_uuid=True),
+        ForeignKey("sheet.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # The order the teacher named them. `position` 0 is the PRINCIPAL, and is
+    # the same sheet as `Sheet.derived_from_id` — one row, two access paths,
+    # asserted in ``sheet_service.create_adaptive_sheet``.
+    Column("position", Integer, nullable=False),
+    Index("ix_sheet_source_source_sheet_id", "source_sheet_id"),
+)
+"""Every sheet whose corrected results justified this one.
+
+``Sheet.derived_from_id`` answers "what does this sheet hang from" with exactly
+one row — it is what the feedback page prints and what D61 validates. This
+table answers the wider question: a reprise may answer a test *and* the two
+earlier worksheets whose gaps it revisits, and before this there was nowhere to
+say so. The split is D56's, applied a third time: where a row SITS is a column,
+what it BELONGS TO is a join table (D70).
+"""
+
+
 class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "sheet"
     __table_args__ = (
@@ -597,6 +673,24 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     )
     instances: Mapped[list[SheetInstance]] = relationship(
         back_populates="sheet", cascade="all, delete-orphan"
+    )
+    # The piles photographed against this sheet, oldest first. viewonly: a scan
+    # is created by the upload path with its own school and storage keys, never
+    # by appending to a sheet.
+    scans: Mapped[list[Scan]] = relationship(
+        primaryjoin="Sheet.id == Scan.sheet_id",
+        order_by="Scan.created_at",
+        viewonly=True,
+    )
+    # viewonly: appending cannot know the next `position`, and position 0 has
+    # to stay in step with `derived_from_id`. Writes go through
+    # ``sheet_service.set_sources``.
+    sources: Mapped[list[Sheet]] = relationship(
+        secondary=sheet_source,
+        primaryjoin="Sheet.id == sheet_source.c.sheet_id",
+        secondaryjoin="Sheet.id == sheet_source.c.source_sheet_id",
+        order_by=sheet_source.c.position,
+        viewonly=True,
     )
 
 
@@ -1204,6 +1298,8 @@ __all__ = [
     "Subject",
     "Teacher",
     "chapter_competency",
+    "class_student",
     "class_subject",
     "exercise_competency",
+    "sheet_source",
 ]

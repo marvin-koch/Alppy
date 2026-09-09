@@ -67,6 +67,7 @@ fade.
 | I-mastery-08 | Only **confirmed** attempts count, and mastery **ignores the barème**. | `scan_service.confirm_scan` → `recompute_for_students`; `AttemptInput(correct, answered_at, difficulty)` | A teacher's weighting of a test must not move a child's bands | Re-weighting a test silently rewrites a term's mastery |
 | I-mastery-09 | A rolled-up band (Theme, Competence, Branch) is the **evidence-weighted mean** of its children's scores; a never-assessed child weighs nothing. | `mastery/model.py::roll_up_mastery` | A parent must not be dragged down by a competency nobody examined, nor pulled up by one lucky guess | A Theme reads "fragile" because two of its competencies were never taught yet |
 | I-mastery-10 | Attempts are **never pooled across competencies**; only results are combined. | `mastery_service::pool_by_competency` (students only) + `roll_up_mastery` | One recency derived from a mixture launders staleness, in the model whose purpose is fading | A competency last practised in June reads as fresh because a sibling was drilled last week |
+| I-mastery-11 | A **sheet-level band is a roll-up of per-competency results**, never a mean of item correctness — and every competency the sheet covers is a child, including the ones it got no evidence for. | `services/mastery_service.py::sheet_mastery`, `sheet_mastery_overall` | I-mastery-10 at a new altitude: a mean over items derives one recency from a mixture. The unassessed children are what make the coverage honest | A sheet reads "acquis" on the strength of the two competencies it happened to examine, out of five |
 
 ---
 
@@ -75,7 +76,7 @@ fade.
 | Path | Owns | Depends on |
 |---|---|---|
 | `alppy/mastery/model.py` | Every constant, `decay`, `compute_accuracy`, `compute_recency`, `band_for`, `days_until_review`, `compute_mastery` | `math`, `datetime`, `models.enums` — nothing else |
-| `alppy/services/mastery_service.py` | `load_attempt_inputs`, `recompute_for_students`, `class_matrix`, `student_profile`, `competency_attempts` (the drill-down), `band_summary` | `mastery.model`, `models` |
+| `alppy/services/mastery_service.py` | `load_attempt_inputs`, `recompute_for_students`, `class_matrix`, `student_profile`, `competency_attempts` (the drill-down), `band_summary`, `sheet_mastery` / `sheet_mastery_overall` (the sheet altitude), `mastery_out` / `weakest_assessed_band` (the shared roll-up serialiser the tree also uses) | `mastery.model`, `models` |
 | `alppy/api/v1/mastery.py` | `GET /classes/{id}/mastery`, `GET /students/{id}/mastery`, the cell drill-down | `mastery_service` |
 | `apps/web/src/components/CellDrillDown.tsx` | The attempts behind one cell, with provenance back to the sheet and the scan | `packages/shared` |
 | `packages/ui` `--c-mastery-*` + `mastery/` glyphs | The five bands on screen and on paper: colour **and** label **and** tint density **and** a glyph | brand assets |
@@ -135,6 +136,7 @@ is black and white, and roughly one boy in twelve is colour-blind — see
 | I-mastery-07 | `test_api_mastery.py::test_recompute_is_idempotent_within_a_day`, `::test_a_later_day_appends_a_point_rather_than_overwriting` |
 | I-mastery-09 | `test_mastery.py::test_a_roll_up_weights_by_evidence_not_by_child_count`, `::test_a_never_assessed_child_does_not_drag_a_roll_up_down`, `test_api_tree.py::test_a_theme_reports_the_coverage_behind_its_band` |
 | I-mastery-10 | `test_mastery.py::test_a_roll_up_score_is_not_accuracy_times_recency`, `test_api_tree.py::test_student_id_narrows_the_tree_to_one_child` |
+| I-mastery-11 | `test_api_sheets.py::test_a_sheet_reports_a_band_per_student_and_one_for_the_class`, `::test_a_sheet_band_ignores_the_bareme` |
 | I-mastery-08 | `test_api_mastery.py::test_a_recompute_only_sees_the_evidence_that_existed_at_the_time`, `test_scan_processing.py::test_mastery_is_untouched_by_the_bar` |
 
 ```bash

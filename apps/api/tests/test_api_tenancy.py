@@ -8,11 +8,17 @@ these is a 404, never a 403.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 
+import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import Tenant, login, make_exercise
+from test_api_fixtures import Tenant, login, make_colleague, make_exercise, make_tenant
+
+from alppy.api.errors import ApiError
+from alppy.models import Class, SchoolYear
+from alppy.services import class_service, mastery_service
 
 
 def test_another_schools_class_reads_as_missing(
@@ -48,7 +54,7 @@ def test_a_roster_cannot_be_written_into_another_school(
         json={"students": [{"first_name": "Eve", "last_name": "Attacker"}]},
     )
     assert response.status_code == 404
-    assert len(other_tenant.school_class.students) == 1
+    assert len(other_tenant.school_class.roster) == 1
 
 
 def test_listings_never_cross_the_tenant_boundary(
@@ -179,13 +185,13 @@ def test_a_colleague_cannot_write_into_another_teachers_roster(
     client: TestClient, tenant: Tenant, colleague: Tenant
 ) -> None:
     login(client, colleague.teacher.email)
-    before = len(tenant.school_class.students)
+    before = len(tenant.school_class.roster)
     response = client.post(
         f"/api/v1/classes/{tenant.school_class.id}/students",
         json={"students": [{"first_name": "Eve", "last_name": "Attacker"}]},
     )
     assert response.status_code == 404
-    assert len(tenant.school_class.students) == before
+    assert len(tenant.school_class.roster) == before
 
 
 def test_subjects_stay_shared_across_the_staffroom(
@@ -199,3 +205,63 @@ def test_subjects_stay_shared_across_the_staffroom(
     login(client, colleague.teacher.email)
     ids = {s["id"] for s in client.get("/api/v1/subjects").json()}
     assert str(tenant.subject.id) in ids
+
+
+# --------------------------------------------------------------------------
+# Enrollment widens WHO, never which school or year (I-platform-10)
+# --------------------------------------------------------------------------
+def test_enrollment_never_crosses_a_school(db: Session, tenant: Tenant) -> None:
+    other = make_tenant(db, name="Autre école", email="rita@autre.ch", class_code="8C")
+    with pytest.raises(ApiError):
+        class_service.enroll(db, tenant.school_class, other.students[0])
+
+
+def test_enrollment_never_crosses_a_school_year(db: Session, tenant: Tenant) -> None:
+    """``uq_student_uid`` is unique per school YEAR.
+
+    An enrollment spanning two of them would make a printed UID ambiguous —
+    the one identifier the detector has to be able to trust.
+    """
+    next_year = SchoolYear(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        label="2027/28",
+        starts_on=date(2027, 8, 1),
+        ends_on=date(2028, 7, 1),
+        is_current=False,
+    )
+    db.add(next_year)
+    db.flush()
+    later = Class(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        school_year_id=next_year.id,
+        teacher_id=tenant.teacher.id,
+        code="8B",
+        label="L'an prochain",
+    )
+    db.add(later)
+    db.flush()
+
+    with pytest.raises(ApiError):
+        class_service.enroll(db, later, tenant.students[0])
+
+
+def test_a_co_enrolled_student_is_readable_by_both_their_teachers(
+    db: Session, tenant: Tenant
+) -> None:
+    """The widening this change exists for, and its boundary.
+
+    A colleague who teaches the same child sees them. A colleague who does not
+    still gets a 404 — enrollment is the rule, not the school (D69, D23).
+    """
+    colleague = make_colleague(db, tenant, email="bea@alpes.ch", class_code="8A")
+    visitor = tenant.students[0]
+    class_service.enroll(db, colleague.school_class, visitor)
+    db.commit()
+
+    assert mastery_service._owned_student(db, colleague.scope, visitor.id).id == visitor.id
+
+    stranger = make_colleague(db, tenant, email="carl@alpes.ch", class_code="8D")
+    with pytest.raises(ApiError):
+        mastery_service._owned_student(db, stranger.scope, visitor.id)

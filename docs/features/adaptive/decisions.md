@@ -280,3 +280,38 @@ the job, because it is the shape of one screen and means nothing once that run i
                 can cross it on the teacher's behalf."
 }
 ```
+
+---
+
+## D70 · A sheet answers several sheets, and one of them is the principal
+
+`Sheet.derived_from_id` held one parent, and D61 gave it an ownership check. But a
+reprise legitimately answers more than one thing — the test whose results triggered it,
+and the earlier worksheets whose gaps it revisits — and there was nowhere to record that.
+
+`sheet_source` is the set; the column stays. They are different facts: the column is
+where the sheet **hangs** (what `render_feedback_pdf` prints, what the tree draws, what
+D61 validates), and the table is what it is **about**. Position 0 is the principal and is
+the same sheet as the column — `set_sources` writes both and keeps them equal, because a
+sheet whose feedback page names one parent while its lineage draws another is worse than
+a sheet with no lineage at all.
+
+D56's shape a third time, after `chapter.primary_competency_id` and
+`student.home_class_id` (D69): where a row sits is a column, what it belongs to is a join
+table.
+
+**Every source gets the ownership check, not just the principal.** D61 fixed the single
+`source_sheet_id`; a set reintroduces the same hole at position 2, and a foreign sheet
+title reaching a feedback page is exactly the failure D61 was written about.
+
+**Rejected:** replacing `derived_from_id` with the table alone. Targeting, the feedback
+page and the chapter fallback all need one answer, and "the row with position 0" is a
+worse way to ask for it than a column — it turns a foreign key into a convention.
+
+**Rejected:** `ON DELETE SET NULL` on `source_sheet_id`. A composite primary key cannot
+hold a null. Deleting a source shortens the chain rather than leaving a row pointing at a
+sheet that is gone.
+
+**Not done here:** targeting still reads the principal only. The proposal builds gaps
+from one corrected sheet (D63) and that is unchanged; the set records what the teacher
+says the batch answers, which is what the sheet detail page draws.

@@ -24,7 +24,7 @@ from alppy.api.deps import DbDep, ScopeDep
 from alppy.models import Class, Event, Scan, Sheet, Source, SourceSection
 from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import TimelineEventOut, TimelineFacets, TimelineOut
-from alppy.services.class_service import owned_class_ids
+from alppy.services.enrollment import owned_class_ids
 from alppy.services.event_service import list_events
 
 router = APIRouter(tags=["timeline"])

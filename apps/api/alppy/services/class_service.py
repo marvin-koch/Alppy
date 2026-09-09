@@ -13,9 +13,9 @@ from __future__ import annotations
 import uuid
 from datetime import UTC, date, datetime
 
-from sqlalchemy import Select, func, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from alppy.api import errors
 from alppy.api.deps import Scope
@@ -28,11 +28,40 @@ from alppy.models import (
     Student,
     Subject,
     Teacher,
+    class_student,
     class_subject,
 )
 from alppy.models.enums import ScanStatus
 from alppy.schemas import ClassCreate, ClassOut, ClassSummary, HomeOut, RosterCreate
 from alppy.services import class_out, subject_out, teacher_out
+from alppy.services.enrollment import (
+    enrolled_in_owned_classes,
+    enrolled_student_ids,
+    owned_class_ids,
+)
+
+__all__ = [
+    "add_students",
+    "class_out_with_counts",
+    "class_summary",
+    "create_class",
+    "current_school_year",
+    "declare_subject",
+    "enroll",
+    "enrolled_in_owned_classes",
+    "enrolled_student_ids",
+    "get_class",
+    "get_student",
+    "home",
+    "home_students",
+    "list_classes",
+    "list_students",
+    "list_subjects",
+    "owned_class_ids",
+    "student_counts",
+    "subject_ids_for_class",
+    "unenroll",
+]
 from alppy.services.mastery_service import band_summary
 
 PENDING_SCAN_STATUSES = (
@@ -99,20 +128,6 @@ def current_school_year(
 # --------------------------------------------------------------------------
 # Classes
 # --------------------------------------------------------------------------
-def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
-    """The ids of the classes this teacher owns, as a subquery.
-
-    Everything that hangs off a class — roster, mastery, sheets, scans — filters
-    through this rather than through ``school_id`` alone. One definition, so a
-    new read path cannot quietly pick a laxer rule (decisions-log D23).
-    """
-    return (
-        select(Class.id)
-        .where(Class.school_id == scope.school_id)
-        .where(Class.teacher_id == scope.teacher_id)
-    )
-
-
 def list_classes(db: Session, scope: Scope) -> list[Class]:
     return list(
         db.execute(
@@ -143,10 +158,11 @@ def get_class(db: Session, scope: Scope, class_id: uuid.UUID) -> Class:
 
 def student_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
     rows = db.execute(
-        select(Student.class_id, func.count(Student.id))
+        select(class_student.c.class_id, func.count(Student.id))
+        .join(Student, Student.id == class_student.c.student_id)
         .where(Student.school_id == scope.school_id)
-        .where(Student.class_id.in_(owned_class_ids(scope)))
-        .group_by(Student.class_id)
+        .where(class_student.c.class_id.in_(owned_class_ids(scope)))
+        .group_by(class_student.c.class_id)
     ).all()
     return {class_id: int(count) for class_id, count in rows}
 
@@ -244,14 +260,102 @@ def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCrea
 # Roster
 # --------------------------------------------------------------------------
 def list_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Student]:
+    """Everyone sitting in this class — home pupils and visitors alike.
+
+    This is what a roster, a mastery matrix, a curriculum tree and a printed
+    pile all mean by "the students", and nearly every other service funnels
+    through it. If you want the pupils this class is HOME to — because you are
+    minting a UID or a number — use ``home_students``.
+    """
+    return list(
+        db.execute(
+            select(Student)
+            # `student_out` names every class a pupil sits in, and a roster is
+            # 24 of them: without these two the serialiser fires 48 queries.
+            .options(selectinload(Student.classes), selectinload(Student.home_class))
+            .where(Student.school_id == scope.school_id)
+            .where(Student.id.in_(enrolled_in_owned_classes(scope)))
+            .where(Student.id.in_(enrolled_student_ids(class_id)))
+            .order_by(Student.number.asc())
+        ).scalars()
+    )
+
+
+def home_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Student]:
+    """The pupils whose uid and number THIS class minted.
+
+    Only the roster paste wants this. A visiting pupil carries their home
+    class's number — a 9A pupil numbered 4 sitting in 7B — and that number
+    says nothing about whether ``7B_04`` is free.
+    """
     return list(
         db.execute(
             select(Student)
             .where(Student.school_id == scope.school_id)
-            .where(Student.class_id.in_(owned_class_ids(scope)))
-            .where(Student.class_id == class_id)
+            .where(Student.home_class_id.in_(owned_class_ids(scope)))
+            .where(Student.home_class_id == class_id)
             .order_by(Student.number.asc())
         ).scalars()
+    )
+
+
+def get_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
+    """One student the caller may act on, or 404.
+
+    Reachable through ANY class this teacher owns, not just the home one: a
+    pupil co-enrolled in two teachers' classes is each teacher's to see, which
+    is the whole point of D69. The school filter on top is what keeps that
+    widening inside one tenant (I-platform-10).
+    """
+    row = db.execute(
+        select(Student)
+        .where(Student.id == student_id)
+        .where(Student.school_id == scope.school_id)
+        .where(Student.id.in_(enrolled_in_owned_classes(scope)))
+    ).scalar_one_or_none()
+    if row is None:
+        raise errors.not_found("student", id=str(student_id))
+    return row
+
+
+def enroll(db: Session, school_class: Class, student: Student) -> None:
+    """Seat a student in a class. Idempotent.
+
+    Asserts school AND school year (I-platform-10): ``uq_student_uid`` is
+    unique per school year, so an enrollment spanning two years would make a
+    printed UID ambiguous — the one identifier the detector has to trust.
+    """
+    if student.school_id != school_class.school_id:
+        raise errors.unprocessable("a student cannot be enrolled in another school's class")
+    if student.school_year_id != school_class.school_year_id:
+        raise errors.unprocessable(
+            "a student cannot be enrolled in a class from another school year"
+        )
+    db.execute(
+        pg_insert(class_student)
+        .values(class_id=school_class.id, student_id=student.id)
+        .on_conflict_do_nothing(index_elements=["class_id", "student_id"])
+    )
+
+
+def unenroll(db: Session, school_class: Class, student: Student) -> None:
+    """Remove a student from a class without touching their record.
+
+    Refused on the home class: the home is where the UID came from and the
+    column is NOT NULL. Unenrolling drops one row — the student, their uid,
+    their attempts and their snapshots all survive. Deleting a student stays
+    the only operation that destroys evidence.
+    """
+    if student.home_class_id == school_class.id:
+        raise errors.conflict(
+            "a student cannot leave the class that minted their uid",
+            uid=student.uid,
+        )
+    db.execute(
+        class_student.delete().where(
+            class_student.c.class_id == school_class.id,
+            class_student.c.student_id == student.id,
+        )
     )
 
 
@@ -264,7 +368,10 @@ def add_students(
     mistake), but a collision is a 409 rather than a silent renumber: student
     numbers are printed on paper that may already be in a pile on the desk.
     """
-    taken = {s.number for s in list_students(db, scope, school_class.id)}
+    # HOME students, deliberately — not the enrolled roster. A visiting pupil
+    # numbered 4 by their own class does not make `7B_04` taken, and reading
+    # the wider set here would 409 on a number this class actually has free.
+    taken = {s.number for s in home_students(db, scope, school_class.id)}
     next_free = 1
     created: list[Student] = []
 
@@ -294,7 +401,7 @@ def add_students(
         student = Student(
             id=uuid.uuid4(),
             school_id=scope.school_id,
-            class_id=school_class.id,
+            home_class_id=school_class.id,
             school_year_id=school_class.school_year_id,
             uid=uid,
             number=number,
@@ -304,6 +411,10 @@ def add_students(
         db.add(student)
         created.append(student)
 
+    # Flush before enrolling: the join row carries a real FK to student.id.
+    db.flush()
+    for student in created:
+        enroll(db, school_class, student)
     db.flush()
     return sorted(created, key=lambda s: s.number)
 

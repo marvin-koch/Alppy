@@ -71,6 +71,7 @@ Chromium over print markup to produce two PDFs and one row per measured answer b
 | I-sheets-09 | An item that does not fit is **refused, not clipped**; a box that does not fit **follows on the next page** at its full height. The statement never shrinks. | `sheets/pagination.py::ItemTooTallError`, `continuation_height_mm` | Paper does not scroll, and student-facing text has a floor | A statement runs off the bottom edge, unreadably |
 | I-sheets-11 | Every sheet has a **home Theme** (`chapter_id`, NOT NULL). Omitting it means `unfiled`; it is never inferred from the items. | `sheet_service::_resolve_chapter` | `Exercise.chapter_id` is itself a guess, and a guess promoted to a filing is one the teacher never confirmed | A sheet is quietly filed under a chapter its teacher never chose, and the tree says so with confidence |
 | I-sheets-10 | The render is **deterministic**: copies ordered by UID, no clock in the markup, page numbers derived. | `sheets/render.py::build_sheet_data`, `_stamp`, `html.physical_pages` | A re-render must reproduce the pile that was printed | Two renders of one sheet produce different papers |
+| I-sheets-12 | A sheet's **Competences and Themes are derived from its items**; only `chapter_id` is stated. | `services/sheet_service.py::sheet_coverage`, `services.sheet_out` | A stored set has to be rewritten on every item edit, and can then describe a sheet that no longer exists. `chapter_id` stays the one home Theme (I-sheets-11) | A sheet detail page naming a competency none of its exercises touch |
 
 > Note on I-sheets-10: the PDF *bytes* differ between runs — Chromium stamps a
 > creation date into the file metadata — so determinism is asserted against the
@@ -154,6 +155,7 @@ error naming exactly which items are waiting for a decision.
 | I-sheets-09 | `test_sheet_output.py::test_a_statement_taller_than_the_page_is_refused_not_clipped`, `::test_the_box_never_shrinks_the_picture_it_moves_to_the_next_page`, `::test_the_tallest_allowed_box_still_fits_a_page_when_carried_over` |
 | I-sheets-11 | `test_api_sheets.py::test_a_sheet_created_without_a_theme_lands_in_unfiled`, `::test_a_theme_from_another_subject_is_refused`, `::test_a_sheet_can_be_refiled_after_the_fact` |
 | I-sheets-10 | `test_sheet_output.py::test_preview_returns_the_real_printed_document` (the preview and the PDF are one document), `test_api_sheets.py::test_patching_a_sheet_replaces_items_and_invalidates_the_render`. Determinism itself is asserted against the HTML, never the PDF bytes |
+| I-sheets-12 | `test_api_sheets.py::test_a_sheets_coverage_is_derived_from_its_items`, `::test_a_sheets_coverage_follows_an_item_edit` |
 
 ```bash
 PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests/test_layout.py \

@@ -76,6 +76,12 @@ class StudentOut(ApiModel):
     number: int
     first_name: str
     last_name: str
+    #: The class that MINTED `uid` and `number`. A pupil has exactly one, and
+    #: it is the one the printed identifier comes from (D69, I-platform-09).
+    home_class_code: str = ""
+    #: Every class this pupil sits in, home first. A visiting pupil shows two;
+    #: without this a roster cannot say why a 9A identifier is on a 7B list.
+    class_codes: list[str] = []
 
 
 class StudentCreate(BaseModel):
@@ -495,6 +501,20 @@ class SheetOut(ApiModel):
     feedback_pdf_url: str | None = None
     #: The common sheet whose corrected results produced this one.
     derived_from_id: uuid.UUID | None = None
+    #: Every sheet whose corrected results justified this one, principal
+    #: first. `derived_from_id` is entry 0; the rest are the further evidence
+    #: the teacher named (D70). Empty on a sheet that answers nothing.
+    source_sheet_ids: list[uuid.UUID] = []
+    #: The piles photographed against this sheet. There is no `CorrectedSheet`
+    #: entity: a corrected sheet IS the confirmed scan plus the attempts it
+    #: wrote, so this is the route from a sheet to its corrections.
+    scans: list[SheetScanOut] = []
+    #: The Competences and Themes this sheet's ITEMS touch — derived from
+    #: `SheetItem -> Exercise`, never stored, so they cannot drift from the
+    #: items they describe. Distinct from `chapter_id`, which is the one home
+    #: Theme the teacher stated (I-sheets-11).
+    competency_ids: list[uuid.UUID] = []
+    chapter_ids: list[uuid.UUID] = []
     rendered_at: datetime | None = None
     created_at: datetime
 
@@ -592,6 +612,24 @@ class ScanPageAssign(BaseModel):
     student_id: uuid.UUID
 
     
+class SheetScanOut(ApiModel):
+    """One pile photographed against a sheet, as the sheet lists it.
+
+    Deliberately not `ScanOut`: that carries every page and every detection,
+    and a sheet showing four scans would ship four page lists nobody asked for.
+    What a sheet needs is a route back to its corrections and the one word that
+    says where each pile got to.
+    """
+
+    id: uuid.UUID
+    status: ScanStatus
+    #: Signed off, reopened, signed off again (D48).
+    revised: bool = False
+    confirmed_at: datetime | None = None
+    reopened_at: datetime | None = None
+    created_at: datetime
+
+
 class ScanOut(ApiModel):
     id: uuid.UUID
     sheet_id: uuid.UUID | None
@@ -810,6 +848,32 @@ class TreeBranchOut(ApiModel):
     unfiled_exercise_count: int = 0
 
 
+class SheetStudentMastery(ApiModel):
+    """One student's band on one sheet."""
+
+    student_id: uuid.UUID
+    mastery: TreeMasteryOut
+
+
+class SheetMasteryOut(ApiModel):
+    """How a class did on one sheet, in the product's own five bands.
+
+    `TreeMasteryOut`, not a new shape: a sheet band is the same kind of
+    aggregate as a Theme band and carries the same coverage, so it reads and
+    prints through the components that already exist (DC-content-07).
+
+    `overall` pools the students the way `pool_by_competency` does — across
+    pupils, which is sound — and never across competencies, which is not
+    (I-mastery-10).
+    """
+
+    sheet_id: uuid.UUID
+    competency_ids: list[uuid.UUID] = []
+    students: list[SheetStudentMastery] = []
+    overall: TreeMasteryOut
+    computed_at: datetime
+
+
 class ClassTreeOut(ApiModel):
     class_id: uuid.UUID
     branches: list[TreeBranchOut] = []
@@ -845,6 +909,14 @@ class SheetTaken(ApiModel):
     attempts_count: int
     correct_count: int
     scan_id: uuid.UUID | None = None
+    #: The Theme the sheet is FILED under (`Sheet.chapter_id`) — the one the
+    #: teacher stated, not one inferred from the items. The profile groups by
+    #: it, so a term reads as a few teaching units rather than a flat list.
+    chapter_id: uuid.UUID | None = None
+    #: This pupil's band ON THIS SHEET: a roll-up of the sheet's competencies,
+    #: never a mean of its items (I-mastery-11). Carried here rather than
+    #: fetched per sheet, which would be one request per row.
+    mastery: TreeMasteryOut | None = None
 
 
 class AttemptOut(ApiModel):
@@ -1049,10 +1121,31 @@ class AdaptiveBatchRequest(BaseModel):
     plans: list[AdaptiveStudentPlan]
     #: The common sheet this batch answers. Stored as `Sheet.derived_from_id`,
     #: which is what makes a teaching unit a chain rather than two loose rows.
+    #: When `source_sheet_ids` is given this is its first entry — the two are
+    #: one fact reached two ways (D70).
     source_sheet_id: uuid.UUID | None = None
+    #: Every sheet whose corrected results justified this batch, principal
+    #: first. A reprise may answer a test *and* the worksheets whose gaps it
+    #: revisits; `source_sheet_id` alone could only name one of them.
+    source_sheet_ids: list[uuid.UUID] | None = None
     #: How many groups the plans were built from. >1 marks the sheet
     #: `SheetTarget.GROUP`, which has been in the enum unused since 0001.
     group_count: int | None = None
+
+    def resolved_source_ids(self) -> list[uuid.UUID]:
+        """The lineage, de-duplicated, principal first.
+
+        Accepts either field so an older client keeps working: `source_sheet_id`
+        is the principal, and is prepended when the caller sent only it.
+        """
+        ids = list(self.source_sheet_ids or [])
+        if self.source_sheet_id is not None and self.source_sheet_id not in ids:
+            ids.insert(0, self.source_sheet_id)
+        seen: list[uuid.UUID] = []
+        for sid in ids:
+            if sid not in seen:
+                seen.append(sid)
+        return seen
 
 
 # ------------------------------------------------------- misconception notes

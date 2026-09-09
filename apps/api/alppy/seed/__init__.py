@@ -22,6 +22,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import select
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
@@ -37,6 +38,7 @@ from alppy.models import (
     Student,
     Subject,
     Teacher,
+    class_student,
 )
 from alppy.models.enums import CurriculumKind, Locale
 from alppy.seed.demo import (
@@ -272,7 +274,7 @@ def _get_or_create_students(
         for s in db.scalars(
             select(Student)
             .where(Student.school_id == school.id)
-            .where(Student.class_id == school_class.id)
+            .where(Student.home_class_id == school_class.id)
         )
     }
     for number, (first, last) in enumerate(roster or DEMO_ROSTER, start=1):
@@ -281,7 +283,7 @@ def _get_or_create_students(
         student = Student(
             id=uuid.uuid4(),
             school_id=school.id,
-            class_id=school_class.id,
+            home_class_id=school_class.id,
             school_year_id=year.id,
             # Built with format_uid so the demo carries the same zero-padded
             # shape the roster endpoint produces, and the printed grid aligns.
@@ -292,6 +294,18 @@ def _get_or_create_students(
         )
         db.add(student)
         existing[first] = student
+    # Flush before seating: the join row carries a real FK to student.id.
+    db.flush()
+    db.execute(
+        pg_insert(class_student)
+        .values(
+            [
+                {"class_id": school_class.id, "student_id": s.id}
+                for s in existing.values()
+            ]
+        )
+        .on_conflict_do_nothing(index_elements=["class_id", "student_id"])
+    )
     return existing
 
 

@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterator
+from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
@@ -60,6 +61,7 @@ from alppy.models import (  # noqa: E402
     Student,
     Subject,
     Teacher,
+    class_student,
 )
 from alppy.models.enums import (  # noqa: E402
     CurriculumKind,
@@ -171,6 +173,28 @@ def app(db: Session, storage: LocalStorage, settings: Settings) -> FastAPI:
     return application
 
 
+@contextmanager
+def make_app_client(
+    db: Session, storage: LocalStorage, settings: Settings
+) -> Iterator[TestClient]:
+    """A client on non-default settings, sharing this test's session.
+
+    The `app`/`client` fixtures bake in the `settings` fixture; a test that has
+    to vary one setting (demo mode) needs to build its own without duplicating
+    the dependency overrides.
+    """
+    application = create_app(settings)
+
+    def _db() -> Iterator[Session]:
+        yield db
+
+    application.dependency_overrides[deps.get_db] = _db
+    application.dependency_overrides[deps.get_object_storage] = lambda: storage
+    application.dependency_overrides[deps.get_app_settings] = lambda: settings
+    with TestClient(application) as test_client:
+        yield test_client
+
+
 @pytest.fixture
 def client(app: FastAPI) -> Iterator[TestClient]:
     with TestClient(app) as c:
@@ -187,6 +211,45 @@ def _reset_rate_limiter() -> Iterator[None]:
 # --------------------------------------------------------------------------
 # Seeding
 # --------------------------------------------------------------------------
+def seat_students(
+    db: Session,
+    *,
+    school_id: uuid.UUID,
+    school_year_id: uuid.UUID,
+    school_class: Class,
+    names: list[tuple[str, str]],
+) -> list[Student]:
+    """Build a roster and seat it, the way ``class_service.add_students`` does.
+
+    One helper rather than the same loop in every fixture, because a student is
+    now two facts: the home class that minted the uid, and the enrollment rows
+    that say where they sit (D69). A fixture that sets only the first builds a
+    pupil who exists but is in nobody's class, and the failure surfaces three
+    layers away as an empty matrix.
+    """
+    students: list[Student] = []
+    for number, (first, last) in enumerate(names, start=1):
+        students.append(
+            Student(
+                id=uuid.uuid4(),
+                school_id=school_id,
+                home_class_id=school_class.id,
+                school_year_id=school_year_id,
+                uid=f"{school_class.code}_{number:02d}",
+                number=number,
+                first_name=first,
+                last_name=last,
+            )
+        )
+    db.add_all(students)
+    db.flush()
+    db.execute(
+        class_student.insert(),
+        [{"class_id": school_class.id, "student_id": s.id} for s in students],
+    )
+    return students
+
+
 def make_tenant(
     db: Session,
     *,
@@ -237,20 +300,13 @@ def make_tenant(
     db.add(school_class)
     db.flush()
 
-    students: list[Student] = []
-    for number, (first, last) in enumerate(student_names or [("Lea", "Roth")], start=1):
-        student = Student(
-            id=uuid.uuid4(),
-            school_id=school.id,
-            class_id=school_class.id,
-            school_year_id=year.id,
-            uid=f"{class_code}_{number:02d}",
-            number=number,
-            first_name=first,
-            last_name=last,
-        )
-        students.append(student)
-    db.add_all(students)
+    students = seat_students(
+        db,
+        school_id=school.id,
+        school_year_id=year.id,
+        school_class=school_class,
+        names=list(student_names or [("Lea", "Roth")]),
+    )
 
     competency = db.query(Competency).filter(Competency.code == competency_code).one_or_none()
     if competency is None:
@@ -480,22 +536,13 @@ def make_colleague(
     db.add(school_class)
     db.flush()
 
-    students: list[Student] = []
-    for number, (first, last) in enumerate(student_names or [("Marc", "Dupont")], start=1):
-        students.append(
-            Student(
-                id=uuid.uuid4(),
-                school_id=host.school.id,
-                class_id=school_class.id,
-                school_year_id=host.school_class.school_year_id,
-                uid=f"{class_code}_{number:02d}",
-                number=number,
-                first_name=first,
-                last_name=last,
-            )
-        )
-    db.add_all(students)
-    db.flush()
+    students = seat_students(
+        db,
+        school_id=host.school.id,
+        school_year_id=host.school_class.school_year_id,
+        school_class=school_class,
+        names=list(student_names or [("Marc", "Dupont")]),
+    )
     db.commit()
     return Tenant(
         school=host.school,

@@ -457,7 +457,7 @@ def build_draft_sheet_data(
     if not built:
         raise SheetRenderError("a sheet with no items cannot be previewed")
 
-    students = sorted(school_class.students, key=lambda s: s.uid)
+    students = sorted(school_class.roster, key=lambda s: s.uid)
     if not students:
         raise SheetRenderError(
             f"class {school_class.code} has no students: nothing to print a UID for"
@@ -605,7 +605,7 @@ def build_sheet_data(
         # No instances yet: print one personalised copy per student of the class.
         # A sheet without a per-student UID grid cannot be scanned back in, so
         # "one anonymous master to photocopy" is not an option the layout offers.
-        students = sorted(school_class.students, key=lambda s: s.uid)
+        students = sorted(school_class.roster, key=lambda s: s.uid)
         if not students:
             raise SheetRenderError(
                 f"class {school_class.code} has no students: nothing to print a UID for"

@@ -54,7 +54,7 @@ from alppy.schemas import (
     ScanUnvalidateResponse,
 )
 from alppy.services import event_service
-from alppy.services.class_service import owned_class_ids
+from alppy.services.enrollment import enrolled_student_ids, owned_class_ids
 from alppy.services.mastery_service import recompute_for_students
 from alppy.storage import Storage, storage_key
 
@@ -856,7 +856,9 @@ def assignable_students(
             select(Sheet).where(Sheet.id == scan.sheet_id).where(Sheet.school_id == school_id)
         ).scalar_one_or_none()
         if sheet is not None:
-            stmt = stmt.where(Student.class_id == sheet.class_id)
+            stmt = stmt.where(
+                Student.id.in_(enrolled_student_ids(sheet.class_id))
+            )
     return list(db.execute(stmt.order_by(Student.uid.asc())).scalars())
 
 

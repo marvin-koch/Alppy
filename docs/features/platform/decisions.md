@@ -127,6 +127,44 @@ spinner that will never stop. A dead queue now **fails** the job instead.
 
 ---
 
+## D69 · Enrollment is a join table; the home class is a column
+
+`Student` answered "which class?" with one NOT NULL FK, which was two questions wearing
+one answer: the class that **minted** the pupil's `uid` and `number`, and the classes the
+pupil **attends**. Splitting them is D56's shape — `home_class_id` is where the row sits,
+`class_student` is what it belongs to.
+
+Everything a teacher browses reads enrollment: `list_students`, `student_counts`,
+`class_matrix`, `class_tree`, the printed pile, adaptive targeting, the students offered
+for manual scan assignment. Two things read the home class, and only two: the roster
+paste, because it mints the UID, and `adaptive_service._class_of`, a legacy fallback that
+has to name exactly one.
+
+Two traps this created, both now covered by tests named after them:
+
+* **`scan_processing.wrong_class`.** Comparing `home_class_id` to `sheet.class_id` would
+  flag a legitimately co-enrolled pupil's page as foreign, and the branch below it clears
+  `result.detections` — the child's answers silently discarded, no error raised
+  (`I-platform-09`).
+* **`add_students`' `taken` set.** Computed over the enrolled roster, a visiting pupil
+  carrying number 4 from their own class would 409 a new pupil out of number 4 in a class
+  where `7B_04` is free. It reads `home_students` for exactly that reason.
+
+`owned_class_ids` gained a student-side twin, `enrolled_in_owned_classes`, and both live
+in `services/enrollment.py` rather than `class_service` — `class_service` imports
+`mastery_service`, and `mastery_service` needs the same subqueries, so a shared module is
+what keeps the edge acyclic without either side inventing a laxer rule.
+
+**Rejected:** keeping the column name. Twelve read sites needed judging individually, and
+an unreviewed site under the old name keeps working with the old meaning. Renamed, it is
+an `AttributeError`.
+
+**Rejected:** `left_at`, `role`, or any other per-enrollment state. `enrolled_at` is
+provenance and costs nothing; a temporal column makes every roster read a point-in-time
+query.
+
+---
+
 ## When policy changes
 
 ```json

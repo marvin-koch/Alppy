@@ -40,6 +40,7 @@ from alppy.models import (
     Student,
     Subject,
     Teacher,
+    class_student,
 )
 from alppy.models.enums import ExerciseOrigin, ExerciseType, MasteryBand
 from alppy.seed import loader
@@ -149,7 +150,7 @@ def build_world(db: Session | None = None) -> World:
         student = Student(
             id=uuid.uuid4(),
             school_id=school.id,
-            class_id=school_class.id,
+            home_class_id=school_class.id,
             school_year_id=year.id,
             uid=uid,
             number=i,
@@ -158,6 +159,11 @@ def build_world(db: Session | None = None) -> World:
         )
         db.add(student)
         students[uid] = student.id
+    db.flush()
+    db.execute(
+        class_student.insert(),
+        [{"class_id": school_class.id, "student_id": sid} for sid in students.values()],
+    )
     db.commit()
 
     return World(

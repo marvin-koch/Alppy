@@ -39,60 +39,17 @@ from alppy.models import (
     Sheet,
     Subject,
 )
-from alppy.models.enums import MasteryBand
 from alppy.schemas import (
     ClassTreeOut,
     TreeBranchOut,
     TreeCompetenceOut,
-    TreeMasteryOut,
     TreeThemeOut,
 )
 from alppy.services import class_service, mastery_service
+from alppy.services.mastery_service import mastery_out
+
 
 # Worst first, so `min` over this order finds the weakest assessed child.
-_BAND_SEVERITY: dict[MasteryBand, int] = {
-    MasteryBand.FADING: 0,
-    MasteryBand.WEAK: 1,
-    MasteryBand.OK: 2,
-    MasteryBand.SOLID: 3,
-    MasteryBand.NONE: 4,
-}
-
-
-def _weakest(children: list[MasteryResult]) -> MasteryBand | None:
-    """The worst band among children that were actually assessed.
-
-    NONE is not a weakness — it is the absence of evidence — so it is filtered
-    out here rather than sorted last, matching ``_weakest_first``'s reading of
-    the same distinction one level down.
-    """
-    assessed = [c.band for c in children if c.effective_n > 0.0]
-    if not assessed:
-        return None
-    return min(assessed, key=lambda b: _BAND_SEVERITY[b])
-
-
-def _mastery_out(rolled: MasteryResult, children: list[MasteryResult]) -> TreeMasteryOut:
-    """Serialise a roll-up together with the coverage behind it.
-
-    The band alone would let a Theme read "acquis" while two of its three
-    competencies were never examined. `assessed_count` / `child_count` and
-    `weakest_band` are the companions that stop a colour travelling alone
-    (DC-colour-08) at a level where the number is an aggregate.
-    """
-    return TreeMasteryOut(
-        score=rolled.score,
-        band=rolled.band,
-        attempts_count=rolled.attempts_count,
-        provisional=rolled.provisional,
-        assessed_count=sum(1 for c in children if c.effective_n > 0.0),
-        child_count=len(children),
-        weakest_band=_weakest(children),
-        days_until_review=rolled.days_until_review,
-        last_attempt_at=rolled.last_attempt_at,
-    )
-
-
 def class_tree(
     db: Session,
     scope: Scope,
@@ -192,7 +149,7 @@ def _branch(
             subject_id=subject.id,
             subject_key=subject.key,
             labels=dict(subject.labels or {}),
-            mastery=_mastery_out(empty, []),
+            mastery=mastery_out(empty, []),
             competences=[],
             unfiled_sheet_count=int(unfiled_sheets),
             unfiled_exercise_count=int(untagged_exercises),
@@ -267,7 +224,7 @@ def _branch(
                 competency_id=node.id,
                 code=node.code,
                 labels=dict(node.labels or {}),
-                mastery=_mastery_out(rolled_competence, theme_results),
+                mastery=mastery_out(rolled_competence, theme_results),
                 themes=[
                     TreeThemeOut(
                         chapter_id=chapter.id,
@@ -276,7 +233,7 @@ def _branch(
                         position=chapter.position,
                         sheet_count=sheet_counts.get(chapter.id, 0),
                         competency_ids=[c.id for c in chapter.competencies],
-                        mastery=_mastery_out(mastery, children),
+                        mastery=mastery_out(mastery, children),
                     )
                     for chapter, mastery, children in entries
                 ],
@@ -289,7 +246,7 @@ def _branch(
         subject_id=subject.id,
         subject_key=subject.key,
         labels=dict(subject.labels or {}),
-        mastery=_mastery_out(rolled, competence_results),
+        mastery=mastery_out(rolled, competence_results),
         competences=competences,
         unfiled_sheet_count=int(unfiled_sheets),
         unfiled_exercise_count=int(untagged_exercises),

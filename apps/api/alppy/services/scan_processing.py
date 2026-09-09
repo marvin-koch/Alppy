@@ -472,8 +472,15 @@ def process_scan(
         result = process_page(image, default_counts, layout_version=layout_version)
 
         student = _resolve_student(db, school_id=scan.school_id, uid=result.uid)
+        # ENROLLMENT, not the home class. A child co-enrolled in this sheet's
+        # class sat this paper legitimately; reading `home_class_id` here would
+        # flag them foreign and the branch below would then throw away every
+        # detection on the page — their answers gone, with no error anywhere
+        # (D69, I-platform-09).
         wrong_class = bool(
-            student is not None and sheet is not None and student.class_id != sheet.class_id
+            student is not None
+            and sheet is not None
+            and sheet.class_id not in {c.id for c in student.classes}
         )
 
         if wrong_class:

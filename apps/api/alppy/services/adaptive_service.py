@@ -86,6 +86,7 @@ from alppy.services.approval import (
     ensure_printable,
     is_printable,
 )
+from alppy.services.enrollment import enrolled_student_ids
 from alppy.services.performance_summary import SheetPerformance, sheet_performance
 from alppy.sheets.layout import MAX_OPTIONS
 
@@ -1965,7 +1966,9 @@ def _class_of(db: Session, *, school_id: uuid.UUID, meta: dict[str, Any]) -> uui
             select(Student).where(Student.school_id == school_id, Student.uid == str(ref))
         ).first()
         if student is not None:
-            return student.class_id
+            # The HOME class: this legacy fallback has to name one class, and
+            # a student may now sit in several (D69).
+            return student.home_class_id
     return None
 
 
@@ -1980,7 +1983,8 @@ def _students(
     student_ids: Sequence[uuid.UUID],
 ) -> list[Student]:
     stmt = select(Student).where(
-        Student.school_id == school_id, Student.class_id == class_id
+        Student.school_id == school_id,
+        Student.id.in_(enrolled_student_ids(class_id)),
     )
     if student_ids:
         stmt = stmt.where(Student.id.in_(list(student_ids)))
@@ -1998,7 +2002,10 @@ def _roster_names(db: Session, *, school_id: uuid.UUID, class_id: uuid.UUID) -> 
     """
     names: list[str] = []
     for student in db.scalars(
-        select(Student).where(Student.school_id == school_id, Student.class_id == class_id)
+        select(Student).where(
+            Student.school_id == school_id,
+            Student.id.in_(enrolled_student_ids(class_id)),
+        )
     ):
         names.extend(n for n in (student.first_name, student.last_name) if n and len(n) > 1)
     return names

@@ -59,6 +59,7 @@ python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DA
 |---|---|
 | `apps/web` | Next.js App Router, TypeScript, Tailwind v4, next-intl |
 | `apps/api` | FastAPI, SQLAlchemy 2, Alembic, Pydantic |
+| `apps/api/alppy/models/__init__.py` | **Every table.** Read [`docs/data-model.md`](docs/data-model.md) before changing one — three columns look like their neighbouring join table and are not |
 | `apps/api/alppy/sheets/layout.py` | **Print geometry — the single source of truth** |
 | `apps/api/alppy/scan/` | OpenCV registration, bubble detection, grading |
 | `apps/api/alppy/ingest/regions.py` | Exercise regions cut from the page geometry (label, crop, `SUITE ▶`) |
