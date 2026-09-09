@@ -2,6 +2,8 @@
 
 import { Card, Field, SegmentedControl, Toggle } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
+
+import { SchoolSettings } from '@/components/SchoolSettings';
 import { useEffect, useState } from 'react';
 
 import { useRouter, usePathname } from '@/i18n/navigation';
@@ -37,6 +39,13 @@ export default function SettingsPage() {
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-6">{t('title')}</h1>
+
+      {/* The school's own nouns, above the display switches: renaming a
+          Branch is rarer than changing a theme, but it is the only place it
+          can be done at all. */}
+      <div className="mb-8">
+        <SchoolSettings />
+      </div>
 
       <Card className="mb-4">
         <h2 className="mb-4 text-h3">{t('language')}</h2>

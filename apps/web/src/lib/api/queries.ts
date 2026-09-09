@@ -53,6 +53,8 @@ import type {
   SheetOut,
   SheetProposeRequest,
   SheetProposeResponse,
+  LocalisedText,
+  SchoolOut,
   SourceOut,
   SourceSectionOut,
   StudentOut,
@@ -250,6 +252,94 @@ export function useStudents(classId: Uuid | null): UseQueryResult<StudentOut[]> 
  * just left. Keeping any of it would render one school's classes under
  * another's name until each query happened to refetch.
  */
+/* --------------------------------------------------- editable nouns --- */
+export function useUpdateStudent(): UseMutationResult<
+  StudentOut,
+  Error,
+  { studentId: Uuid; classId: Uuid; body: { first_name?: string; last_name?: string } }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ studentId, body }) => api.updateStudent(studentId, body),
+    onSuccess: (_data, { classId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.students(classId) });
+    },
+  });
+}
+
+export function useDeleteStudent(): UseMutationResult<
+  void,
+  Error,
+  { studentId: Uuid; classId: Uuid; confirm: string }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ studentId, confirm }) => api.deleteStudent(studentId, confirm),
+    // Everything a pupil touched goes with them — the roster, the counts on
+    // the class card and the home screen, and every band they contributed to.
+    onSuccess: (_data, { classId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.students(classId) });
+      void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
+      void client.invalidateQueries({ queryKey: queryKeys.classes });
+      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.classMastery(classId, {}) });
+    },
+  });
+}
+
+export function useUpdateClass(): UseMutationResult<
+  ClassOut,
+  Error,
+  { classId: Uuid; body: { label?: string | null; code?: string } }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ classId, body }) => api.updateClass(classId, body),
+    onSuccess: (_data, { classId }) => {
+      void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
+      void client.invalidateQueries({ queryKey: queryKeys.classes });
+      void client.invalidateQueries({ queryKey: queryKeys.home });
+    },
+  });
+}
+
+export function useUpdateSchool(): UseMutationResult<
+  SchoolOut,
+  Error,
+  { name?: string; canton?: string | null }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.updateSchool(body),
+    // The school's name rides on `/auth/me`, which is what the rail reads.
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.me }),
+  });
+}
+
+export function useCreateSubject(): UseMutationResult<
+  SubjectOut,
+  Error,
+  { key: string; labels: LocalisedText }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: (body) => api.createSubject(body),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.subjects }),
+  });
+}
+
+export function useUpdateSubject(): UseMutationResult<
+  SubjectOut,
+  Error,
+  { subjectId: Uuid; labels: LocalisedText }
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ subjectId, labels }) => api.updateSubject(subjectId, { labels }),
+    onSuccess: () => void client.invalidateQueries({ queryKey: queryKeys.subjects }),
+  });
+}
+
 export function useSwitchSchool() {
   const queryClient = useQueryClient();
   return useMutation({

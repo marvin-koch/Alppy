@@ -507,7 +507,19 @@
     "motionHelp": "Countdowns stay animated: they carry information.",
     "calm": "Reading mode",
     "calmHelp": "Hides decorative illustrations.",
-    "saved": "Saved"
+    "saved": "Saved",
+    "school": "School",
+    "schoolName": "Name",
+    "canton": "Canton",
+    "curriculum": "Curriculum",
+    "curriculumLocked": "Set at creation. Every theme already hangs off it: changing it would move the whole programme under the other plan.",
+    "branches": "Branches",
+    "addBranch": "Add a branch",
+    "branchName": "Display name",
+    "branchKey": "Key",
+    "branchKeyHelp": "Links the branch to the curriculum. Chosen once, never changed.",
+    "create": "Create",
+    "rename": "Rename"
   },
   "exercise": {
     "type": {
@@ -824,7 +836,20 @@
       "body": "Paste the class list to start printing sheets."
     },
     "attention": "{count} of {assessed} to review",
-    "homeClass": "{code} · home"
+    "homeClass": "{code} · home",
+    "editStudent": "Edit pupil",
+    "firstName": "First name",
+    "lastName": "Last name",
+    "uidLocked": "Printed on copies already handed out. Not editable.",
+    "deleteStudent": "Delete {name}?",
+    "deleteBody": "{name} ({uid}) and everything that hangs off them: their answers, their mastery records and their printed copies. This is the only action in Alppy that destroys evidence.",
+    "unenrolInstead": "Did you mean to unenrol them?",
+    "unenrolBody": "They leave the class list and keep their identifier, their answers and their records.",
+    "typeUid": "Type {uid} to confirm",
+    "deleteConfirm": "Delete permanently",
+    "edit": "Edit",
+    "delete": "Delete",
+    "uid": "Identifier"
   },
   "curriculum": {
     "themes": "Themes",

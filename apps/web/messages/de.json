@@ -507,7 +507,19 @@
     "motionHelp": "Countdowns bleiben animiert: sie tragen eine Information.",
     "calm": "Lesemodus",
     "calmHelp": "Blendet dekorative Illustrationen aus.",
-    "saved": "Gespeichert"
+    "saved": "Gespeichert",
+    "school": "Schule",
+    "schoolName": "Name",
+    "canton": "Kanton",
+    "curriculum": "Lehrplan",
+    "curriculumLocked": "Bei der Erstellung festgelegt. Jedes Thema hängt bereits daran: eine Änderung würde das ganze Programm unter den anderen Lehrplan verschieben.",
+    "branches": "Fächer",
+    "addBranch": "Fach hinzufügen",
+    "branchName": "Anzeigename",
+    "branchKey": "Schlüssel",
+    "branchKeyHelp": "Verbindet das Fach mit dem Lehrplan. Einmal gewählt, nie geändert.",
+    "create": "Erstellen",
+    "rename": "Umbenennen"
   },
   "exercise": {
     "type": {
@@ -824,7 +836,20 @@
       "body": "Fügen Sie die Klassenliste ein, um Arbeitsblätter zu drucken."
     },
     "attention": "{count} von {assessed} zu wiederholen",
-    "homeClass": "{code} · Stammklasse"
+    "homeClass": "{code} · Stammklasse",
+    "editStudent": "Schülerin bearbeiten",
+    "firstName": "Vorname",
+    "lastName": "Name",
+    "uidLocked": "Auf bereits abgegebenen Kopien gedruckt. Nicht änderbar.",
+    "deleteStudent": "{name} löschen?",
+    "deleteBody": "{name} ({uid}) und alles, was daran hängt: Antworten, Kompetenzstände und gedruckte Kopien. Das ist die einzige Aktion in Alppy, die Belege zerstört.",
+    "unenrolInstead": "Wollten Sie sie vielleicht abmelden?",
+    "unenrolBody": "Sie verlässt die Klassenliste und behält Kennung, Antworten und Stände.",
+    "typeUid": "Tippen Sie {uid} zur Bestätigung",
+    "deleteConfirm": "Endgültig löschen",
+    "edit": "Bearbeiten",
+    "delete": "Löschen",
+    "uid": "Kennung"
   },
   "curriculum": {
     "themes": "Themen",

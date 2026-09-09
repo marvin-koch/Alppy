@@ -222,6 +222,31 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     requireAuth();
     return state.teacher;
   }
+  if (method === 'PATCH' && path === '/schools/me') {
+    requireAuth();
+    const patch = body as { name?: string; canton?: string };
+    state.teacher = {
+      ...state.teacher,
+      schools: (state.teacher.schools ?? []).map((s) =>
+        s.id === state.teacher.school_id ? { ...s, ...patch } : s,
+      ),
+    };
+    return (state.teacher.schools ?? []).find((s) => s.id === state.teacher.school_id);
+  }
+  if (method === 'POST' && path === '/subjects') {
+    requireAuth();
+    const created = { id: crypto.randomUUID(), ...(body as { key: string; labels: object }) };
+    fx.subjects.push(created as never);
+    return created;
+  }
+  if (method === 'PATCH' && path.startsWith('/subjects/')) {
+    requireAuth();
+    const id = path.slice('/subjects/'.length);
+    const subject = fx.subjects.find((s) => s.id === id);
+    if (!subject) throw new ApiError(404, 'not_found', 'subject not found');
+    Object.assign(subject, body);
+    return subject;
+  }
   if (method === 'POST' && path.startsWith('/auth/school/')) {
     requireAuth();
     const schoolId = path.slice('/auth/school/'.length);

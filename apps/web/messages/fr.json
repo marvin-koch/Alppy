@@ -507,7 +507,19 @@
     "motionHelp": "Les comptes à rebours restent animés : ils portent une information.",
     "calm": "Mode lecture",
     "calmHelp": "Masque les illustrations décoratives.",
-    "saved": "Enregistré"
+    "saved": "Enregistré",
+    "school": "École",
+    "schoolName": "Nom",
+    "canton": "Canton",
+    "curriculum": "Plan d'études",
+    "curriculumLocked": "Fixé à la création. Chaque thème y est déjà rattaché : en changer déplacerait tout le programme sous l'autre plan.",
+    "branches": "Branches",
+    "addBranch": "Ajouter une branche",
+    "branchName": "Nom affiché",
+    "branchKey": "Clé",
+    "branchKeyHelp": "Sert à relier la branche au plan d'études. Choisie une fois, jamais modifiée.",
+    "create": "Créer",
+    "rename": "Renommer"
   },
   "exercise": {
     "type": {
@@ -824,7 +836,20 @@
       "body": "Collez la liste de la classe pour commencer à imprimer des fiches."
     },
     "attention": "{count} sur {assessed} à revoir",
-    "homeClass": "{code} · origine"
+    "homeClass": "{code} · origine",
+    "editStudent": "Modifier l'élève",
+    "firstName": "Prénom",
+    "lastName": "Nom",
+    "uidLocked": "Imprimé sur les copies déjà rendues. Non modifiable.",
+    "deleteStudent": "Supprimer {name} ?",
+    "deleteBody": "{name} ({uid}) et tout ce qui en dépend : ses réponses, ses relevés de maîtrise et ses copies imprimées. C'est la seule action d'Alppy qui détruit des preuves.",
+    "unenrolInstead": "Vous vouliez peut-être le désinscrire ?",
+    "unenrolBody": "Il quitte la liste de la classe et garde son identifiant, ses réponses et ses relevés.",
+    "typeUid": "Tapez {uid} pour confirmer",
+    "deleteConfirm": "Supprimer définitivement",
+    "edit": "Modifier",
+    "delete": "Supprimer",
+    "uid": "Identifiant"
   },
   "curriculum": {
     "themes": "Thèmes",

@@ -106,6 +106,8 @@ export interface SchoolOut {
   id: Uuid;
   name: string;
   canton: string | null;
+  /** Resolved into every chapter at seed time (D56) — shown, never editable. */
+  default_curriculum?: CurriculumKind | null;
 }
 
 export interface ClassTeacherOut {

@@ -5,8 +5,10 @@ import { useTranslations } from 'next-intl';
 import { use, useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
+import { StudentEditor } from '@/components/StudentEditor';
 import { useAddStudents, useClass, useStudents } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
+import type { Uuid } from '@/lib/api/types';
 
 /**
  * Paste more pupils into a class that already exists.
@@ -26,6 +28,7 @@ export default function RosterPage({
   const t = useTranslations('classes');
   const tc = useTranslations('common');
   const tcode = useTranslations('errors.code');
+  const tstud = useTranslations('students');
   const router = useRouter();
 
   const klass = useClass(classId);
@@ -33,6 +36,7 @@ export default function RosterPage({
   const addStudents = useAddStudents();
 
   const [roster, setRoster] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const parsed = parseRoster(roster);
 
@@ -92,6 +96,44 @@ export default function RosterPage({
           <Link href={`/classes/${classId}`}>{t('cancel')}</Link>
         </div>
       </form>
+
+      {/* The roster is also where a teacher fixes a misspelt name or removes a
+          pupil who left. Both were unreachable: the paste screen could only
+          ever ADD. Editing opens one pupil at a time — a list of live inputs
+          invites the wrong row being changed. */}
+      {(existing.data ?? []).length > 0 ? (
+        <section className="mt-10">
+          <h2 className="mb-3 text-h3">{tstud('title')}</h2>
+          <ul className="flex flex-col gap-2">
+            {(existing.data ?? []).map((student) =>
+              editing === student.id ? (
+                <li key={student.id}>
+                  <StudentEditor
+                    student={student}
+                    classId={classId as Uuid}
+                    onDone={() => setEditing(null)}
+                  />
+                </li>
+              ) : (
+                <li
+                  key={student.id}
+                  className="flex min-h-11 items-center gap-4 rounded-md border border-line bg-surface px-4 py-2"
+                >
+                  <span className="w-20 shrink-0 font-mono text-label text-ink-500">
+                    {student.uid}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-semibold">
+                    {student.first_name} {student.last_name}
+                  </span>
+                  <Button variant="ghost" onClick={() => setEditing(student.id)}>
+                    {tstud('edit')}
+                  </Button>
+                </li>
+              ),
+            )}
+          </ul>
+        </section>
+      ) : null}
     </div>
   );
 }

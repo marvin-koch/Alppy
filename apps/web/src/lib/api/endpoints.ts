@@ -49,6 +49,8 @@ import type {
   SheetProposeRequest,
   SheetProposeResponse,
   SheetUpdate,
+  SchoolOut,
+  LocalisedText,
   SourceOut,
   SourceSectionOut,
   StudentOut,
@@ -95,6 +97,42 @@ export const getMe = () => apiRequest<TeacherOut>('/auth/me');
  * carry. Callers must drop every cached query afterwards: the ids in them
  * belong to the school we just left.
  */
+/* ------------------------------------------------- the editable nouns --- */
+export const createSubject = (body: { key: string; labels: LocalisedText }) =>
+  apiRequest<SubjectOut>('/subjects', { method: 'POST', body });
+
+export const updateSubject = (id: Uuid, body: { labels: LocalisedText }) =>
+  apiRequest<SubjectOut>(`/subjects/${id}`, { method: 'PATCH', body });
+
+export const updateClass = (id: Uuid, body: { label?: string | null; code?: string }) =>
+  apiRequest<ClassOut>(`/classes/${id}`, { method: 'PATCH', body });
+
+export const updateSchool = (body: { name?: string; canton?: string | null }) =>
+  apiRequest<SchoolOut>('/schools/me', { method: 'PATCH', body });
+
+export const updateStudent = (
+  id: Uuid,
+  body: { first_name?: string; last_name?: string },
+) => apiRequest<StudentOut>(`/students/${id}`, { method: 'PATCH', body });
+
+/** Takes the pupil's own uid, typed back — see `ConfirmDestructive`. */
+export const deleteStudent = (id: Uuid, confirm: string) =>
+  apiRequest<void>(`/students/${id}`, { method: 'DELETE', query: { confirm } });
+
+export const updateChapter = (
+  id: Uuid,
+  body: { labels?: LocalisedText; position?: number; competency_ids?: Uuid[] },
+) => apiRequest<ChapterOut>(`/chapters/${id}`, { method: 'PATCH', body });
+
+export const deleteChapter = (id: Uuid) =>
+  apiRequest<void>(`/chapters/${id}`, { method: 'DELETE' });
+
+export const updateSource = (id: Uuid, body: { title?: string; language?: string }) =>
+  apiRequest<SourceOut>(`/sources/${id}`, { method: 'PATCH', body });
+
+export const deleteSource = (id: Uuid) =>
+  apiRequest<void>(`/sources/${id}`, { method: 'DELETE' });
+
 export const switchSchool = (schoolId: Uuid) =>
   apiRequest<TeacherOut>(`/auth/school/${schoolId}`, { method: 'POST' });
 
