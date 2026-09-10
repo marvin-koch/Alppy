@@ -38,7 +38,7 @@ from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.core.logging import get_logger
 from alppy.ingest.chunk import Chunk, chunk_pages
-from alppy.ingest.extract import ExtractedDocument, extract_pdf
+from alppy.ingest.extract import ExtractedDocument, PdfExtractionError, extract_pdf
 from alppy.ingest.regions import (
     ExerciseRegion,
     detect_exercise_regions,
@@ -67,6 +67,27 @@ NO_TEXT_LAYER_ERROR = (
 )
 """Written for the teacher, not for the log. It appears verbatim in the
 `Source.error` field that the /sources screen renders."""
+
+UNREADABLE_PDF_ERROR = (
+    "Alppy could not read this PDF. It may be damaged, password-protected, or "
+    "not really a PDF. Try exporting it again and re-uploading."
+)
+"""Teacher-facing, like `NO_TEXT_LAYER_ERROR`."""
+
+UNEXPECTED_INGEST_ERROR = (
+    "Indexing this book failed unexpectedly. Nothing was saved, so you can "
+    "upload it again. If it keeps failing, the file itself is probably the "
+    "problem rather than anything you did."
+)
+"""What the teacher is told when we do not recognise the failure.
+
+`Source.error` is rendered verbatim on the /sources screen, so it may only
+ever hold a sentence written for a teacher. It used to hold
+``f"{type(exc).__name__}: {exc}"``, which for a database failure is the
+failing SQL and its column names, for an ``OSError`` the server's absolute
+paths, and for a botocore failure the bucket and its endpoint — printed on a
+screen that spends a good deal of its life projected onto a classroom wall.
+The diagnostic is not lost; it goes to the log, with a traceback."""
 
 EMBED_BATCH = 32
 MAX_EXTRACTION_CHUNKS = 200
@@ -235,6 +256,17 @@ def ingest_source(
     )
 
 
+def _teacher_facing_error(exc: BaseException) -> str:
+    """The only thing allowed to reach ``Source.error``.
+
+    One known failure has a sentence worth showing — the file would not open —
+    and everything else gets the generic one. Widening this map is fine;
+    passing an exception's own text through it is not."""
+    if isinstance(exc, PdfExtractionError):
+        return UNREADABLE_PDF_ERROR
+    return UNEXPECTED_INGEST_ERROR
+
+
 def run_ingest(
     db: Session,
     *,
@@ -284,9 +316,14 @@ def run_ingest(
         failed = db.get(Source, source_id)
         if failed is not None:
             failed.status = JobStatus.FAILED
-            failed.error = f"{type(exc).__name__}: {exc}"[:500]
+            failed.error = _teacher_facing_error(exc)
             db.commit()
-        log.warning("ingest.failed", source_id=str(source_id), error=type(exc).__name__)
+        log.warning(
+            "ingest.failed",
+            source_id=str(source_id),
+            error=type(exc).__name__,
+            exc_info=exc,
+        )
         raise
 
     db.commit()

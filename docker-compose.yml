@@ -197,6 +197,13 @@ services:
       # request fell back to a same-origin /api/v1 that the web container does
       # not serve, and nothing past the login form worked.
       NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api/v1}
+      # Which origins may appear in an <img src> (src/lib/csp.ts). Scan crops
+      # and exercise figures are presigned URLs from the object store, so this
+      # tracks ALPPY_S3_PUBLIC_ENDPOINT_URL on the api service: leave the two
+      # out of step and the scan review screen shows empty frames, with the
+      # only explanation in the browser console. Read at runtime, not baked
+      # in — the middleware builds the policy per request.
+      ALPPY_MEDIA_ORIGINS: ${ALPPY_MEDIA_ORIGINS:-http://localhost:9000}
     depends_on:
       api:
         condition: service_healthy

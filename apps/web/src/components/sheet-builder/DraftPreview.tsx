@@ -38,7 +38,7 @@ interface Props {
 export function DraftPreview({ classId, subjectId, title, language, items, bareme }: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
-  const te = useTranslations('errors');
+  const te = useTranslations('errors.code');
 
   // A4 at 96 dpi. The page is a fixed 210 x 297 mm and the column is not, so
   // the frame is scaled to the width it actually has. Measuring beats a

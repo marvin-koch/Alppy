@@ -1,3 +1,5 @@
+import { THEME_SCRIPT } from '@/lib/theme-script';
+
 /**
  * Applies the four display switches before first paint.
  *
@@ -8,17 +10,10 @@
  * `data-theme` absent is a real, third state — "follow the system" — and is not
  * a synonym for light. So the script only ever *sets* an attribute the teacher
  * has actually chosen, and removes it otherwise.
+ *
+ * The script text lives in `lib/theme-script` because `middleware.ts` allows it
+ * through the CSP by hash and the two must not drift.
  */
 export function ThemeScript() {
-  const script = `(function(){try{
-    var r=document.documentElement;
-    var raw=localStorage.getItem('alppy.display');
-    if(!raw)return;
-    var p=JSON.parse(raw);
-    ['theme','contrast','motion','calm'].forEach(function(k){
-      var v=p&&p[k];
-      if(v){r.setAttribute('data-'+k,v);}else{r.removeAttribute('data-'+k);}
-    });
-  }catch(e){}})();`;
-  return <script dangerouslySetInnerHTML={{ __html: script }} />;
+  return <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />;
 }

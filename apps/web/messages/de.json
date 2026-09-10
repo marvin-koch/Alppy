@@ -597,7 +597,8 @@
       "scan_pages_unassigned": "Einige Seiten sind niemandem zugeordnet. Ordnen Sie sie zu oder sortieren Sie sie aus, dann bestätigen Sie.",
       "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
       "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert.",
-      "scan_open_grading_pending": "Schriftliche Antworten werden noch gelesen. Bestätigen Sie, sobald das Lesen abgeschlossen ist."
+      "scan_open_grading_pending": "Schriftliche Antworten werden noch gelesen. Bestätigen Sie, sobald das Lesen abgeschlossen ist.",
+      "sheet_not_renderable": "Dieses Blatt kann so nicht gesetzt werden. Prüfen Sie, ob es Schülerinnen und Schüler sowie Aufgaben enthält und keine Aufgabenstellung über eine Seite hinausgeht."
     },
     "unavailableTitle": "Daten nicht verfügbar"
   },

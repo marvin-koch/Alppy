@@ -60,7 +60,8 @@ export default function SheetBuilderPage() {
   const t = useTranslations('builder');
   const ts = useTranslations('sheets');
   const tc = useTranslations('common');
-  const te = useTranslations('errors');
+  const te = useTranslations('errors.generic');
+  const tcode = useTranslations('errors.code');
   const locale = useLocale();
   const router = useRouter();
   const scope = useScope();
@@ -165,7 +166,7 @@ export default function SheetBuilderPage() {
       ) : null}
       {create.isError ? (
         <p className="text-body-s text-danger-600" role="alert">
-          {apiErrorMessage(create.error, te) || ts('createFailed')}
+          {apiErrorMessage(create.error, tcode) || ts('createFailed')}
         </p>
       ) : null}
       {!canFile(theme) && draft.count > 0 ? (
@@ -191,7 +192,9 @@ export default function SheetBuilderPage() {
   );
 
   if (sources.isError) {
-    return <ErrorState title={te('generic')} description={apiErrorMessage(sources.error, te)} />;
+    return (
+      <ErrorState title={te('title')} description={apiErrorMessage(sources.error, tcode)} />
+    );
   }
 
   if (scope.isLoading || sources.isPending) {

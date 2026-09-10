@@ -82,11 +82,16 @@ def get_file(key: str, school_id: TenantDep, storage: StorageDep) -> Response:
     """
     parts = key.split("/")
     if len(parts) < 3 or parts[1] != str(school_id):
-        raise errors.not_found("file", key=key)
+        log.info("files.denied", reason="tenant", key=key)
+        raise errors.not_found("file")
     try:
         data = storage.get_bytes(key)
     except StorageError as exc:
-        raise errors.not_found("file", key=key) from exc
+        log.info("files.denied", reason="missing", key=key)
+        raise errors.not_found("file") from exc
+    # The key is deliberately NOT echoed in either envelope: it is the caller's
+    # own input, and reflecting it turns a 404 into a mirror for whatever they
+    # put in the path. The log keeps it, which is where it is useful.
     return Response(content=data, media_type=_media_type(key))
 
 

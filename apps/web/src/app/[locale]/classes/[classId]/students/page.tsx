@@ -18,7 +18,7 @@ import { use, useMemo } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
-import { useClass, useClassMastery, useStudents } from '@/lib/api/queries';
+import { useClass, useClassMastery } from '@/lib/api/queries';
 import type { MasteryCellOut, Uuid } from '@/lib/api/types';
 
 /**
@@ -66,8 +66,13 @@ export default function StudentsPage({
   const bandLabels = useBandLabels();
 
   const klass = useClass(classId as Uuid);
-  const students = useStudents(classId as Uuid);
+  // The matrix already carries the roster (`MasteryMatrixOut.students`), so
+  // asking `/classes/{id}/students` as well fetched every child's name a
+  // second time to render the same list. Reading it from the one response
+  // also fixes the flash this had: the roster used to arrive first and the
+  // page rendered every pupil at "0 assessed" until the matrix caught up.
   const matrix = useClassMastery(classId as Uuid, {});
+  const students = matrix.data?.students;
 
   const rows: RosterRow[] = useMemo(() => {
     const cells = matrix.data?.cells ?? [];
@@ -79,7 +84,7 @@ export default function StudentsPage({
     }
     const total = matrix.data?.competencies.length ?? 0;
 
-    return (students.data ?? []).map((s) => {
+    return (students ?? []).map((s) => {
       const mine = byStudent.get(s.id) ?? [];
       // Deliberately NOT a mean of the cells. A client-side average would be a
       // second scoring rule sitting beside `roll_up_mastery`, and D58 rejected
@@ -104,7 +109,7 @@ export default function StudentsPage({
         total,
       };
     });
-  }, [students.data, matrix.data]);
+  }, [students, matrix.data]);
 
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },
@@ -133,7 +138,7 @@ export default function StudentsPage({
     </>
   );
 
-  if (students.isLoading) {
+  if (matrix.isLoading) {
     return (
       <div className="mx-auto max-w-4xl">
         {header}
@@ -142,7 +147,7 @@ export default function StudentsPage({
     );
   }
 
-  if (students.isError) {
+  if (matrix.isError) {
     return (
       <div className="mx-auto max-w-4xl">
         {header}
@@ -150,7 +155,7 @@ export default function StudentsPage({
           title={te('title')}
           description={te('body')}
           action={
-            <Button variant="secondary" onClick={() => void students.refetch()}>
+            <Button variant="secondary" onClick={() => void matrix.refetch()}>
               {te('action')}
             </Button>
           }

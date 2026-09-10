@@ -29,11 +29,14 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.core.config import Settings, get_settings
+from alppy.core.logging import get_logger
 from alppy.core.security import read_session
 from alppy.db import tenancy
 from alppy.db.base import SchoolScopedMixin
 from alppy.models import Teacher, teacher_school
 from alppy.storage import Storage, get_storage
+
+log = get_logger(__name__)
 
 
 def get_db() -> Generator[Session, None, None]:
@@ -266,12 +269,39 @@ class TokenBucketLimiter:
             return 0.0
         return (1.0 - bucket.tokens) / (self.rate_per_min / 60.0)
 
+    def peek(self, key: str, *, now: float | None = None) -> float:
+        """Seconds to wait, WITHOUT consuming a token. 0.0 when one is free.
+
+        The login path needs to know it is throttled *before* it does the
+        expensive thing (Argon2id), and it charges a token only for a failure —
+        so asking and taking have to be separable. Deliberately non-mutating:
+        a peek that refilled the bucket would let a caller poll their way past
+        the limit.
+        """
+        if self.rate_per_min <= 0:
+            return 0.0
+        bucket = self._buckets.get(key)
+        if bucket is None:
+            return 0.0
+        t = now if now is not None else time.monotonic()
+        refill = (t - bucket.updated_at) * (self.rate_per_min / 60.0)
+        tokens = min(self.capacity, bucket.tokens + refill)
+        if tokens >= 1.0:
+            return 0.0
+        return (1.0 - tokens) / (self.rate_per_min / 60.0)
+
+    def reset_key(self, key: str) -> None:
+        """Forget one bucket. A correct password clears the account's."""
+        self._buckets.pop(key, None)
+
     def reset(self) -> None:
         self._buckets.clear()
 
 
 _ai_limiter: TokenBucketLimiter | None = None
 _render_limiter: TokenBucketLimiter | None = None
+_login_limiter: TokenBucketLimiter | None = None
+_login_ip_limiter: TokenBucketLimiter | None = None
 
 
 def get_ai_limiter() -> TokenBucketLimiter:
@@ -289,6 +319,89 @@ def get_render_limiter() -> TokenBucketLimiter:
     if _render_limiter is None or _render_limiter.rate_per_min != rate:
         _render_limiter = TokenBucketLimiter(rate_per_min=rate)
     return _render_limiter
+
+
+def get_login_limiter(settings: Settings | None = None) -> TokenBucketLimiter:
+    """Failed sign-ins per account.
+
+    Takes the settings rather than only reading the global ones so the limit
+    the login handler enforces is the limit its *injected* settings name. The
+    AI and render buckets can read the global because their endpoints never
+    vary it; a deployment tuning sign-in, and a test exercising the ceiling,
+    both need this one to follow the object actually in force.
+    """
+    global _login_limiter
+    rate = (settings or get_settings()).login_rate_limit_per_min
+    if _login_limiter is None or _login_limiter.rate_per_min != rate:
+        _login_limiter = TokenBucketLimiter(rate_per_min=rate)
+    return _login_limiter
+
+
+def get_login_ip_limiter(settings: Settings | None = None) -> TokenBucketLimiter:
+    """Failed sign-ins per client address."""
+    global _login_ip_limiter
+    rate = (settings or get_settings()).login_ip_rate_limit_per_min
+    if _login_ip_limiter is None or _login_ip_limiter.rate_per_min != rate:
+        _login_ip_limiter = TokenBucketLimiter(rate_per_min=rate)
+    return _login_ip_limiter
+
+
+def client_ip(request: Request, settings: Settings) -> str:
+    """The caller's address, as far as we are entitled to believe it.
+
+    ``X-Forwarded-For`` is written by whoever is speaking to us, so at
+    ``trusted_proxy_hops = 0`` it is not read at all — trusting it there would
+    let one client mint a fresh rate-limit bucket per request by varying a
+    header. With N hops configured, the entry N from the right is the last one
+    a proxy we control appended; everything to its left is the client's own
+    text and is ignored.
+    """
+    hops = settings.trusted_proxy_hops
+    if hops > 0:
+        chain = [
+            part.strip()
+            for part in request.headers.get("x-forwarded-for", "").split(",")
+            if part.strip()
+        ]
+        if len(chain) >= hops:
+            return chain[-hops]
+    return request.client.host if request.client else "unknown"
+
+
+def enforce_login_rate_limit(request: Request, email: str, settings: Settings) -> None:
+    """Refuse a sign-in attempt from an account or address that has been
+    failing. Called by the login handler BEFORE the password is verified, so a
+    throttled attempt costs no Argon2id.
+
+    Not a FastAPI dependency: it needs the submitted email, which only exists
+    once the body has been parsed, and it must not charge a token for the
+    request that finally succeeds.
+    """
+    wait = max(
+        get_login_limiter(settings).peek(email),
+        get_login_ip_limiter(settings).peek(client_ip(request, settings)),
+    )
+    if wait > 0.0:
+        raise errors.rate_limited(
+            "too many sign-in attempts; try again shortly",
+            retry_after_s=max(1, int(wait) + 1),
+        )
+
+
+def record_failed_login(request: Request, email: str, settings: Settings) -> None:
+    """Charge one token to both buckets. Only a FAILED attempt pays."""
+    get_login_limiter(settings).take(email)
+    get_login_ip_limiter(settings).take(client_ip(request, settings))
+
+
+def clear_failed_logins(email: str, settings: Settings | None = None) -> None:
+    """A correct password forgets the account's failures.
+
+    The address bucket is deliberately NOT cleared: one success among many
+    failures from the same source is what credential stuffing looks like when
+    it works.
+    """
+    get_login_limiter(settings).reset_key(email)
 
 
 def enforce_ai_rate_limit(teacher: TeacherDep) -> None:
@@ -488,10 +601,13 @@ def start_job(db: Session, job: Any) -> None:
     try:
         enqueue(job.kind, job.id)
     except QueueUnavailableError as exc:
+        from alppy.services.job_failure import failure_code
+
         job.status = JobStatus.FAILED
         job.message = "could not be queued"
-        job.error = str(exc)[:500]
+        job.error = failure_code(exc)
         db.commit()
+        log.warning("job.enqueue_failed", job_id=str(job.id), kind=job.kind.value, exc_info=exc)
         raise errors.service_unavailable(
             "background processing is unavailable; please try again",
             kind=job.kind.value,

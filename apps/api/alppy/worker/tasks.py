@@ -45,6 +45,7 @@ from alppy.db.session import SessionLocal
 from alppy.models import Job
 from alppy.models.enums import JobStatus
 from alppy.services.enrollment import enrolled_student_ids
+from alppy.services.job_failure import failure_code
 
 log = get_logger(__name__)
 
@@ -131,7 +132,7 @@ def _run_job(job_id: str, fn: PipelineFn) -> None:
             job = db.get(Job, UUID(job_id))
             if job is not None:
                 job.status = JobStatus.FAILED
-                job.error = str(exc)
+                job.error = failure_code(exc)
                 job.finished_at = datetime.now(UTC)
                 db.commit()
             return
@@ -251,7 +252,7 @@ def _chain_after(job_id: str) -> None:
             enqueue(follow_up.kind, follow_up.id)
         except QueueUnavailableError as exc:
             follow_up.status = JobStatus.FAILED
-            follow_up.error = str(exc)[:500]
+            follow_up.error = failure_code(exc)
             follow_up.finished_at = datetime.now(UTC)
             db.commit()
             log.warning("job.chain_failed", job_id=job_id, kind=follow_up.kind.value)

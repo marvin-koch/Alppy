@@ -39,7 +39,7 @@ import {
   useClasses,
   useDiscardAdaptive,
   useSheets,
-  useStudents,
+  useClass,
   useAdaptiveProposal,
   useJob,
   useProposeAdaptive,
@@ -176,8 +176,14 @@ export default function AdaptivePage() {
   const classId = scope.classId ?? '';
   // The corrected common sheets this batch could answer.
   const sheets = useSheets(classId || undefined);
-  const students = useStudents(classId || null);
-  const rosterSize = Math.max(2, students.data?.length ?? 2);
+  // `ClassOut.student_count`, not the roster. This slider needs one integer,
+  // and `useStudents` answers with every child's first name, last name, uid
+  // and class codes — on the one screen whose entire design keeps names away
+  // from a model (`alppy/ai/scrub.py`, and the notes below render
+  // `student_uid`). Fetching the names here to read `.length` put them in the
+  // page's cache for no reason at all.
+  const klass = useClass(classId || null);
+  const rosterSize = Math.max(2, klass.data?.student_count ?? 2);
   const subjectId = scope.subjectId ?? '';
 
   const pending = generatedIds(plan);

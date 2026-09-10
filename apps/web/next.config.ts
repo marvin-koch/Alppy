@@ -3,6 +3,8 @@ import { fileURLToPath } from 'node:url';
 import type { NextConfig } from 'next';
 import createNextIntlPlugin from 'next-intl/plugin';
 
+import { STATIC_SECURITY_HEADERS } from './src/lib/csp';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const withNextIntl = createNextIntlPlugin('./src/i18n/request.ts');
 
@@ -27,6 +29,18 @@ const nextConfig: NextConfig = {
   async rewrites() {
     if (!apiOrigin) return [];
     return [{ source: '/api/v1/:path*', destination: `${apiOrigin}/api/v1/:path*` }];
+  },
+  /**
+   * The headers that do not vary per request. They belong here rather than in
+   * the middleware because the middleware's matcher deliberately skips
+   * `_next/*` and anything with a file extension, and `nosniff` on a script
+   * bundle or an uploaded figure is exactly where it earns its keep.
+   *
+   * The Content-Security-Policy is NOT here: it carries a per-request nonce
+   * and is set in `src/middleware.ts`.
+   */
+  async headers() {
+    return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }];
   },
 };
 

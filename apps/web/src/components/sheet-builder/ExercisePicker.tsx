@@ -78,7 +78,7 @@ export function ExercisePicker({
   const t = useTranslations('builder');
   const tc = useTranslations('common');
   const tx = useTranslations('exercise');
-  const te = useTranslations('errors');
+  const te = useTranslations('errors.code');
 
   const [type, setType] = useState<ExerciseType | ''>('');
   const [difficulty, setDifficulty] = useState<number | ''>('');

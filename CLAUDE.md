@@ -137,6 +137,22 @@ because a leak is a caller bug. See [`docs/privacy.md`](docs/privacy.md).
 **AI-generated exercises are never printed without teacher approval** *(DC-content-05)*
 (`Exercise.approved_at`).
 
+**A failure crosses to the client as a code; the client owns the sentence.** An
+exception's own text is never assigned to a field a browser reads. `Source.error`
+holds prose written for a teacher (`ingest/pipeline.py:_teacher_facing_error`),
+`Job.error` holds a value from `services/job_failure.py:FAILURE_CODES`, and a
+screen renders `apiErrorMessage(err, t)` — never `error.message`, which
+`api/client.ts` says plainly is for the console. `str(exc)` in any of those three
+is a SQLAlchemy failure's SQL, an `OSError`'s server paths, or a bucket and its
+endpoint, on a screen that is regularly projected onto a classroom wall (D86).
+
+**The CSP nonce is why the locale layout is `force-dynamic`.** Next stamps the
+nonce onto its own inline scripts only while rendering, so a prerendered shell
+serves a dozen un-nonced `__next_f.push` blocks and never hydrates. Do not
+"optimise" that export away without re-measuring the built HTML. The theme script
+is allowed by hash instead, and `theme-script.test.ts` is what keeps the hash and
+the script from drifting (D86).
+
 **`ModelCall` is content-free, and stays that way.** It is what a school shows an
 auditor to answer "did any of our data go to provider X". The full prompt and
 response go to `PromptLog` — a separate table, off by default, capped, swept, and

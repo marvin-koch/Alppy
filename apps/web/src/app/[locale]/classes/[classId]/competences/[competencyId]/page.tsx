@@ -17,7 +17,7 @@ import { use, useMemo } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
-import { useClass, useClassMastery, useCurriculumTree, useStudents } from '@/lib/api/queries';
+import { useClass, useClassMastery, useCurriculumTree } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useClassSubject } from '@/lib/use-class-subject';
 
@@ -47,8 +47,11 @@ export default function CompetencePage({
   const { subjectId } = useClassSubject(klass.data);
 
   const tree = useCurriculumTree(classId as Uuid, subjectId ? { subjectId } : {});
-  const students = useStudents(classId as Uuid);
+  // From the matrix, not a second request: `MasteryMatrixOut` already carries
+  // the roster it scored, so `/classes/{id}/students` was fetching every
+  // child's name again to label rows this response can label itself.
   const matrix = useClassMastery(classId as Uuid, subjectId ? { subjectId } : {});
+  const students = matrix.data?.students;
 
   const branch = tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
   const competence =
@@ -66,13 +69,13 @@ export default function CompetencePage({
         .filter((c) => c.competency_id === competencyId)
         .map((c) => [c.student_id, c]),
     );
-    return (students.data ?? []).map((s) => ({
+    return (students ?? []).map((s) => ({
       id: s.id,
       name: `${s.last_name.toUpperCase()} ${s.first_name}`.trim(),
       uid: s.uid,
       cell: byStudent.get(s.id) ?? null,
     }));
-  }, [students.data, matrix.data, competencyId]);
+  }, [students, matrix.data, competencyId]);
 
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },

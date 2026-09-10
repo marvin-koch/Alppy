@@ -50,7 +50,7 @@ export function AddExerciseModal({
   const t = useTranslations('newExercise');
   const tc = useTranslations('common');
   const tx = useTranslations('exercise');
-  const te = useTranslations('errors');
+  const te = useTranslations('errors.code');
 
   const [type, setType] = useState<ExerciseType | null>(null);
   const [statement, setStatement] = useState('');

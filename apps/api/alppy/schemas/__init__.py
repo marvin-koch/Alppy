@@ -1377,6 +1377,9 @@ class JobOut(ApiModel):
     progress: float
     message: str | None = None
     result: dict[str, Any] | None = None
+    #: A code from ``services.job_failure.FAILURE_CODES``, never an exception's
+    #: own text: this field is polled by the browser for the length of every
+    #: extraction. The diagnostic is in the worker log.
     error: str | None = None
     created_at: datetime
     finished_at: datetime | None = None

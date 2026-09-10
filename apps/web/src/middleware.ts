@@ -1,5 +1,6 @@
 import createMiddleware from 'next-intl/middleware';
 import { NextResponse, type NextRequest } from 'next/server';
+import { buildCsp } from './lib/csp';
 import { routing } from './i18n/routing';
 
 const intlMiddleware = createMiddleware(routing);
@@ -19,8 +20,16 @@ function isPublic(pathname: string): boolean {
   );
 }
 
+/** 128 bits, base64. New for every document: a nonce reused across responses
+ *  is a nonce an attacker can read off one page and replay into the next. */
+function newNonce(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return btoa(String.fromCharCode(...bytes));
+}
+
 /**
- * Locale routing, plus the session gate.
+ * Locale routing, the session gate, and the security headers.
  *
  * Without the gate a logged-out visitor got the whole authenticated shell —
  * rail, seven destinations, bottom tabs — wrapped around a generic "something
@@ -31,9 +40,22 @@ function isPublic(pathname: string): boolean {
  * The cookie is `httpOnly`, so its mere presence is all the edge can check;
  * the API remains the authority and still answers 401 on a forged or expired
  * one. This is a routing convenience, not the security boundary.
+ *
+ * The CSP is built here rather than in `next.config.ts` because it carries a
+ * per-request nonce, and the nonce reaches Next.js the only way Next.js reads
+ * one: through the *request*'s `content-security-policy` header. next-intl
+ * copies the incoming headers into its own `NextResponse.next({request})`,
+ * so setting them before delegating is what carries them downstream — and
+ * Next then stamps the nonce onto every inline script it emits itself.
+ * Ours is allowed by hash instead; see `lib/theme-script.ts`.
  */
 export default function middleware(request: NextRequest) {
-  const response = intlMiddleware(request);
+  const nonce = newNonce();
+  const csp = buildCsp({ nonce, dev: process.env.NODE_ENV !== 'production' });
+  request.headers.set('x-nonce', nonce);
+  request.headers.set('content-security-policy', csp);
+
+  const response = withSecurityHeaders(intlMiddleware(request), csp);
 
   // Fixture mode has no backend and therefore no session cookie. Gating it
   // would redirect the whole screenshot suite to the login screen.
@@ -58,7 +80,14 @@ export default function middleware(request: NextRequest) {
   const login = new URL(`/${locale}/login`, request.url);
   const from = `${pathname}${search}`;
   if (from && from !== `/${locale}`) login.searchParams.set('from', from);
-  return NextResponse.redirect(login);
+  return withSecurityHeaders(NextResponse.redirect(login), csp);
+}
+
+/** The rest of the headers are static and live in `next.config.ts`, which also
+ *  covers the asset routes this middleware never runs on. */
+function withSecurityHeaders(response: NextResponse, csp: string): NextResponse {
+  response.headers.set('Content-Security-Policy', csp);
+  return response;
 }
 
 export const config = {

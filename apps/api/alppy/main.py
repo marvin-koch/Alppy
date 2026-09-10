@@ -7,6 +7,7 @@ driver, and so settings are read once per app rather than once per process.
 
 from __future__ import annotations
 
+import re
 import time
 from collections.abc import Awaitable, Callable
 
@@ -22,6 +23,32 @@ log = get_logger(__name__)
 
 REQUEST_ID_HEADER = "X-Request-ID"
 
+#: A caller may name their own request id so a trace spans their system and
+#: ours, but the value is echoed into every log line and every error envelope.
+#: Unconstrained, a newline in it forges log entries in whatever aggregator
+#: reads them. Anything that is not a plain token is replaced rather than
+#: rejected: the header is a convenience, and failing a request over it would
+#: turn a cosmetic problem into an outage.
+_REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,64}\Z")
+
+# Set on every response, including the ones that are not JSON.
+#
+# Two of this API's routes hand a browser something it will render: the sheet
+# preview (`GET /sheets/{id}/preview`, framed by the builder) and `/files/`,
+# which serves teacher-uploaded exercise figures and scanned pages straight
+# from the object store. `nosniff` is what stops a file uploaded as a figure
+# being interpreted as script — `api/v1/health.py` already reasoned about it
+# being set, and it was not. `frame-ancestors 'self'` is deliberately not
+# 'none': the preview is *supposed* to be framed, by us.
+#
+# The web app sets its own, richer policy in `apps/web/src/middleware.ts`;
+# these cover the API when it is reached directly rather than through it.
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    "Referrer-Policy": "strict-origin-when-cross-origin",
+    "Content-Security-Policy": "frame-ancestors 'self'",
+}
+
 DESCRIPTION = """
 Alppy — teacher-facing tooling for Swiss compulsory school (Sek I, cycle 3).
 
@@ -36,12 +63,14 @@ def _install_request_id(app: FastAPI) -> None:
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
         incoming = request.headers.get(REQUEST_ID_HEADER)
-        request_id = incoming if incoming and len(incoming) <= 64 else new_request_id()
+        request_id = incoming if incoming and _REQUEST_ID_RE.match(incoming) else new_request_id()
         token = request_id_var.set(request_id)
         started = time.perf_counter()
         try:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
+            for header, value in SECURITY_HEADERS.items():
+                response.headers.setdefault(header, value)
             log.info(
                 "http.request",
                 method=request.method,

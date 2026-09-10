@@ -41,7 +41,7 @@ export function ProposeTab({ classId, subjectId, chapters, draft }: Props) {
   const t = useTranslations('builder');
   const ts = useTranslations('sheets');
   const ta = useTranslations('adaptive');
-  const te = useTranslations('errors');
+  const te = useTranslations('errors.code');
   const locale = useLocale();
 
   const [intent, setIntent] = useState('');

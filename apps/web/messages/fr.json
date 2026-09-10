@@ -597,7 +597,8 @@
       "scan_pages_unassigned": "Certaines pages ne sont attribuées à personne. Attribuez-les ou écartez-les, puis validez.",
       "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
       "scan_already_confirmed": "Ces résultats ont déjà été enregistrés.",
-      "scan_open_grading_pending": "Des réponses écrites sont encore en cours de lecture. Validez quand la lecture est terminée."
+      "scan_open_grading_pending": "Des réponses écrites sont encore en cours de lecture. Validez quand la lecture est terminée.",
+      "sheet_not_renderable": "Cette fiche ne peut pas être mise en page telle quelle. Vérifiez qu'elle a des élèves et des exercices, et qu'aucun énoncé ne dépasse la hauteur d'une page."
     },
     "unavailableTitle": "Données indisponibles"
   },

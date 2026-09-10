@@ -22,6 +22,7 @@ from test_api_fixtures import PDF_BYTES, Tenant, login
 
 from alppy.models import Job, Source
 from alppy.models.enums import JobKind, JobStatus
+from alppy.services.job_failure import QUEUE_UNAVAILABLE
 from alppy.worker import queue as queue_mod
 
 
@@ -99,7 +100,9 @@ def test_a_dead_queue_fails_the_job_instead_of_leaving_it_queued(
     db.refresh(job)
     # Not QUEUED: a job nobody will run must not look like one that is waiting.
     assert job.status is JobStatus.FAILED
-    assert "redis" in (job.error or "").lower()
+    # The code, not the driver's exception text: this field goes to the
+    # browser on every poll.
+    assert job.error == QUEUE_UNAVAILABLE
 
 
 # --------------------------------------------------------------------------

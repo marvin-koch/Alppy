@@ -24,6 +24,24 @@ export function generateStaticParams() {
   return locales.map((locale) => ({ locale }));
 }
 
+/**
+ * Rendered per request, so the CSP nonce can reach Next's own inline scripts.
+ *
+ * Next stamps the nonce it finds in the request's `content-security-policy`
+ * header (set in `middleware.ts`) onto every inline script it emits — but only
+ * while rendering. A prerendered shell was built before any nonce existed, so
+ * its dozen `self.__next_f.push(...)` blocks carry none, and a `script-src`
+ * without `'unsafe-inline'` refuses all of them: the page arrives and never
+ * hydrates. This was measured, not assumed.
+ *
+ * The shell costs nothing to render: every screen below it is a client
+ * component that fetches through react-query, so prerendering only ever
+ * produced the loading state. `generateStaticParams` stays for the locale
+ * enumeration; `setRequestLocale` stays because next-intl still wants the
+ * locale bound before `getMessages`.
+ */
+export const dynamic = 'force-dynamic';
+
 export default async function LocaleLayout({
   children,
   params,

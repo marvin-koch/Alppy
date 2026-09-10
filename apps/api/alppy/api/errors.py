@@ -79,10 +79,11 @@ def conflict(message: str, *, code: str = "conflict", **details: Any) -> ApiErro
     return ApiError(status.HTTP_409_CONFLICT, code, message, details=details)
 
 
-def unprocessable(message: str, **details: Any) -> ApiError:
-    return ApiError(
-        422, "unprocessable", message, details=details
-    )
+def unprocessable(message: str, *, code: str = "unprocessable", **details: Any) -> ApiError:
+    """A 422. Like ``conflict``, ``code`` is what the UI switches on: a refusal
+    a teacher can act on deserves its own name rather than sharing the generic
+    one with every other unprocessable request."""
+    return ApiError(422, code, message, details=details)
 
 
 def payload_too_large(message: str, **details: Any) -> ApiError:

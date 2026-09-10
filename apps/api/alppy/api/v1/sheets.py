@@ -176,6 +176,23 @@ def render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     return job_out(job)
 
 
+def _not_renderable(exc: Exception, render_error: Any) -> errors.ApiError:
+    """A sheet the renderer will not lay out, as one code the client can localise.
+
+    ``message`` is passed through only for ``SheetRenderError`` — our own type,
+    whose text is authored for a reader. Everything else caught here is a bare
+    ``ValueError``, which can just as easily have come from a library several
+    frames down as from us, and its text is not something to put in front of a
+    teacher. The frontend renders `errors.code.sheet_not_renderable` either way;
+    ``message`` is for the log.
+    """
+    authored = isinstance(exc, render_error)
+    return errors.unprocessable(
+        str(exc) if authored else "this sheet cannot be laid out",
+        code="sheet_not_renderable",
+    )
+
+
 def _assert_printable(db: DbDep, sheet: Any) -> None:
     """422 if this sheet cannot be laid out, with the reason."""
     build_sheet_data = load_optional(
@@ -190,7 +207,7 @@ def _assert_printable(db: DbDep, sheet: Any) -> None:
     try:
         physical_pages(build_sheet_data(db, sheet))
     except (render_error, ValueError) as exc:
-        raise errors.unprocessable(str(exc)) from exc
+        raise _not_renderable(exc, render_error) from exc
 
 
 @router.post("/sheets/preview", response_class=Response, dependencies=[RenderRateLimit])
@@ -239,9 +256,10 @@ def preview_draft(
         html: str = render_html(data, kind=SheetKind.BLANK)
     except (render_error, ValueError) as exc:
         # "no students", "this statement is taller than a page": the teacher
-        # needs to read which, and needs to read it now rather than from a
-        # failed render job two minutes later.
-        raise errors.unprocessable(str(exc)) from exc
+        # needs to know now rather than from a failed render job two minutes
+        # later. They read the localised sentence for `sheet_not_renderable`;
+        # the specific prose stays in `message`, for the log and the developer.
+        raise _not_renderable(exc, render_error) from exc
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 
@@ -275,9 +293,9 @@ def preview_sheet(
         data = build_sheet_data(db, sheet)
         html: str = render_html(data, kind=kind)
     except (render_error, ValueError) as exc:
-        # "no students", "no items", a malformed UID: the sheet cannot be shown
-        # and the teacher needs to know which, not a 500.
-        raise errors.unprocessable(str(exc)) from exc
+        # "no students", "no items", a malformed UID: the sheet cannot be shown,
+        # and that is a refusal rather than a 500.
+        raise _not_renderable(exc, render_error) from exc
     return Response(content=html, media_type="text/html; charset=utf-8")
 
 

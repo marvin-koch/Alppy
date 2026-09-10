@@ -23,7 +23,9 @@ import { Link } from '@/i18n/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 import { use, useEffect, useRef, useState } from 'react';
 
-import { API_BASE } from '@/lib/api/client';
+import { ApiError, API_BASE } from '@/lib/api/client';
+import { apiErrorMessage } from '@/lib/api/error-message';
+import type { ApiErrorBody } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import {
   useCurriculumTree,
@@ -336,6 +338,7 @@ function SheetPreview({
   frameRef: (el: HTMLIFrameElement | null) => void;
 }) {
   const t = useTranslations('sheets');
+  const tcode = useTranslations('errors.code');
   const [error, setError] = useState<string | null>(null);
 
   // The server renders the document the PDF is made from, using the same
@@ -350,16 +353,21 @@ function SheetPreview({
   const src = previewUrl(sheet.id, showKey ? 'key' : 'blank');
 
   // A sheet the renderer refuses — a statement taller than the page, a class
-  // with no students — answers 422 with the reason. Read it and show it: an
-  // iframe would otherwise render the raw error JSON at the teacher.
+  // with no students — answers 422 with `sheet_not_renderable`. Read the code
+  // and localise it: an iframe would otherwise render the raw error JSON at
+  // the teacher, and `message` is the API's own English, for the console
+  // (`lib/api/client.ts`). `DraftPreview` does the same thing on the draft.
   useEffect(() => {
     let cancelled = false;
     setError(null);
     void fetch(src, { credentials: 'include' })
       .then(async (r) => {
         if (cancelled || r.ok) return;
-        const body = await r.json().catch(() => null);
-        setError(body?.error?.message ?? t('previewUnavailable'));
+        const body = (await r.json().catch(() => null)) as Partial<ApiErrorBody> | null;
+        const failure = body?.error
+          ? new ApiError(r.status, body.error.code ?? 'http_error', body.error.message ?? '')
+          : null;
+        setError(apiErrorMessage(failure, tcode) || t('previewUnavailable'));
       })
       .catch(() => {
         if (!cancelled) setError(t('previewUnavailable'));
@@ -367,7 +375,7 @@ function SheetPreview({
     return () => {
       cancelled = true;
     };
-  }, [src, t]);
+  }, [src, t, tcode]);
 
   if (error) {
     return (

@@ -1940,3 +1940,83 @@ administer — strictly worse than the flat model it replaced.
 asks who may rename which; if a canton or a school's own IT policy requires a
 named responsible party for the roster; or the first time a teacher removes a
 colleague's textbook and someone asks who was allowed to.
+
+### D86 · A failure reaches the teacher as a code, and the page carries a nonce
+
+A frontend review asked five questions: what leaks in client code, what leaks in
+error messages, where user content is rendered, whether a CSP exists, and
+whether any screen over-fetches a roster. Two of the five were clean —
+no key, id or secret is inlined (the only `NEXT_PUBLIC_*` values are the API
+base and the mock and demo switches), and there is no XSS surface (two
+`dangerouslySetInnerHTML` sites, both static; Jinja `autoescape=True` for the
+print document, with `Markup()` only ever wrapping our own CSS; both preview
+iframes sandboxed without `allow-scripts`). The other three are this decision.
+
+**An exception's text is not a message.** `client.ts` already said `message` is
+for the console, and three places ignored it. `Source.error` held
+`f"{type(exc).__name__}: {exc}"` under a bare `except Exception` and the
+/sources card printed it verbatim — a SQLAlchemy failure is the failing SQL and
+its column names, an `OSError` is an absolute server path, a botocore failure is
+the bucket and its endpoint, on a screen that spends a good deal of its life
+projected onto a classroom wall. `Job.error` held `str(exc)`, uncapped in one of
+the three writers, and `GET /jobs/{id}` is polled for the length of every
+extraction. The sheet preview read `body.error.message` straight out of the
+envelope.
+
+So: **a failure crosses to the client as a code, and the client owns the
+sentence.** `Source.error` holds prose written for a teacher, chosen by
+`_teacher_facing_error` from a closed set. `Job.error` holds a value from
+`services.job_failure.FAILURE_CODES`. Sheet render refusals get their own code,
+`sheet_not_renderable`, so the teacher still learns *which* refusal it was
+without reading English assembled for a log — `unprocessable` would have told
+them the file could not be read, which is a different and untrue thing. The
+diagnostics are not lost; they move to the log, with tracebacks.
+
+Rejected: keeping the message and sanitising it. There is no predicate that
+separates "a sentence someone wrote for a reader" from "the repr of whatever
+was raised four frames down", and a sanitiser that gets it wrong fails open.
+
+**The CSP is real, which costs the static shell.** There was none — nor
+`nosniff`, `Referrer-Policy`, `X-Frame-Options` or `Permissions-Policy`, in
+`next.config.ts`, the middleware, the API or anything in `infra/`. `Referer`
+alone was carrying `/classes/…/students/<uuid>/…` to the object store on every
+scan crop.
+
+The policy is built per request in `middleware.ts` because it carries a nonce,
+and the nonce reaches Next the only way Next reads one: through the request's
+own `content-security-policy` header, which next-intl copies into its
+`NextResponse.next({request})`. That works only while rendering — a prerendered
+shell was built before any nonce existed, and **measurement, not assumption**:
+the built page served twelve un-nonced `self.__next_f.push(...)` blocks, every
+one of which a `script-src` without `'unsafe-inline'` refuses, so the page
+would have arrived and never hydrated. Hence `dynamic = 'force-dynamic'` on the
+locale layout. The shell was only ever prerendering a loading state — every
+screen below it is a client component on react-query — so this costs close to
+nothing, and it is the price of a policy that is not decorative.
+
+`'unsafe-inline'` survives in `style-src` and only there: React writes
+`style={{…}}` as an attribute, there is no nonce path for a style attribute, and
+the alternative is not a stricter policy but a broken layout. The theme script
+is allowed by **hash**, not nonce, so the layout does not have to read
+`headers()` — with a test that recomputes the hash, because a stale one is a
+flash of the wrong palette and a console error nobody reads.
+
+**A count is not a roster.** The adaptive screen called `useStudents` and used
+`.length` — pulling every child's first name, last name, uid and class codes to
+render one slider bound, on the one screen whose whole design keeps names away
+from a model. It reads `ClassOut.student_count`. Two other screens fetched the
+roster beside a mastery matrix that already carries it in
+`MasteryMatrixOut.students`; reading it from the one response also fixed a
+flash where the roster arrived first and every pupil rendered at "0 assessed".
+
+**Found on the way, and fixed:** five call sites handed `apiErrorMessage` the
+`errors` namespace instead of `errors.code`, so the code lookup missed *and* the
+fallback lookup missed — and next-intl's second throw escaped, crashing a screen
+in the middle of reporting a handled failure. `apiErrorMessage` no longer
+throws, and a test covers the empty catalogue.
+
+**Revisit if** a deployment serves media from an origin that is not in
+`ALPPY_MEDIA_ORIGINS` (scan crops render as empty frames, and the only
+explanation is in the browser console); or if the sheet renderer grows refusals
+that a teacher would act on differently, at which point `sheet_not_renderable`
+should split rather than acquire a details blob.

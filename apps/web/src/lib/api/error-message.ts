@@ -11,19 +11,22 @@ import { ApiError } from './client';
  *
  * `t` is the `errors.code` namespace, passed in so this stays a pure function
  * and the catalogues stay the only place strings live.
+ *
+ * It never throws. next-intl raises on a missing key rather than echoing it,
+ * and both lookups here can miss — an unrecognised `code`, or a caller that
+ * handed us the wrong namespace. The second miss used to escape, so a screen
+ * that was already showing a handled failure crashed instead of reporting it,
+ * which is the worst possible moment to throw.
  */
-export function apiErrorMessage(
-  error: unknown,
-  t: (key: string) => string,
-): string {
-  if (error instanceof ApiError) {
-    // next-intl throws on a missing key rather than echoing it, and an
-    // unrecognised code must not turn a handled failure into a crash.
-    try {
-      return t(error.code);
-    } catch {
-      return t('fallback');
-    }
+export function apiErrorMessage(error: unknown, t: (key: string) => string): string {
+  const code = error instanceof ApiError ? error.code : null;
+  return (code === null ? null : translate(t, code)) ?? translate(t, 'fallback') ?? '';
+}
+
+function translate(t: (key: string) => string, key: string): string | null {
+  try {
+    return t(key);
+  } catch {
+    return null;
   }
-  return t('fallback');
 }
