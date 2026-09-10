@@ -386,6 +386,56 @@ def test_an_open_answer_can_be_corrected_after_extraction(
     assert response.json()["answer_text"] == "Mettre au meme denominateur."
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "why"),
+    [
+        (
+            "statement",
+            "x" * 4001,
+            "a statement the renderer must paginate is bounded on the way in",
+        ),
+        (
+            "options",
+            ["1/4", "2/5", "4/10", "3/8", "5/12"],
+            "a fifth option keys the answer to a bubble the grid does not print",
+        ),
+        ("statement", "", "an empty statement prints an item with nothing to answer"),
+    ],
+)
+def test_an_edit_cannot_smuggle_in_what_a_creation_would_refuse(
+    client, db: Session, tenant: Tenant, field: str, value: object, why: str
+) -> None:
+    """`ExerciseUpdate` carries `ExerciseCreate`'s bounds, field for field.
+
+    The row a PATCH lands in is the row the sheet renderer paginates and the
+    printed grid draws its bubbles from, so a bound that only guards POST guards
+    nothing: extraction writes the row, and the teacher's correction is the write
+    that actually reaches it.
+    """
+    exercise = make_exercise(db, tenant, statement="Simplifie 12/18.")
+    login(client, tenant.teacher.email)
+
+    created = client.post(
+        "/api/v1/exercises",
+        json={
+            "subject_id": str(tenant.subject.id),
+            "type": "mcq",
+            "language": "fr",
+            "statement": "Quelle fraction vaut 0,4 ?",
+            "options": ["1/4", "2/5"],
+            "answer_index": 0,
+            field: value,
+        },
+    )
+    assert created.status_code == 422, f"{why} (POST): {created.text}"
+
+    patched = client.patch(f"/api/v1/exercises/{exercise.id}", json={field: value})
+    assert patched.status_code == 422, f"{why} (PATCH): {patched.text}"
+
+    db.refresh(exercise)
+    assert exercise.statement == "Simplifie 12/18."
+
+
 # --------------------------------------------------------------------------
 # 4 · Previewing a sheet that does not exist yet
 # --------------------------------------------------------------------------

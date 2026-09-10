@@ -283,6 +283,31 @@ def test_editing_the_barème_invalidates_the_rendered_pdf(
     assert response.json()["default_points_penalty"] == 1.0
 
 
+def test_a_sheet_title_is_bounded_on_the_way_in_however_it_arrives(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """`Sheet.title` is `String(200)`, and `SheetUpdate` used to say nothing.
+
+    A creation was refused at the boundary with a 422 the builder can show
+    beside the field; a rename of the same sheet went straight at the column,
+    where the failure is a 500 at best and a silent truncation at worst.
+    """
+    a = make_exercise(db, tenant, statement="a")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(a.id)])
+    ).json()["id"]
+
+    too_long = "R" * 201
+    assert client.post(
+        "/api/v1/sheets", json={**_sheet_payload(tenant, [str(a.id)]), "title": too_long}
+    ).status_code == 422
+    assert (
+        client.patch(f"/api/v1/sheets/{sheet_id}", json={"title": too_long}).status_code == 422
+    )
+    assert client.patch(f"/api/v1/sheets/{sheet_id}", json={"title": ""}).status_code == 422
+
+
 # --- filing a sheet under a Theme ----------------------------------------
 def test_a_sheet_created_without_a_theme_lands_in_unfiled(
     client: TestClient, tenant: Tenant, db: Session

@@ -349,8 +349,16 @@ class ExerciseOut(ApiModel):
 
 
 class ExerciseUpdate(BaseModel):
-    statement: str | None = None
-    options: list[str] | None = None
+    """A correction to an extracted or generated exercise.
+
+    Every field a teacher may rewrite carries the same bound its `ExerciseCreate`
+    counterpart carries. An edit is not a lesser write than a creation: the row it
+    lands in is the row the sheet renderer paginates and the printed grid draws its
+    bubbles from, so a statement PATCH may not smuggle in what POST would refuse.
+    """
+
+    statement: Annotated[str, Field(min_length=1, max_length=4000)] | None = None
+    options: Annotated[list[str], Field(max_length=MAX_MCQ_OPTIONS)] | None = None
     answer_index: int | None = None
     # `answer_bool` and `answer_text` were missing, so a true/false answer and an
     # open question's expected answer — the thing the answer key prints — could
@@ -540,7 +548,7 @@ class SheetCreate(BaseModel):
 
 
 class SheetUpdate(BaseModel):
-    title: str | None = None
+    title: Annotated[str, Field(min_length=1, max_length=200)] | None = None
     #: Re-filing a sheet under the right Theme. Needed in practice the moment
     #: the hierarchy ships, when every existing sheet is `unfiled`.
     chapter_id: uuid.UUID | None = None
