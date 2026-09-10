@@ -26,6 +26,8 @@ GOOD = {
     "database_url": "postgresql+psycopg://alppy_app:pw@db.internal:5432/alppy",
     "admin_database_url": "postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
     "cors_origins": ("https://app.alppy.ch",),
+    "s3_bucket": "alppy-staging-scans",
+    "production_s3_bucket": "alppy-scans",
 }
 
 
@@ -237,3 +239,36 @@ def test_development_keeps_the_schema_it_is_built_against(env: str) -> None:
     assert schema.status_code == 200
     assert "/api/v1/sheets" in schema.json()["paths"]
     assert client.get("/api/v1/docs").status_code == 200
+
+
+# --- The bucket holding scanned answer sheets ------------------------------
+# The one asset no gate can read. `alppy/ai/scrub.py` inspects text; a scan is a
+# photograph of a child's handwriting with their name at the top, and what keeps
+# it safe is that it lives in exactly one place.
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_sharing_the_production_bucket_is_refused(env: str) -> None:
+    with pytest.raises(ValidationError) as caught:
+        _settings(env=env, s3_bucket="alppy-scans", production_s3_bucket="alppy-scans")
+    assert "ALPPY_S3_BUCKET" in str(caught.value)
+
+
+def test_staging_must_name_the_production_bucket_so_the_check_can_run() -> None:
+    """An unset value is not proof of separation, it is absence of evidence —
+    and the check silently passing is exactly how the two end up shared."""
+    with pytest.raises(ValidationError) as caught:
+        _settings(env="staging", production_s3_bucket=None)
+    assert "ALPPY_PRODUCTION_S3_BUCKET" in str(caught.value)
+
+
+def test_a_distinct_staging_bucket_boots() -> None:
+    settings = _settings(
+        env="staging", s3_bucket="alppy-staging-scans", production_s3_bucket="alppy-scans"
+    )
+    assert settings.s3_bucket != settings.production_s3_bucket
+
+
+def test_development_environments_need_no_bucket_separation() -> None:
+    """`docker compose up` has one MinIO and no production to collide with."""
+    assert Settings(_env_file=None, env="local").production_s3_bucket is None

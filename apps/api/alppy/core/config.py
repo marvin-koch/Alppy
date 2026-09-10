@@ -119,6 +119,24 @@ class Settings(BaseSettings):
     s3_access_key: str = "alppy"
     s3_secret_key: str = DEV_S3_SECRET_KEY
 
+    production_s3_bucket: str | None = None
+    """The production bucket's name, so staging can be refused if it matches.
+
+    The one asset the PII gate cannot inspect. `alppy/ai/scrub.py` reads text
+    and raises on a name; a scanned answer sheet is a photograph of a child's
+    handwriting with their name written at the top, and no gate reads it — what
+    keeps it safe is that it is only ever in one place. A staging deployment
+    pointed at the production bucket puts test traffic, test credentials and a
+    seeded fake roster in the same store as real children's work, and nothing
+    downstream would notice. Set this on the staging deployment and the startup
+    validator refuses the overlap."""
+
+    seed_teacher_password: str | None = None
+    """Password for the accounts `python -m alppy.cli seed --allow-staging`
+    creates. Required in staging: the demo constants are published in this
+    repository, so seeding staging with them would put two known logins in
+    front of whatever staging can reach."""
+
     # --- AI layer -------------------------------------------------------
     # Provider is configurable by design: a Swiss school may require that no
     # data leaves EU/CH infrastructure (docs/privacy.md).
@@ -160,6 +178,42 @@ class Settings(BaseSettings):
     ai_rate_limit_per_min: int = 20
     """Per teacher, per process. Uvicorn workers multiply it — see
     ``deps.enforce_ai_rate_limit``."""
+
+    # --- Signing in ------------------------------------------------------
+    # The only unauthenticated endpoint, and it was the only unlimited one:
+    # every other bucket keys on a teacher id, which a caller who has not
+    # signed in does not have. Two threats, two buckets, and both count
+    # FAILURES rather than attempts — a teacher who types their own password
+    # correctly is never throttled, however often they do it.
+    login_rate_limit_per_min: int = 5
+    """Failed sign-ins per account per minute. The primary guard: it bounds
+    brute-forcing one teacher's password no matter how many addresses the
+    attempts come from. A success clears the account's bucket, so this cannot
+    be used to lock a teacher out of their own account for longer than it takes
+    them to type the right password."""
+
+    login_ip_rate_limit_per_min: int = 20
+    """Failed sign-ins per client address per minute. Bounds credential
+    stuffing across many accounts from one source, and with it the CPU cost:
+    every attempt runs Argon2id by design, so an unlimited login endpoint is
+    also a cheap way to exhaust the box the API is served from.
+
+    Read `trusted_proxy_hops` before tuning this. With no proxy configuration
+    every request appears to come from the reverse proxy, which collapses this
+    into a single shared bucket for the whole school — which is why it is
+    generous, and why the per-account bucket above is the primary guard rather
+    than this one."""
+
+    trusted_proxy_hops: int = 0
+    """How many reverse proxies sit in front of the API.
+
+    `X-Forwarded-For` is client-supplied and trivially spoofed, so it is
+    ignored entirely at 0 (the default) and the socket address is used. Set it
+    to the real number of hops — 1 behind a single load balancer — and the
+    address that many places from the right of the chain is taken, which is the
+    last one a proxy we control wrote. Never set it higher than the number of
+    proxies actually in front: each extra hop is one entry of attacker-supplied
+    text treated as a client address."""
 
     # Not AI, still expensive: headless Chromium and synchronous pagination.
     render_rate_limit_per_min: int = 12
@@ -331,6 +385,23 @@ class Settings(BaseSettings):
             problems.append(
                 "ALPPY_CORS_ORIGINS is empty, so the web app cannot call the API at "
                 "all; name the origins it is served from"
+            )
+
+        # Scanned answer sheets. Staging generates its own roster and its own
+        # scans; if it writes them into production's bucket, the two are mixed
+        # in the one store whose contents no gate can read (docs/privacy.md).
+        if self.production_s3_bucket and self.s3_bucket == self.production_s3_bucket:
+            problems.append(
+                f"ALPPY_S3_BUCKET is {self.s3_bucket!r}, the same bucket as "
+                "ALPPY_PRODUCTION_S3_BUCKET; scanned answer sheets are photographs "
+                "of children's handwriting and the two environments must not share "
+                "the store that holds them"
+            )
+        if self.env == "staging" and self.production_s3_bucket is None:
+            problems.append(
+                "ALPPY_PRODUCTION_S3_BUCKET is unset on a staging deployment, so "
+                "nothing can tell whether ALPPY_S3_BUCKET points at production's "
+                "store of scanned answer sheets; name it even if it differs"
             )
 
         # A Postgres DSN may name several hosts for failover, and any one of them

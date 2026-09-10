@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
@@ -28,3 +29,32 @@ def days_ago():
         return NOW - timedelta(days=d)
 
     return _days_ago
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limiters() -> Iterator[None]:
+    """Empty every rate-limit bucket around each test.
+
+    The limiters are module-level singletons, so without this a test that
+    exhausts one throttles whatever runs next — which reads as a mysterious 429
+    in an unrelated file.
+
+    This lived in ``test_api_fixtures`` and was collected by nobody: the other
+    modules pull that file in with ``import *``, and a leading underscore is
+    exactly what ``*`` leaves behind. It was inert for the whole life of the
+    suite, which did not show because nothing exhausted a bucket until the
+    sign-in tests did. A conftest fixture needs no importing at all.
+    """
+    from alppy.api import deps
+
+    limiters = (
+        deps.get_ai_limiter(),
+        deps.get_render_limiter(),
+        deps.get_login_limiter(),
+        deps.get_login_ip_limiter(),
+    )
+    for limiter in limiters:
+        limiter.reset()
+    yield
+    for limiter in limiters:
+        limiter.reset()

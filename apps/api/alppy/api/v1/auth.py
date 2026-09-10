@@ -4,11 +4,19 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Response, status
+from fastapi import APIRouter, Request, Response, status
 from sqlalchemy import select
 
 from alppy.api import errors
-from alppy.api.deps import DbDep, SettingsDep, TeacherDep, TenantDep
+from alppy.api.deps import (
+    DbDep,
+    SettingsDep,
+    TeacherDep,
+    TenantDep,
+    clear_failed_logins,
+    enforce_login_rate_limit,
+    record_failed_login,
+)
 from alppy.core.security import hash_password, issue_session, needs_rehash, verify_password
 from alppy.models import Teacher
 from alppy.models.enums import Locale
@@ -20,16 +28,39 @@ router = APIRouter(tags=["auth"])
 
 @router.post("/auth/login", response_model=TeacherOut)
 def login(
-    payload: LoginRequest, response: Response, db: DbDep, settings: SettingsDep
+    payload: LoginRequest,
+    request: Request,
+    response: Response,
+    db: DbDep,
+    settings: SettingsDep,
 ) -> TeacherOut:
+    """Sign in, and set the session cookie.
+
+    Rate limited on failures, per account and per address. This is the only
+    unauthenticated endpoint, so it is the only one no teacher-keyed bucket can
+    cover — it was previously the one unlimited door in the API. Two things
+    stood behind it: a roster of children, reachable by guessing one password,
+    and Argon2id, which is expensive *on purpose* and so answers an unlimited
+    endpoint with an unlimited bill in CPU.
+
+    The check runs before the hash is verified, so a throttled attempt costs
+    nothing; the token is charged only when the attempt fails, so a teacher
+    signing in correctly is never throttled by their own success.
+    """
+    email = payload.email.lower()
+    enforce_login_rate_limit(request, email, settings)
+
     teacher = db.execute(
-        select(Teacher).where(Teacher.email == payload.email.lower())
+        select(Teacher).where(Teacher.email == email)
     ).scalar_one_or_none()
     # Verify against a dummy hash when the email is unknown so the response
     # time does not reveal whether an address exists.
     stored = teacher.password_hash if teacher is not None else hash_password("not-a-user")
     if not verify_password(stored, payload.password) or teacher is None:
+        record_failed_login(request, email, settings)
         raise errors.unauthorized("invalid email or password")
+
+    clear_failed_logins(email, settings)
 
     if needs_rehash(teacher.password_hash):
         teacher.password_hash = hash_password(payload.password)
