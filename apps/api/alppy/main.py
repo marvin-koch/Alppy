@@ -60,12 +60,28 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(debug=resolved.debug)
 
+    # The schema is a development tool, and it was served to anyone who asked,
+    # in every environment. It exposes no data, but it is the map: every route,
+    # every field name, every enum value and every validation bound, offered to
+    # an unauthenticated reader ahead of any attempt on the endpoints
+    # themselves. Nothing needs it in a real deployment — the shared types are
+    # generated in the repository, not fetched from a running server — so the
+    # routes are simply not mounted there. `local` and `ci` keep them: the
+    # schema is how the web app's client is checked against the API.
+    #
+    # Same test as the session cookie's `secure` flag (`api/v1/auth.py`), and
+    # deliberately the same one: both say "this is a real deployment".
+    is_deployment = resolved.env in ("staging", "production")
+
     app = FastAPI(
         title="Alppy API",
         version="1.0.0",
         description=DESCRIPTION,
-        openapi_url="/api/v1/openapi.json",
-        docs_url="/api/v1/docs",
+        # `docs_url` alone would not be enough: Swagger UI is only the reader,
+        # and `openapi.json` is the document. Dropping the document drops both,
+        # and FastAPI refuses to mount the UI without it.
+        openapi_url=None if is_deployment else "/api/v1/openapi.json",
+        docs_url=None if is_deployment else "/api/v1/docs",
         redoc_url=None,
     )
 

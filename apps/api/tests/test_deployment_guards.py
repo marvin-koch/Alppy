@@ -198,3 +198,42 @@ def test_the_demo_seed_still_runs_in_development(monkeypatch: pytest.MonkeyPatch
 
     assert _seed() == 0
     assert ran == [True]
+
+
+# --- The published schema --------------------------------------------------
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_a_real_deployment_publishes_no_schema(env: str) -> None:
+    """`/api/v1/openapi.json` and `/api/v1/docs` took no session cookie.
+
+    They leak no data, and that is exactly why this went unnoticed: what they
+    hand an anonymous reader is the map — every route, every field name, every
+    enum, every bound — which is the work someone would otherwise do by probing
+    the endpoints one at a time.
+    """
+    from fastapi.testclient import TestClient
+
+    from alppy.main import create_app
+
+    client = TestClient(create_app(_settings(env=env)))
+    assert client.get("/api/v1/openapi.json").status_code == 404
+    assert client.get("/api/v1/docs").status_code == 404
+    # The API itself is untouched: it is the schema that is withdrawn, not a route.
+    assert client.get("/api/v1/health").status_code == 200
+
+
+@pytest.mark.parametrize("env", ["local", "ci"])
+def test_development_keeps_the_schema_it_is_built_against(env: str) -> None:
+    """`packages/shared` is generated from this document and the web app's
+    client is checked against it, so withdrawing it everywhere would trade one
+    exposure for a whole workflow."""
+    from fastapi.testclient import TestClient
+
+    from alppy.main import create_app
+
+    client = TestClient(create_app(Settings(_env_file=None, env=env)))
+    schema = client.get("/api/v1/openapi.json")
+    assert schema.status_code == 200
+    assert "/api/v1/sheets" in schema.json()["paths"]
+    assert client.get("/api/v1/docs").status_code == 200
