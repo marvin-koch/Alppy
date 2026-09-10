@@ -205,15 +205,6 @@ def client(app: FastAPI) -> Iterator[TestClient]:
         yield c
 
 
-@pytest.fixture(autouse=True)
-def _reset_rate_limiter() -> Iterator[None]:
-    deps.get_ai_limiter().reset()
-    deps.get_render_limiter().reset()
-    yield
-    deps.get_ai_limiter().reset()
-    deps.get_render_limiter().reset()
-
-
 # --------------------------------------------------------------------------
 # Seeding
 # --------------------------------------------------------------------------

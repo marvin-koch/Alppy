@@ -1,0 +1,14 @@
+{
+  // `build` emits the published library; `typecheck` (tsconfig.json) covers
+  // the tests as well. They need separate include lists: a test file compiled
+  // into dist/ would ship @testing-library to every consumer of @alppy/ui.
+  "extends": "./tsconfig.json",
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "exclude": [
+    "dist",
+    "node_modules",
+    "src/**/*.test.ts",
+    "src/**/*.test.tsx",
+    "src/vitest-matchers.d.ts"
+  ]
+}

@@ -23,9 +23,10 @@
     "src"
   ],
   "scripts": {
-    "build": "tsc",
+    "build": "tsc -p tsconfig.build.json",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "test": "vitest run",
     "clean": "rm -rf dist *.tsbuildinfo"
   },
   "peerDependencies": {
@@ -40,12 +41,17 @@
     "clsx": "^2.1.1"
   },
   "devDependencies": {
+    "@testing-library/jest-dom": "^6.6.3",
+    "@testing-library/react": "^16.1.0",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "^4.3.4",
     "eslint": "^9",
+    "jsdom": "^25.0.1",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "typescript": "^5.7.2",
-    "typescript-eslint": "^8"
+    "typescript-eslint": "^8",
+    "vitest": "^2.1.8"
   }
 }

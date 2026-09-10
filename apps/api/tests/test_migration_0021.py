@@ -66,6 +66,25 @@ def _has_pgvector(url: str | None) -> bool:
 
 _SERVER_URL = next((u for u in _CANDIDATES if _has_pgvector(u)), None)
 
+# A skip here used to be invisible: the candidate list below ends in a guessed
+# `alppy:alppy@localhost:5432`, which is what CI happens to run, so these tests
+# were passing in CI by coincidence rather than by configuration. Any change to
+# that server's credentials would have retired the module in silence, green.
+# CI now sets ALPPY_REQUIRE_PG_TESTS=1, which makes an unreachable server a
+# collection error instead — loud, and naming the variable to set.
+def _require_or_skip(server_url: str | None, what: str) -> None:
+    if server_url is not None or os.environ.get("ALPPY_REQUIRE_PG_TESTS") != "1":
+        return
+    raise RuntimeError(
+        f"ALPPY_REQUIRE_PG_TESTS=1 but no Postgres with pgvector was reachable, so "
+        f"{what} cannot run. Set ALPPY_TEST_DATABASE_URL to a server (not a "
+        f"database — one is created per run), or unset ALPPY_REQUIRE_PG_TESTS to "
+        f"allow the skip."
+    )
+
+
+_require_or_skip(_SERVER_URL, "migration 0021")
+
 pytestmark = pytest.mark.skipif(
     _SERVER_URL is None,
     reason=(

@@ -39,6 +39,15 @@ jobs:
       ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_test
       ALPPY_REDIS_URL: redis://localhost:6379/0
       ALPPY_SECRET_KEY: ci-secret-not-a-real-key
+      # test_schema_constraints.py and test_migration_0021.py need a real
+      # Postgres and skip without one. They were finding this server anyway, by
+      # falling through to a hardcoded `alppy:alppy@localhost:5432` guess — so
+      # renaming the service user above would have retired 34 tests silently,
+      # with the run still green. Naming the server here makes the dependency
+      # declared; ALPPY_REQUIRE_PG_TESTS turns the skip into a collection error
+      # so CI can never again report success on tests it did not run.
+      ALPPY_TEST_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/postgres
+      ALPPY_REQUIRE_PG_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -65,8 +74,23 @@ jobs:
       # layout.py, print.css and the detector would ship green.
       - name: Install Chromium for the print/scan round trip
         run: python -m playwright install --with-deps chromium
+      # `pytest-cov` has been a declared dev dependency since the start and was
+      # never once invoked, so nobody could say which modules were covered and
+      # which were not — `worker/tasks.py` sat at 18% for months without that
+      # being a fact anyone could have known. The floor is deliberately below
+      # today's number: it is a ratchet against a large regression, not a target
+      # to be gamed by writing assertion-free tests.
       - name: Tests
-        run: PYTHONPATH=apps/api pytest apps/api/tests -q
+        run: |
+          PYTHONPATH=apps/api pytest apps/api/tests -q \
+            --cov=alppy --cov-report=term-missing:skip-covered \
+            --cov-report=xml:coverage.xml --cov-fail-under=85
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: api-coverage
+          path: coverage.xml
+          retention-days: 7
 
   secrets:
     name: Secret scan — full history
@@ -102,7 +126,12 @@ jobs:
           node-version: ${{ env.NODE_VERSION }}
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm turbo run lint typecheck build
+      # `test` was in the root package.json from the start, but no workspace
+      # package defined the script — so `turbo run test` matched nothing and
+      # exited 0. The JS half of the repo had no unit runner at all: every
+      # non-visual design and safety rule rested on review plus a grep, and
+      # `pnpm test` reported success for all of it.
+      - run: pnpm turbo run lint typecheck build test
 
   design-rules:
     name: Design rules — no colour literals, tokens complete
