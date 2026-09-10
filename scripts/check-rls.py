@@ -292,6 +292,31 @@ def main() -> int:
                 "the worker cannot start a job it is not yet allowed to read",
             )
 
+            # Resolving the school is only half of it. What the worker actually
+            # does next is bind that school and read the job row — the sequence
+            # `_bind_job_tenant` then `db.get(Job, ...)` in worker/tasks.py. If
+            # the job policy and the function disagreed about which column is
+            # the tenant, the lookup above would still succeed and every job
+            # would then be reported "not found" by a worker that had just been
+            # told exactly where to look.
+            blind = conn.execute(
+                text("SELECT count(*) FROM job WHERE id = :i"), {"i": job}
+            ).scalar_one()
+            check(
+                blind == 0,
+                "an unbound session could already read a job row; the worker's "
+                "SECURITY DEFINER lookup exists precisely because it cannot",
+            )
+            as_tenant(conn, found)
+            visible = conn.execute(
+                text("SELECT count(*) FROM job WHERE id = :i"), {"i": job}
+            ).scalar_one()
+            check(
+                visible == 1,
+                "binding the school alppy_job_school returned did not make the job "
+                "row readable; the worker would report every job as not found",
+            )
+
     if not failures:
         print(f"row-level security: {len(scoped)} scoped tables covered, and enforced")
         return 0

@@ -52,10 +52,16 @@ class UnapprovedExerciseError(RuntimeError):
 
 
 def is_printable(exercise: Exercise) -> bool:
-    """True unless this is an AI-generated exercise no teacher has approved."""
-    return not (
-        exercise.origin is ExerciseOrigin.AI_GENERATED and exercise.approved_at is None
-    )
+    """True unless this is an AI-generated exercise no teacher has approved.
+
+    A discarded item fails here too, whatever `approved_at` says. `approve_exercises`
+    already refuses to stamp one, so this is the second door rather than the
+    first: the module's whole shape is that the rule is applied everywhere the
+    print path can be entered, never once at the top.
+    """
+    if exercise.origin is not ExerciseOrigin.AI_GENERATED:
+        return True
+    return exercise.approved_at is not None and exercise.discarded_at is None
 
 
 def ensure_printable(exercises: Iterable[Exercise]) -> None:
@@ -77,6 +83,12 @@ def approve_exercises(
     Returns the ids actually stamped. Only AI-generated rows are touched:
     approving a textbook exercise is meaningless, and silently accepting the
     request would let a caller believe it had done something it had not.
+
+    A **discarded** item is not touched either. `discard_exercises` clears
+    `approved_at` so a rejected item is never printable again; without the
+    filter below that promise lasted exactly until someone clicked approve on a
+    stale list — the approval screen holds ids fetched before the discard, so
+    this is one ordinary double-click, not a contrived sequence.
     """
     if not exercise_ids:
         return []
@@ -86,6 +98,7 @@ def approve_exercises(
             Exercise.school_id == school_id,
             Exercise.id.in_(list(exercise_ids)),
             Exercise.origin == ExerciseOrigin.AI_GENERATED,
+            Exercise.discarded_at.is_(None),
         )
     )
     approved: list[uuid.UUID] = []
