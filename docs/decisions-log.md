@@ -1870,3 +1870,73 @@ is B's roster reachable through `student`, through `class`, through `class_stude
 INSERT or an UPDATE naming B succeed; can the runtime role run DDL or turn RLS off; does it hold
 `BYPASSRLS`. It also fails on any `SchoolScopedMixin` table with no policy, which is what keeps a
 table added next year covered.
+
+### D85 · The staffroom is flat on purpose, and the admin tier has a named shape
+
+Four write endpoints take no privilege check beyond membership: `POST /schools`
+(any teacher may create an establishment and joins it), `POST
+/schools/{id}/teachers/{id}` (any member may add any teacher to a staffroom they
+work in), `PATCH /schools/me` (any member may rename the school), and the
+destructive corpus writes, which check *teaching* rather than rank
+(`_assert_teaches_subject`, D77). D77 named the missing tier and deferred it —
+"the honest long-term answer is a `role` column on `teacher_school` … it deserves
+one decision rather than three." This is that decision, and the answer for now is
+**no roles**, recorded so it stops reading like an oversight every time someone
+audits the module.
+
+**Why flat is right for the institution we are actually in.** A Swiss Sek I
+établissement is ten to sixty teachers who know each other by name and share a
+staffroom in the physical sense. The directeur is a colleague with a timetable,
+not a systems administrator, and nobody in the building holds a support rota. An
+admin tier in that setting does not prevent the actions above; it decides *which
+colleague has to be found* before an ordinary Tuesday can continue — and the
+predictable end state is that the first account becomes admin, that person leaves,
+and the school files a support ticket to rename itself. Every action on the list is
+also reversible in place (a rename, a membership) or already guarded by something
+better than rank: `delete_source` refuses while exercises cite the book,
+`delete_chapter` while it holds sheets, `delete_student` demands the pupil's UID
+typed back. What a role column would add to those is a second, weaker lock on a
+door that already has one.
+
+**What is genuinely load-bearing is the tenant boundary, and it is not this.** The
+question "may this session act for this school at all" is answered by
+`get_membership` and, since D84, again by row-level security underneath it. Every
+endpoint here sits *inside* an answered boundary: none of them reads or writes
+another school's data, and `add_teacher_to_school` is already gated on the
+caller's own membership so a school you do not work at reads as missing rather
+than as forbidden — which is why it cannot be used to enumerate school ids. The
+exposure of a flat staffroom is a colleague doing something clumsy to shared
+state, not a stranger reaching across a tenant.
+
+**Two things that are not privilege questions and should be fixed regardless.**
+Neither needs a role column, and neither should wait for one:
+
+* **Membership is add-only.** There is no `DELETE
+  /schools/{id}/teachers/{id}`, so a teacher added by a mistyped uuid cannot be
+  removed except by hand in SQL. `teacher_school` was designed for this —
+  leaving a school is a deleted row (no `left_at`) — so the endpoint is missing,
+  not blocked.
+* **`POST /schools` is unbounded.** Nothing rate-limits establishment creation
+  or caps how many one account may hold. It creates an empty school and reaches
+  no existing data, so it is a housekeeping concern rather than a security one,
+  but it is the one action on the list that a script could repeat.
+
+**The minimal shape if a school asks for the tier.** Not a `Role` table and not a
+permissions matrix: **one boolean column, `is_admin`, on `teacher_school`**, which
+is the table that already carries the relationship the flag qualifies. A `role`
+enum was the phrasing in D77 and is the worse of the two — three names invite a
+fourth, and every one of them needs a matrix nobody has asked for. The migration
+sets it true for the earliest `joined_at` per school, which is the person who set
+the school up. Enforcement is a dependency beside `TenantDep` (`AdminDep`, reading
+the same membership row `get_membership` has already loaded, so it costs no
+query), applied to exactly the four endpoints above and to nothing else — in
+particular **not** to the corpus deletes, whose "you teach this branch" rule is a
+better question than rank and should survive the change. The invariant that must
+come with it: **a school always has at least one admin**, enforced where
+membership is removed, or the tier's failure mode is a school nobody can
+administer — strictly worse than the flat model it replaced.
+
+**Revisit if** a school runs more than one établissement under one account and
+asks who may rename which; if a canton or a school's own IT policy requires a
+named responsible party for the roster; or the first time a teacher removes a
+colleague's textbook and someone asks who was allowed to.

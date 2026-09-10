@@ -295,6 +295,10 @@ def update_school(payload: SchoolUpdate, tenant: TenantDep, db: DbDep) -> School
     `default_curriculum` is not in `SchoolUpdate` and that is deliberate: it
     was resolved into every `Chapter.primary_competency_id` at seed time (D56),
     so changing it here would silently re-file the whole tree.
+
+    Any member may rename the school, and that is a decision rather than a
+    missing check: the staffroom is flat (D85). A rename touches no other
+    school's data and is reversible by the next colleague to notice.
     """
     school = db.get(School, tenant)
     if school is None:
@@ -353,6 +357,11 @@ def create_school(
     `default_curriculum` is settable here and nowhere else: it is resolved into
     every chapter's primary competency (D56), so the one safe time to choose it
     is before any chapters exist.
+
+    Any teacher may do this, and nothing caps how often (D85). It reaches no
+    existing data — the school it makes is empty and the caller is its only
+    member — so this is housekeeping rather than a privilege question, but it is
+    the one action here a script could repeat.
     """
     school = School(
         id=uuid.uuid4(),
@@ -380,6 +389,12 @@ def add_teacher_to_school(
     Gated on the CALLER's own membership, not on the school existing: a school
     you do not work at reads as missing, so this cannot be used to discover
     which school ids are real.
+
+    Membership is the whole check — there is no admin tier, deliberately (D85).
+    Note it is also add-only: no route removes a membership, so a colleague
+    added by a mistyped uuid comes out in SQL. `teacher_school` was built for
+    the removal (leaving is a deleted row, D74); the endpoint is missing, not
+    refused.
     """
     mine = {s.id for s in svc.schools_for_teacher(db, teacher.id)}
     if school_id not in mine:
