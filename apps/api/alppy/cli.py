@@ -16,6 +16,16 @@ than importing it unconditionally at module load time. If that function
 does not exist yet, the command logs a clear skip message and exits 0: a
 container entrypoint that runs ``migrate && seed && serve`` must not fail
 to start just because the seed feature has not landed.
+
+Every command here opens an ``admin_session`` rather than the API's own, and
+that is not a convenience. All three sweep **every school** — the seed creates
+one, the backfill reconstructs the agenda across all of them, the purge
+enforces one retention window over the whole ``PromptLog`` table — and since
+D84 the runtime role sees only the school named by ``app.current_school_id``.
+No value of that GUC means "all of them", so these run as the schema owner,
+which carries ``BYPASSRLS``. It is the deliberate hole in D84 and it is why it
+lives here, in three commands an operator runs, rather than anywhere a request
+can reach.
 """
 
 from __future__ import annotations
@@ -25,7 +35,7 @@ import sys
 
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
-from alppy.db.session import SessionLocal
+from alppy.db.session import admin_session
 
 log = get_logger(__name__)
 
@@ -70,7 +80,7 @@ def _seed() -> int:
         )
         return 0
 
-    db = SessionLocal()
+    db = admin_session()
     try:
         log.info("seed.start")
         run_seed(db)
@@ -93,7 +103,7 @@ def _backfill_events() -> int:
     """
     from alppy.services.event_backfill import backfill_events
 
-    db = SessionLocal()
+    db = admin_session()
     try:
         log.info("backfill.start")
         result = backfill_events(db)
@@ -117,7 +127,7 @@ def _purge_prompt_logs() -> int:
     """
     from alppy.ai.prompt_log import purge_expired_prompts
 
-    db = SessionLocal()
+    db = admin_session()
     try:
         deleted = purge_expired_prompts(db)
         db.commit()

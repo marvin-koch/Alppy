@@ -1,9 +1,16 @@
 """Alembic environment.
 
 The database URL always comes from ``alppy.core.config.get_settings()`` (which
-reads ``ALPPY_DATABASE_URL`` / ``.env``) — never from a URL hard-coded in
+reads the environment / ``.env``) — never from a URL hard-coded in
 ``alembic.ini`` — so the same migrations run unchanged in local dev, CI and
-production. Target metadata is ``alppy.models.Base.metadata``, so
+production.
+
+It reads ``ALPPY_ADMIN_DATABASE_URL``, not ``ALPPY_DATABASE_URL``: since D84
+the API connects as a role with no DDL and no ``BYPASSRLS``, and migrations
+need both. It falls back to ``ALPPY_DATABASE_URL`` so a single-role development
+database still migrates with no extra configuration.
+
+Target metadata is ``alppy.models.Base.metadata``, so
 ``alembic revision --autogenerate`` has something real to diff against for
 every migration after this hand-written initial one.
 """
@@ -33,7 +40,10 @@ target_metadata = Base.metadata
 # psycopg's driver uses '%' for parameter placeholders, which ConfigParser's
 # interpolation also uses -- escape any literal '%' before handing it to
 # set_main_option.
-_db_url = str(get_settings().database_url).replace("%", "%%")
+_settings = get_settings()
+_db_url = str(_settings.admin_database_url or _settings.database_url).replace(
+    "%", "%%"
+)
 config.set_main_option("sqlalchemy.url", _db_url)
 
 

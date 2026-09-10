@@ -179,6 +179,36 @@ Multi-school deployments (a teacher who moves schools, a canton piloting across 
 are modelled as separate `School` rows with no implicit relationship between them; any
 cross-school reporting is a deliberate, audited, opt-in feature, not a default query capability.
 
+### The second layer: the database's own boundary (D84)
+
+Both bullets above are the *application's* promise. Since D84 there is a second layer that does
+not depend on the application keeping it: **row-level security** on every school-scoped table,
+plus the two association tables' parents, keyed on `app.current_school_id` — a session variable
+set per transaction by `alppy/db/tenancy.py` once `get_membership` has proved the cookie against
+`teacher_school`, and never anywhere else.
+
+- **Unset is blind, not omniscient.** The policy predicate is
+  `school_id = nullif(current_setting('app.current_school_id', true), '')::uuid`. A session that
+  never resolved a membership sees nothing, so a forgotten tenant now returns an empty list
+  rather than another school's roster.
+- **`WITH CHECK` mirrors `USING`.** Writing into another school is refused as firmly as reading
+  out of one.
+- **Three roles' worth of privilege in two.** The API and worker connect as `alppy_app` (DML
+  only, no `BYPASSRLS`); Alembic and the three cross-school CLI commands connect as the schema
+  owner, which policies do not apply to. Pointing both at one role turns the whole mechanism off
+  while everything still looks correct, so a staging or production boot that does is refused
+  (`Settings._refuse_unsafe_deployment`).
+- **`school` is the deliberate exception.** A teacher may work at several (D74), so its policy
+  admits the current school *or* any school this teacher belongs to — hence the second GUC,
+  `app.current_teacher_id`. Without it, login and `POST /auth/school/{id}` stop answering.
+- **The worker resolves its tenant through `alppy_job_school`**, a `SECURITY DEFINER` function
+  that takes a job id and returns a school id and can say nothing else: the tenant is on the row
+  the worker is not yet allowed to read.
+
+None of this is visible to the unit suite, which runs on SQLite. `scripts/check-rls.py` is where
+it is exercised, on a real Postgres, in its own CI job — for the same reason
+`scripts/check-schema-drift.py` has one.
+
 ## 5. Authentication and the session
 
 The pieces are spread across four files by design — `core/security.py` owns the primitives,

@@ -1779,3 +1779,94 @@ the per-file cap, and the client shows it the same way.
 `max_upload_files × max_upload_mb`; a deployment on a small box lowers one or the other, and both
 the setting's docstring and `.env.example` say so rather than leaving the multiplication to be
 rediscovered.
+
+### D84 · Tenancy stops being only the application's promise
+
+Every tenant-scoped query carried its own `.where(school_id == ...)`. Services took `school_id`
+as a required argument so a handler that forgot it failed to type-check, and `deps.scoped_get`
+was the one blessed way to fetch a row by id. That design stays and is still the first line —
+but underneath it there was nothing, and one missed `.where()` was an unbounded cross-school
+read. The API, the worker and Alembic also shared a single DSN naming the database owner, so a
+SQL-injection or a bug in a raw query had the whole cluster, and nothing bounded a runaway
+statement.
+
+**Row-level security on every school-scoped table, keyed on a GUC the request sets.**
+`app.current_school_id`, set with `set_config(..., is_local => true)` — transaction-scoped, so it
+cannot outlive the request and be inherited by the next checkout of the same pooled connection.
+`alppy/db/tenancy.py` is its only writer. Because a service commits several times on the way
+through a request, it is re-applied on an `after_begin` listener rather than once per request;
+binding once would leave everything after the first commit reading with the GUC unset.
+
+**Unset means see nothing.** The predicate is
+`school_id = nullif(current_setting('app.current_school_id', true), '')::uuid`. Never-set and
+set-to-empty both collapse to NULL, and a comparison to NULL admits no rows. A bare cast would
+have raised on the empty string — an error page where an empty list belongs — and a policy that
+defaulted to permissive would make every unbound code path a leak rather than a blank screen.
+`WITH CHECK` carries the same predicate as `USING`, so writing *into* another school is refused
+as firmly as reading out of one.
+
+**The tenant is bound in `get_membership`, and nowhere else.** Not in `get_db`: at the moment a
+request's session opens, nobody knows the school yet, because resolving it means reading
+`teacher_school` — which needs a session. So the session starts blind and is bound the moment
+that check answers, in the one place the entitlement already lives (I-platform-14). A handler
+taking `DbDep` without `TenantDep` or `ScopeDep` therefore never gets bound and sees nothing.
+That is the intended behaviour: the failure mode of a forgotten tenant is now an empty result.
+
+**`FORCE`, and two roles, because either alone is decoration.** Postgres does not apply a policy
+to the role that owns the table, and `FORCE` extends it to the owner — which is who Alembic and
+the CLI connect as. The API and worker connect as `alppy_app`: no DDL, no `BYPASSRLS`, DML only.
+Both halves are load-bearing and the failure is silent in both directions, so
+`Settings._refuse_unsafe_deployment` refuses a staging or production boot where
+`ALPPY_ADMIN_DATABASE_URL` is unset or names the same role as `ALPPY_DATABASE_URL`. A deployment
+with every policy in place and none of them firing looks exactly like a working one.
+
+**The six association tables get EXISTS policies, not a `school_id` column.** `class_student`,
+`class_subject`, `class_teacher_subject`, `chapter_competency`, `exercise_competency` and
+`sheet_source` deliberately carry no `school_id`: the models argue both ends already do and
+tenancy holds transitively (I-platform-02). A policy is where that argument becomes enforceable,
+so each is written as an EXISTS against the parent that has the column. Adding the column would
+have contradicted the models' own reasoning and put six redundant, backfilled, drift-prone
+copies of a fact into the schema to save a primary-key lookup. The EXISTS names the parent's
+`school_id` explicitly rather than leaning on the parent's own policy to filter the subquery —
+that shorter form works, but for a reason the reader has to already know, and it breaks the day
+someone exempts the parent.
+
+**`school` is the one table a request reads across the boundary, so its policy says so.** Since
+D74 a teacher may work at several schools, and login, `/auth/me` and `POST /auth/school/{id}`
+all list or open one the current GUC does not name. Its policy admits the current school OR any
+school this teacher is a member of — the same question `get_membership` asks, asked again one
+layer down, which is why `app.current_teacher_id` exists as a second GUC. Without the second arm,
+switching school would 404 every school including the one being left. `teacher` and
+`teacher_school` stay uncovered: both are read *before* any tenant is known, during login, and a
+teacher is not a tenant-scoped object. `competency` stays uncovered because the cantonal
+curriculum is shared reference data.
+
+**The worker's chicken-and-egg gets one uuid of escalation.** The tenant is on the `Job` row the
+worker has not been allowed to read yet. Widening the worker's role would have given the
+sensitive half of the pipeline a blanket exemption; putting the school in the arq payload would
+have left every job in flight across a deploy arriving without one. Instead `alppy_job_school` is
+a `SECURITY DEFINER` function taking a job id and returning a school id, which can say nothing
+else — content-free in the same sense `ModelCall` is. Its `search_path` is pinned, because a
+`SECURITY DEFINER` function resolving a table through a caller-controlled `search_path` is a
+privilege escalation with a CVE number waiting.
+
+**The cross-school CLI is the deliberate hole, and it is visible.** `seed`, `backfill-events` and
+`purge-prompt-logs` sweep every school by definition, and no value of the GUC means "all of
+them". They open `admin_session()` — a separate factory, a separate DSN, a separate name — so
+reaching for the exemption is an act rather than a flag.
+
+**`statement_timeout` on the role, raised per process.** A connection string is edited by whoever
+is debugging a timeout; the bound that protects the database is the one they cannot drop by
+accident, so 15s and a 30s `idle_in_transaction_session_timeout` sit on `alppy_app` in
+`init.sql`. `ALPPY_DB_STATEMENT_TIMEOUT_MS` is the per-connection override above it, and the
+worker raises its own to 120s rather than the API lowering its guard to fit a scan pipeline.
+
+**None of this is testable by the unit suite, and that is why it has a CI job.** The suite builds
+its schema with `create_all()` on SQLite, which has no roles, no `set_config` and no row-level
+security — the same structural blind spot `check-schema-drift.py` exists for.
+`scripts/check-rls.py` migrates a disposable Postgres, creates a low-privilege role, and asks the
+questions that matter behaviourally: with the GUC unset, is anything visible; bound to school A,
+is B's roster reachable through `student`, through `class`, through `class_student`; does an
+INSERT or an UPDATE naming B succeed; can the runtime role run DDL or turn RLS off; does it hold
+`BYPASSRLS`. It also fails on any `SchoolScopedMixin` table with no policy, which is what keeps a
+table added next year covered.

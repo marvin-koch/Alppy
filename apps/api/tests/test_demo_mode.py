@@ -48,7 +48,8 @@ def test_debug_and_local_env_do_not_turn_demo_mode_on() -> None:
             env="production",
             secret_key="test-secret-key",
             s3_secret_key="not-the-default",
-            database_url="postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
+            database_url="postgresql+psycopg://alppy_app:pw@db.internal:5432/alppy",
+            admin_database_url="postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
         ).demo_mode
         is False
     )

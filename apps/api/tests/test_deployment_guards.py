@@ -23,7 +23,8 @@ from alppy.core.config import DEV_S3_SECRET_KEY, DEV_SECRET_KEY, Settings
 GOOD = {
     "secret_key": "a-real-and-sufficiently-long-secret",
     "s3_secret_key": "a-real-bucket-password",
-    "database_url": "postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
+    "database_url": "postgresql+psycopg://alppy_app:pw@db.internal:5432/alppy",
+    "admin_database_url": "postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
 }
 
 
@@ -58,6 +59,10 @@ def test_development_environments_keep_every_default(env: str) -> None:
             "postgresql+psycopg://alppy:alppy@localhost:5432/alppy",
             "ALPPY_DATABASE_URL",
         ),
+        # Unset means migrations run as the API's own role, which means the API
+        # IS the schema owner — and row-level security does not apply to a
+        # table's owner. Every policy is present and none of them fire (D84).
+        ("admin_database_url", None, "ALPPY_ADMIN_DATABASE_URL"),
     ],
 )
 def test_each_unsafe_setting_is_refused_in_production(
@@ -66,6 +71,22 @@ def test_each_unsafe_setting_is_refused_in_production(
     with pytest.raises(ValidationError) as excinfo:
         _settings(env="production", **{field: value})
     assert expected in str(excinfo.value)
+
+
+def test_the_api_may_not_connect_as_the_schema_owner() -> None:
+    """Two DSNs naming one role is the same mistake as having only one.
+
+    It is worth its own test because it is the version that LOOKS configured:
+    `ALPPY_ADMIN_DATABASE_URL` is set, so the guard above is satisfied, and
+    every row-level security policy is in place and inert — Postgres does not
+    apply them to the role that owns the table (D84).
+    """
+    with pytest.raises(ValidationError) as excinfo:
+        _settings(
+            env="production",
+            database_url="postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
+        )
+    assert "ALPPY_ADMIN_DATABASE_URL" in str(excinfo.value)
 
 
 def test_the_loopback_address_is_local_too() -> None:
@@ -114,7 +135,7 @@ def test_the_demo_seed_refuses_outside_development(
     def _no_session() -> None:
         raise AssertionError("the seed opened a database session in a real environment")
 
-    monkeypatch.setattr("alppy.cli.SessionLocal", _no_session)
+    monkeypatch.setattr("alppy.cli.admin_session", _no_session)
 
     assert _seed() == 0
 
@@ -132,7 +153,7 @@ def test_the_demo_seed_still_runs_in_development(monkeypatch: pytest.MonkeyPatch
         def rollback(self) -> None: ...
         def close(self) -> None: ...
 
-    monkeypatch.setattr("alppy.cli.SessionLocal", _FakeSession)
+    monkeypatch.setattr("alppy.cli.admin_session", _FakeSession)
     monkeypatch.setattr("alppy.seed.run_seed", lambda db: ran.append(True))
 
     assert _seed() == 0

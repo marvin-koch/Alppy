@@ -88,7 +88,22 @@ services:
       # that cookie is what keeps a roster of children's real names off an open
       # URL (docs/privacy.md).
       ALPPY_DEMO_MODE: ${ALPPY_DEMO_MODE:-false}
-      ALPPY_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-alppy}:${POSTGRES_PASSWORD:-alppy}@postgres:5432/${POSTGRES_DB:-alppy}
+      # TWO roles, and the split is the point (D84). The API and the worker
+      # connect as `alppy_app`: no DDL, no BYPASSRLS, and every row it reads
+      # filtered by `app.current_school_id` — so a query that forgets its
+      # `.where(school_id == ...)` now returns nothing instead of another
+      # school's roster. The migrations and the cross-school CLI connect as the
+      # schema owner, which row-level security does not apply to.
+      #
+      # Both roles are created by infra/postgres/init.sql on first boot. In a
+      # real deployment ALPPY_ADMIN_DATABASE_URL is a separate secret, and
+      # leaving it unset — or pointing both at the same role — is refused at
+      # startup by Settings._refuse_unsafe_deployment.
+      ALPPY_DATABASE_URL: postgresql+psycopg://${ALPPY_APP_DB_USER:-alppy_app}:${ALPPY_APP_DB_PASSWORD:-alppy_app}@postgres:5432/${POSTGRES_DB:-alppy}
+      ALPPY_ADMIN_DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-alppy}:${POSTGRES_PASSWORD:-alppy}@postgres:5432/${POSTGRES_DB:-alppy}
+      # Per-connection ceiling on one statement, on top of the role's own
+      # (init.sql). The worker overrides it below.
+      ALPPY_DB_STATEMENT_TIMEOUT_MS: ${ALPPY_DB_STATEMENT_TIMEOUT_MS:-15000}
       ALPPY_REDIS_URL: redis://redis:6379/0
       ALPPY_S3_ENDPOINT_URL: http://minio:9000
       # The API reaches MinIO on the compose network; the teacher's browser
@@ -147,7 +162,12 @@ services:
     build:
       context: .
       dockerfile: apps/api/Dockerfile
-    environment: *api-env
+    environment:
+      <<: *api-env
+      # A scan pipeline, a Chromium render and an embedding write are all
+      # legitimately slower than anything a request handler may do. The worker
+      # raises its own ceiling rather than the API lowering its guard to fit.
+      ALPPY_DB_STATEMENT_TIMEOUT_MS: ${ALPPY_WORKER_DB_STATEMENT_TIMEOUT_MS:-120000}
     depends_on:
       api:
         condition: service_healthy

@@ -30,17 +30,25 @@ from sqlalchemy.orm import Session
 from alppy.api import errors
 from alppy.core.config import Settings, get_settings
 from alppy.core.security import read_session
+from alppy.db import tenancy
 from alppy.db.base import SchoolScopedMixin
 from alppy.models import Teacher, teacher_school
 from alppy.storage import Storage, get_storage
 
 
 def get_db() -> Generator[Session, None, None]:
-    """Request-scoped session.
+    """Request-scoped session, opened blind.
 
     The engine is built lazily so importing the app never opens a connection
     (and never requires a Postgres driver to be installed — the test suite
     overrides this dependency with an in-memory SQLite session).
+
+    It yields a ``TenantSession`` that does not yet know its tenant, because
+    nobody does: resolving the school means reading ``teacher_school``, which
+    needs a session. ``get_membership`` binds it the moment that read answers.
+    Until then — and for any handler that takes ``DbDep`` without also taking
+    ``TenantDep`` or ``ScopeDep`` — row-level security shows the session
+    nothing at all (D84, ``alppy/db/tenancy.py``).
     """
     from alppy.db.session import SessionLocal
 
@@ -107,6 +115,7 @@ def get_membership(request: Request, db: DbDep, settings: SettingsDep) -> Member
         # every child's real name — is what the cookie exists to protect.
         if settings.demo_mode:
             teacher = _demo_teacher(db, settings)
+            tenancy.bind(db, school_id=teacher.home_school_id, teacher_id=teacher.id)
             return Membership(teacher=teacher, school_id=teacher.home_school_id)
         raise errors.unauthorized("no session cookie")
     session = read_session(token, settings=settings)
@@ -130,6 +139,14 @@ def get_membership(request: Request, db: DbDep, settings: SettingsDep) -> Member
         # Valid signature, but this teacher no longer works at the school the
         # cookie names — they left, or it was never theirs.
         raise errors.unauthorized("session no longer valid")
+    # Entitlement proved. From here to the end of the request the database
+    # itself will refuse rows belonging to any other school — the second half
+    # of D84, and the reason this line sits after the check above rather than
+    # anywhere more convenient. The teacher id goes with it for the one policy
+    # that needs it: `school`, which has to keep showing a teacher the OTHER
+    # schools they work at, or login and `POST /auth/school/{id}` stop
+    # answering (D74).
+    tenancy.bind(db, school_id=session.school_id, teacher_id=teacher.id)
     return Membership(teacher=teacher, school_id=session.school_id)
 
 

@@ -265,3 +265,40 @@ def test_a_co_enrolled_student_is_readable_by_both_their_teachers(
     stranger = make_colleague(db, tenant, email="carl@alpes.ch", class_code="8D")
     with pytest.raises(ApiError):
         mastery_service._owned_student(db, stranger.scope, visitor.id)
+
+
+# --- The second half: the database's own boundary --------------------------
+#
+# Everything above is application-level — a `.where(school_id == ...)` that a
+# handler has to remember. Since D84 there is a policy underneath it, keyed on
+# `app.current_school_id`, and these two tests guard the seam: they check that
+# the tenant is bound onto the session, and only after the membership has been
+# proved. What the policies then DO with it is Postgres's, and is checked by
+# `scripts/check-rls.py` — this suite runs on SQLite, which has no row-level
+# security at all and so cannot notice a policy that was never created.
+
+
+def test_a_request_binds_its_tenant_onto_the_session(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    login(client, tenant.teacher.email)
+    assert client.get(f"/api/v1/classes/{tenant.school_class.id}").status_code == 200
+
+    assert getattr(db, "school_id", None) == tenant.school.id
+    # The teacher goes with it for the one policy that needs it: `school`,
+    # which has to keep listing the other schools this teacher works at (D74).
+    assert getattr(db, "teacher_id", None) == tenant.teacher.id
+
+
+def test_a_session_with_no_membership_is_left_blind(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Unset is "see nothing", not "see everything".
+
+    A request that never resolves a membership must not leave a tenant bound
+    for the next one to inherit — and must not be handed a permissive default
+    either. `get_membership` binds after the `teacher_school` check and nowhere
+    else, so a 401 leaves the session exactly as blind as it started.
+    """
+    assert client.get(f"/api/v1/classes/{tenant.school_class.id}").status_code == 401
+    assert getattr(db, "school_id", None) is None

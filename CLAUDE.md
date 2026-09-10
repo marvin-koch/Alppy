@@ -47,6 +47,11 @@ PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests -q
 # models, so they structurally cannot catch this.
 ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
 
+# Row-level security: same disposable-Postgres shape, same blind spot. SQLite has
+# no roles and no policies, so the unit tests cannot see a policy that was never
+# created, a FORCE left off, or the API pointed back at the owning role.
+ALPPY_DATABASE_URL=postgresql+psycopg://OWNER:...@host/db python scripts/check-rls.py
+
 python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
 python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
 ```
@@ -112,6 +117,18 @@ constraint, not a preference.
 **`layout.py` and `print.css` describe the same geometry, and the detector reads
 it.** *(DC-print-07)* Changing a number is a **layout version bump**, not a tweak — old scans
 must keep registering against the layout they were printed with.
+
+**Tenancy has two layers now, and the second one only works if the roles stay
+apart.** Every query still takes `school_id` as a required argument — that is the
+first layer and it does not change. Underneath it, row-level security keyed on
+`app.current_school_id` (D84). Postgres does not apply a policy to a table's
+owner, so the API connecting as the schema owner leaves every policy in place and
+inert, which looks exactly like a working deployment. `ALPPY_DATABASE_URL` is the
+low-privilege role, `ALPPY_ADMIN_DATABASE_URL` is the owner, and
+`alppy/db/tenancy.py` is the **only** writer of the GUC — bound in
+`get_membership` after the `teacher_school` check and nowhere else. An unbound
+session sees nothing rather than everything; a handler that reads an empty list
+where it expected rows has forgotten `TenantDep`, not found a bug.
 
 **No student name ever reaches a model provider.** Prompts carry the UID
 (`7B_15`). `alppy/ai/scrub.py` is the gate and it *raises* rather than redacting,

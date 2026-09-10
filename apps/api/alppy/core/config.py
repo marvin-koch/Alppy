@@ -78,6 +78,28 @@ class Settings(BaseSettings):
     database_url: PostgresDsn = Field(
         default=PostgresDsn("postgresql+psycopg://alppy:alppy@localhost:5432/alppy")
     )
+    admin_database_url: PostgresDsn | None = None
+    """The schema owner's DSN — alembic, and the CLI commands that sweep every
+    school (``seed``, ``backfill-events``, ``purge-prompt-logs``).
+
+    ``database_url`` names the low-privilege runtime role instead: no DDL, no
+    ``BYPASSRLS``, every read filtered by the tenant bound onto the session
+    (D84, ``alppy/db/tenancy.py``). Keeping the two apart is what makes
+    row-level security worth turning on — policies are not enforced against
+    whoever owns the table.
+
+    ``None`` falls back to ``database_url``, so a single-role development
+    database needs no configuration; ``_refuse_unsafe_deployment`` is what
+    stops that fallback reaching a real school."""
+
+    db_statement_timeout_ms: int = 15_000
+    """Per-connection ceiling on any single statement, 0 to leave it to the role.
+
+    The role carries its own (``infra/postgres/init.sql``) and that one cannot
+    be dropped by editing a connection string. This is the per-process override
+    above it: the worker sets it higher because a scan pipeline and an embedding
+    write are legitimately slower than anything a request handler may do."""
+
     redis_url: RedisDsn = Field(default=RedisDsn("redis://localhost:6379/0"))
 
     # S3-compatible object storage (MinIO locally).
@@ -231,6 +253,11 @@ class Settings(BaseSettings):
           error rather than as the misconfiguration it is.
         * ``s3_secret_key`` at its default opens the bucket holding scanned
           answer sheets: photographs of children's handwriting, names included.
+        * ``admin_database_url`` unset — or naming the same role as
+          ``database_url`` — means the API connects as the schema owner, and
+          row-level security is not enforced against a table's owner. The
+          policies are all there and none of them apply, which is the worst of
+          the three possible states because it reads as the safe one (D84).
 
         Startup is the only honest place for this. A check at the point of use
         fires on the first teacher's first request, which is to say after the
@@ -270,6 +297,30 @@ class Settings(BaseSettings):
                 f"ALPPY_DATABASE_URL points at {', '.join(local)}; a {self.env} "
                 "deployment reading a local database is a development .env that "
                 "reached a server"
+            )
+
+        # Row-level security is not enforced against the role that owns the
+        # table. An API connecting as the owner therefore has policies on every
+        # table and protection from none of them — and it looks exactly like a
+        # working deployment right up until a missed `.where()` returns another
+        # school's roster (D84).
+        app_user = next((h["username"] for h in self.database_url.hosts()), None)
+        admin_user = (
+            next((h["username"] for h in self.admin_database_url.hosts()), None)
+            if self.admin_database_url is not None
+            else None
+        )
+        if self.admin_database_url is None:
+            problems.append(
+                "ALPPY_ADMIN_DATABASE_URL is unset, so migrations would run as the "
+                "same role the API does; that role owns the tables, and row-level "
+                "security does not apply to a table's owner"
+            )
+        elif app_user is not None and app_user == admin_user:
+            problems.append(
+                f"ALPPY_DATABASE_URL and ALPPY_ADMIN_DATABASE_URL both connect as "
+                f"{app_user!r}; the API must use the low-privilege role, or every "
+                "row-level security policy is decoration"
             )
 
         if problems:

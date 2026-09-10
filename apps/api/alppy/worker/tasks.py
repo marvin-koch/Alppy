@@ -36,10 +36,11 @@ from datetime import UTC, datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
+from alppy.db import tenancy
 from alppy.db.session import SessionLocal
 from alppy.models import Job
 from alppy.models.enums import JobStatus
@@ -74,6 +75,29 @@ def _uuid_from(job: Job, key: str) -> UUID:
     return UUID(str(raw))
 
 
+def _bind_job_tenant(db: Session, job_id: UUID) -> None:
+    """Bind the school this job belongs to before anything is read.
+
+    A chicken-and-egg the API does not have: the tenant is *on the row the
+    worker has not been allowed to read yet*. Rather than widen the worker's
+    role or put the school in the queue payload — where an in-flight job across
+    a deploy would arrive without one — the tenant comes from
+    ``alppy_job_school``, a ``SECURITY DEFINER`` function that takes a job id
+    and returns a school id and can say nothing else. The escalation is exactly
+    one uuid wide, in the spirit of ``ModelCall`` being content-free.
+
+    A job whose row does not exist binds nothing and stays blind; ``_run_job``
+    logs it as not found a moment later.
+    """
+    if db.get_bind().dialect.name != "postgresql":
+        return
+    school_id = db.execute(
+        text("SELECT alppy_job_school(:job_id)"), {"job_id": str(job_id)}
+    ).scalar_one_or_none()
+    if school_id is not None:
+        tenancy.bind(db, school_id=school_id)
+
+
 def _run_job(job_id: str, fn: PipelineFn) -> None:
     """Shared lifecycle for every job kind: load, run, record outcome.
 
@@ -85,6 +109,7 @@ def _run_job(job_id: str, fn: PipelineFn) -> None:
     """
     db = SessionLocal()
     try:
+        _bind_job_tenant(db, UUID(job_id))
         job = db.get(Job, UUID(job_id))
         if job is None:
             log.warning("job.not_found", job_id=job_id)
@@ -214,6 +239,7 @@ def _chain_after(job_id: str) -> None:
 
     db = SessionLocal()
     try:
+        _bind_job_tenant(db, UUID(job_id))
         job = db.get(Job, UUID(job_id))
         if job is None:
             return

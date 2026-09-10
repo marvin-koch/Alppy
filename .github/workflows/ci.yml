@@ -199,6 +199,38 @@ jobs:
           ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_drift
         run: python scripts/check-schema-drift.py
 
+  row-level-security:
+    name: The database holds the tenant boundary
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: alppy
+          POSTGRES_PASSWORD: alppy
+          POSTGRES_DB: alppy_rls
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        run: pip install -e "apps/api[dev]"
+      # Its own job for the same reason schema-drift has one, and it is the
+      # same blind spot: the unit suite runs on SQLite, which has no roles, no
+      # set_config and no row-level security. It cannot notice a policy that
+      # was never created, a FORCE that was left off — which exempts the owner,
+      # so alembic and the CLI keep working and it looks fine — or a
+      # DSN pointed back at the owning role, which switches the whole
+      # mechanism off with every test still green (D84).
+      - name: Prove a bound tenant cannot read past its school
+        env:
+          ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_rls
+        run: python scripts/check-rls.py
+
   e2e:
     name: E2E and theme screenshots
     runs-on: ubuntu-latest
