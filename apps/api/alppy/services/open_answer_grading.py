@@ -115,6 +115,22 @@ def _fill_for(db: Session, detection: Detection) -> str:
 
 NO_EXPECTED_ANSWER = "No expected answer was given. Work the question out yourself first."
 
+#: Caps on the two free-text fields the model writes into `Detection`.
+#:
+#: Both columns are `Text`, so nothing downstream refuses an answer of any
+#: length: a model that loops on an unreadable box can write a megabyte into a
+#: row the review screen then has to render, and the scan review loads every
+#: detection of a pile at once. The teacher's own correction of the same column
+#: is already bounded — `DetectionCorrection.transcription` is `max_length=4000`
+#: — so these are what stop the machine writing what a person could not.
+#:
+#: A transcription is one handwritten answer box and a reference is one worked
+#: answer; both bounds are far above anything either can honestly hold, which is
+#: why truncating is the right response rather than discarding the row. What
+#: survives is the beginning, which is the part a teacher reads first.
+MAX_TRANSCRIPTION_CHARS = 4000
+MAX_REFERENCE_CHARS = 2000
+
 
 def roster_names(db: Session, scan: Scan) -> list[str] | None:
     """Every name seated in the class this pile was printed for, read here for
@@ -174,7 +190,16 @@ def _settle(
     model: str | None = None,
     reference: str | None = None,
 ) -> None:
-    """Write the machine's reading, once, into both halves of the row."""
+    """Write the machine's reading, once, into both halves of the row.
+
+    The single writer of these columns on the machine's side, and so the one
+    place the caps belong: every path here — a settled verdict, a blank, an
+    ungradeable box — comes through it.
+    """
+    if transcription is not None:
+        transcription = transcription[:MAX_TRANSCRIPTION_CHARS]
+    if reference is not None:
+        reference = reference[:MAX_REFERENCE_CHARS]
     detection.transcription = detection.machine_transcription = transcription
     detection.verdict_correct = detection.machine_verdict_correct = verdict
     detection.outcome = detection.machine_outcome = outcome
@@ -262,7 +287,7 @@ def grade_one(
     # produce one; the teacher's own answer is already on the sheet item.
     reference = None
     if expected is None and data.get("reference"):
-        reference = str(data["reference"]).strip()[:2000] or None
+        reference = str(data["reference"]).strip() or None
     try:
         confidence = float(max(0.0, min(1.0, float(data.get("confidence") or 0.0))))
     except (TypeError, ValueError):

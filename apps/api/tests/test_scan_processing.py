@@ -1226,6 +1226,59 @@ def test_without_an_expected_answer_the_model_works_one_out_and_it_is_kept(
     assert out.answer_text is None and out.reference_answer == "7/8"
 
 
+def test_a_runaway_model_answer_is_cut_before_it_reaches_the_row(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """`Detection.transcription` and `.reference_answer` are `Text`, so the
+    database refuses nothing.
+
+    One box holds a line of a child's handwriting. A model that loops on an
+    unreadable crop answers with kilobytes instead, and the scan review loads
+    every detection of a pile at once — so the cap is what stands between a
+    stuck generation and a review screen that will not open. The teacher's own
+    correction of the same column is bounded at 4000 already; the machine gets
+    no more freedom than the person.
+    """
+    import json
+
+    from alppy.services.open_answer_grading import (
+        MAX_REFERENCE_CHARS,
+        MAX_TRANSCRIPTION_CHARS,
+        grade_open_answers,
+    )
+
+    sheet, exercises, rect = _open_sheet(db, tenant)
+    exercises[1].answer_text = None  # so the model owes us a reference too
+    db.commit()
+    uid = tenant.students[0].uid
+    scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
+
+    provider = _Verdict(
+        json.dumps(
+            {
+                "transcription": "7/8 " * 4000,
+                "written": True,
+                "correct": True,
+                "confidence": 0.9,
+                "reference": "7/8 " * 4000,
+            }
+        )
+    )
+    grade_open_answers(db, storage, _ai_with(provider), scan_id=scan.id)
+
+    detection = _open_detection(db, scan)
+    assert detection.transcription is not None
+    assert len(detection.transcription) == MAX_TRANSCRIPTION_CHARS
+    # Both halves of the split, or the machine's own record outgrows the cap.
+    assert detection.machine_transcription == detection.transcription
+    assert detection.reference_answer is not None
+    assert len(detection.reference_answer) == MAX_REFERENCE_CHARS
+    # Cut, not discarded: the verdict is still the model's, and the beginning of
+    # the reading is the part the teacher looks at first.
+    assert detection.verdict_correct is True
+    assert detection.transcription.startswith("7/8")
+
+
 # --------------------------------------------------------------------------
 # The teacher's barème, through the real pipeline
 # --------------------------------------------------------------------------
