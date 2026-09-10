@@ -1048,8 +1048,9 @@ export interface StudentOut {
   id: Uuid;
   uid: string;
   number: number;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
+  anonymised_at: IsoDateTime | null;
   home_class_code: string;
   class_codes: string[];
 }

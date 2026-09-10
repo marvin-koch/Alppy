@@ -20,6 +20,7 @@ import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery } from '@/lib/api/queries';
 import type { MasteryCell, Uuid } from '@/lib/api/types';
+import { studentSortName } from '@/lib/studentName';
 
 /**
  * Worst first, and `none` is not a weakness — it is the absence of evidence.
@@ -102,7 +103,7 @@ export default function StudentsPage({
         classCodes: s.class_codes,
         homeClassCode: s.home_class_code,
         number: s.number,
-        name: `${s.last_name.toUpperCase()} ${s.first_name}`.trim(),
+        name: studentSortName(s),
         uid: s.uid,
         weakest,
         assessed: assessed.length,

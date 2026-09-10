@@ -147,6 +147,7 @@ def student_out(student: Student) -> StudentOut:
         uid=student.uid,
         number=student.number,
         first_name=student.first_name,
+        anonymised_at=student.person.anonymised_at if student.person else None,
         last_name=student.last_name,
         home_class_code=home,
         class_codes=[home, *others],

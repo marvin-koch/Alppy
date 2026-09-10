@@ -179,6 +179,7 @@ export const students: StudentOut[] = NAMES.map(([first, last], index) => {
     number: index + 1,
     first_name: first,
     last_name: last ?? '',
+    anonymised_at: null,
     home_class_code: home,
     class_codes: visiting ? ['9A', '7B'] : ['7B'],
   };

@@ -398,6 +398,36 @@ def export_student(student_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> Student
     return export_service.student_export(db, scope.school_id, student.person_id)
 
 
+@router.post("/students/{student_id}/anonymise", response_model=StudentOut)
+def anonymise_student(
+    student_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    confirm: Annotated[str, Query(description="the pupil's own uid, typed back")],
+) -> StudentOut:
+    """Answer a parent's erasure request without destroying the evidence.
+
+    The default path, and the one to reach for first. The names go; the uid,
+    the attempts, the snapshots and the notes stay — so a class statistic keeps
+    its shape and a band already shown to somebody does not change underneath
+    them, while the pupil stops being identifiable. `DELETE` below is still
+    there for the cases that genuinely need erasure.
+
+    Same confirmation and same gate as deletion: the pupil's own uid typed
+    back, and the head teacher of their home class. It destroys nothing, but it
+    is irreversible and it is an answer to a request made about a named child.
+
+    Idempotent. A second request for the same pupil is the same request, and
+    re-stamping `anonymised_at` would move a date somebody may already have
+    been shown.
+    """
+    student = svc.get_student(db, scope, student_id)
+    nouns.anonymise_student(db, scope, student, confirm_uid=confirm)
+    db.commit()
+    db.refresh(student)
+    return student_out(student)
+
+
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_student(
     student_id: uuid.UUID,

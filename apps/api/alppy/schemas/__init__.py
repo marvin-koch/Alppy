@@ -85,8 +85,13 @@ class StudentOut(ApiModel):
     id: uuid.UUID
     uid: str
     number: int
-    first_name: str
-    last_name: str
+    #: NULL on an anonymised pupil. A client rendering a roster must fall back
+    #: to `uid`, which is retained on purpose and is what the paper carries.
+    first_name: str | None
+    last_name: str | None
+    #: When a parent's erasure request was answered. The evidence behind this
+    #: pupil is intact; the person is no longer identifiable.
+    anonymised_at: datetime | None = None
     #: The class that MINTED `uid` and `number`. A pupil has exactly one, and
     #: it is the one the printed identifier comes from (D69, I-platform-09).
     home_class_code: str = ""

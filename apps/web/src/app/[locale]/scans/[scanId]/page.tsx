@@ -45,6 +45,7 @@ import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { badgeVariant } from '@/lib/detectionOutcome';
 import { useFormatters } from '@/lib/format';
+import { studentName } from '@/lib/studentName';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -509,7 +510,7 @@ function PageCard({
   onSelect: (id: Uuid) => void;
   onCorrect: (detectionId: Uuid, body: DetectionCorrection) => void;
   registerRow: (id: Uuid, el: HTMLLIElement | null) => void;
-  students: { id: Uuid; uid: string; first_name: string; last_name: string }[];
+  students: { id: Uuid; uid: string; first_name: string | null; last_name: string | null }[];
 }) {
   const t = useTranslations('scans');
   const tc = useTranslations('common');
@@ -574,7 +575,7 @@ function PageCard({
                 <option value="">{t('chooseStudent')}</option>
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.uid} — {s.first_name} {s.last_name}
+                    {s.uid} — {studentName(s)}
                   </option>
                 ))}
               </Select>

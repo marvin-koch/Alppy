@@ -25,6 +25,7 @@ in this school (D77).
 from __future__ import annotations
 
 import uuid
+from datetime import UTC, datetime
 
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
@@ -361,6 +362,60 @@ def rename_student(
         if not cleaned:
             raise errors.unprocessable("a pupil needs a last name")
         student.last_name = cleaned
+    db.flush()
+    return student
+
+
+def anonymise_student(db: Session, scope: Scope, student: Student, *, confirm_uid: str) -> Student:
+    """Answer a parent's erasure request without destroying the evidence.
+
+    The names go; the uid, the attempts, the snapshots and the notes stay. A
+    class statistic keeps its shape, so a band already shown to somebody does
+    not silently change underneath them, and the pupil stops being
+    identifiable. `delete_student` below is still there for the cases that
+    genuinely need erasure rather than anonymisation.
+
+    Names live in TWO places since 0028 — `Person`, which is the durable
+    identity, and a copy on each year's `Student` row — so both go, or the
+    name is still on every roster and every printed sheet's instance list.
+
+    Same gate and same confirmation as deletion: the head teacher of the home
+    class, and the pupil's own uid typed back. It is not a destructive
+    operation, but it is an irreversible one, and it answers a request made
+    about a named child — a caller firing at the wrong row must fail rather
+    than anonymise the wrong pupil.
+    """
+    if confirm_uid != student.uid:
+        raise errors.unprocessable(
+            "confirmation does not match this pupil's identifier",
+            expected=student.uid,
+        )
+    from alppy.services.class_service import get_class
+
+    home = get_class(db, scope, student.home_class_id)
+    if home.head_teacher_id != scope.teacher_id:
+        raise errors.not_found("student", id=str(student.id))
+
+    person = db.get(Person, student.person_id)
+    if person is None:  # pragma: no cover - FK guarantees presence
+        raise errors.not_found("student", id=str(student.id))
+
+    # Already answered. Not an error: a second request for the same child is
+    # the same request, and re-stamping it would move the date on a record
+    # somebody may already have been shown.
+    if person.anonymised_at is None:
+        person.first_name = None
+        person.last_name = None
+        person.anonymised_at = datetime.now(UTC)
+
+    # Every year, not just the one asked about: the request is about the
+    # child, and a name left on last year's row is a name left.
+    for row in db.execute(
+        select(Student).where(Student.person_id == person.id)
+    ).scalars():
+        row.first_name = None
+        row.last_name = None
+
     db.flush()
     return student
 

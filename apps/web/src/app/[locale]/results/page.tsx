@@ -21,6 +21,7 @@ import { useFormatters } from '@/lib/format';
 import { aggregatePoints, pointsRatio, type PointsSummary } from '@/lib/points';
 import { CompetenceThemeFilter } from '@/components/CompetenceThemeFilter';
 import { useScope } from '@/lib/scope';
+import { studentNameParts } from '@/lib/studentName';
 
 /** The synthetic right-hand column: everything so far, added up. */
 const TOTAL_COLUMN = '__total__';
@@ -91,8 +92,7 @@ export default function ResultsPage() {
     () =>
       (students.data ?? []).map((student) => ({
         id: student.id,
-        firstName: student.first_name,
-        lastName: student.last_name,
+        ...studentNameParts(student),
       })),
     [students.data],
   );

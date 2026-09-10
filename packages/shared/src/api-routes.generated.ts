@@ -95,6 +95,7 @@ export const API_ROUTES = [
   'POST /api/v1/sheets/{sheet_id}/render',
   'POST /api/v1/sources',
   'POST /api/v1/sources/{source_id}/sections/{section_id}/extract',
+  'POST /api/v1/students/{student_id}/anonymise',
   'POST /api/v1/subjects',
   'PUT /api/v1/classes/{class_id}/subjects',
 ] as const;

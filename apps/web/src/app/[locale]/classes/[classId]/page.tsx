@@ -32,6 +32,7 @@ import {
 import { useScope } from '@/lib/scope';
 import { useClassSubject } from '@/lib/use-class-subject';
 import { useBandLabels, useBandHelp } from '@/lib/bands';
+import { studentNameParts } from '@/lib/studentName';
 
 export default function ClassPage({
   params,
@@ -310,8 +311,7 @@ export default function ClassPage({
               <MasteryMatrix
                 students={rows.map((s) => ({
                   id: s.id,
-                  firstName: s.first_name,
-                  lastName: s.last_name,
+                  ...studentNameParts(s),
                 }))}
                 competencies={competencies.map((c) => ({
                   id: c.id,

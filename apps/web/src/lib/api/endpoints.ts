@@ -197,6 +197,20 @@ export const createRoster = (classId: Uuid, body: RosterCreate) =>
 export const exportStudent = (studentId: Uuid) =>
   apiRequest<StudentExportOut>(`/students/${studentId}/export`);
 
+/**
+ * Answer a parent's erasure request without destroying the evidence.
+ *
+ * The default path, and the one to offer first. The names go; the uid, the
+ * attempts and the notes stay, so the class statistics keep their shape and a
+ * band already shown to somebody does not change underneath them. `confirm`
+ * is the pupil's own uid, exactly as `deleteStudent` demands it.
+ */
+export const anonymiseStudent = (studentId: Uuid, confirmUid: string) =>
+  apiRequest<StudentOut>(`/students/${studentId}/anonymise`, {
+    method: 'POST',
+    query: { confirm: confirmUid },
+  });
+
 /** Seat an existing pupil in another of this teacher's classes. Idempotent,
  *  and it never touches their uid — that came from their home class (D69). */
 export const enrollStudent = (classId: Uuid, studentId: Uuid) =>

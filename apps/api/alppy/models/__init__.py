@@ -461,13 +461,16 @@ class Person(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "person"
 
     id: Mapped[uuid.UUID] = _pk()
-    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # NULLABLE since 0032, which is what anonymisation means here: the names
+    # go and nothing else does. A placeholder would have been a value in a
+    # name column that every reader has to be told the meaning of; NULL says
+    # "there is no name here" in the only way a database can.
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
     # A parent's erasure request, answered by anonymisation: the names go, the
     # uid and the pedagogical record stay, so a class statistic does not change
-    # shape underneath a band already shown to somebody. Nothing writes it yet
-    # — the endpoint is H5's, in Phase 4 — and the column is here now because
-    # this is the migration that creates the row it belongs on.
+    # shape underneath a band already shown to somebody. This is the fact a
+    # screen reads — a null name is the consequence, this is the intent.
     anonymised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
@@ -505,8 +508,12 @@ class Student(Base, TimestampMixin, SchoolScopedMixin):
     school_year_id: Mapped[uuid.UUID] = _fk("school_year.id")
     uid: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
-    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
-    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # Also nullable, and it has to be: 0028 left a copy of the names on the
+    # year-bound row, so anonymising only `person` would leave the name on
+    # every roster and every printed sheet's instance list. Both go together
+    # or neither does.
+    first_name: Mapped[str | None] = mapped_column(String(100))
+    last_name: Mapped[str | None] = mapped_column(String(100))
 
     person: Mapped[Person] = relationship()
     home_class: Mapped[Class] = relationship(back_populates="home_students")

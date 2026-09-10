@@ -9,6 +9,7 @@ import { LockedValue } from '@/components/LockedValue';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import { useDeleteStudent, useUpdateStudent } from '@/lib/api/queries';
 import type { StudentOut, Uuid } from '@/lib/api/types';
+import { studentName } from '@/lib/studentName';
 
 /**
  * Correct a pupil's name, or destroy them.
@@ -36,14 +37,17 @@ export function StudentEditor({
   const tc = useTranslations('common');
   const tcode = useTranslations('errors.code');
 
-  const [firstName, setFirstName] = useState(student.first_name);
-  const [lastName, setLastName] = useState(student.last_name);
+  // `?? ''` and not `?? uid`: these are the EDIT fields. An anonymised pupil
+  // opens with them empty, which is what the record says — offering the uid
+  // here would invite a teacher to save it back as a name.
+  const [firstName, setFirstName] = useState(student.first_name ?? '');
+  const [lastName, setLastName] = useState(student.last_name ?? '');
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const update = useUpdateStudent();
   const remove = useDeleteStudent();
-  const name = `${student.first_name} ${student.last_name}`;
+  const name = studentName(student);
 
   async function save(event: React.FormEvent) {
     event.preventDefault();

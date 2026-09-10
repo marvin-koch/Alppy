@@ -303,6 +303,11 @@ def _get_or_create_students(
     roster: list[tuple[str, str]] | None = None,
 ) -> dict[str, Student]:
     """Keyed by first name, which is how the simulated history refers to them."""
+    # An anonymised pupil has no first name (0032) and so cannot be referred
+    # to by one. The seed only ever creates named rows, so this skips nothing
+    # it wrote — it is here because the column may now be null and a map keyed
+    # on it must say what it does with that rather than carry a `None` key
+    # into the history simulation.
     existing = {
         s.first_name: s
         for s in db.scalars(
@@ -310,6 +315,7 @@ def _get_or_create_students(
             .where(Student.school_id == school.id)
             .where(Student.home_class_id == school_class.id)
         )
+        if s.first_name is not None
     }
     for number, (first, last) in enumerate(roster or DEMO_ROSTER, start=1):
         if first in existing:

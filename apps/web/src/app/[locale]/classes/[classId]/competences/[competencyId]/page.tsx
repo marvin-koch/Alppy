@@ -20,6 +20,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery, useCurriculumTree } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useClassSubject } from '@/lib/use-class-subject';
+import { studentSortName } from '@/lib/studentName';
 
 /**
  * One Competence, for one class.
@@ -71,7 +72,7 @@ export default function CompetencePage({
     );
     return (students ?? []).map((s) => ({
       id: s.id,
-      name: `${s.last_name.toUpperCase()} ${s.first_name}`.trim(),
+      name: studentSortName(s),
       uid: s.uid,
       cell: byStudent.get(s.id) ?? null,
     }));
