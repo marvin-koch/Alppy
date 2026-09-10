@@ -46,6 +46,7 @@ export const API_ROUTES = [
   'GET /api/v1/sources/{source_id}/sections',
   'GET /api/v1/sources/{source_id}/status',
   'GET /api/v1/students/{student_id}/competencies/{competency_id}/attempts',
+  'GET /api/v1/students/{student_id}/export',
   'GET /api/v1/students/{student_id}/mastery',
   'GET /api/v1/students/{student_id}/sheets/{sheet_id}',
   'GET /api/v1/subjects',

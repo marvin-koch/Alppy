@@ -57,6 +57,7 @@ import type {
   LocalisedText,
   SourceOut,
   SourceSectionOut,
+  StudentExportOut,
   StudentOut,
   SheetMasteryOut,
   StudentProfileOut,
@@ -184,6 +185,17 @@ export const listStudents = (classId: Uuid, on?: string) =>
 
 export const createRoster = (classId: Uuid, body: RosterCreate) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students`, { method: 'POST', body });
+
+/**
+ * Everything the school holds about one pupil, in one document.
+ *
+ * A parent may ask, and a school leaving Alppy has to be able to take it. It
+ * spans every year: `Person` is the durable identity and a `Student` row is
+ * one year's enrolment, so a pupil who repeated has two enrolments and one
+ * continuous record behind them.
+ */
+export const exportStudent = (studentId: Uuid) =>
+  apiRequest<StudentExportOut>(`/students/${studentId}/export`);
 
 /** Seat an existing pupil in another of this teacher's classes. Idempotent,
  *  and it never touches their uid — that came from their home class (D69). */

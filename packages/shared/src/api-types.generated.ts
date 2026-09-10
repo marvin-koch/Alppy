@@ -495,6 +495,45 @@ export interface ExerciseUpdate {
   approved?: boolean | null;
 }
 
+/** One answer, as it was recorded. The evidence, not the band over it. */
+export interface ExportAttempt {
+  answered_at: IsoDateTime;
+  exercise_id: Uuid;
+  competency_codes: string[];
+  correct: boolean;
+  score: number;
+  difficulty: number;
+  sheet_id: Uuid | null;
+  sheet_title: string | null;
+}
+
+/** One year's enrolment record. A pupil has one per year they were here. */
+export interface ExportEnrolment {
+  student_id: Uuid;
+  uid: string;
+  number: number | null;
+  class_id: Uuid | null;
+  class_code: string | null;
+  school_year: string | null;
+  is_home_class: boolean;
+  valid_from: string | null;
+  valid_to: string | null;
+}
+
+/**
+ * A misconception note. Free text a teacher or a model wrote ABOUT the
+ * child, which is the most sensitive thing in the record and the reason the
+ * export exists as more than a list of marks.
+ */
+export interface ExportNote {
+  created_at: IsoDateTime;
+  subject_id: Uuid;
+  language: string;
+  notes: string[];
+  based_on_sheet_id: Uuid | null;
+  approved_at: IsoDateTime | null;
+}
+
 /** The only way a generated note becomes printable. */
 export interface FeedbackApproveRequest {
   feedback_ids: Uuid[];
@@ -975,6 +1014,33 @@ export interface StudentCreate {
   first_name: string;
   last_name: string;
   number?: number | null;
+}
+
+/**
+ * Everything this establishment holds about one pupil, in one document.
+ *
+ * A parent may ask what is held; a school leaving Alppy has to be able to
+ * take it. Before this the only way out of the product was the destructive
+ * one, which is a poor answer to "what do you have on my child".
+ *
+ * Spans every year: the durable identity is `Person`, and `Student` is one
+ * year's enrolment record (0028). A pupil who repeats a year has two
+ * enrolments and one continuous record of evidence.
+ *
+ * Mastery snapshots are deliberately NOT here. They are recomputed from the
+ * attempts below — the score decays, so a snapshot is a photograph of a
+ * calculation and not an independent fact about the child. Exporting them
+ * would imply the school holds two things where it holds one.
+ */
+export interface StudentExportOut {
+  generated_at: IsoDateTime;
+  person_id: Uuid;
+  first_name: string | null;
+  last_name: string | null;
+  anonymised_at: IsoDateTime | null;
+  enrolments: ExportEnrolment[];
+  attempts: ExportAttempt[];
+  notes: ExportNote[];
 }
 
 export interface StudentOut {

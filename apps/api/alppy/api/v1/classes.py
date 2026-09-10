@@ -24,13 +24,14 @@ from alppy.schemas import (
     SchoolOut,
     SchoolUpdate,
     SchoolYearOut,
+    StudentExportOut,
     StudentOut,
     StudentUpdate,
     SubjectCreate,
     SubjectOut,
     SubjectUpdate,
 )
-from alppy.services import class_out, school_out, student_out, subject_out
+from alppy.services import class_out, export_service, school_out, student_out, subject_out
 from alppy.services import class_service as svc
 from alppy.services import nouns_service as nouns
 
@@ -375,6 +376,26 @@ def update_student(
     )
     db.commit()
     return student_out(student)
+
+
+@router.get("/students/{student_id}/export", response_model=StudentExportOut)
+def export_student(student_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> StudentExportOut:
+    """Everything held about one pupil, in one document.
+
+    A parent may ask what is held, and a school leaving Alppy has to be able to
+    take it. Until now the only route out of the product was `DELETE`, which
+    answers "what do you have on my child" with "nothing, now" (audit 02, H8).
+
+    Reads across every year the pupil has been here: `Person` is the durable
+    identity and `Student` one year's enrolment record, so a pupil who repeated
+    a year has two enrolments and one continuous record behind them (0028).
+
+    Gated exactly like the destructive route below — `get_student` — so a
+    teacher who can erase a pupil can read what they would be erasing, and
+    nobody else can do either.
+    """
+    student = svc.get_student(db, scope, student_id)
+    return export_service.student_export(db, scope.school_id, student.person_id)
 
 
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)

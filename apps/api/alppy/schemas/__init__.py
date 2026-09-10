@@ -129,6 +129,73 @@ class ColleagueOut(ApiModel):
     last_name: str
 
 
+class ExportEnrolment(ApiModel):
+    """One year's enrolment record. A pupil has one per year they were here."""
+
+    student_id: uuid.UUID
+    uid: str
+    number: int | None
+    class_id: uuid.UUID | None
+    class_code: str | None
+    school_year: str | None
+    is_home_class: bool
+    valid_from: date | None
+    valid_to: date | None
+
+
+class ExportAttempt(ApiModel):
+    """One answer, as it was recorded. The evidence, not the band over it."""
+
+    answered_at: datetime
+    exercise_id: uuid.UUID
+    competency_codes: list[str] = []
+    correct: bool
+    score: float
+    difficulty: int
+    sheet_id: uuid.UUID | None
+    sheet_title: str | None
+
+
+class ExportNote(ApiModel):
+    """A misconception note. Free text a teacher or a model wrote ABOUT the
+    child, which is the most sensitive thing in the record and the reason the
+    export exists as more than a list of marks."""
+
+    created_at: datetime
+    subject_id: uuid.UUID
+    language: str
+    notes: list[str] = []
+    based_on_sheet_id: uuid.UUID | None
+    approved_at: datetime | None
+
+
+class StudentExportOut(ApiModel):
+    """Everything this establishment holds about one pupil, in one document.
+
+    A parent may ask what is held; a school leaving Alppy has to be able to
+    take it. Before this the only way out of the product was the destructive
+    one, which is a poor answer to "what do you have on my child".
+
+    Spans every year: the durable identity is `Person`, and `Student` is one
+    year's enrolment record (0028). A pupil who repeats a year has two
+    enrolments and one continuous record of evidence.
+
+    Mastery snapshots are deliberately NOT here. They are recomputed from the
+    attempts below — the score decays, so a snapshot is a photograph of a
+    calculation and not an independent fact about the child. Exporting them
+    would imply the school holds two things where it holds one.
+    """
+
+    generated_at: datetime
+    person_id: uuid.UUID
+    first_name: str | None
+    last_name: str | None
+    anonymised_at: datetime | None
+    enrolments: list[ExportEnrolment] = []
+    attempts: list[ExportAttempt] = []
+    notes: list[ExportNote] = []
+
+
 class SchoolYearOut(ApiModel):
     """One school year of this establishment.
 
