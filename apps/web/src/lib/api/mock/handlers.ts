@@ -342,6 +342,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   /* ---------------------------------------------------------- home --- */
   if (method === 'GET' && path === '/home') return { ...fx.home, teacher: state.teacher };
   if (method === 'GET' && path === '/classes') return state.classes;
+  if (method === 'GET' && path === '/school-years') return fx.schoolYears;
   if (method === 'GET' && path === '/subjects') return fx.subjects;
   if (method === 'GET' && path === '/chapters') return fx.chapters;
   if (method === 'GET' && path === '/timeline') return fx.timeline;

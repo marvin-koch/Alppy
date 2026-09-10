@@ -202,12 +202,19 @@ export function useUpdatePreferences(): UseMutationResult<
 
 /* --------------------------------------------------------------- home --- */
 export function useHome(): UseQueryResult<HomeOut> {
-  return useQuery({ queryKey: queryKeys.home, queryFn: api.getHome });
+  // Wrapped, not passed bare: `getHome` now takes an optional school year, and
+  // react-query calls `queryFn` with its own context object — which would
+  // arrive as that argument and go out as `?school_year_id=[object Object]`.
+  return useQuery({ queryKey: queryKeys.home, queryFn: () => api.getHome() });
 }
 
 /* ------------------------------------------------------------ classes --- */
 export function useClasses(enabled = true): UseQueryResult<ClassOut[]> {
-  return useQuery({ queryKey: queryKeys.classes, queryFn: api.listClasses, enabled });
+  return useQuery({
+    queryKey: queryKeys.classes,
+    queryFn: () => api.listClasses(),
+    enabled,
+  });
 }
 
 export function useCreateClass(): UseMutationResult<ClassOut, Error, ClassCreate> {

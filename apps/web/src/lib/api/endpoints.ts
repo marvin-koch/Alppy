@@ -52,6 +52,7 @@ import type {
   SheetProposeResponse,
   SheetUpdate,
   SchoolOut,
+  SchoolYearOut,
   LocalisedText,
   SourceOut,
   SourceSectionOut,
@@ -148,10 +149,21 @@ export const updatePreferences = (body: Partial<TeacherPreferences>) =>
   apiRequest<TeacherOut>('/teachers/me/preferences', { method: 'PATCH', body });
 
 /* --------------------------------------------------------------- home --- */
-export const getHome = () => apiRequest<HomeOut>('/home');
+export const getHome = (schoolYearId?: Uuid) =>
+  apiRequest<HomeOut>('/home', { query: { school_year_id: schoolYearId } });
+
+/* ------------------------------------------------- the school's years --- */
+/**
+ * The years this establishment has run, newest first.
+ *
+ * The discovery route for every `school_year_id` filter below: an id has to
+ * come from somewhere, and a client cannot guess one.
+ */
+export const listSchoolYears = () => apiRequest<SchoolYearOut[]>('/school-years');
 
 /* ------------------------------------------------------------ classes --- */
-export const listClasses = () => apiRequest<ClassOut[]>('/classes');
+export const listClasses = (schoolYearId?: Uuid) =>
+  apiRequest<ClassOut[]>('/classes', { query: { school_year_id: schoolYearId } });
 
 export const createClass = (body: ClassCreate) =>
   apiRequest<ClassOut>('/classes', { method: 'POST', body });
@@ -161,8 +173,13 @@ export const getClass = (classId: Uuid) => apiRequest<ClassOut>(`/classes/${clas
 export const addStudents = (classId: Uuid, body: RosterCreate) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students`, { method: 'POST', body });
 
-export const listStudents = (classId: Uuid) =>
-  apiRequest<StudentOut[]>(`/classes/${classId}/students`);
+/**
+ * Who sits in this class. `on` (an ISO date) reads the roster as it stood that
+ * day instead of today — the enrolment rows are time-bound, so the group that
+ * sat a sheet in October is not necessarily the group sitting there now.
+ */
+export const listStudents = (classId: Uuid, on?: string) =>
+  apiRequest<StudentOut[]>(`/classes/${classId}/students`, { query: { on } });
 
 export const createRoster = (classId: Uuid, body: RosterCreate) =>
   apiRequest<StudentOut[]>(`/classes/${classId}/students`, { method: 'POST', body });
@@ -305,11 +322,15 @@ export const getSheet = (sheetId: Uuid) => apiRequest<SheetOut>(`/sheets/${sheet
 
 /** Every sheet the teacher has built. Without this a sheet was reachable only
  *  by the redirect that follows creating it. */
-export const listSheets = (classId?: Uuid, subjectId?: Uuid) =>
-  apiRequest<SheetOut[]>('/sheets', { query: { class_id: classId, subject_id: subjectId } });
+export const listSheets = (classId?: Uuid, subjectId?: Uuid, schoolYearId?: Uuid) =>
+  apiRequest<SheetOut[]>('/sheets', {
+    query: { class_id: classId, subject_id: subjectId, school_year_id: schoolYearId },
+  });
 
-export const listScans = (sheetId?: Uuid) =>
-  apiRequest<ScanOut[]>('/scans', { query: { sheet_id: sheetId } });
+export const listScans = (sheetId?: Uuid, schoolYearId?: Uuid) =>
+  apiRequest<ScanOut[]>('/scans', {
+    query: { sheet_id: sheetId, school_year_id: schoolYearId },
+  });
 
 export const renderSheet = (sheetId: Uuid) =>
   apiRequest<JobOut>(`/sheets/${sheetId}/render`, { method: 'POST' });
@@ -342,9 +363,15 @@ export const correctDetection = (scanId: Uuid, detectionId: Uuid, body: Detectio
 export const assignScanPage = (scanId: Uuid, pageId: Uuid, body: ScanPageAssign) =>
   apiRequest<ScanPageOut>(`/scans/${scanId}/pages/${pageId}`, { method: 'PATCH', body });
 
-/** Who this scan's pages may be assigned to: the sheet's own class, nobody else. */
-export const listScanStudents = (scanId: Uuid) =>
-  apiRequest<StudentOut[]>(`/scans/${scanId}/students`);
+/**
+ * Who this scan's pages may be assigned to: the sheet's own class, nobody else.
+ *
+ * The server reads that roster as of the day the SHEET was made, which is the
+ * right guess. `on` overrides it when the guess is wrong — composed in
+ * September, sat in November, by a group that changed in between.
+ */
+export const listScanStudents = (scanId: Uuid, on?: string) =>
+  apiRequest<StudentOut[]>(`/scans/${scanId}/students`, { query: { on } });
 
 /** Take a page out of the pile, or put it back. */
 export const discardScanPage = (scanId: Uuid, pageId: Uuid, body: ScanPageDiscard) =>
@@ -369,14 +396,20 @@ export const revertDetection = (scanId: Uuid, detectionId: Uuid) =>
 /* ------------------------------------------------------------ reports --- */
 export const getClassPoints = (
   classId: Uuid,
-  options: { subjectId?: Uuid; chapterId?: Uuid } = {},
+  options: { subjectId?: Uuid; chapterId?: Uuid; asOf?: string } = {},
 ) =>
   apiRequest<ClassPointsOut>(`/classes/${classId}/points`, {
-    query: { subject_id: options.subjectId, chapter_id: options.chapterId },
+    query: {
+      subject_id: options.subjectId,
+      chapter_id: options.chapterId,
+      as_of: options.asOf,
+    },
   });
 
-export const getStudentSheet = (studentId: Uuid, sheetId: Uuid) =>
-  apiRequest<StudentSheetOut>(`/students/${studentId}/sheets/${sheetId}`);
+export const getStudentSheet = (studentId: Uuid, sheetId: Uuid, asOf?: string) =>
+  apiRequest<StudentSheetOut>(`/students/${studentId}/sheets/${sheetId}`, {
+    query: { as_of: asOf },
+  });
 
 export const getSheetConfidence = (sheetId: Uuid) =>
   apiRequest<SheetConfidenceOut>(`/sheets/${sheetId}/confidence`);
@@ -391,20 +424,27 @@ export const getSheetConfidence = (sheetId: Uuid) =>
  */
 export const getClassTree = (
   classId: Uuid,
-  options: { subjectId?: Uuid; studentId?: Uuid } = {},
+  options: { subjectId?: Uuid; studentId?: Uuid; asOf?: string } = {},
 ) =>
   apiRequest<ClassTreeOut>(`/classes/${classId}/tree`, {
-    query: { subject_id: options.subjectId, student_id: options.studentId },
+    query: {
+      subject_id: options.subjectId,
+      student_id: options.studentId,
+      as_of: options.asOf,
+    },
   });
 
 export const getClassMastery = (
   classId: Uuid,
-  options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {},
+  options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort; asOf?: string } = {},
 ) =>
   apiRequest<MasteryMatrixOut>(`/classes/${classId}/mastery`, {
     query: {
       subject_id: options.subjectId,
       chapter_id: options.chapterId,
+      // An ISO instant. The matrix computed as it stood then — the roster
+      // moves with it, so this is October's group and not today's.
+      as_of: options.asOf,
       // 'roster' is the server default; omitting it keeps the URL (and the
       // react-query key) stable for the unfiltered case.
       sort: options.sort === 'weakest' ? 'weakest' : undefined,
@@ -413,15 +453,22 @@ export const getClassMastery = (
 
 /** One sheet's band per pupil, plus the class roll-up. Works unchanged on an
  *  adaptive batch: `Sheet.target` never enters the arithmetic (D72). */
-export const getSheetMastery = (sheetId: Uuid) =>
-  apiRequest<SheetMasteryOut>(`/sheets/${sheetId}/mastery`);
+export const getSheetMastery = (sheetId: Uuid, asOf?: string) =>
+  apiRequest<SheetMasteryOut>(`/sheets/${sheetId}/mastery`, { query: { as_of: asOf } });
 
-export const getStudentMastery = (studentId: Uuid) =>
-  apiRequest<StudentProfileOut>(`/students/${studentId}/mastery`);
+export const getStudentMastery = (studentId: Uuid, asOf?: string) =>
+  apiRequest<StudentProfileOut>(`/students/${studentId}/mastery`, {
+    query: { as_of: asOf },
+  });
 
-export const getCompetencyAttempts = (studentId: Uuid, competencyId: Uuid) =>
+export const getCompetencyAttempts = (
+  studentId: Uuid,
+  competencyId: Uuid,
+  asOf?: string,
+) =>
   apiRequest<CompetencyAttemptsOut>(
     `/students/${studentId}/competencies/${competencyId}/attempts`,
+    { query: { as_of: asOf } },
   );
 
 /* ----------------------------------------------------------- adaptive --- */

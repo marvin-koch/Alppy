@@ -22,6 +22,7 @@ import type {
   MasteryBandKey,
   MasteryMatrixOut,
   ScanOut,
+  SchoolYearOut,
   SheetMasteryOut,
   SheetOut,
   SheetTaken,
@@ -112,11 +113,30 @@ export const classTeachers: Record<string, ClassTeacherOut[]> = {
   ],
 };
 
+/** The years this mock establishment has run, newest first. */
+export const schoolYears: SchoolYearOut[] = [
+  {
+    id: id(30),
+    label: '2026/27',
+    starts_on: '2026-08-01',
+    ends_on: '2027-07-31',
+    is_current: true,
+  },
+  {
+    id: id(31),
+    label: '2025/26',
+    starts_on: '2025-08-01',
+    ends_on: '2026-07-31',
+    is_current: false,
+  },
+];
+
 export const classes: ClassOut[] = [
   {
     id: id(20),
     code: '7B',
     label: 'Classe de Mme Fontaine',
+    school_year_id: id(30),
     student_count: 18,
     subject_ids: [id(10), id(11)],
     declared_subject_ids: [id(11), id(10), id(12)],
@@ -128,6 +148,7 @@ export const classes: ClassOut[] = [
     id: id(21),
     code: '9A',
     label: null,
+    school_year_id: id(30),
     student_count: 21,
     subject_ids: [id(10)],
     declared_subject_ids: [id(10)],
