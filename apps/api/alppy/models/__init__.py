@@ -1613,6 +1613,20 @@ class Job(Base, TimestampMixin, SchoolScopedMixin):
     started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
+    # Whose work this is and what it is for. Columns rather than keys read back
+    # out of `payload`: a job was tenant-grained only, so the in-flight guard on
+    # `/adaptive/propose` matched a colleague's run and handed back their job,
+    # and `/adaptive/proposal/{job_id}` then served their per-pupil plan to
+    # anyone in the school (audit 02, C1). Nullable because most kinds are not
+    # about one class — a source ingest belongs to the staffroom corpus.
+    class_id: Mapped[uuid.UUID | None] = _fk("class.id", nullable=True)
+    subject_id: Mapped[uuid.UUID | None] = _fk("subject.id", nullable=True)
+    # SET NULL, not CASCADE: a teacher leaving the school must not take the
+    # audit trail of the work they queued with them.
+    created_by_id: Mapped[uuid.UUID | None] = _fk(
+        "teacher.id", nullable=True, ondelete="SET NULL"
+    )
+
 
 __all__ = [
     "UNFILED_CHAPTER_KEY",

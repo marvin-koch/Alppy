@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, login, make_exercise
 
-from alppy.models import Exercise
+from alppy.models import AdaptiveProposal, Exercise
 
 
 def _proposal(exercise: Exercise) -> dict[str, Any]:
@@ -116,6 +116,92 @@ def test_another_schools_proposal_is_not_readable(
     job_id = mine.json()["id"]
 
     login(client, other_tenant.teacher.email)
+    assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 404
+
+
+def test_a_colleagues_run_does_not_answer_my_click(
+    client: TestClient, tenant: Tenant, colleague: Tenant
+) -> None:
+    """Two teachers, two classes, one school.
+
+    The in-flight guard matched on the school, the kind and the status alone,
+    so the second teacher to click while a colleague's proposal ran was handed
+    the colleague's job id — for a class they may not even teach. The guard is
+    keyed on the class, the branch and the teacher now, because the payload
+    carries `items_per_student`, `group`, `n_groups` and `language`: sharing a
+    run silently answers one teacher's request with another's parameters
+    (audit 02, C1).
+    """
+    login(client, tenant.teacher.email)
+    mine = client.post(
+        "/api/v1/adaptive/propose",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "items_per_student": 4,
+        },
+    )
+    if mine.status_code == 503:
+        pytest.skip("adaptive planning is not installed in this build")
+
+    login(client, colleague.teacher.email)
+    theirs = client.post(
+        "/api/v1/adaptive/propose",
+        json={
+            "class_id": str(colleague.school_class.id),
+            "subject_id": str(colleague.subject.id),
+            "items_per_student": 8,
+        },
+    )
+    assert theirs.status_code == 202
+    assert theirs.json()["id"] != mine.json()["id"], (
+        "the colleague was handed the job running for another class"
+    )
+
+
+def test_a_colleague_cannot_read_my_classs_proposal(
+    client: TestClient, db: Session, tenant: Tenant, colleague: Tenant
+) -> None:
+    """A proposal names which children are behind, on what, and what each of
+    them should do next. `read_proposal` checked the school and nothing else,
+    so any member of the staffroom could read any class's plan by asking for
+    the job id (audit 02, C1)."""
+    login(client, tenant.teacher.email)
+    mine = client.post(
+        "/api/v1/adaptive/propose",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "items_per_student": 4,
+        },
+    )
+    if mine.status_code == 503:
+        pytest.skip("adaptive planning is not installed in this build")
+    job_id = uuid.UUID(mine.json()["id"])
+
+    db.add(
+        AdaptiveProposal(
+            id=uuid.uuid4(),
+            school_id=tenant.school.id,
+            job_id=job_id,
+            payload={
+                "plans": [],
+                "language": "fr",
+                "grouped_by_model": False,
+                "generated_count": 0,
+                "needs_approval": True,
+                "groups": [],
+            },
+        )
+    )
+    db.commit()
+
+    # The teacher whose class it is reads it.
+    assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 200
+
+    # The colleague down the corridor does not, and it reads as missing rather
+    # than forbidden: the response must not confirm the job id exists.
+    login(client, colleague.teacher.email)
     assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 404
 
 

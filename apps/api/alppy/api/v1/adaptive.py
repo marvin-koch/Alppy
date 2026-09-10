@@ -113,12 +113,22 @@ def propose(
             Job.school_id == scope.school_id,
             Job.kind == JobKind.PROPOSE_ADAPTIVE,
             Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            Job.class_id == school_class.id,
+            Job.subject_id == payload.subject_id,
+            Job.created_by_id == scope.teacher_id,
         )
     ).first()
     if running is not None:
         # Not an error. The second click wanted the thing the first one is
         # already doing, and starting a second run would write a second set of
         # unapproved exercises for the same class.
+        #
+        # Keyed on the teacher as well as the class and the branch, because the
+        # payload below carries `items_per_student`, `group`, `n_groups`,
+        # `source_sheet_id` and `language`. Matching on the school alone handed
+        # a co-teacher the job their colleague had started, built to their
+        # colleague's parameters — they asked for eight items in three groups
+        # and silently got five ungrouped (audit 02, C1).
         return job_out(running)
 
     job = Job(
@@ -128,6 +138,9 @@ def propose(
         status=JobStatus.QUEUED,
         progress=0.0,
         message="queued for adaptive planning",
+        class_id=school_class.id,
+        subject_id=payload.subject_id,
+        created_by_id=scope.teacher_id,
         payload={
             "class_id": str(payload.class_id),
             "subject_id": str(payload.subject_id),
@@ -168,6 +181,13 @@ def read_proposal(
     job = db.get(Job, job_id)
     if job is None or job.school_id != scope.school_id:
         raise errors.not_found("job", ids=[str(job_id)])
+    # Tenancy is not the boundary here: a proposal names which children are
+    # behind, on what, and what each of them should do next. Gate on the class
+    # the job was queued for, through the same call `propose` makes — a
+    # colleague's proposal reads as missing, never as forbidden (audit 02, C1).
+    if job.class_id is None:
+        raise errors.not_found("proposal", ids=[str(job_id)])
+    get_class(db, scope, job.class_id)
 
     row = db.scalars(
         select(AdaptiveProposal).where(
@@ -375,7 +395,9 @@ def list_feedback(
     """Every live note written from one common sheet, newest per student."""
     from sqlalchemy import select
 
-    sheet_svc.get_sheet(db, scope, source_sheet_id)  # tenancy check
+    # REPORT: listing notes already written from this sheet. Generating a
+    # new one (`generate_feedback`) bills a model call and stays a gate.
+    sheet_svc.get_sheet_for_read(db, scope, source_sheet_id)  # tenancy check
     rows = list(
         db.scalars(
             select(MisconceptionNote)
