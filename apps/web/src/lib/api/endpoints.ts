@@ -17,9 +17,10 @@ import type {
   ColleagueOut,
   ClassPointsOut,
   CompetencyAttemptsOut,
-  CompetencyOut,
+  CompetencyListOut,
   CurriculumKind,
   DetectionCorrection,
+  DetectionListOut,
   DetectionOut,
   ExerciseCreate,
   ExerciseBankQuery,
@@ -273,9 +274,15 @@ export const reorderBranches = (classId: Uuid, subjectIds: Uuid[]) =>
 
 export const listSubjects = () => apiRequest<SubjectOut[]>('/subjects');
 
-export const listCompetencies = (kind: CurriculumKind, subjectKey?: string) =>
-  apiRequest<CompetencyOut[]>(`/curricula/${kind}/competencies`, {
-    query: { subject_key: subjectKey },
+/** One page of a curriculum. Paged because the seeded PER tree is two levels
+ *  deep and the real one is five and a few thousand nodes. */
+export const listCompetencies = (
+  kind: CurriculumKind,
+  subjectKey?: string,
+  page: { offset?: number; limit?: number } = {},
+) =>
+  apiRequest<CompetencyListOut>(`/curricula/${kind}/competencies`, {
+    query: { subject_key: subjectKey, offset: page.offset, limit: page.limit },
   });
 
 export const listChapters = (subjectId?: Uuid) =>
@@ -390,8 +397,20 @@ export const uploadScan = (files: File[], sheetId: Uuid) => {
 
 export const getScan = (scanId: Uuid) => apiRequest<ScanOut>(`/scans/${scanId}`);
 
-export const listDetections = (scanId: Uuid) =>
-  apiRequest<DetectionOut[]>(`/scans/${scanId}/detections`);
+/**
+ * One page of a pile's readings.
+ *
+ * The review screen does not use this — it reads the detections nested inside
+ * `ScanOut.pages`, which is why the shape could change without a screen
+ * moving. This is the flat route, for a caller that wants the pile as rows.
+ */
+export const listDetections = (
+  scanId: Uuid,
+  page: { offset?: number; limit?: number } = {},
+) =>
+  apiRequest<DetectionListOut>(`/scans/${scanId}/detections`, {
+    query: { offset: page.offset, limit: page.limit },
+  });
 
 export const correctDetection = (scanId: Uuid, detectionId: Uuid, body: DetectionCorrection) =>
   apiRequest<DetectionOut>(`/scans/${scanId}/detections/${detectionId}`, {

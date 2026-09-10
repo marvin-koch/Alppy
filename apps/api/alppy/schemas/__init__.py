@@ -537,6 +537,36 @@ class ExerciseFacets(ApiModel):
     open: int = 0
 
 
+class DetectionListOut(ApiModel):
+    """One page of readings from a scanned pile.
+
+    A pile is one page per pupil per sheet page, and each page carries one
+    detection per item — twenty-eight copies of a twelve-item sheet is 336
+    rows, each with its fill ratios, its bubble boxes and a presigned crop
+    URL. The review screen reads them all at once and re-reads them on every
+    correction (audit 02, M4).
+    """
+
+    items: list[DetectionOut] = []
+    total: int = 0
+    offset: int = 0
+    limit: int = 0
+
+
+class CompetencyListOut(ApiModel):
+    """One page of the curriculum.
+
+    Small today because the seeded PER tree is two levels deep and invented;
+    the real one is five levels and a few thousand nodes, and this route is
+    what a picker calls (database audit H1).
+    """
+
+    items: list[CompetencyOut] = []
+    total: int = 0
+    offset: int = 0
+    limit: int = 0
+
+
 class ExerciseListOut(ApiModel):
     """One page of exercises.
 

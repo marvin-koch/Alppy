@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import and_, or_, select
+from sqlalchemy import Select, and_, func, or_, select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
@@ -251,16 +251,33 @@ def get_detection(
     return detection
 
 
-def list_detections(db: Session, school_id: uuid.UUID, scan_id: uuid.UUID) -> list[Detection]:
-    return list(
-        db.execute(
-            select(Detection)
-            .join(ScanPage, ScanPage.id == Detection.scan_page_id)
-            .where(Detection.school_id == school_id)
-            .where(ScanPage.scan_id == scan_id)
-            .order_by(ScanPage.page_index.asc(), Detection.item_index.asc())
-        ).scalars()
+def _detections_query(school_id: uuid.UUID, scan_id: uuid.UUID) -> Select[tuple[Detection]]:
+    """One pile's readings, in the order a teacher reads the paper: page by
+    page, and within a page item by item."""
+    return (
+        select(Detection)
+        .join(ScanPage, ScanPage.id == Detection.scan_page_id)
+        .where(Detection.school_id == school_id)
+        .where(ScanPage.scan_id == scan_id)
+        .order_by(ScanPage.page_index.asc(), Detection.item_index.asc())
     )
+
+
+def list_detections(db: Session, school_id: uuid.UUID, scan_id: uuid.UUID) -> list[Detection]:
+    """Every reading in the pile. Internal callers only — the HTTP route pages
+    (`list_detections_page`), because a pile is 336 rows for one ordinary class
+    set and each row carries a presigned crop URL."""
+    return list(db.execute(_detections_query(school_id, scan_id)).scalars())
+
+
+def list_detections_page(
+    db: Session, school_id: uuid.UUID, scan_id: uuid.UUID, *, offset: int, limit: int
+) -> tuple[list[Detection], int]:
+    """One page of them, and how many there are in total."""
+    stmt = _detections_query(school_id, scan_id)
+    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    rows = list(db.execute(stmt.offset(offset).limit(limit)).scalars())
+    return rows, total
 
 
 def _exercise_for_detection(

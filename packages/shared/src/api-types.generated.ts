@@ -297,6 +297,20 @@ export interface CompetencyAttemptsOut {
   attempts: AttemptOut[];
 }
 
+/**
+ * One page of the curriculum.
+ *
+ * Small today because the seeded PER tree is two levels deep and invented;
+ * the real one is five levels and a few thousand nodes, and this route is
+ * what a picker calls (database audit H1).
+ */
+export interface CompetencyListOut {
+  items: CompetencyOut[];
+  total: number;
+  offset: number;
+  limit: number;
+}
+
 export interface CompetencyMastery {
   competency: CompetencyOut;
   score: number;
@@ -336,6 +350,22 @@ export interface DetectionCorrection {
   detected_index?: number | null;
   verdict_correct?: boolean | null;
   transcription?: string | null;
+}
+
+/**
+ * One page of readings from a scanned pile.
+ *
+ * A pile is one page per pupil per sheet page, and each page carries one
+ * detection per item — twenty-eight copies of a twelve-item sheet is 336
+ * rows, each with its fill ratios, its bubble boxes and a presigned crop
+ * URL. The review screen reads them all at once and re-reads them on every
+ * correction (audit 02, M4).
+ */
+export interface DetectionListOut {
+  items: DetectionOut[];
+  total: number;
+  offset: number;
+  limit: number;
 }
 
 export interface DetectionOut {

@@ -179,11 +179,19 @@ def test_competencies_are_filterable(client: TestClient, tenant: Tenant, db: Ses
     login(client, tenant.teacher.email)
 
     per = client.get("/api/v1/curricula/PER/competencies").json()
-    assert [c["code"] for c in per] == [tenant.competency.code]
+    assert [c["code"] for c in per["items"]] == [tenant.competency.code]
+    assert per["total"] == 1
 
     lp21 = client.get("/api/v1/curricula/LP21/competencies?subject_key=mathematics").json()
-    assert [c["code"] for c in lp21] == ["MA.1.A.1"]
-    assert client.get("/api/v1/curricula/LP21/competencies?cycle=1").json() == []
+    assert [c["code"] for c in lp21["items"]] == ["MA.1.A.1"]
+
+    empty = client.get("/api/v1/curricula/LP21/competencies?cycle=1").json()
+    assert empty["items"] == [] and empty["total"] == 0
+
+    # `total` counts the whole filtered set, not the page — which is the only
+    # thing that makes a pager honest about how much is behind it.
+    paged = client.get("/api/v1/curricula/PER/competencies?limit=1&offset=1").json()
+    assert paged["items"] == [] and paged["total"] == 1
 
 
 def test_chapters_belong_to_a_subject_in_the_same_school(

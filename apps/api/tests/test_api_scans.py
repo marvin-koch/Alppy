@@ -521,9 +521,17 @@ def test_detections_are_listed_in_page_and_item_order(
 ) -> None:
     login(client, tenant.teacher.email)
     ctx = _build_scanned_sheet(client, tenant, db)
-    detections = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections").json()
+    body = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections").json()
+    detections = body["items"]
     assert [d["item_index"] for d in detections] == list(range(8))
     assert detections[6]["outcome"] == "multiple"
+    assert body["total"] == len(detections)
+
+    # Paged: a pile is one page per pupil per sheet page, each carrying one
+    # row per item, and the review screen re-reads them on every correction.
+    page = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections?limit=3").json()
+    assert [d["item_index"] for d in page["items"]] == [0, 1, 2]
+    assert page["total"] == body["total"], "total counts the pile, not the page"
 
 
 def test_home_counts_a_pending_scan(client: TestClient, tenant: Tenant, db: Session) -> None:
@@ -555,7 +563,7 @@ def test_a_written_answer_is_corrected_with_a_verdict_not_a_bubble(
     detection.verdict_correct = detection.machine_verdict_correct = False
     db.commit()
 
-    listed = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections").json()
+    listed = client.get(f"/api/v1/scans/{ctx['scan_id']}/detections").json()["items"]
     row = next(d for d in listed if d["id"] == detection_id)
     assert row["exercise_type"] == "open"
     assert row["transcription"] == "7/9" and row["verdict_correct"] is False

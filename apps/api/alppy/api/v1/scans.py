@@ -26,6 +26,7 @@ from alppy.api.deps import (
 )
 from alppy.schemas import (
     DetectionCorrection,
+    DetectionListOut,
     DetectionOut,
     ScanConfirmResponse,
     ScanOut,
@@ -114,15 +115,36 @@ def get_scan(
     return scan_out(svc.get_scan(db, scope, scan_id), storage=storage)
 
 
-@router.get("/scans/{scan_id}/detections", response_model=list[DetectionOut])
+@router.get("/scans/{scan_id}/detections", response_model=DetectionListOut)
 def list_detections(
-    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
-) -> list[DetectionOut]:
+    scan_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    storage: StorageDep,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> DetectionListOut:
+    """One page of the readings from a pile.
+
+    Paged because a pile is one page per pupil per sheet page and each page
+    carries one detection per item: twenty-eight copies of a twelve-item sheet
+    is 336 rows, each with its fill ratios, its bubble boxes and a presigned
+    crop URL — re-read on every correction the teacher makes.
+
+    The default of 200 is deliberately larger than the other collections': the
+    review screen wants a whole pile at once where it can, and the cap is what
+    stops a very large one from arriving in a single response.
+    """
     svc.get_scan(db, scope, scan_id)
-    return [
-        detection_out(d, storage=storage)
-        for d in svc.list_detections(db, scope.school_id, scan_id)
-    ]
+    rows, total = svc.list_detections_page(
+        db, scope.school_id, scan_id, offset=offset, limit=limit
+    )
+    return DetectionListOut(
+        items=[detection_out(d, storage=storage) for d in rows],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.patch("/scans/{scan_id}/detections/{detection_id}", response_model=DetectionOut)

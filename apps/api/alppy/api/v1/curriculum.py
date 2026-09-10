@@ -12,13 +12,18 @@ from typing import Annotated
 
 from fastapi import APIRouter, Query, status
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 from alppy.api import errors
 from alppy.api.deps import DbDep, ScopeDep, TenantDep, scoped_get
 from alppy.models import Chapter, Competency, Subject
 from alppy.models.enums import CurriculumKind
-from alppy.schemas import ChapterOut, ChapterUpdate, CompetencyOut, LocalisedText
+from alppy.schemas import (
+    ChapterOut,
+    ChapterUpdate,
+    CompetencyListOut,
+    LocalisedText,
+)
 from alppy.services import chapter_out, competency_out
 from alppy.services import nouns_service as svc
 
@@ -35,21 +40,38 @@ class ChapterCreate(BaseModel):
     competency_ids: Annotated[list[uuid.UUID], Field(max_length=50)] = []
 
 
-@router.get("/curricula/{kind}/competencies", response_model=list[CompetencyOut])
+@router.get("/curricula/{kind}/competencies", response_model=CompetencyListOut)
 def list_competencies(
     kind: CurriculumKind,
     db: DbDep,
     _school_id: TenantDep,
     subject_key: Annotated[str | None, Query()] = None,
     cycle: Annotated[int | None, Query(ge=1, le=3)] = None,
-) -> list[CompetencyOut]:
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> CompetencyListOut:
+    """One page of a curriculum's competencies.
+
+    Small today because the seeded PER tree is two levels deep and its codes
+    are invented; the real one is five levels and a few thousand nodes, and
+    this is the route a picker calls.
+    """
     stmt = select(Competency).where(Competency.curriculum == kind)
     if subject_key is not None:
         stmt = stmt.where(Competency.subject_key == subject_key)
     if cycle is not None:
         stmt = stmt.where(Competency.cycle == cycle)
-    rows = db.execute(stmt.order_by(Competency.code.asc())).scalars()
-    return [competency_out(c) for c in rows]
+
+    total = int(db.scalar(select(func.count()).select_from(stmt.subquery())) or 0)
+    rows = db.execute(
+        stmt.order_by(Competency.code.asc()).offset(offset).limit(limit)
+    ).scalars()
+    return CompetencyListOut(
+        items=[competency_out(c) for c in rows],
+        total=total,
+        offset=offset,
+        limit=limit,
+    )
 
 
 @router.get("/chapters", response_model=list[ChapterOut])
