@@ -387,3 +387,61 @@ def test_every_sheet_in_a_lineage_gets_the_ownership_check(
         },
     )
     assert response.status_code == 404
+
+
+def test_the_feedback_uid_lookup_filters_on_the_school_itself(
+    client: TestClient, tenant: Tenant, other_tenant: Tenant, db: Session
+) -> None:
+    """The `Student` lookup in `list_feedback` carries its own `school_id`.
+
+    It was the one scoped read in the codebase whose tenant filter was an
+    inference — every id came from a note already filtered on the school, so
+    the query was correct because of the query above it. This pins the
+    invariant locally: a note that names a pupil of another school (which is
+    what a widened filter, a bad backfill or a mistyped id would produce) must
+    yield no uid, rather than reading a name out of the other school's roster.
+
+    The note row itself is this school's, so the upstream filter passes it
+    through — that is the point. Without the local predicate the endpoint
+    answers with `other_tenant`'s pupil uid.
+    """
+    from alppy.models import MisconceptionNote
+
+    exercise = make_exercise(db, tenant, statement="Simplifie 12/18.")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets",
+        json={
+            "class_id": str(tenant.school_class.id),
+            "subject_id": str(tenant.subject.id),
+            "title": "Controle commun",
+            "language": "fr",
+            "items": [{"exercise_id": str(exercise.id), "position": 0}],
+        },
+    ).json()["id"]
+
+    mine = tenant.students[0]
+    theirs = other_tenant.students[0]
+    for student_id in (mine.id, theirs.id):
+        db.add(
+            MisconceptionNote(
+                id=uuid.uuid4(),
+                school_id=tenant.school.id,  # this school's note ...
+                student_id=student_id,  # ... naming another school's pupil
+                subject_id=tenant.subject.id,
+                based_on_sheet_id=uuid.UUID(sheet_id),
+                language="fr",
+                notes=["inverse les termes"],
+                competency_ids=[],
+            )
+        )
+    db.commit()
+
+    response = client.get(f"/api/v1/adaptive/feedback?source_sheet_id={sheet_id}")
+    assert response.status_code == 200, response.text
+    body = response.json()
+    by_student = {n["student_id"]: n["student_uid"] for n in body}
+
+    assert by_student[str(mine.id)] == mine.uid
+    assert by_student[str(theirs.id)] == "", "a pupil of another school has no uid to show here"
+    assert theirs.uid not in {n["student_uid"] for n in body}

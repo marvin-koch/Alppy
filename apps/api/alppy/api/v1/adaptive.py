@@ -379,10 +379,19 @@ def list_feedback(
             .order_by(MisconceptionNote.created_at.desc())
         )
     )
+    # `school_id` is redundant here — every id came from a note already filtered
+    # on it — and it is written anyway. A scoped query that leans on the query
+    # above it is correct until someone widens that one, and this is the only
+    # place in the codebase where the tenant filter is an inference rather than
+    # a line. The lookup is by primary key either way; the extra predicate is a
+    # comparison on rows already fetched.
     uids = {
         s.id: s.uid
         for s in db.scalars(
-            select(Student).where(Student.id.in_([r.student_id for r in rows] or [uuid.uuid4()]))
+            select(Student).where(
+                Student.school_id == scope.school_id,
+                Student.id.in_([r.student_id for r in rows] or [uuid.uuid4()]),
+            )
         )
     }
     seen: set[uuid.UUID] = set()
