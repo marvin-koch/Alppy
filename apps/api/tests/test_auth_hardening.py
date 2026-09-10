@@ -24,7 +24,7 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 from itsdangerous import URLSafeTimedSerializer
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import PASSWORD, Tenant, make_app_client
 
@@ -160,7 +160,10 @@ def test_an_unknown_email_is_throttled_the_same_way(
 
 
 def test_the_address_bucket_bounds_stuffing_across_many_accounts(
-    db: Session, storage: LocalStorage, tenant: Tenant
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage: LocalStorage,
+    tenant: Tenant,
 ) -> None:
     """Per-account limits alone do not stop one source trying one password
     against a thousand addresses — each account stays under its own budget
@@ -175,7 +178,7 @@ def test_the_address_bucket_bounds_stuffing_across_many_accounts(
     deps.get_login_limiter(settings).reset()
     deps.get_login_ip_limiter(settings).reset()
     try:
-        with make_app_client(db, storage, settings) as client:
+        with make_app_client(session_factory, storage, settings) as client:
             for i in range(4):
                 assert _attempt(client, f"victim{i}@example.org") == 401
             # A fifth address, same source: the address bucket is what stops it.
@@ -326,14 +329,17 @@ def test_a_session_inside_the_window_still_reads(
 
 
 def test_an_expired_cookie_does_not_open_a_session(
-    db: Session, storage: LocalStorage, tenant: Tenant
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage: LocalStorage,
+    tenant: Tenant,
 ) -> None:
     """End to end through HTTP: the API refuses an aged cookie, it does not
     merely fail to mint one."""
     settings = Settings(
         env="ci", secret_key="test-secret-key", max_upload_mb=1, session_max_age_s=0
     )
-    with make_app_client(db, storage, settings) as client:
+    with make_app_client(session_factory, storage, settings) as client:
         response = client.post(
             "/api/v1/auth/login",
             json={"email": tenant.teacher.email, "password": PASSWORD},

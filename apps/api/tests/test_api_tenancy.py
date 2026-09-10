@@ -279,19 +279,22 @@ def test_a_co_enrolled_student_is_readable_by_both_their_teachers(
 
 
 def test_a_request_binds_its_tenant_onto_the_session(
-    client: TestClient, tenant: Tenant, db: Session
+    client: TestClient, tenant: Tenant, request_sessions: list[Session]
 ) -> None:
     login(client, tenant.teacher.email)
     assert client.get(f"/api/v1/classes/{tenant.school_class.id}").status_code == 200
 
-    assert getattr(db, "school_id", None) == tenant.school.id
+    # The session the HANDLER held, not the test's — they are two objects now,
+    # and binding the tenant onto the test's would prove nothing about either.
+    bound = request_sessions[-1]
+    assert getattr(bound, "school_id", None) == tenant.school.id
     # The teacher goes with it for the one policy that needs it: `school`,
     # which has to keep listing the other schools this teacher works at (D74).
-    assert getattr(db, "teacher_id", None) == tenant.teacher.id
+    assert getattr(bound, "teacher_id", None) == tenant.teacher.id
 
 
 def test_a_session_with_no_membership_is_left_blind(
-    client: TestClient, tenant: Tenant, db: Session
+    client: TestClient, tenant: Tenant, request_sessions: list[Session]
 ) -> None:
     """Unset is "see nothing", not "see everything".
 
@@ -301,4 +304,5 @@ def test_a_session_with_no_membership_is_left_blind(
     else, so a 401 leaves the session exactly as blind as it started.
     """
     assert client.get(f"/api/v1/classes/{tenant.school_class.id}").status_code == 401
-    assert getattr(db, "school_id", None) is None
+    assert request_sessions, "the request opened no session to leave blind"
+    assert getattr(request_sessions[-1], "school_id", None) is None

@@ -10,7 +10,7 @@ neighbouring setting that might look like it should imply it.
 from __future__ import annotations
 
 from fastapi.testclient import TestClient
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import PASSWORD, Tenant, make_app_client
 
@@ -57,7 +57,10 @@ def test_debug_and_local_env_do_not_turn_demo_mode_on() -> None:
 
 
 def test_with_demo_mode_on_a_cookieless_request_is_the_demo_teacher(
-    db: Session, storage, tenant: Tenant
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage,
+    tenant: Tenant,
 ) -> None:
     demo_settings = Settings(
         env="ci",
@@ -66,7 +69,7 @@ def test_with_demo_mode_on_a_cookieless_request_is_the_demo_teacher(
         demo_mode=True,
         demo_teacher_email=tenant.teacher.email,
     )
-    with make_app_client(db, storage, demo_settings) as demo_client:
+    with make_app_client(session_factory, storage, demo_settings) as demo_client:
         response = demo_client.get("/api/v1/auth/me")
         assert response.status_code == 200
         assert response.json()["email"] == tenant.teacher.email
@@ -76,7 +79,10 @@ def test_with_demo_mode_on_a_cookieless_request_is_the_demo_teacher(
 
 
 def test_demo_mode_says_so_when_the_seed_has_not_run(
-    db: Session, storage, tenant: Tenant
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage,
+    tenant: Tenant,
 ) -> None:
     """A 401 here would send the reader hunting for a login that cannot help."""
     demo_settings = Settings(
@@ -86,14 +92,18 @@ def test_demo_mode_says_so_when_the_seed_has_not_run(
         demo_mode=True,
         demo_teacher_email="nobody@alppy.ch",
     )
-    with make_app_client(db, storage, demo_settings) as demo_client:
+    with make_app_client(session_factory, storage, demo_settings) as demo_client:
         response = demo_client.get("/api/v1/auth/me")
         assert response.status_code == 401
         assert "seed" in response.text
 
 
 def test_a_real_session_still_wins_over_demo_mode(
-    db: Session, storage, tenant: Tenant, colleague: Tenant
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage,
+    tenant: Tenant,
+    colleague: Tenant,
 ) -> None:
     """Demo mode is a fallback for the *absence* of a cookie, never an override.
 
@@ -108,7 +118,7 @@ def test_a_real_session_still_wins_over_demo_mode(
         demo_mode=True,
         demo_teacher_email=tenant.teacher.email,
     )
-    with make_app_client(db, storage, demo_settings) as demo_client:
+    with make_app_client(session_factory, storage, demo_settings) as demo_client:
         demo_client.post(
             "/api/v1/auth/login",
             json={"email": colleague.teacher.email, "password": PASSWORD},

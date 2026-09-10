@@ -8,7 +8,7 @@ from datetime import UTC, datetime, timedelta
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, sessionmaker
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import (
     PDF_BYTES,
@@ -200,14 +200,18 @@ def test_upload_rejects_an_oversized_file(client: TestClient, tenant: Tenant, sh
 
 
 def test_upload_rejects_a_pile_of_too_many_files(
-    db: Session, storage, tenant: Tenant, sheet_id: str
+    db: Session,
+    session_factory: sessionmaker[Session],
+    storage,
+    tenant: Tenant,
+    sheet_id: str,
 ) -> None:
     """The per-file cap says nothing about how many files arrive together, and
     every one of them is held in memory for the life of the request."""
     capped = Settings(
         env="ci", secret_key="test-secret-key", max_upload_mb=1, max_upload_files=3
     )
-    with make_app_client(db, storage, capped) as capped_client:
+    with make_app_client(session_factory, storage, capped) as capped_client:
         login(capped_client, tenant.teacher.email)
         response = capped_client.post(
             "/api/v1/scans",

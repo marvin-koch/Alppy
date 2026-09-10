@@ -13,7 +13,7 @@ Other ``test_api_*`` modules pull these fixtures in with
 from __future__ import annotations
 
 import uuid
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -23,10 +23,10 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, event, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.engine import Engine
+from sqlalchemy.engine import Connection, Engine
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.orm import Session, object_session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -137,6 +137,19 @@ def engine() -> Iterator[Engine]:
         poolclass=StaticPool,
         future=True,
     )
+
+    # pysqlite opens its own implicit transactions and never emits BEGIN, which
+    # leaves SAVEPOINT unusable — and SAVEPOINT is what gives each request its
+    # own rollback boundary below. Take the driver's transaction handling away
+    # and emit BEGIN ourselves: the recipe SQLAlchemy documents for pysqlite.
+    @event.listens_for(eng, "connect")
+    def _no_implicit_begin(dbapi_connection: Any, _record: Any) -> None:
+        dbapi_connection.isolation_level = None
+
+    @event.listens_for(eng, "begin")
+    def _explicit_begin(conn: Connection) -> None:
+        conn.exec_driver_sql("BEGIN")
+
     Base.metadata.create_all(eng)
     try:
         yield eng
@@ -146,13 +159,80 @@ def engine() -> Iterator[Engine]:
 
 
 @pytest.fixture
-def db(engine: Engine) -> Iterator[Session]:
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    session = factory()
+def connection(engine: Engine) -> Iterator[Connection]:
+    """One connection, one outer transaction, rolled back when the test ends.
+
+    Every session in a test — the test's own and one per request — is bound to
+    this connection, so they see one another's committed work and none of it
+    outlives the test. The in-memory database is on a ``StaticPool``, so this
+    is the only connection there is: sessions cannot be kept apart by giving
+    them one each, which is why the boundary below is a SAVEPOINT.
+    """
+    conn = engine.connect()
+    outer = conn.begin()
+    try:
+        yield conn
+    finally:
+        if outer.is_active:
+            outer.rollback()
+        conn.close()
+
+
+@pytest.fixture
+def session_factory(connection: Connection) -> sessionmaker[Session]:
+    """Sessions whose ``commit()`` lands in a SAVEPOINT, not on the database.
+
+    ``create_savepoint`` is what makes a forgotten ``commit()`` visible. A
+    request session that commits releases its savepoint and its writes stand;
+    one that closes without committing rolls its savepoint back and its writes
+    are gone — which is what production does, where ``get_db`` closes the
+    session in a ``finally`` and ``Session.close()`` rolls back an open
+    transaction (``api/deps.py``).
+
+    The suite used to hand every request *the test's own session* and never
+    close it, so a missing ``commit()`` was structurally invisible to all of
+    it — the same shape of blind spot as ``create_all()`` versus migrations
+    (audit 02, H1).
+    """
+    return sessionmaker(
+        bind=connection,
+        autoflush=False,
+        expire_on_commit=False,
+        join_transaction_mode="create_savepoint",
+    )
+
+
+@pytest.fixture
+def db(session_factory: sessionmaker[Session]) -> Iterator[Session]:
+    """The session a test seeds through, and NOT the one handlers run on."""
+    session = session_factory()
     try:
         yield session
     finally:
         session.close()
+
+
+@pytest.fixture
+def reread(session_factory: sessionmaker[Session]) -> Iterator[Callable[[], Session]]:
+    """Open a session with an empty identity map.
+
+    ``db.get(Model, id)`` answers from the identity map without touching the
+    database, so it returns the object a handler mutated in memory whether or
+    not the row was ever written. Asserting that a write *landed* means reading
+    it back through a session that has never seen it.
+    """
+    opened: list[Session] = []
+
+    def _open() -> Session:
+        session = session_factory()
+        opened.append(session)
+        return session
+
+    try:
+        yield _open
+    finally:
+        for session in opened:
+            session.close()
 
 
 @pytest.fixture
@@ -167,13 +247,50 @@ def settings() -> Settings:
 
 
 @pytest.fixture
-def app(db: Session, storage: LocalStorage, settings: Settings) -> FastAPI:
-    application = create_app(settings)
+def request_sessions() -> list[Session]:
+    """Every session a request opened, in order.
+
+    A request no longer runs on the test's session, so anything a test wants to
+    assert about the session a *handler* held — the tenant GUC bound onto it,
+    above all — has to be asserted about this, not about ``db``.
+    """
+    return []
+
+
+def _request_session(
+    factory: sessionmaker[Session],
+    opened: list[Session] | None = None,
+) -> Callable[[], Iterator[Session]]:
+    """A fresh session per request, closed when the request ends.
+
+    The shape ``get_db`` has in production. Closing is the whole point: it is
+    what turns a handler that flushed but never committed into a rolled-back
+    write that the next assertion can see.
+    """
 
     def _db() -> Iterator[Session]:
-        yield db
+        session = factory()
+        if opened is not None:
+            opened.append(session)
+        try:
+            yield session
+        finally:
+            session.close()
 
-    application.dependency_overrides[deps.get_db] = _db
+    return _db
+
+
+@pytest.fixture
+def app(
+    session_factory: sessionmaker[Session],
+    storage: LocalStorage,
+    settings: Settings,
+    request_sessions: list[Session],
+) -> FastAPI:
+    application = create_app(settings)
+    application.dependency_overrides[deps.get_db] = _request_session(
+        session_factory, request_sessions
+    )
     application.dependency_overrides[deps.get_object_storage] = lambda: storage
     application.dependency_overrides[deps.get_app_settings] = lambda: settings
     return application
@@ -181,20 +298,19 @@ def app(db: Session, storage: LocalStorage, settings: Settings) -> FastAPI:
 
 @contextmanager
 def make_app_client(
-    db: Session, storage: LocalStorage, settings: Settings
+    session_factory: sessionmaker[Session],
+    storage: LocalStorage,
+    settings: Settings,
 ) -> Iterator[TestClient]:
-    """A client on non-default settings, sharing this test's session.
+    """A client on non-default settings, on this test's transaction.
 
     The `app`/`client` fixtures bake in the `settings` fixture; a test that has
     to vary one setting (demo mode) needs to build its own without duplicating
-    the dependency overrides.
+    the dependency overrides. It takes the factory rather than a session for
+    the same reason ``app`` does: a request gets its own session and closes it.
     """
     application = create_app(settings)
-
-    def _db() -> Iterator[Session]:
-        yield db
-
-    application.dependency_overrides[deps.get_db] = _db
+    application.dependency_overrides[deps.get_db] = _request_session(session_factory)
     application.dependency_overrides[deps.get_object_storage] = lambda: storage
     application.dependency_overrides[deps.get_app_settings] = lambda: settings
     with TestClient(application) as test_client:

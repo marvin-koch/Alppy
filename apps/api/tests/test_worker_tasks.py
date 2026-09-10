@@ -30,7 +30,6 @@ from collections.abc import Iterator
 from typing import Any
 
 import pytest
-from sqlalchemy.engine import Engine
 from sqlalchemy.orm import Session, sessionmaker
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant
@@ -42,17 +41,21 @@ from alppy.worker import tasks as worker_tasks
 
 
 @pytest.fixture
-def worker_db(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> Iterator[sessionmaker[Session]]:
-    """Point ``tasks.SessionLocal`` at the test engine.
+def worker_db(
+    session_factory: sessionmaker[Session], monkeypatch: pytest.MonkeyPatch
+) -> Iterator[sessionmaker[Session]]:
+    """Point ``tasks.SessionLocal`` at the test's own transaction.
 
     ``_run_job`` opens and closes its OWN session — that is part of what is
-    being tested, since the real worker gets no session handed to it. The
-    in-memory engine uses a ``StaticPool``, so a session opened here sees the
-    same database as the ``db`` fixture.
+    being tested, since the real worker gets no session handed to it. It has to
+    come from the same factory every other session in the test comes from: the
+    in-memory engine is a ``StaticPool``, so binding a second factory to the
+    *engine* hands back the one connection the test transaction already holds,
+    and the worker's ``BEGIN`` fails as "cannot start a transaction within a
+    transaction".
     """
-    factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
-    monkeypatch.setattr(worker_tasks, "SessionLocal", factory)
-    yield factory
+    monkeypatch.setattr(worker_tasks, "SessionLocal", session_factory)
+    yield session_factory
 
 
 def _job(db: Session, tenant: Tenant, *, kind: JobKind = JobKind.RENDER_SHEET, **kw: Any) -> Job:

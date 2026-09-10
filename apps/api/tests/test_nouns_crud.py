@@ -247,14 +247,18 @@ def test_deleting_a_pupil_destroys_their_evidence(
     ).all()
 
     login(client, tenant.teacher.email)
-    response = client.delete(f"/api/v1/students/{student.id}?confirm={student.uid}")
+    # Read the id out BEFORE the row goes: `expire_all` below leaves `student`
+    # expired, and reloading an expired instance whose row was deleted raises
+    # rather than returning the id the query still needs.
+    student_id = student.id
+    response = client.delete(f"/api/v1/students/{student_id}?confirm={student.uid}")
     assert response.status_code == 204
 
     # The handler committed on its own session; drop this one's identity map
     # or `db.get` answers from cache and the assertion proves nothing.
     db.expire_all()
     assert db.execute(
-        Student.__table__.select().where(Student.id == student.id)
+        Student.__table__.select().where(Student.id == student_id)
     ).all() == []
 
 
