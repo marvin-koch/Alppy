@@ -395,9 +395,7 @@ def list_feedback(
     """Every live note written from one common sheet, newest per student."""
     from sqlalchemy import select
 
-    # REPORT: listing notes already written from this sheet. Generating a
-    # new one (`generate_feedback`) bills a model call and stays a gate.
-    sheet_svc.get_sheet_for_read(db, scope, source_sheet_id)  # tenancy check
+    sheet_svc.get_sheet(db, scope, source_sheet_id)  # tenancy check
     rows = list(
         db.scalars(
             select(MisconceptionNote)
