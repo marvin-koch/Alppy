@@ -32,6 +32,7 @@ from alppy.models import (
     Student,
 )
 from alppy.models.enums import DetectionOutcome, ExerciseType
+from alppy.services.enrollment import enrolled_in_owned_classes
 from alppy.sheets.layout import OptionLetters, tf_letters
 
 
@@ -116,8 +117,17 @@ def student_sheet_breakdown(
 
     school_id = scope.school_id
     sheet = get_sheet(db, scope, sheet_id)
+    # Ownership, not just tenancy: this report names the child and quotes every
+    # answer they gave, so it follows the same rule as the class they sit in
+    # (D23) — reachable through ANY class this teacher owns, and the school
+    # filter on top is what keeps that widening inside one tenant
+    # (I-platform-10). A bare school_id lookup would let a colleague confirm a
+    # student exists and read their identity back with an empty item list.
     student = db.execute(
-        select(Student).where(Student.id == student_id).where(Student.school_id == school_id)
+        select(Student)
+        .where(Student.id == student_id)
+        .where(Student.school_id == school_id)
+        .where(Student.id.in_(enrolled_in_owned_classes(scope)))
     ).scalar_one_or_none()
     if student is None:
         from alppy.api import errors

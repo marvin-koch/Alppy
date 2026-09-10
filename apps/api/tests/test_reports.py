@@ -275,3 +275,26 @@ def test_the_students_copy_is_reachable_over_http(
     assert body["points_earned"] is None
     assert len(body["items"]) == 2
     assert all("statement" in item for item in body["items"])
+
+
+def test_a_colleagues_student_is_not_reachable_through_the_copy_view(
+    client: TestClient,  # noqa: F405
+    db: Session,
+    tenant: Tenant,
+    colleague: Tenant,
+) -> None:
+    """The copy view names the child, so it is ownership-grained, not school-grained.
+
+    The empty item list a pair-grained ``get_sheet`` already produced is not the
+    protection: the identity in the envelope is the leak. A teacher with no
+    footing in the child's class gets a 404, not a name (D23).
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    db.commit()
+    theirs = colleague.students[0]
+    login(client, tenant.teacher.email)  # noqa: F405
+
+    response = client.get(f"/api/v1/students/{theirs.id}/sheets/{sheet.id}")
+
+    assert response.status_code == 404, response.text
+    assert theirs.last_name not in response.text, "not even confirmed to exist"
