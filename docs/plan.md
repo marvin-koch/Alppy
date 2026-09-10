@@ -27,7 +27,8 @@ sheet is the focal deliverable; everything else exists to make it possible and t
 
 ## 3. Domain model as implemented
 
-The full model, table by table, is [`data-model.md`](data-model.md); this is the
+The full model, table by table, is [`data-model.md`](data-model.md), and the ER
+diagrams layer by layer are in [`er-model.md`](er-model.md); this is the
 sketch. Tenancy: every row carries `school_id` (and `teacher_id` where ownership
 is personal).
 Every table has `id` (UUID), `created_at`, `updated_at`.
