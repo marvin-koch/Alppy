@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from functools import lru_cache
 from typing import Literal
+from urllib.parse import urlsplit
 
 from pydantic import Field, PostgresDsn, RedisDsn, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
@@ -202,6 +203,14 @@ class Settings(BaseSettings):
 
     default_locale: Locale = "fr"
     cors_origins: tuple[str, ...] = ("http://localhost:3000",)
+    """Browser origins allowed to call the API *with the session cookie*.
+
+    `main.create_app` passes these to `CORSMiddleware` with
+    `allow_credentials=True`, which is what lets the web app authenticate at
+    all — and what makes this list a trust boundary rather than a convenience.
+    `_refuse_unsafe_deployment` is why the development default here is safe to
+    ship.
+    """
 
     @property
     def max_upload_bytes(self) -> int:
@@ -251,6 +260,11 @@ class Settings(BaseSettings):
           ``.env`` that reached a server — the case ``ALPPY_ENV`` exists to make
           visible, and one that otherwise surfaces as a confusing connection
           error rather than as the misconfiguration it is.
+        * ``cors_origins`` is handed to the CORS middleware with
+          ``allow_credentials=True``, so it decides which sites may make a
+          browser send the session cookie to us. A wildcard, or a leftover
+          ``localhost``, is the roster read cross-origin from the teacher's own
+          logged-in browser.
         * ``s3_secret_key`` at its default opens the bucket holding scanned
           answer sheets: photographs of children's handwriting, names included.
         * ``admin_database_url`` unset — or naming the same role as
@@ -287,6 +301,38 @@ class Settings(BaseSettings):
                 "ALPPY_DEMO_MODE is on; it answers a request with no session cookie "
                 "as the demo teacher, which outside a demo is an open roster"
             )
+        # `allow_credentials=True` is not optional for us — the session cookie is
+        # the only authentication the web app has — and it makes this list the
+        # whole of the cross-origin boundary. Starlette does not silently protect
+        # us from a wildcard here: with credentials on, `"*"` makes it *reflect*
+        # the requesting origin, so any page on the internet can read a teacher's
+        # roster in the teacher's own browser. That is the same exposure
+        # `demo_mode` is refused for, reached without touching a session.
+        for origin in self.cors_origins:
+            host = urlsplit(origin).hostname
+            if "*" in origin:
+                problems.append(
+                    f"ALPPY_CORS_ORIGINS contains {origin!r}; the cookie is sent with "
+                    "cross-origin requests, so a wildcard lets any site read a "
+                    "teacher's roster from the teacher's own browser (and Starlette "
+                    "matches an origin literally — a pattern that is not exactly '*' "
+                    "additionally matches nothing at all)"
+                )
+            elif host in _LOCAL_HOSTS:
+                problems.append(
+                    f"ALPPY_CORS_ORIGINS contains {origin!r}; a {self.env} deployment "
+                    "trusting a developer's machine is a development .env that reached "
+                    "a server"
+                )
+        if not self.cors_origins:
+            # Fails closed rather than open, and is still refused: nobody sets it
+            # to nothing on purpose, and the symptom is every browser request from
+            # the web app failing CORS with a healthy-looking API behind it.
+            problems.append(
+                "ALPPY_CORS_ORIGINS is empty, so the web app cannot call the API at "
+                "all; name the origins it is served from"
+            )
+
         # A Postgres DSN may name several hosts for failover, and any one of them
         # being local is the same mistake — so check them all, not just the first.
         local = sorted(

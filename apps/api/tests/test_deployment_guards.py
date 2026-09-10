@@ -25,6 +25,7 @@ GOOD = {
     "s3_secret_key": "a-real-bucket-password",
     "database_url": "postgresql+psycopg://alppy_app:pw@db.internal:5432/alppy",
     "admin_database_url": "postgresql+psycopg://alppy:pw@db.internal:5432/alppy",
+    "cors_origins": ("https://app.alppy.ch",),
 }
 
 
@@ -63,6 +64,17 @@ def test_development_environments_keep_every_default(env: str) -> None:
         # IS the schema owner — and row-level security does not apply to a
         # table's owner. Every policy is present and none of them fire (D84).
         ("admin_database_url", None, "ALPPY_ADMIN_DATABASE_URL"),
+        # `allow_credentials=True` is what makes this list a trust boundary: a
+        # wildcard is reflected back per-origin, so the session cookie travels
+        # and any page on the internet reads the roster the teacher can see.
+        ("cors_origins", ("*",), "ALPPY_CORS_ORIGINS"),
+        ("cors_origins", ("https://app.alppy.ch", "*"), "ALPPY_CORS_ORIGINS"),
+        ("cors_origins", ("https://*.alppy.ch",), "ALPPY_CORS_ORIGINS"),
+        # The default. Nothing has to be typed wrong for this one to reach a
+        # server — it is what the deployment gets by saying nothing.
+        ("cors_origins", ("http://localhost:3000",), "ALPPY_CORS_ORIGINS"),
+        ("cors_origins", ("https://app.alppy.ch", "http://127.0.0.1:3000"), "ALPPY_CORS_ORIGINS"),
+        ("cors_origins", (), "ALPPY_CORS_ORIGINS"),
     ],
 )
 def test_each_unsafe_setting_is_refused_in_production(
@@ -71,6 +83,34 @@ def test_each_unsafe_setting_is_refused_in_production(
     with pytest.raises(ValidationError) as excinfo:
         _settings(env="production", **{field: value})
     assert expected in str(excinfo.value)
+
+
+def test_a_production_deployment_may_name_several_real_origins() -> None:
+    """The guard rejects a shape, not a length: a school on its own domain and
+    the app's own host are two legitimate entries, and neither is local."""
+    settings = _settings(
+        env="production",
+        cors_origins=("https://app.alppy.ch", "https://sion.alppy.ch"),
+    )
+    assert settings.cors_origins == ("https://app.alppy.ch", "https://sion.alppy.ch")
+
+
+def test_a_developer_keeps_localhost_in_the_environments_it_is_for() -> None:
+    """`pnpm dev` serves the web app from `http://localhost:3000`, so the
+    default has to keep working — the guard is about `env`, not about the
+    string."""
+    settings = Settings(_env_file=None, env="local")
+    assert settings.cors_origins == ("http://localhost:3000",)
+
+
+def test_the_cors_refusal_says_what_a_wildcard_costs() -> None:
+    """The message is the whole value of a startup guard: whoever hits it is
+    mid-deployment and looking for the shortest way past. "Not allowed" invites
+    a wildcard on a different line; naming the cookie does not."""
+    with pytest.raises(ValidationError) as excinfo:
+        _settings(env="production", cors_origins=("*",))
+    message = str(excinfo.value)
+    assert "cookie" in message and "cross-origin" in message
 
 
 def test_the_api_may_not_connect_as_the_schema_owner() -> None:

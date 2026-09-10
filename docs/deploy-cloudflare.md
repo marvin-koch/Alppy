@@ -61,7 +61,11 @@ is one origin. That matters more here than it usually would:
 - `alppy_session` is `HttpOnly`, `SameSite=Lax`, `Secure`, and set with **no
   `Domain` attribute** (`api/v1/auth.py`) — host-only by design. Same-origin
   keeps it working untouched.
-- No preflight on any request, and no `ALPPY_CORS_ORIGINS` to keep in sync.
+- No preflight on any request: nothing the browser sends is cross-origin, so
+  `ALPPY_CORS_ORIGINS` is never consulted. Still set it to the Worker's own
+  public origin — `ALPPY_ENV=staging|production` refuses to boot on an empty
+  or wildcard list, and the day someone switches to the fallback below, the
+  right value is already there rather than reached for in a hurry.
 - Nothing in the front end has to know where the API lives.
 
 **The fallback** — if you would rather point the browser straight at the API —
