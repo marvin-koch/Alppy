@@ -17,6 +17,7 @@ Three rules run through the file, each with a failure worth picturing:
 from __future__ import annotations
 
 import uuid
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
@@ -73,8 +74,16 @@ def test_two_branches_cannot_share_a_key(
 
 
 def test_a_branch_can_be_renamed_but_not_re_keyed(
-    client: TestClient, db: Session, tenant: Tenant
+    client: TestClient, db: Session, tenant: Tenant, reread: Callable[[], Session]
 ) -> None:
+    """The rename has to survive the request that made it.
+
+    This used to assert the RESPONSE for the field that changes and the ROW
+    only for the field that does not — so a handler that never committed
+    passed it, and did for the whole life of the endpoint. The response is
+    serialised from the in-memory object and says nothing about what landed
+    (audit 02, H1).
+    """
     login(client, tenant.teacher.email)
     response = client.patch(
         f"/api/v1/subjects/{tenant.subject.id}",
@@ -82,8 +91,16 @@ def test_a_branch_can_be_renamed_but_not_re_keyed(
     )
     assert response.status_code == 200
     assert response.json()["labels"]["fr"] == "Maths"
+
+    # Through a session that has never seen this object: `db.get` would answer
+    # from the identity map without going to the database at all.
+    row = reread().get(Subject, tenant.subject.id)
+    assert row is not None
+    assert row.labels == {"fr": "Maths", "de": "Mathe", "en": "Maths"}, (
+        "every renamed label must be on the row, not only in the response"
+    )
     # The key is not in SubjectUpdate at all: it is what the curriculum joins on.
-    assert response.json()["key"] == db.get(Subject, tenant.subject.id).key
+    assert row.key == tenant.subject.key
 
 
 # --------------------------------------------------------------------------

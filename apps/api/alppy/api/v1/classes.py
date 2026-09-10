@@ -326,7 +326,13 @@ def update_subject(
     subject_id: uuid.UUID, payload: SubjectUpdate, scope: ScopeDep, db: DbDep
 ) -> SubjectOut:
     subject = scoped_get(db, Subject, subject_id, scope.school_id, label="subject")
-    return subject_out(nouns.update_subject(db, scope, subject, labels=payload.labels))
+    renamed = nouns.update_subject(db, scope, subject, labels=payload.labels)
+    # The service flushes; the commit is the router's, as it is in this file's
+    # ten other write handlers. Without it `get_db` closes the session on the
+    # way out and rolls the rename back — while the response, serialised from
+    # the in-memory object, faithfully reports the new labels (audit 02, H1).
+    db.commit()
+    return subject_out(renamed)
 
 
 @router.patch("/classes/{class_id}", response_model=ClassOut)
