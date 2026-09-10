@@ -161,13 +161,23 @@ def simulate_attempts(
     now: datetime,
     exercises_by_chapter: dict[str, list[tuple[str, int]]],
     seed: int = 20260905,
+    roster: list[tuple[str, str]] | None = None,
+    profiles: dict[str, StudentProfile] | None = None,
 ) -> list[dict[str, object]]:
-    """Generate the demo attempt history.
+    """Generate a simulated attempt history.
 
     ``exercises_by_chapter`` maps a chapter key to ``(exercise_key, difficulty)``
     pairs. Returns plain dicts so this module stays free of SQLAlchemy and can be
     unit-tested on its own; the loader turns them into ``Attempt`` rows.
+
+    ``roster`` and ``profiles`` default to the demo class. Staging passes its
+    own, larger ones (`alppy.seed.staging`): the machinery that turns a profile
+    into three weeks of plausible work is the valuable part and there is no
+    reason for a second copy of it — what differs between the two datasets is
+    only who is in the room.
     """
+    people = roster if roster is not None else DEMO_ROSTER
+    abilities = profiles if profiles is not None else DEMO_PROFILES
     rng = random.Random(seed)
     attempts: list[dict[str, object]] = []
     total_lessons = len(DEMO_LESSONS)
@@ -181,8 +191,8 @@ def simulate_attempts(
         # A sheet is 8-12 items drawn from the chapter.
         items = rng.sample(pool, k=min(len(pool), rng.randint(8, 12)))
 
-        for first_name, _last in DEMO_ROSTER:
-            profile = DEMO_PROFILES[first_name]
+        for first_name, _last in people:
+            profile = abilities[first_name]
             if rng.random() > profile.participation:
                 continue  # absent that day
             for exercise_key, difficulty in items:

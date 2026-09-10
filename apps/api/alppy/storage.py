@@ -6,8 +6,9 @@ running to exercise an upload path.
 
 The one rule this module exists to enforce: **a client-supplied filename never
 becomes a storage path**. ``storage_key`` builds every key from server-side
-values and a sanitised leaf, so ``../../etc/passwd`` is stored as
-``etc_passwd``.
+values and a sanitised leaf: the leaf keeps only the final path segment, so
+``../../etc/passwd`` is stored as ``passwd`` under the requesting school's own
+prefix, never anywhere near ``/etc``.
 """
 
 from __future__ import annotations

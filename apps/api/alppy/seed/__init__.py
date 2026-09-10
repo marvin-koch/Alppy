@@ -41,6 +41,7 @@ from alppy.models import (
     class_student,
 )
 from alppy.models.enums import CurriculumKind, Locale
+from alppy.seed import staging as staging_data
 from alppy.seed.demo import (
     COLLEAGUE_CLASS_CODE,
     COLLEAGUE_EMAIL,
@@ -341,16 +342,31 @@ def _get_or_create_students(
 
 
 def _simulate_history(
-    db: Session, school: School, students: dict[str, Student], now: datetime
+    db: Session,
+    school: School,
+    students: dict[str, Student],
+    now: datetime,
+    *,
+    roster: list[tuple[str, str]] | None = None,
+    profiles: dict[str, Any] | None = None,
 ) -> int:
     """Three weeks of lessons, replayed into `Attempt` rows.
 
-    Skipped entirely if attempts already exist: the seed must be safe to run on
-    every container start, and a second pass would double every student's
-    evidence and quietly shift the whole matrix.
+    Skipped entirely if these students already have attempts: the seed must be
+    safe to run on every container start, and a second pass would double every
+    student's evidence and quietly shift the whole matrix.
+
+    The check is per **student**, not per school. It was per school, which is
+    right when a school holds one taught class and wrong the moment it holds
+    three: the first class seeded would make every later one look already done,
+    and staging would come up with two thirds of its classes empty.
     """
+    ids = [s.id for s in students.values()]
     already = db.execute(
-        select(Attempt.id).where(Attempt.school_id == school.id).limit(1)
+        select(Attempt.id)
+        .where(Attempt.school_id == school.id)
+        .where(Attempt.student_id.in_(ids))
+        .limit(1)
     ).scalar_one_or_none()
     if already is not None:
         return 0
@@ -376,7 +392,12 @@ def _simulate_history(
         log.warning("seed.no_exercises_for_history")
         return 0
 
-    rows = simulate_attempts(now=now, exercises_by_chapter=exercises_by_chapter)
+    rows = simulate_attempts(
+        now=now,
+        exercises_by_chapter=exercises_by_chapter,
+        roster=roster,
+        profiles=profiles,
+    )
     created = 0
     for row in rows:
         student = students.get(str(row["student_first_name"]))
@@ -401,4 +422,112 @@ def _simulate_history(
     return created
 
 
-__all__ = ["run_seed"]
+def run_staging_seed(
+    db: Session, *, password: str, now: datetime | None = None
+) -> dict[str, Any]:
+    """The larger synthetic dataset a staging deployment runs on.
+
+    Same machinery as `run_seed`, different scale and a different reason. The
+    demo seed exists so a reviewer on a clean laptop sees a plausible classroom;
+    this exists so nobody ever needs a real one. An empty staging deployment is
+    the condition under which somebody imports a real roster "just to test
+    with", so staging is given six classes of twenty across both curricula, plus
+    one class with a roster and no history — enough that a class list scrolls, a
+    batch render takes real time, and every empty state is reachable.
+
+    Every name comes from `alppy.seed.staging`'s closed corpus, which is what
+    lets `test_staging_seed.py` assert that a staging database contains nobody
+    real. The passwords come from the caller (`ALPPY_SEED_TEACHER_PASSWORD`),
+    never from the constants published in this repository.
+
+    Idempotent, like `run_seed`: every helper reuses what is already there.
+    """
+    moment = now or datetime.now(UTC)
+    summary: dict[str, Any] = {"schools": [], "classes": [], "students": 0, "attempts": 0}
+
+    for school_name, (canton, curriculum) in staging_data.STAGING_SCHOOLS.items():
+        school = db.execute(
+            select(School).where(School.name == school_name)
+        ).scalar_one_or_none()
+        if school is None:
+            school = School(
+                id=uuid.uuid4(),
+                name=school_name,
+                canton=canton,
+                default_curriculum=curriculum,
+            )
+            db.add(school)
+            db.flush()
+
+        # One teacher per school, at a domain that can never resolve.
+        email = f"teacher.{canton.lower()}@{staging_data.STAGING_TEACHER_DOMAIN}"
+        teacher = db.execute(
+            select(Teacher).where(Teacher.email == email)
+        ).scalar_one_or_none()
+        if teacher is None:
+            teacher = Teacher(
+                id=uuid.uuid4(),
+                home_school_id=school.id,
+                email=email,
+                password_hash=hash_password(password),
+                first_name="Staging",
+                last_name=canton,
+                locale=Locale.FR if curriculum is CurriculumKind.PER else Locale.DE,
+            )
+            db.add(teacher)
+            db.flush()
+        class_service.join_school(db, teacher.id, school.id)
+
+        year = _get_or_create_year(db, school, moment)
+        load_reference_data(db, school_id=school.id)
+        subject = db.execute(
+            select(Subject)
+            .where(Subject.school_id == school.id)
+            .where(Subject.key == "mathematics")
+        ).scalar_one()
+        load_demo_corpus(db, school_id=school.id, subject_id=subject.id)
+
+        for entry in staging_data.STAGING_CLASSES:
+            if entry.school != school_name:
+                continue
+            school_class = _get_or_create_class(
+                db, school, year, teacher, code=entry.code, label=f"Mathématiques — {entry.code}"
+            )
+            roster = staging_data.roster_for(entry.code, entry.size)
+            students = _get_or_create_students(
+                db, school, year, school_class, roster=roster
+            )
+            db.flush()
+            summary["classes"].append(entry.code)
+            summary["students"] += len(students)
+
+            if not entry.taught:
+                # The point of this class is that it has nothing. Simulating a
+                # history here would remove the only route to every "class with
+                # students but nothing taught yet" empty state.
+                continue
+
+            created = _simulate_history(
+                db,
+                school,
+                students,
+                moment,
+                roster=roster,
+                profiles=staging_data.profiles_for(entry.code, roster),
+            )
+            db.flush()
+            summary["attempts"] += created
+            if created:
+                ids = [s.id for s in students.values()]
+                for lesson_moment in lesson_moments(moment):
+                    recompute_for_students(db, school.id, ids, now=lesson_moment)
+                recompute_for_students(db, school.id, ids, now=moment)
+
+        summary["schools"].append(school_name)
+
+    db.commit()
+    log.info("seed.staging.done", **summary)
+    return summary
+
+
+__all__ = ["run_seed", "run_staging_seed"]

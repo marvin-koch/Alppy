@@ -40,14 +40,23 @@ from alppy.db.session import admin_session
 log = get_logger(__name__)
 
 
-#: Environments the demo seed may run in. It is a *demo* dataset: two teacher
-#: accounts whose passwords are constants in `alppy.seed.demo`, a school, and 18
-#: invented students. Idempotency makes re-running it safe; it does not make
-#: running it *here* safe, and those are different questions.
+#: Environments the demo seed may run in **unattended**. It is a *demo* dataset:
+#: two teacher accounts whose passwords are constants in `alppy.seed.demo`, a
+#: school, and 18 invented students. Idempotency makes re-running it safe; it
+#: does not make running it *here* safe, and those are different questions.
 SEEDABLE_ENVS = frozenset({"local", "ci"})
 
+#: Environments that may be seeded, but only when a human asks for it by name.
+#: Staging needs a dataset — an empty staging deployment is the condition under
+#: which somebody loads a real roster "just to test with", which is the outcome
+#: this whole arrangement exists to prevent. What it must not have is an
+#: entrypoint that reseeds it on every container start: `infra/api/entrypoint.sh`
+#: calls `seed` with no arguments, so staging is refused there and reachable only
+#: as `python -m alppy.cli seed --allow-staging`.
+EXPLICITLY_SEEDABLE_ENVS = frozenset({"staging"})
 
-def _seed() -> int:
+
+def _seed(*, allow_staging: bool = False) -> int:
     """Run ``alppy.seed.run_seed(db)`` if it exists; skip cleanly otherwise.
 
     Refuses outright in staging and production. `infra/api/entrypoint.sh` calls
@@ -62,17 +71,38 @@ def _seed() -> int:
     survivable and serves anyway, so exiting 0 keeps the log honest about what
     happened instead of adding a scary line to a correct deployment.
     """
-    env = get_settings().env
-    if env not in SEEDABLE_ENVS:
+    settings = get_settings()
+    env = settings.env
+    permitted = env in SEEDABLE_ENVS or (allow_staging and env in EXPLICITLY_SEEDABLE_ENVS)
+    if not permitted:
         log.warning(
             "seed.refused",
             env=env,
-            reason="the demo seed creates accounts with published passwords",
+            reason=(
+                "the demo seed creates accounts with published passwords"
+                if env not in EXPLICITLY_SEEDABLE_ENVS
+                else "seeding this environment requires --allow-staging"
+            ),
         )
         return 0
 
+    if env in EXPLICITLY_SEEDABLE_ENVS and not settings.seed_teacher_password:
+        # The flag says a human meant it; this says they brought a password.
+        # Falling back to the published constant here would put two known
+        # logins in front of whatever staging can reach — the demo seed's own
+        # refusal to run outside development, walked around by the flag that
+        # was supposed to make it safe.
+        log.error(
+            "seed.refused",
+            env=env,
+            reason="ALPPY_SEED_TEACHER_PASSWORD is unset; refusing to seed with "
+            "the passwords published in this repository",
+        )
+        return 1
+
+    staging = env in EXPLICITLY_SEEDABLE_ENVS
     try:
-        from alppy.seed import run_seed
+        from alppy.seed import run_seed, run_staging_seed
     except ImportError:
         log.warning(
             "seed.skipped",
@@ -82,8 +112,16 @@ def _seed() -> int:
 
     db = admin_session()
     try:
-        log.info("seed.start")
-        run_seed(db)
+        log.info("seed.start", env=env, dataset="staging" if staging else "demo")
+        if staging:
+            # A different dataset, not the same one with a different password:
+            # six classes of twenty across both curricula, from a closed corpus
+            # of invented names (`alppy.seed.staging`). The demo's eighteen
+            # never exercise a list that scrolls or a batch that takes a minute.
+            assert settings.seed_teacher_password is not None  # checked above
+            run_staging_seed(db, password=settings.seed_teacher_password)
+        else:
+            run_seed(db)
         db.commit()
         log.info("seed.done")
     except Exception:
@@ -146,7 +184,15 @@ def main(argv: list[str] | None = None) -> int:
 
     parser = argparse.ArgumentParser(prog="python -m alppy.cli")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("seed", help="Load the demo dataset (idempotent).")
+    seed_parser = subparsers.add_parser("seed", help="Load the demo dataset (idempotent).")
+    seed_parser.add_argument(
+        "--allow-staging",
+        action="store_true",
+        help=(
+            "Permit seeding a staging deployment. Requires "
+            "ALPPY_SEED_TEACHER_PASSWORD. Never set by the container entrypoint."
+        ),
+    )
     subparsers.add_parser(
         "backfill-events",
         help="Reconstruct the agenda from existing timestamps (idempotent).",
@@ -159,7 +205,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parser.parse_args(argv)
 
     if args.command == "seed":
-        return _seed()
+        return _seed(allow_staging=args.allow_staging)
 
     if args.command == "backfill-events":
         return _backfill_events()
