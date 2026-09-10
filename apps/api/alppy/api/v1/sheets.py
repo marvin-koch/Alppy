@@ -81,10 +81,22 @@ def list_sheets(
     storage: StorageDep,
     class_id: Annotated[uuid.UUID | None, Query()] = None,
     subject_id: Annotated[uuid.UUID | None, Query()] = None,
+    school_year_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[SheetOut]:
+    """The sheets this teacher may see.
+
+    ``school_year_id`` narrows to one year's sheets, through the class each was
+    printed for — a class code is reused every August (audit 02, C3).
+    """
     return [
         sheet_out(s, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, s))
-        for s in svc.list_sheets(db, scope, class_id=class_id, subject_id=subject_id)
+        for s in svc.list_sheets(
+            db,
+            scope,
+            class_id=class_id,
+            subject_id=subject_id,
+            school_year_id=school_year_id,
+        )
     ]
 
 
@@ -336,6 +348,7 @@ def sheet_mastery(
     sheet_id: uuid.UUID,
     scope: ScopeDep,
     db: DbDep,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> SheetMasteryOut:
     """How the class did on one sheet, in the product's five bands.
 
@@ -360,7 +373,7 @@ def sheet_mastery(
     people = svc.people_for_instances(db, scope.school_id, sheet.instances)
     person_ids = list(people.values())
     by_person = mastery_service.sheet_mastery(
-        db, scope.school_id, sheet.id, person_ids, competency_ids
+        db, scope.school_id, sheet.id, person_ids, competency_ids, now=as_of
     )
 
     return SheetMasteryOut(
@@ -372,7 +385,9 @@ def sheet_mastery(
             if pid in by_person
         ],
         overall=mastery_service.sheet_mastery_overall(
-            db, scope.school_id, sheet.id, person_ids, competency_ids
+            db, scope.school_id, sheet.id, person_ids, competency_ids, now=as_of
         ),
-        computed_at=datetime.now(UTC),
+        # What the answer is AS OF, which is what a reader has to know to
+        # interpret a band that decays. Not "when this request ran".
+        computed_at=as_of or datetime.now(UTC),
     )

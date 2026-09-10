@@ -12,6 +12,7 @@ from __future__ import annotations
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from sqlalchemy import func, select
@@ -23,6 +24,7 @@ from alppy.db.validity import today
 from alppy.models import (
     Attempt,
     Chapter,
+    Class,
     Exercise,
     MisconceptionNote,
     Sheet,
@@ -79,12 +81,21 @@ def list_sheets(
     class_id: uuid.UUID | None = None,
     subject_id: uuid.UUID | None = None,
     chapter_id: uuid.UUID | None = None,
+    school_year_id: uuid.UUID | None = None,
 ) -> list[Sheet]:
     stmt = (
         select(Sheet)
         .where(Sheet.school_id == scope.school_id)
         .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
     )
+    if school_year_id is not None:
+        # A sheet belongs to a year through the class it was printed for: a
+        # class code is reused every August, so `7B` alone names three groups.
+        stmt = stmt.where(
+            Sheet.class_id.in_(
+                select(Class.id).where(Class.school_year_id == school_year_id)
+            )
+        )
     if class_id is not None:
         stmt = stmt.where(Sheet.class_id == class_id)
     if subject_id is not None:
@@ -642,7 +653,11 @@ def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
 
 
 def _earned_by_sheet(
-    db: Session, school_id: uuid.UUID, sheet_ids: Sequence[uuid.UUID]
+    db: Session,
+    school_id: uuid.UUID,
+    sheet_ids: Sequence[uuid.UUID],
+    *,
+    as_of: datetime | None = None,
 ) -> dict[tuple[uuid.UUID, uuid.UUID], float]:
     """``(person, sheet) -> earned``, floored at zero, in one query for N sheets.
 
@@ -655,11 +670,18 @@ def _earned_by_sheet(
     """
     if not sheet_ids:
         return {}
-    rows = db.execute(
+    stmt = (
         select(Attempt.person_id, Attempt.sheet_id, func.sum(Attempt.score))
         .where(Attempt.sheet_id.in_(list(sheet_ids)))
         .where(Attempt.school_id == school_id)
-        .group_by(Attempt.person_id, Attempt.sheet_id)
+    )
+    if as_of is not None:
+        # A total "as of" a date is the marks that existed then. Not the marks
+        # that exist now for sheets sat before then — that is a different
+        # question and reads the same to anyone who does not check.
+        stmt = stmt.where(Attempt.answered_at <= as_of)
+    rows = db.execute(
+        stmt.group_by(Attempt.person_id, Attempt.sheet_id)
     ).all()
     return {
         (person_id, sheet_id): max(0.0, float(total))
@@ -726,6 +748,7 @@ def class_points_totals(
     *,
     subject_id: uuid.UUID | None = None,
     chapter_id: uuid.UUID | None = None,
+    as_of: datetime | None = None,
 ) -> ClassPointsReport:
     """Every sheet of a class, rolled up per student and per sheet.
 
@@ -744,7 +767,9 @@ def class_points_totals(
     if not sheets:
         return ClassPointsReport(students={}, sheets=[])
 
-    earned_by_sheet = _earned_by_sheet(db, school_id, [sheet.id for sheet in sheets])
+    earned_by_sheet = _earned_by_sheet(
+        db, school_id, [sheet.id for sheet in sheets], as_of=as_of
+    )
     # Person-keyed evidence, student-keyed report — the same join
     # `points_totals_for_sheet` makes, over every sheet at once (0028).
     person_of = people_for_students(

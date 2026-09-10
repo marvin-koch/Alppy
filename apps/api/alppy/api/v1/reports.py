@@ -13,6 +13,7 @@ two answer different questions and must not be read off one another.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated
 
 from fastapi import APIRouter, Query
@@ -34,6 +35,7 @@ def class_points(
     db: DbDep,
     subject_id: Annotated[uuid.UUID | None, Query()] = None,
     chapter_id: Annotated[uuid.UUID | None, Query()] = None,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> ClassPointsOut:
     """What this class scored, per student and per sheet.
 
@@ -41,7 +43,7 @@ def class_points(
     a term with two of five sheets marked must not read as three failures.
     """
     report = sheet_svc.class_points_totals(
-        db, scope, class_id, subject_id=subject_id, chapter_id=chapter_id
+        db, scope, class_id, subject_id=subject_id, chapter_id=chapter_id, as_of=as_of
     )
     return class_points_out(class_id, report)
 
@@ -65,11 +67,14 @@ def student_sheet(
     scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> StudentSheetOut:
     """One pupil's copy, question by question.
 
     What they put, what was expected, what each answer was worth, and the total —
     the view a teacher has open while handing the paper back.
     """
-    breakdown = results_svc.student_sheet_breakdown(db, scope, student_id, sheet_id)
+    breakdown = results_svc.student_sheet_breakdown(
+        db, scope, student_id, sheet_id, as_of=as_of
+    )
     return student_sheet_out(breakdown, storage=storage)

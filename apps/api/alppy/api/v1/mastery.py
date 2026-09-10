@@ -9,6 +9,7 @@ history behind the curve, not the source of truth for today.
 from __future__ import annotations
 
 import uuid
+from datetime import datetime
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Query
@@ -34,6 +35,7 @@ def class_mastery(
     subject_id: Annotated[uuid.UUID | None, Query()] = None,
     chapter_id: Annotated[uuid.UUID | None, Query()] = None,
     sort: Annotated[Literal["roster", "weakest"], Query()] = "roster",
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> MasteryMatrixOut:
     """Students x competencies, one cell per pair, five bands.
 
@@ -41,6 +43,16 @@ def class_mastery(
     fractions test does not want twenty-five columns of everything else.
     ``sort=weakest`` puts the students who need help at the top, which is the
     order the teacher actually reads the grid in.
+
+    ``as_of`` computes the answer as it would have stood at that moment:
+    attempts after it are dropped, and the decay is measured to it rather than
+    to now. Every read in this API meant "today" and could not be asked
+    otherwise, which is what made "what did this look like at the end of term"
+    unanswerable (audit 02, C3).
+    
+    The ROSTER moves with it: a matrix asked for as of October is built over
+    October's group, not over today's sitting in front of a sheet half of them
+    never sat.
     """
     return svc.class_matrix(
         db,
@@ -49,6 +61,7 @@ def class_mastery(
         subject_id=subject_id,
         chapter_id=chapter_id,
         sort=sort,
+        now=as_of,
     )
 
 
@@ -59,6 +72,7 @@ def class_tree(
     db: DbDep,
     subject_id: Annotated[uuid.UUID | None, Query()] = None,
     student_id: Annotated[uuid.UUID | None, Query()] = None,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> ClassTreeOut:
     """Branch -> Competence -> Theme, each node carrying a rolled-up band.
 
@@ -72,16 +86,26 @@ def class_tree(
     knows which subject it is composing in.
     """
     return tree_service.class_tree(
-        db, scope, class_id, subject_id=subject_id, student_id=student_id
+        db, scope, class_id, subject_id=subject_id, student_id=student_id, now=as_of
     )
 
 
 @router.get("/students/{student_id}/mastery", response_model=StudentProfileOut)
 def student_mastery(
-    student_id: uuid.UUID, scope: ScopeDep, db: DbDep
+    student_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> StudentProfileOut:
-    """Strengths, gaps worst-first, the curve history, and the sheets sat."""
-    return svc.student_profile(db, scope, student_id)
+    """Strengths, gaps worst-first, the curve history, and the sheets sat.
+
+    ``as_of`` computes the answer as it would have stood at that moment:
+    attempts after it are dropped, and the decay is measured to it rather than
+    to now. Every read in this API meant "today" and could not be asked
+    otherwise, which is what made "what did this look like at the end of term"
+    unanswerable (audit 02, C3).
+    """
+    return svc.student_profile(db, scope, student_id, now=as_of)
 
 
 @router.get(
@@ -89,7 +113,11 @@ def student_mastery(
     response_model=CompetencyAttemptsOut,
 )
 def student_competency_attempts(
-    student_id: uuid.UUID, competency_id: uuid.UUID, scope: ScopeDep, db: DbDep
+    student_id: uuid.UUID,
+    competency_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    as_of: Annotated[datetime | None, Query()] = None,
 ) -> CompetencyAttemptsOut:
     """The individual answers behind one matrix cell.
 
@@ -97,4 +125,4 @@ def student_competency_attempts(
     its date, its outcome, whether the teacher overrode the scanner, and links
     back to the sheet it was printed on and the scan it was read from.
     """
-    return svc.competency_attempts(db, scope, student_id, competency_id)
+    return svc.competency_attempts(db, scope, student_id, competency_id, now=as_of)

@@ -19,7 +19,7 @@ from __future__ import annotations
 
 import uuid
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Any
 
 from sqlalchemy import and_, or_, select
@@ -30,6 +30,7 @@ from alppy.api.deps import Scope, UploadPayload
 from alppy.db.validity import today
 from alppy.models import (
     Attempt,
+    Class,
     Detection,
     Exercise,
     Job,
@@ -105,7 +106,11 @@ def get_scan(db: Session, scope: Scope, scan_id: uuid.UUID) -> Scan:
 
 
 def list_scans(
-    db: Session, scope: Scope, *, sheet_id: uuid.UUID | None = None
+    db: Session,
+    scope: Scope,
+    *,
+    sheet_id: uuid.UUID | None = None,
+    school_year_id: uuid.UUID | None = None,
 ) -> list[Scan]:
     stmt = (
         select(Scan)
@@ -114,6 +119,18 @@ def list_scans(
     )
     if sheet_id is not None:
         stmt = stmt.where(Scan.sheet_id == sheet_id)
+    if school_year_id is not None:
+        # Two joins out: a pile belongs to the sheet it was printed from, and
+        # the sheet to the class's year.
+        stmt = stmt.where(
+            Scan.sheet_id.in_(
+                select(Sheet.id).where(
+                    Sheet.class_id.in_(
+                        select(Class.id).where(Class.school_year_id == school_year_id)
+                    )
+                )
+            )
+        )
     return list(db.execute(stmt.order_by(Scan.created_at.desc())).scalars())
 
 
@@ -860,7 +877,7 @@ def _get_page(
 
 
 def assignable_students(
-    db: Session, scope: Scope, scan_id: uuid.UUID
+    db: Session, scope: Scope, scan_id: uuid.UUID, *, on: date | None = None
 ) -> list[Student]:
     """Who a page of this scan could belong to.
 
@@ -887,7 +904,9 @@ def assignable_students(
     # copy sat in October by a pupil who has since changed group — offering
     # today's roster would leave that copy unassignable and its marks
     # unrecorded, which is the one outcome the scan path must never produce.
-    on = (sheet.created_at or datetime.now(UTC)).date()
+    # `on` overrides that when the teacher knows better — a sheet made in
+    # September and sat in November wants November's group.
+    on = on or (sheet.created_at or datetime.now(UTC)).date()
     stmt = (
         select(Student)
         .where(Student.school_id == school_id)

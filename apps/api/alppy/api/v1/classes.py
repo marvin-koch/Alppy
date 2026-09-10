@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
@@ -22,6 +23,7 @@ from alppy.schemas import (
     SchoolCreate,
     SchoolOut,
     SchoolUpdate,
+    SchoolYearOut,
     StudentOut,
     StudentUpdate,
     SubjectCreate,
@@ -36,14 +38,41 @@ router = APIRouter(tags=["classes"])
 
 
 @router.get("/home", response_model=HomeOut)
-def home(teacher: TeacherDep, scope: ScopeDep, db: DbDep) -> HomeOut:
+def home(
+    teacher: TeacherDep,
+    scope: ScopeDep,
+    db: DbDep,
+    school_year_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> HomeOut:
     """Everything the teacher home screen needs, in one round trip.
 
     Per class: how many students, the last sheet, how many scans are waiting to
     be reviewed, how many students have at least one weak or fading
     competency, and the band histogram behind that number.
+
+    ``school_year_id`` shows a past year's groups instead of the ones running
+    now. Discover the ids from ``GET /school-years``.
     """
-    return svc.home(db, scope, teacher)
+    return svc.home(db, scope, teacher, school_year_id=school_year_id)
+
+
+@router.get("/school-years", response_model=list[SchoolYearOut])
+def list_school_years(school_id: TenantDep, db: DbDep) -> list[SchoolYearOut]:
+    """This establishment's years, newest first.
+
+    Every `school_year_id` filter in this API needs an id, and until now there
+    was no way to be told one (audit 02, C3).
+    """
+    return [
+        SchoolYearOut(
+            id=y.id,
+            label=y.label,
+            starts_on=y.starts_on,
+            ends_on=y.ends_on,
+            is_current=y.is_current,
+        )
+        for y in svc.list_school_years(db, school_id)
+    ]
 
 
 @router.get("/subjects", response_model=list[SubjectOut])
@@ -52,7 +81,17 @@ def list_subjects(school_id: TenantDep, db: DbDep) -> list[SubjectOut]:
 
 
 @router.get("/classes", response_model=list[ClassOut])
-def list_classes(scope: ScopeDep, db: DbDep) -> list[ClassOut]:
+def list_classes(
+    scope: ScopeDep,
+    db: DbDep,
+    school_year_id: Annotated[uuid.UUID | None, Query()] = None,
+) -> list[ClassOut]:
+    """The classes this teacher has a footing in.
+
+    ``school_year_id`` selects a past year's groups. It does not change whose
+    footing is read: that is still today's, because "may I open this" is a
+    question about the reader and not about the year.
+    """
     counts = svc.student_counts(db, scope)
     return [
         class_out(
@@ -60,7 +99,7 @@ def list_classes(scope: ScopeDep, db: DbDep) -> list[ClassOut]:
             student_count=counts.get(c.id, 0),
             subject_ids=svc.taught_subject_ids_for_class(db, scope, c.id),
         )
-        for c in svc.list_classes(db, scope)
+        for c in svc.list_classes(db, scope, school_year_id=school_year_id)
     ]
 
 
@@ -80,9 +119,21 @@ def get_class(class_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> ClassOut:
 
 
 @router.get("/classes/{class_id}/students", response_model=list[StudentOut])
-def list_students(class_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> list[StudentOut]:
+def list_students(
+    class_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    on: Annotated[date | None, Query()] = None,
+) -> list[StudentOut]:
+    """Who sits in this class, today or on a past day.
+
+    ``on`` is what makes a pile from November reconcile against November's
+    group rather than against the one sitting there now — the enrolment rows
+    are time-bound (0027), and without a way to ask, every read of a roster
+    silently meant "today" (audit 02, C3).
+    """
     svc.get_class(db, scope, class_id)
-    return [student_out(s) for s in svc.list_students(db, scope, class_id)]
+    return [student_out(s) for s in svc.list_students(db, scope, class_id, on=on)]
 
 
 @router.post(

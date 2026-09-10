@@ -220,6 +220,7 @@ export interface ClassOut {
   id: Uuid;
   code: string;
   label: string | null;
+  school_year_id: Uuid | null;
   student_count: number;
   subject_ids: Uuid[];
   declared_subject_ids: Uuid[];
@@ -713,6 +714,24 @@ export interface SchoolOut {
 export interface SchoolUpdate {
   name?: string | null;
   canton?: string | null;
+}
+
+/**
+ * One school year of this establishment.
+ *
+ * Every read in this API answers "now" unless told otherwise, which is fine
+ * until August. `label` is what a teacher recognises ("2026/27"); the two
+ * dates are what a query needs, and `is_current` is the one the screens
+ * default to. Without a route to list these there was no way to DISCOVER a
+ * year id, so `school_year_id` as a filter would have been unaskable
+ * (audit 02, C3).
+ */
+export interface SchoolYearOut {
+  id: Uuid;
+  label: string;
+  starts_on: string;
+  ends_on: string;
+  is_current: boolean;
 }
 
 export interface SheetConfidenceOut {

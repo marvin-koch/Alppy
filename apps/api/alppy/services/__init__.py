@@ -160,6 +160,7 @@ def class_out(
         id=school_class.id,
         code=school_class.code,
         label=school_class.label,
+        school_year_id=school_class.school_year_id,
         student_count=student_count,
         subject_ids=subject_ids or [],
     )

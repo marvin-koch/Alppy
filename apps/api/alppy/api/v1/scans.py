@@ -8,6 +8,7 @@ confirmation is the single point where readings become graded attempts.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Annotated
 
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
@@ -46,9 +47,18 @@ def list_scans(
     db: DbDep,
     storage: StorageDep,
     sheet_id: Annotated[uuid.UUID | None, Query()] = None,
+    school_year_id: Annotated[uuid.UUID | None, Query()] = None,
 ) -> list[ScanOut]:
+    """The piles this teacher may see, newest first.
+
+    ``school_year_id`` narrows to one year, through the sheet each pile was
+    printed from and the class that sheet was for (audit 02, C3).
+    """
     return [
-        scan_out(s, storage=storage) for s in svc.list_scans(db, scope, sheet_id=sheet_id)
+        scan_out(s, storage=storage)
+        for s in svc.list_scans(
+            db, scope, sheet_id=sheet_id, school_year_id=school_year_id
+        )
     ]
 
 
@@ -174,14 +184,22 @@ def reopen_scan(scan_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> ScanUnvalidat
 
 @router.get("/scans/{scan_id}/students", response_model=list[StudentOut])
 def assignable_students(
-    scan_id: uuid.UUID, scope: ScopeDep, db: DbDep
+    scan_id: uuid.UUID,
+    scope: ScopeDep,
+    db: DbDep,
+    on: Annotated[date | None, Query()] = None,
 ) -> list[StudentOut]:
     """Who a page of this scan may be assigned to.
 
     The class the sheet was printed for, and nobody else: assigning a page to a
     student from another class files one child's answers under another's name.
+
+    The roster is read as of the day the SHEET was made, which is usually the
+    right guess. ``on`` overrides it for the case the guess gets wrong: a sheet
+    composed in September and sat in November, by a group that changed in
+    between (audit 02, C3).
     """
-    return [student_out(s) for s in svc.assignable_students(db, scope, scan_id)]
+    return [student_out(s) for s in svc.assignable_students(db, scope, scan_id, on=on)]
 
 
 @router.post("/scans/{scan_id}/pages/{page_id}/discard", response_model=ScanPageOut)

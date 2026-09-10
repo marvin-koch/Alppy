@@ -33,6 +33,7 @@ export const API_ROUTES = [
   'GET /api/v1/scans/{scan_id}',
   'GET /api/v1/scans/{scan_id}/detections',
   'GET /api/v1/scans/{scan_id}/students',
+  'GET /api/v1/school-years',
   'GET /api/v1/sheets',
   'GET /api/v1/sheets/{sheet_id}',
   'GET /api/v1/sheets/{sheet_id}/confidence',

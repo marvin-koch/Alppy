@@ -151,12 +151,35 @@ def current_school_year(
 # --------------------------------------------------------------------------
 # Classes
 # --------------------------------------------------------------------------
-def list_classes(db: Session, scope: Scope) -> list[Class]:
+def list_classes(
+    db: Session, scope: Scope, *, school_year_id: uuid.UUID | None = None
+) -> list[Class]:
+    """Every class this teacher has a footing in.
+
+    ``school_year_id`` selects a year's groups instead of the ones running
+    today. Note it does NOT move the enrolment date: a teacher asking for last
+    year's classes is asking which groups existed then, and their own footing
+    in them is still read as of today — they either still have access or they
+    do not, and that is a question about the reader, not about the year.
+    """
+    stmt = select(Class).where(Class.id.in_(owned_class_ids(scope, on=today())))
+    if school_year_id is not None:
+        stmt = stmt.where(Class.school_year_id == school_year_id)
+    return list(db.execute(stmt.order_by(Class.code.asc())).scalars())
+
+
+def list_school_years(db: Session, school_id: uuid.UUID) -> list[SchoolYear]:
+    """This establishment's years, newest first.
+
+    The discovery route for every `school_year_id` filter in the API: without
+    it a client would have to know an id it has no way to be told (audit 02,
+    C3).
+    """
     return list(
         db.execute(
-            select(Class)
-            .where(Class.id.in_(owned_class_ids(scope, on=today())))
-            .order_by(Class.code.asc())
+            select(SchoolYear)
+            .where(SchoolYear.school_id == school_id)
+            .order_by(SchoolYear.starts_on.desc())
         ).scalars()
     )
 
@@ -479,15 +502,22 @@ def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCrea
 # --------------------------------------------------------------------------
 # Roster
 # --------------------------------------------------------------------------
-def list_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Student]:
+def list_students(
+    db: Session, scope: Scope, class_id: uuid.UUID, *, on: date | None = None
+) -> list[Student]:
     """Everyone sitting in this class — home pupils and visitors alike.
 
     This is what a roster, a mastery matrix, a curriculum tree and a printed
     pile all mean by "the students", and nearly every other service funnels
     through it. If you want the pupils this class is HOME to — because you are
     minting a UID or a number — use ``home_students``.
+
+    ``on`` is the day to read the roster as of, defaulting to today. Pass the
+    day a sheet was sat and this is the group that sat it — which is the
+    difference between a pile that reconciles and one with three copies from
+    children who have since moved to another niveau (0027, audit 02, C3).
     """
-    on = today()
+    on = on or today()
     return list(
         db.execute(
             select(Student)
@@ -734,7 +764,13 @@ def class_summary(
     )
 
 
-def home(db: Session, scope: Scope, teacher: Teacher) -> HomeOut:
+def home(
+    db: Session,
+    scope: Scope,
+    teacher: Teacher,
+    *,
+    school_year_id: uuid.UUID | None = None,
+) -> HomeOut:
     counts = student_counts(db, scope)
     pending = _pending_scan_counts(db, scope)
     last_sheets = _last_sheets(db, scope)
@@ -750,7 +786,7 @@ def home(db: Session, scope: Scope, teacher: Teacher) -> HomeOut:
                 pending=pending,
                 last_sheets=last_sheets,
             )
-            for c in list_classes(db, scope)
+            for c in list_classes(db, scope, school_year_id=school_year_id)
         ],
     )
 

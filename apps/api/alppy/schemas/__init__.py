@@ -7,7 +7,7 @@ frontend builds against this file rather than against assumptions.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime
+from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
@@ -129,10 +129,31 @@ class ColleagueOut(ApiModel):
     last_name: str
 
 
+class SchoolYearOut(ApiModel):
+    """One school year of this establishment.
+
+    Every read in this API answers "now" unless told otherwise, which is fine
+    until August. `label` is what a teacher recognises ("2026/27"); the two
+    dates are what a query needs, and `is_current` is the one the screens
+    default to. Without a route to list these there was no way to DISCOVER a
+    year id, so `school_year_id` as a filter would have been unaskable
+    (audit 02, C3).
+    """
+
+    id: uuid.UUID
+    label: str
+    starts_on: date
+    ends_on: date
+    is_current: bool
+
+
 class ClassOut(ApiModel):
     id: uuid.UUID
     code: str
     label: str | None
+    #: Which year's group this is. A class code is reused every August, so the
+    #: code alone does not identify a group across years.
+    school_year_id: uuid.UUID | None = None
     student_count: int = 0
     # The branches THIS CALLER takes here (D73). Not what the class studies —
     # the Branch nav must never render a branch the reader cannot open.

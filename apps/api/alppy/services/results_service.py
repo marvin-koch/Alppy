@@ -101,7 +101,12 @@ def _expected_index(exercise: Exercise) -> int | None:
 
 
 def student_sheet_breakdown(
-    db: Session, scope: Scope, student_id: uuid.UUID, sheet_id: uuid.UUID
+    db: Session,
+    scope: Scope,
+    student_id: uuid.UUID,
+    sheet_id: uuid.UUID,
+    *,
+    as_of: datetime | None = None,
 ) -> StudentSheet:
     """This student's copy of this sheet, question by question.
 
@@ -149,7 +154,7 @@ def student_sheet_breakdown(
 
     # The newest reading per question, across every pile of this sheet.
     readings: dict[uuid.UUID, tuple[Detection, Any, uuid.UUID, int | None]] = {}
-    rows = db.execute(
+    stmt = (
         select(Detection, ScanPage.created_at, Scan.id, ScanPage.page_in_copy)
         .join(ScanPage, ScanPage.id == Detection.scan_page_id)
         .join(Scan, Scan.id == ScanPage.scan_id)
@@ -159,7 +164,13 @@ def student_sheet_breakdown(
         .where(ScanPage.discarded.is_(False))
         .where(ScanPage.wrong_class.is_(False))
         .where(Detection.exercise_id.is_not(None))
-    ).all()
+    )
+    if as_of is not None:
+        # "The paper as I graded it in November", when a copy was re-shot
+        # later and the newest-page rule would otherwise answer with a pile
+        # that did not exist yet.
+        stmt = stmt.where(ScanPage.created_at <= as_of)
+    rows = db.execute(stmt).all()
     for detection, page_created, page_scan_id, page_in_copy in rows:
         if detection.exercise_id is None:  # pragma: no cover - filtered in SQL
             continue
