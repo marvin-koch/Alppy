@@ -19,6 +19,21 @@ else. Both failure modes are real and they are mirror images: a laxer rule
 leaks a colleague's branch into your matrix, and a *stricter* rule invented in
 a new read path locks a co-teacher out of the class they teach.
 
+Since D87 there is a **third axis: when.** ``class_student`` and
+``class_teacher_subject`` hold ended memberships as well as open ones, so every
+subquery here takes ``on`` — the date to answer as of — and **it is a required
+keyword argument with no default.** That is deliberate and it is the whole
+safety mechanism of 0027: adding the columns without it would leave a dozen
+read sites compiling unchanged while the tables underneath them started
+returning history, and a roster silently gaining the pupils who left is a
+worse bug than the one 0027 fixes. A required argument turns every one of
+those sites into a type error the suite catches, which is what the renames in
+0019 and 0021 bought by renaming.
+
+The interval is half-open and lives in ``db/validity.py`` — below this module
+and below ``api/deps``, because ``get_membership`` needs the same predicate and
+this module already imports ``deps`` for ``Scope``.
+
 Nothing here touches the session: they are ``Select`` objects (or, for
 ``taught_here``, a boolean expression) that a caller drops into an ``IN`` or a
 ``WHERE``, which is what lets one definition serve a count, a join and a filter
@@ -28,16 +43,18 @@ without three versions drifting apart.
 from __future__ import annotations
 
 import uuid
+from datetime import date
 from typing import Any
 
 from sqlalchemy import ColumnElement, Select, and_, or_, select
 from sqlalchemy.orm import QueryableAttribute
 
 from alppy.api.deps import Scope
+from alppy.db.validity import valid_on
 from alppy.models import Class, class_student, class_teacher_subject
 
 
-def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
+def owned_class_ids(scope: Scope, *, on: date) -> Select[tuple[uuid.UUID]]:
     """The classes this teacher has any footing in — CLASS-GRAINED.
 
     Head teacher of, **or** holding any branch in. This gates a class's
@@ -53,6 +70,11 @@ def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
     the 0021 backfill provably behaviour-preserving: afterwards every class's
     assignment set is exactly {head teacher} × {declared branches}, so this
     union selects the same classes the old single predicate did.
+
+    The head-teacher arm is also **untimed**, and that is not an oversight:
+    ``Class.head_teacher_id`` is a NOT NULL column on the class, not a
+    membership, so a class is never unowned and there is no interval to ask
+    about. Only the assignment arm takes ``on``.
     """
     return (
         select(Class.id)
@@ -61,9 +83,9 @@ def owned_class_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
             or_(
                 Class.head_teacher_id == scope.teacher_id,
                 Class.id.in_(
-                    select(class_teacher_subject.c.class_id).where(
-                        class_teacher_subject.c.teacher_id == scope.teacher_id
-                    )
+                    select(class_teacher_subject.c.class_id)
+                    .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
+                    .where(valid_on(class_teacher_subject, on))
                 ),
             )
         )
@@ -81,6 +103,8 @@ def taught_here(
     class_col: ColumnExpr,
     subject_col: ColumnExpr,
     scope: Scope,
+    *,
+    on: date,
 ) -> ColumnElement[bool]:
     """Does this teacher take THIS branch in THIS class — PAIR-GRAINED.
 
@@ -103,25 +127,26 @@ def taught_here(
         .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
         .where(class_teacher_subject.c.class_id == class_col)
         .where(class_teacher_subject.c.subject_id == subject_col)
+        .where(valid_on(class_teacher_subject, on))
         .exists()
     )
 
 
-def taught_subject_ids(scope: Scope, class_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
+def taught_subject_ids(scope: Scope, class_id: uuid.UUID, *, on: date) -> Select[tuple[uuid.UUID]]:
     """The branches this teacher takes in ONE class, as a subquery.
 
     May legitimately be empty — a head teacher who teaches nothing gets a
     roster and an empty tree, which is the right answer and not a 404.
     """
-    return select(class_teacher_subject.c.subject_id).where(
-        and_(
-            class_teacher_subject.c.teacher_id == scope.teacher_id,
-            class_teacher_subject.c.class_id == class_id,
-        )
+    return (
+        select(class_teacher_subject.c.subject_id)
+        .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
+        .where(class_teacher_subject.c.class_id == class_id)
+        .where(valid_on(class_teacher_subject, on))
     )
 
 
-def taught_subject_ids_anywhere(scope: Scope) -> Select[tuple[uuid.UUID]]:
+def taught_subject_ids_anywhere(scope: Scope, *, on: date) -> Select[tuple[uuid.UUID]]:
     """Every branch this teacher takes, in any class of this school.
 
     The corpus is deliberately staffroom-shared (I-platform-04), so this is a
@@ -132,11 +157,12 @@ def taught_subject_ids_anywhere(scope: Scope) -> Select[tuple[uuid.UUID]]:
         .join(Class, Class.id == class_teacher_subject.c.class_id)
         .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
         .where(Class.school_id == scope.school_id)
+        .where(valid_on(class_teacher_subject, on))
         .distinct()
     )
 
 
-def enrolled_student_ids(class_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
+def enrolled_student_ids(class_id: uuid.UUID, *, on: date) -> Select[tuple[uuid.UUID]]:
     """The ids of the students sitting in one class.
 
     "Sitting in", not "homed in": a student may be enrolled in several of one
@@ -144,11 +170,19 @@ def enrolled_student_ids(class_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
     read a teacher browses — roster, matrix, tree, printed pile, adaptive
     targeting — means this one. ``Student.home_class_id`` means the other, and
     only the roster paste and the UID want it.
+
+    Pass a past ``on`` and this is the roster as it stood that day, which is
+    what makes a matrix column honest about the group that actually sat the
+    sheet.
     """
-    return select(class_student.c.student_id).where(class_student.c.class_id == class_id)
+    return (
+        select(class_student.c.student_id)
+        .where(class_student.c.class_id == class_id)
+        .where(valid_on(class_student, on))
+    )
 
 
-def enrolled_in_owned_classes(scope: Scope) -> Select[tuple[uuid.UUID]]:
+def enrolled_in_owned_classes(scope: Scope, *, on: date) -> Select[tuple[uuid.UUID]]:
     """Every student sitting in any class this teacher has a footing in.
 
     The student half of ``owned_class_ids``, and class-grained on purpose: a
@@ -157,6 +191,78 @@ def enrolled_in_owned_classes(scope: Scope) -> Select[tuple[uuid.UUID]]:
     (I-platform-10). What that teacher may then *see* about the child is
     narrowed per branch by the caller, not here.
     """
-    return select(class_student.c.student_id).where(
-        class_student.c.class_id.in_(owned_class_ids(scope))
+    return (
+        select(class_student.c.student_id)
+        .where(class_student.c.class_id.in_(owned_class_ids(scope, on=on)))
+        .where(valid_on(class_student, on))
+    )
+
+
+def ever_enrolled_student_ids(class_id: uuid.UUID) -> Select[tuple[uuid.UUID]]:
+    """Everyone who has EVER sat in one class, open membership or ended.
+
+    The one read that must not take an ``on``, and the reason it is spelled
+    separately rather than as a default: it feeds the PII scrub list
+    (``open_answer_grading``), where the set has to be a **superset** of the
+    names that could appear on the paper. A pupil who left the group in
+    February still wrote their name on the October copy sitting in the pile,
+    and narrowing this to the current roster would quietly stop scrubbing it —
+    a leak that no test fails on, because the gate only raises for names it
+    was told about (docs/privacy.md).
+
+    Never use it as a permission gate. It answers "whose name might be on this
+    paper", not "whose record may this teacher read".
+    """
+    return select(class_student.c.student_id).where(class_student.c.class_id == class_id)
+
+
+def ever_shared_student_ids(scope: Scope) -> Select[tuple[uuid.UUID]]:
+    """Every student whose time in a class OVERLAPPED this teacher's time in it.
+
+    The historical counterpart to ``enrolled_in_owned_classes``, and the
+    reason 0027 was worth doing: M. Rossier taught Léa in the niveau-2 group
+    from September to February and marked three of her sheets. When she moves
+    to niveau 3 the current-enrolment gate 404s her profile, and he cannot
+    reconstruct the group she was assessed in to justify her orientation to a
+    parent.
+
+    **Overlap, not "ever".** "Any pupil who was ever in a class I was ever in"
+    would hand a teacher who joined in March a pupil who left in October —
+    two people who never shared a room, linked by a group. The predicate is
+    the ordinary interval intersection, with NULL read as "still open":
+
+        pupil.valid_from < staff.valid_to  AND  staff.valid_from < pupil.valid_to
+
+    The head-teacher arm has no interval — ``Class.head_teacher_id`` is a
+    column on the class, so a maître de classe reaches every pupil the class
+    ever held, which is what being accountable for a group means.
+
+    This widens WHO a teacher may name, exactly as ``enrolled_in_owned_classes``
+    does. It says nothing about what they may then see, which stays
+    pair-grained and per branch at the caller.
+    """
+    staffing = class_teacher_subject
+    overlap = and_(
+        class_student.c.class_id == staffing.c.class_id,
+        staffing.c.teacher_id == scope.teacher_id,
+        or_(
+            staffing.c.valid_to.is_(None),
+            class_student.c.valid_from < staffing.c.valid_to,
+        ),
+        or_(
+            class_student.c.valid_to.is_(None),
+            staffing.c.valid_from < class_student.c.valid_to,
+        ),
+    )
+    return (
+        select(class_student.c.student_id)
+        .join(Class, Class.id == class_student.c.class_id)
+        .where(Class.school_id == scope.school_id)
+        .where(
+            or_(
+                Class.head_teacher_id == scope.teacher_id,
+                select(staffing.c.class_id).where(overlap).exists(),
+            )
+        )
+        .distinct()
     )

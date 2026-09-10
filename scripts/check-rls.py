@@ -147,13 +147,18 @@ def main() -> int:
             {"i": teacher_id, "s": school_a},
         )
         conn.execute(
-            text("INSERT INTO teacher_school (teacher_id, school_id) VALUES (:t, :s)"),
+            text(
+                "INSERT INTO teacher_school (teacher_id, school_id, valid_from)"
+                " VALUES (:t, :s, CURRENT_DATE)"
+            ),
             {"t": teacher_id, "s": school_a},
         )
         for name, school_id in (("a", school_a), ("b", school_b)):
             year, klass, student = uuid.uuid4(), uuid.uuid4(), uuid.uuid4()
+            person = uuid.uuid4()
             ids[f"year_{name}"], ids[f"class_{name}"] = year, klass
             ids[f"student_{name}"] = student
+            ids[f"person_{name}"] = person
             conn.execute(
                 text(
                     "INSERT INTO school_year (id, school_id, label, starts_on, ends_on,"
@@ -168,16 +173,30 @@ def main() -> int:
                 ),
                 {"i": klass, "s": school_id, "y": year, "t": teacher_id},
             )
+            # The durable identity above the year-bound row (0028). Names live
+            # here now; `student` is one year of enrolment.
             conn.execute(
                 text(
-                    "INSERT INTO student (id, school_id, home_class_id, school_year_id, uid,"
-                    " number, first_name, last_name)"
-                    " VALUES (:i, :s, :c, :y, '7B_15', 15, 'Enfant', 'Anonyme')"
+                    "INSERT INTO person (id, school_id, first_name, last_name)"
+                    " VALUES (:i, :s, 'Enfant', 'Anonyme')"
                 ),
-                {"i": student, "s": school_id, "c": klass, "y": year},
+                {"i": person, "s": school_id},
             )
             conn.execute(
-                text("INSERT INTO class_student (class_id, student_id) VALUES (:c, :s)"),
+                text(
+                    "INSERT INTO student (id, school_id, person_id, home_class_id,"
+                    " school_year_id, uid, number, first_name, last_name)"
+                    " VALUES (:i, :s, :p, :c, :y, '7B_15', 15, 'Enfant', 'Anonyme')"
+                ),
+                {"i": student, "s": school_id, "p": person, "c": klass, "y": year},
+            )
+            # `valid_from` is NOT NULL with a CURRENT_DATE default since 0027;
+            # named explicitly here so the fixture does not depend on it.
+            conn.execute(
+                text(
+                    "INSERT INTO class_student (class_id, student_id, valid_from)"
+                    " VALUES (:c, :s, CURRENT_DATE)"
+                ),
                 {"c": klass, "s": student},
             )
 

@@ -499,7 +499,7 @@ def test_a_sheet_band_ignores_the_bareme(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=tenant.students[0].id,
+            person_id=tenant.students[0].person_id,
             exercise_id=exercise.id,
             sheet_id=sheet_id,
             correct=True,

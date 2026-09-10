@@ -186,16 +186,24 @@ def read_proposal(
     # approve notes after the plan was built, and a frozen copy would go stale.
     source_sheet_id = (job.payload or {}).get("source_sheet_id")
     if source_sheet_id:
-        from alppy.services.feedback_service import latest_for_students
+        from alppy.services.feedback_service import latest_for_people
+        from alppy.services.sheet_service import people_for_students
 
-        notes = latest_for_students(
+        # A plan addresses a pupil in one year, so it carries a `student_id`; a
+        # note explains a misconception, which is a fact about the person
+        # (0028). One join, here, rather than two ids on the plan.
+        person_of = people_for_students(
+            db, scope.school_id, [p.student_id for p in response.plans]
+        )
+        notes = latest_for_people(
             db,
             school_id=scope.school_id,
-            student_ids=[p.student_id for p in response.plans],
+            person_ids=list(person_of.values()),
             source_sheet_id=uuid.UUID(str(source_sheet_id)),
         )
         for plan in response.plans:
-            note = notes.get(plan.student_id)
+            person_id = person_of.get(plan.student_id)
+            note = notes.get(person_id) if person_id is not None else None
             if note is not None:
                 plan.feedback_id = note.id
     return response
@@ -385,26 +393,39 @@ def list_feedback(
     # place in the codebase where the tenant filter is an inference rather than
     # a line. The lookup is by primary key either way; the extra predicate is a
     # comparison on rows already fetched.
-    uids = {
-        s.id: s.uid
-        for s in db.scalars(
+    #
+    # Keyed on the person since 0028, and resolved back to a student to answer
+    # with the uid the paper carries. A note may outlive the year it was
+    # written in; the uid it is shown beside must be the uid of the year it
+    # describes, which is why this looks the student up by person AND by the
+    # sheet's own year rather than taking whichever row comes first.
+    students = list(
+        db.scalars(
             select(Student).where(
                 Student.school_id == scope.school_id,
-                Student.id.in_([r.student_id for r in rows] or [uuid.uuid4()]),
+                Student.person_id.in_([r.person_id for r in rows] or [uuid.uuid4()]),
             )
         )
-    }
+    )
+    by_person = {s.person_id: s for s in students}
     seen: set[uuid.UUID] = set()
     out: list[MisconceptionNoteOut] = []
     for row in rows:
-        if row.student_id in seen:
+        if row.person_id in seen:
             continue
-        seen.add(row.student_id)
+        seen.add(row.person_id)
+        student = by_person.get(row.person_id)
+        # A note this school owns whose person it cannot resolve is not dropped
+        # — it is shown with a blank uid, exactly as before 0028. That row only
+        # exists through a cross-school mistake, and hiding it would leave the
+        # teacher unable to see the thing that needs fixing. The id echoed back
+        # is the one the note points at, which is what this field has always
+        # carried.
         out.append(
             MisconceptionNoteOut(
                 id=row.id,
-                student_id=row.student_id,
-                student_uid=uids.get(row.student_id, ""),
+                student_id=student.id if student is not None else row.person_id,
+                student_uid=student.uid if student is not None else "",
                 subject_id=row.subject_id,
                 based_on_sheet_id=row.based_on_sheet_id,
                 language=row.language,

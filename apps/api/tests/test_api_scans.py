@@ -20,7 +20,7 @@ from test_api_fixtures import (
 )
 
 from alppy.core.config import Settings
-from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance
+from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance, Student
 from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus
 
 CORRECT_INDEX = 1
@@ -350,7 +350,7 @@ def _build_scanned_sheet(client: TestClient, tenant: Tenant, db: Session) -> dic
             Attempt(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,
-                student_id=student.id,
+                person_id=student.person_id,
                 exercise_id=exercise.id,
                 correct=False,
                 score=0.0,
@@ -406,8 +406,11 @@ def test_confirm_grades_only_what_is_gradeable_and_moves_the_band(
     assert body["students_affected"] == 1
     assert body["competencies_updated"] == 1
 
+    # The attempts hang off the PERSON since 0028; `student_id` is the
+    # year-bound row the paper was printed for, so the lookup goes through it.
+    person_id = db.get(Student, uuid.UUID(str(student_id))).person_id  # type: ignore[union-attr]
     attempts = db.execute(
-        select(Attempt).where(Attempt.student_id == uuid.UUID(str(student_id)))
+        select(Attempt).where(Attempt.person_id == person_id)
     ).scalars().all()
     assert len(attempts) == 8  # six new plus the two seeded yesterday
     assert sum(1 for a in attempts if a.correct) == 6

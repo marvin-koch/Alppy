@@ -21,6 +21,7 @@ from fastapi import APIRouter, Query
 from sqlalchemy import and_, or_, select
 
 from alppy.api.deps import DbDep, ScopeDep
+from alppy.db.validity import today
 from alppy.models import Class, Event, Scan, Sheet, Source, SourceSection
 from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import TimelineEventOut, TimelineFacets, TimelineOut
@@ -98,14 +99,18 @@ def get_timeline(
     * everything else only in a branch this teacher actually takes, so a
       colleague's history scans stay out of a maths teacher's agenda.
     """
-    class_ids = list(db.scalars(owned_class_ids(scope)))
+    # The classes this teacher has a footing in NOW. A group they stopped
+    # taking in May leaves the agenda in June; its events are not deleted,
+    # they simply stop being this teacher's to browse.
+    on = today()
+    class_ids = list(db.scalars(owned_class_ids(scope, on=on)))
     visibility = or_(
         Event.class_id.is_(None),
         and_(
             Event.class_id.in_(class_ids),
             Event.subject_area_id.is_(None),
         ),
-        taught_here(Event.class_id, Event.subject_area_id, scope),
+        taught_here(Event.class_id, Event.subject_area_id, scope, on=on),
     )
     events, total, facets = list_events(
         db,

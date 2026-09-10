@@ -23,7 +23,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Engine
@@ -47,6 +47,7 @@ from alppy.api.deps import Scope  # noqa: E402
 from alppy.core.config import Settings  # noqa: E402
 from alppy.core.security import hash_password  # noqa: E402
 from alppy.db.base import Base  # noqa: E402
+from alppy.db.validity import today  # noqa: E402
 from alppy.main import create_app  # noqa: E402
 from alppy.models import (  # noqa: E402
     Chapter,
@@ -54,6 +55,7 @@ from alppy.models import (  # noqa: E402
     Competency,
     Detection,
     Exercise,
+    Person,
     Scan,
     ScanPage,
     School,
@@ -218,18 +220,25 @@ def seat_students(
 ) -> list[Student]:
     """Build a roster and seat it, the way ``class_service.add_students`` does.
 
-    One helper rather than the same loop in every fixture, because a student is
-    now two facts: the home class that minted the uid, and the enrollment rows
-    that say where they sit (D69). A fixture that sets only the first builds a
-    pupil who exists but is in nobody's class, and the failure surfaces three
-    layers away as an empty matrix.
+    One helper rather than the same loop in every fixture, because a pupil is
+    now THREE facts: the durable ``Person`` their evidence hangs off (D87), the
+    home class that minted the uid, and the enrollment rows that say where they
+    sit (D69). A fixture that sets only the second builds a pupil who exists
+    but is in nobody's class, and the failure surfaces three layers away as an
+    empty matrix; one that skips the first cannot hold an attempt at all.
     """
     students: list[Student] = []
+    people: list[Person] = []
     for number, (first, last) in enumerate(names, start=1):
+        person = Person(
+            id=uuid.uuid4(), school_id=school_id, first_name=first, last_name=last
+        )
+        people.append(person)
         students.append(
             Student(
                 id=uuid.uuid4(),
                 school_id=school_id,
+                person_id=person.id,
                 home_class_id=school_class.id,
                 school_year_id=school_year_id,
                 uid=f"{school_class.code}_{number:02d}",
@@ -238,11 +247,16 @@ def seat_students(
                 last_name=last,
             )
         )
+    db.add_all(people)
+    db.flush()
     db.add_all(students)
     db.flush()
     db.execute(
         class_student.insert(),
-        [{"class_id": school_class.id, "student_id": s.id} for s in students],
+        [
+            {"class_id": school_class.id, "student_id": s.id, "valid_from": today()}
+            for s in students
+        ],
     )
     return students
 
@@ -584,10 +598,21 @@ def assign_branch(
         .values(class_id=school_class.id, subject_id=subject.id, position=position)
         .on_conflict_do_nothing(index_elements=["class_id", "subject_id"])
     )
+    # `valid_from` and the partial unique index are 0027's: the plain triple is
+    # no longer unique on its own, so the conflict target has to name the
+    # PARTIAL index — predicate included — or Postgres matches no index at all.
     db.execute(
         pg_insert(class_teacher_subject)
-        .values(class_id=school_class.id, teacher_id=teacher.id, subject_id=subject.id)
-        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
+        .values(
+            class_id=school_class.id,
+            teacher_id=teacher.id,
+            subject_id=subject.id,
+            valid_from=today(),
+        )
+        .on_conflict_do_nothing(
+            index_elements=["class_id", "teacher_id", "subject_id"],
+            index_where=text("valid_to IS NULL"),
+        )
     )
     db.flush()
 

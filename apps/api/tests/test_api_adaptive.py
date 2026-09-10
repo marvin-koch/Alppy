@@ -422,12 +422,14 @@ def test_the_feedback_uid_lookup_filters_on_the_school_itself(
 
     mine = tenant.students[0]
     theirs = other_tenant.students[0]
-    for student_id in (mine.id, theirs.id):
+    # Person ids since 0028: a note names the durable identity, and the point
+    # of the test is that one of these two belongs to another school.
+    for student_id in (mine.person_id, theirs.person_id):
         db.add(
             MisconceptionNote(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,  # this school's note ...
-                student_id=student_id,  # ... naming another school's pupil
+                person_id=student_id,  # ... naming another school's pupil
                 subject_id=tenant.subject.id,
                 based_on_sheet_id=uuid.UUID(sheet_id),
                 language="fr",
@@ -443,5 +445,7 @@ def test_the_feedback_uid_lookup_filters_on_the_school_itself(
     by_student = {n["student_id"]: n["student_uid"] for n in body}
 
     assert by_student[str(mine.id)] == mine.uid
-    assert by_student[str(theirs.id)] == "", "a pupil of another school has no uid to show here"
+    assert by_student[str(theirs.person_id)] == "", (
+        "a pupil of another school has no uid to show here"
+    )
     assert theirs.uid not in {n["student_uid"] for n in body}

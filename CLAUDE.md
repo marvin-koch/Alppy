@@ -64,7 +64,7 @@ python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DA
 |---|---|
 | `apps/web` | Next.js App Router, TypeScript, Tailwind v4, next-intl |
 | `apps/api` | FastAPI, SQLAlchemy 2, Alembic, Pydantic |
-| `apps/api/alppy/models/__init__.py` | **Every table.** Read [`docs/data-model.md`](docs/data-model.md) before changing one — three columns look like their neighbouring join table and are not |
+| `apps/api/alppy/models/__init__.py` | **Every table.** Read [`docs/data-model.md`](docs/data-model.md) before changing one — §2 lists the columns that look like their neighbouring join table and are not |
 | `apps/api/alppy/sheets/layout.py` | **Print geometry — the single source of truth** |
 | `apps/api/alppy/scan/` | OpenCV registration, bubble detection, grading |
 | `apps/api/alppy/ingest/regions.py` | Exercise regions cut from the page geometry (label, crop, `SUITE ▶`) |
@@ -117,6 +117,36 @@ constraint, not a preference.
 **`layout.py` and `print.css` describe the same geometry, and the detector reads
 it.** *(DC-print-07)* Changing a number is a **layout version bump**, not a tweak — old scans
 must keep registering against the layout they were printed with.
+
+**A membership is an interval, and `on` is a required argument.** `class_student`,
+`class_teacher_subject` and `teacher_school` carry `valid_from`/`valid_to`, and
+leaving is an `UPDATE`, never a `DELETE` (D87). Every subquery in
+`services/enrollment.py` takes `on: date` **with no default** — that is not
+ceremony, it is what stops a read path keeping the old meaning while the table
+underneath it starts returning history, and it is what the renames in 0019 and
+0021 bought by renaming. Two reads deliberately take no `on` and point opposite
+ways: `ever_enrolled_student_ids` feeds the PII scrub list and must be a
+*superset* (a pupil who left in February still wrote their name on the October
+copy in the pile), and `ever_shared_student_ids` gates *reading* a pupil's past
+on the teacher's window having **overlapped** theirs — not "ever", which would
+hand a teacher who arrived in March a pupil who left in October. Acting on a
+pupil (rename, re-enrol, delete) stays gated on a CURRENT membership.
+
+**Widening a key is not the same as keeping it unique.** Each of those three
+tables carries a partial unique index on the open row (`uq_class_student_open`
+and siblings). Without it two rows differing only in `valid_from` are both
+open — one child counted twice in every roster join and every matrix column.
+It is also why `enroll` is no longer `ON CONFLICT DO NOTHING`.
+
+**`Person` is who a pupil is; `Student` is one year of them.** `attempt`,
+`mastery_snapshot`, `mastery_branch_snapshot` and `misconception_note` hang off
+`person_id`. The print and scan path stays on the year-bound row —
+`sheet_instance`, `answer_box_placement.student_uid`, `scan_page.student_id`,
+`exercise_variant.student_id` — because a UID is a fact about one year's paper
+and must not change meaning (D87). The two id spaces are deliberately disjoint,
+so confusing them is a foreign-key violation rather than a silent success.
+Deleting a `Student` no longer destroys evidence; deleting a `Person` does, and
+`delete_student` does both.
 
 **Tenancy has two layers now, and the second one only works if the roles stay
 apart.** Every query still takes `school_id` as a required argument — that is the

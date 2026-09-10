@@ -27,6 +27,7 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope, UploadPayload
+from alppy.db.validity import today
 from alppy.models import (
     Attempt,
     Detection,
@@ -55,7 +56,7 @@ from alppy.schemas import (
 )
 from alppy.services import event_service
 from alppy.services.enrollment import enrolled_student_ids, taught_here
-from alppy.services.mastery_service import recompute_for_students
+from alppy.services.mastery_service import recompute_for_people
 from alppy.storage import Storage, storage_key
 
 CONFIRMABLE_STATUSES = (ScanStatus.UPLOADED, ScanStatus.PROCESSING, ScanStatus.NEEDS_REVIEW)
@@ -83,7 +84,7 @@ def _owned_scan(scope: Scope) -> Any:
     pair-grained, so a teacher can only attach a sheet they already teach.
     """
     owned_sheets = select(Sheet.id).where(
-        taught_here(Sheet.class_id, Sheet.subject_id, scope)
+        taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today())
     )
     return or_(
         Scan.sheet_id.in_(owned_sheets),
@@ -416,7 +417,7 @@ def _newest_other_confirmed(
     school_id: uuid.UUID,
     *,
     exclude_scan_id: uuid.UUID,
-    student_id: uuid.UUID,
+    person_id: uuid.UUID,
     exercise_id: uuid.UUID,
     sheet_id: uuid.UUID | None,
 ) -> tuple[Detection, Scan, ScanPage] | None:
@@ -424,6 +425,12 @@ def _newest_other_confirmed(
 
     Ordered by ``Scan.confirmed_at``, not by upload time: what matters is which
     pile the teacher most recently signed off, not which arrived last.
+
+    Takes a ``person_id`` because that is what a freed ``Attempt`` carries
+    since 0028, and joins out to ``student`` to reach the page: a scan page is
+    a fact about one year's paper and keeps its ``student_id``. The join is
+    the translation, and it is exact — a page can only belong to a student row
+    of the year the sheet was printed for.
     """
     sheet_clause = Scan.sheet_id.is_(None) if sheet_id is None else Scan.sheet_id == sheet_id
     row = db.execute(
@@ -434,7 +441,8 @@ def _newest_other_confirmed(
         .where(Scan.id != exclude_scan_id)
         .where(Scan.status == ScanStatus.CONFIRMED)
         .where(sheet_clause)
-        .where(ScanPage.student_id == student_id)
+        .join(Student, Student.id == ScanPage.student_id)
+        .where(Student.person_id == person_id)
         .where(ScanPage.discarded.is_(False))
         .where(ScanPage.wrong_class.is_(False))
         .where(Detection.exercise_id == exercise_id)
@@ -484,10 +492,10 @@ def unvalidate_scan(
         ).scalars()
     )
     freed: set[tuple[uuid.UUID, uuid.UUID, uuid.UUID | None]] = set()
-    students: set[uuid.UUID] = set()
+    people: set[uuid.UUID] = set()
     for attempt in written:
-        freed.add((attempt.student_id, attempt.exercise_id, attempt.sheet_id))
-        students.add(attempt.student_id)
+        freed.add((attempt.person_id, attempt.exercise_id, attempt.sheet_id))
+        people.add(attempt.person_id)
         db.delete(attempt)
     # Flushed before re-inserting: the unique key on
     # (student, exercise, sheet) allows exactly one live row per triple, so the
@@ -495,12 +503,12 @@ def unvalidate_scan(
     db.flush()
 
     rederived = 0
-    for student_id, exercise_id, sheet_id in sorted(freed, key=lambda t: (str(t[0]), str(t[1]))):
+    for person_id, exercise_id, sheet_id in sorted(freed, key=lambda t: (str(t[0]), str(t[1]))):
         found = _newest_other_confirmed(
             db,
             school_id,
             exclude_scan_id=scan_id,
-            student_id=student_id,
+            person_id=person_id,
             exercise_id=exercise_id,
             sheet_id=sheet_id,
         )
@@ -524,7 +532,7 @@ def unvalidate_scan(
             Attempt(
                 id=uuid.uuid4(),
                 school_id=school_id,
-                student_id=student_id,
+                person_id=person_id,
                 exercise_id=exercise_id,
                 sheet_id=sheet_id,
                 sheet_instance_id=page.sheet_instance_id,
@@ -537,13 +545,13 @@ def unvalidate_scan(
             )
         )
         rederived += 1
-        students.add(student_id)
+        people.add(person_id)
 
     scan.status = ScanStatus.NEEDS_REVIEW
     scan.reopened_at = at
     db.flush()
 
-    competencies_updated = recompute_for_students(db, school_id, sorted(students), now=at)
+    competencies_updated = recompute_for_people(db, school_id, sorted(people), now=at)
 
     sheet_row = db.get(Sheet, scan.sheet_id) if scan.sheet_id else None
     event_service.record(
@@ -560,13 +568,13 @@ def unvalidate_scan(
         detail={
             "attempts_removed": len(written),
             "attempts_rederived": rederived,
-            "students": len(students),
+            "students": len(people),
         },
     )
     return ScanUnvalidateResponse(
         attempts_removed=len(written),
         attempts_rederived=rederived,
-        students_affected=len(students),
+        students_affected=len(people),
         competencies_updated=competencies_updated,
     )
 
@@ -703,7 +711,7 @@ def confirm_scan(
     attempts_created = 0
     attempts_superseded = 0
     items_skipped = 0
-    students: set[uuid.UUID] = set()
+    people: set[uuid.UUID] = set()
 
     # Fetched once, before the loop: it carries the sheet's default barème, so
     # every item on every page resolves against the same row. It is also what
@@ -742,7 +750,7 @@ def confirm_scan(
 
             existing = db.execute(
                 select(Attempt)
-                .where(Attempt.student_id == student.id)
+                .where(Attempt.person_id == student.person_id)
                 .where(Attempt.exercise_id == exercise.id)
                 .where(Attempt.sheet_id == scan.sheet_id)
                 .where(Attempt.school_id == school_id)
@@ -763,7 +771,7 @@ def confirm_scan(
                     Attempt(
                         id=uuid.uuid4(),
                         school_id=school_id,
-                        student_id=student.id,
+                        person_id=student.person_id,
                         exercise_id=exercise.id,
                         sheet_id=scan.sheet_id,
                         sheet_instance_id=page.sheet_instance_id,
@@ -776,9 +784,9 @@ def confirm_scan(
                     )
                 )
                 attempts_created += 1
-            students.add(student.id)
+            people.add(student.person_id)
 
-    if not students and any(p.detections for p in pending):
+    if not people and any(p.detections for p in pending):
         # Marks were read and not one of them could be matched to a question:
         # the pile is not linked to the sheet it was printed from. Confirming
         # would flip the scan to CONFIRMED, write nothing, and tell the teacher
@@ -802,7 +810,7 @@ def confirm_scan(
     scan.confirmation_count += 1
     db.flush()
 
-    competencies_updated = recompute_for_students(db, school_id, sorted(students), now=at)
+    competencies_updated = recompute_for_people(db, school_id, sorted(people), now=at)
 
     # The moment the agenda most needs and the schema never recorded: a status
     # enum flipped and `updated_at` moved, and `updated_at` is overwritten by
@@ -823,7 +831,7 @@ def confirm_scan(
         detail={
             "attempts": attempts_created,
             "superseded": attempts_superseded,
-            "students": len(students),
+            "students": len(people),
             "competencies": competencies_updated,
         },
     )
@@ -832,7 +840,7 @@ def confirm_scan(
         attempts_created=attempts_created,
         attempts_superseded=attempts_superseded,
         items_skipped=items_skipped,
-        students_affected=len(students),
+        students_affected=len(people),
         competencies_updated=competencies_updated,
     )
 
@@ -874,10 +882,16 @@ def assignable_students(
     ).scalar_one_or_none()
     if sheet is None:
         return []
+    # The roster as it stood when the sheet was MADE, not today's. This is the
+    # list a page may be assigned to, and a pile scanned in March may hold a
+    # copy sat in October by a pupil who has since changed group — offering
+    # today's roster would leave that copy unassignable and its marks
+    # unrecorded, which is the one outcome the scan path must never produce.
+    on = (sheet.created_at or datetime.now(UTC)).date()
     stmt = (
         select(Student)
         .where(Student.school_id == school_id)
-        .where(Student.id.in_(enrolled_student_ids(sheet.class_id)))
+        .where(Student.id.in_(enrolled_student_ids(sheet.class_id, on=on)))
     )
     return list(db.execute(stmt.order_by(Student.uid.asc())).scalars())
 

@@ -70,7 +70,7 @@ def _wrong_attempt(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             detection_id=detection.id,
@@ -98,7 +98,7 @@ def test_a_clean_paper_produces_no_note_and_no_model_call(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             detection_id=detection.id,
@@ -142,7 +142,7 @@ def test_an_unreadable_detection_is_never_guessed_at(db: Session, tenant: Tenant
     )
 
     mistakes = feedback_service.wrong_attempts(
-        db, school_id=tenant.school.id, student_id=student.id, sheet_id=sheet.id
+        db, school_id=tenant.school.id, person_id=student.person_id, sheet_id=sheet.id
     )
     assert mistakes == []
 
@@ -154,7 +154,7 @@ def test_a_wrong_answer_carries_what_was_marked_and_what_was_right(
     sheet, _detection = _wrong_attempt(db, tenant, student)
 
     mistakes = feedback_service.wrong_attempts(
-        db, school_id=tenant.school.id, student_id=student.id, sheet_id=sheet.id
+        db, school_id=tenant.school.id, person_id=student.person_id, sheet_id=sheet.id
     )
     assert len(mistakes) == 1
     assert mistakes[0].given == "C", "index 2 of A/B/C/D"
@@ -253,7 +253,7 @@ def test_true_false_reports_the_word_the_student_saw(db: Session, tenant: Tenant
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             detection_id=detection.id,
@@ -266,7 +266,7 @@ def test_true_false_reports_the_word_the_student_saw(db: Session, tenant: Tenant
     db.flush()
 
     mistakes = feedback_service.wrong_attempts(
-        db, school_id=tenant.school.id, student_id=student.id, sheet_id=sheet.id
+        db, school_id=tenant.school.id, person_id=student.person_id, sheet_id=sheet.id
     )
     assert len(mistakes) == 1
     assert mistakes[0].given == "faux"

@@ -65,6 +65,7 @@ from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.ai.scrub import PiiLeakError, scrub, to_ref
 from alppy.core.config import get_settings
 from alppy.core.logging import get_logger
+from alppy.db.validity import today
 from alppy.models import Competency, Exercise, MasterySnapshot, Student
 from alppy.models.enums import ExerciseOrigin, ExerciseType, MasteryBand
 from alppy.schemas import (
@@ -473,19 +474,23 @@ def propose_adaptive(
 # Gap targeting
 # --------------------------------------------------------------------------
 def latest_snapshots(
-    db: Session, *, school_id: uuid.UUID, student_id: uuid.UUID
+    db: Session, *, school_id: uuid.UUID, person_id: uuid.UUID
 ) -> list[MasterySnapshot]:
-    """The most recent snapshot per competency for one student.
+    """The most recent snapshot per competency for one pupil.
 
     Done in Python over an ordered fetch rather than with a window function:
-    the row count per student is the number of competencies in one subject
+    the row count per pupil is the number of competencies in one subject
     (tens), and this works identically on SQLite and Postgres.
+
+    Person-keyed since 0028, which is what lets a repeating pupil's gaps in
+    September be the gaps they actually finished June with, rather than an
+    empty set.
     """
     rows = db.scalars(
         select(MasterySnapshot)
         .where(
             MasterySnapshot.school_id == school_id,
-            MasterySnapshot.student_id == student_id,
+            MasterySnapshot.person_id == person_id,
         )
         .order_by(MasterySnapshot.computed_at.desc())
     )
@@ -519,7 +524,7 @@ def gaps_for_student(
     db: Session,
     *,
     school_id: uuid.UUID,
-    student_id: uuid.UUID,
+    person_id: uuid.UUID,
     performance: SheetPerformance | None,
 ) -> tuple[list[Gap], TargetingBasis]:
     """This student's gaps, and — just as important — where they came from.
@@ -539,7 +544,7 @@ def gaps_for_student(
     """
     if performance is not None and performance.has_evidence:
         return pick_gaps(performance.signals), "source_sheet"
-    gaps = pick_gaps(latest_snapshots(db, school_id=school_id, student_id=student_id))
+    gaps = pick_gaps(latest_snapshots(db, school_id=school_id, person_id=person_id))
     return gaps, ("mastery" if gaps else "diagnostic")
 
 
@@ -699,7 +704,7 @@ def _plan_for_student(
     collector: _Collector | None = None,
 ) -> AdaptiveStudentPlan:
     gaps, basis = gaps_for_student(
-        db, school_id=school_id, student_id=student.id, performance=performance
+        db, school_id=school_id, person_id=student.person_id, performance=performance
     )
     competency_ids = [g.competency_id for g in gaps]
     labels = _competency_labels(db, competency_ids, language=language)
@@ -810,7 +815,7 @@ def _plan_for_group(
         per_student[student.id], bases[student.id] = gaps_for_student(
             db,
             school_id=school_id,
-            student_id=student.id,
+            person_id=student.person_id,
             performance=(performance or {}).get(student.id),
         )
 
@@ -1086,7 +1091,7 @@ def _plan_for_groups(
         s.id: gaps_for_student(
             db,
             school_id=school_id,
-            student_id=s.id,
+            person_id=s.person_id,
             performance=(performance or {}).get(s.id),
         )[0]
         for s in students
@@ -1984,7 +1989,7 @@ def _students(
 ) -> list[Student]:
     stmt = select(Student).where(
         Student.school_id == school_id,
-        Student.id.in_(enrolled_student_ids(class_id)),
+        Student.id.in_(enrolled_student_ids(class_id, on=today())),
     )
     if student_ids:
         stmt = stmt.where(Student.id.in_(list(student_ids)))
@@ -2004,7 +2009,7 @@ def _roster_names(db: Session, *, school_id: uuid.UUID, class_id: uuid.UUID) -> 
     for student in db.scalars(
         select(Student).where(
             Student.school_id == school_id,
-            Student.id.in_(enrolled_student_ids(class_id)),
+            Student.id.in_(enrolled_student_ids(class_id, on=today())),
         )
     ):
         names.extend(n for n in (student.first_name, student.last_name) if n and len(n) > 1)

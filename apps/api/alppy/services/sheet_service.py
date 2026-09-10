@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
+from alppy.db.validity import today
 from alppy.models import (
     Attempt,
     Chapter,
@@ -64,7 +65,7 @@ def get_sheet(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
         select(Sheet)
         .where(Sheet.id == sheet_id)
         .where(Sheet.school_id == scope.school_id)
-        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
     ).scalar_one_or_none()
     if sheet is None:
         raise errors.not_found("sheet", id=str(sheet_id))
@@ -82,7 +83,7 @@ def list_sheets(
     stmt = (
         select(Sheet)
         .where(Sheet.school_id == scope.school_id)
-        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
     )
     if class_id is not None:
         stmt = stmt.where(Sheet.class_id == class_id)
@@ -322,6 +323,35 @@ def update_sheet(
     db.flush()
     db.refresh(sheet)
     return sheet
+
+
+def people_for_students(
+    db: Session, school_id: uuid.UUID, student_ids: Sequence[uuid.UUID]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """``{student_id: person_id}``.
+
+    The join 0028 made necessary and deliberately did not hide. A
+    ``SheetInstance``, an ``AdaptiveProposal`` and a ``ScanPage`` are all facts
+    about one year's paper and keep their ``student_id``; the evidence behind
+    them hangs off the person. Every screen showing "this sheet, per pupil"
+    needs both halves, and one lookup beats each caller inventing its own.
+    """
+    ids = list(student_ids)
+    if not ids:
+        return {}
+    rows = db.execute(
+        select(Student.id, Student.person_id)
+        .where(Student.school_id == school_id)
+        .where(Student.id.in_(ids))
+    ).all()
+    return dict(rows)  # type: ignore[arg-type]  # SQLAlchemy Row pairs
+
+
+def people_for_instances(
+    db: Session, school_id: uuid.UUID, instances: Sequence[SheetInstance]
+) -> dict[uuid.UUID, uuid.UUID]:
+    """``{student_id: person_id}`` for the copies of one sheet."""
+    return people_for_students(db, school_id, [i.student_id for i in instances])
 
 
 def sheet_coverage(
@@ -614,7 +644,11 @@ def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
 def _earned_by_sheet(
     db: Session, school_id: uuid.UUID, sheet_ids: Sequence[uuid.UUID]
 ) -> dict[tuple[uuid.UUID, uuid.UUID], float]:
-    """``(student, sheet) -> earned``, floored at zero, in one query for N sheets.
+    """``(person, sheet) -> earned``, floored at zero, in one query for N sheets.
+
+    Keyed on the person since 0028, like every other read of ``Attempt``. The
+    callers hold ``Student`` rows and translate — ``people_for_instances`` is
+    the join.
 
     One query rather than one per sheet: a term's worth of sheets for a class is
     the normal case, and this is read on every dashboard load.
@@ -622,14 +656,14 @@ def _earned_by_sheet(
     if not sheet_ids:
         return {}
     rows = db.execute(
-        select(Attempt.student_id, Attempt.sheet_id, func.sum(Attempt.score))
+        select(Attempt.person_id, Attempt.sheet_id, func.sum(Attempt.score))
         .where(Attempt.sheet_id.in_(list(sheet_ids)))
         .where(Attempt.school_id == school_id)
-        .group_by(Attempt.student_id, Attempt.sheet_id)
+        .group_by(Attempt.person_id, Attempt.sheet_id)
     ).all()
     return {
-        (student_id, sheet_id): max(0.0, float(total))
-        for student_id, sheet_id, total in rows
+        (person_id, sheet_id): max(0.0, float(total))
+        for person_id, sheet_id, total in rows
         if total is not None
     }
 
@@ -649,8 +683,18 @@ def points_totals_for_sheet(
     because a mark below zero says nothing a report can use.
     """
     earned = _earned_by_sheet(db, school_id, [sheet.id])
+    # `_earned_by_sheet` is keyed by person (0028), `_possible_by_student` by
+    # the copy that was printed. This is the join between them, and it is why
+    # the response stays keyed by student: a sheet is one class in one year,
+    # and that is what a `student` row is.
+    person_of = people_for_students(
+        db, school_id, [i.student_id for i in sheet.instances]
+    )
     return {
-        student_id: SheetPoints(earned=earned.get((student_id, sheet.id)), possible=possible)
+        student_id: SheetPoints(
+            earned=earned.get((person_of.get(student_id, student_id), sheet.id)),
+            possible=possible,
+        )
         for student_id, possible in _possible_by_student(sheet).items()
     }
 
@@ -701,6 +745,11 @@ def class_points_totals(
         return ClassPointsReport(students={}, sheets=[])
 
     earned_by_sheet = _earned_by_sheet(db, school_id, [sheet.id for sheet in sheets])
+    # Person-keyed evidence, student-keyed report — the same join
+    # `points_totals_for_sheet` makes, over every sheet at once (0028).
+    person_of = people_for_students(
+        db, school_id, [i.student_id for sheet in sheets for i in sheet.instances]
+    )
     earned_total: dict[uuid.UUID, float] = {}
     possible_total: dict[uuid.UUID, float] = {}
     graded_students: set[uuid.UUID] = set()
@@ -710,7 +759,9 @@ def class_points_totals(
         per_student: dict[uuid.UUID, SheetPoints] = {}
         ratios: list[float] = []
         for student_id, possible in _possible_by_student(sheet).items():
-            earned = earned_by_sheet.get((student_id, sheet.id))
+            earned = earned_by_sheet.get(
+                (person_of.get(student_id, student_id), sheet.id)
+            )
             per_student[student_id] = SheetPoints(earned=earned, possible=possible)
             possible_total[student_id] = possible_total.get(student_id, 0.0) + possible
             if earned is not None:

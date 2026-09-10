@@ -21,18 +21,20 @@ import uuid
 from datetime import UTC, date, datetime
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from alppy.core.logging import get_logger
 from alppy.core.security import hash_password
 from alppy.core.uid import format_uid
+from alppy.db.validity import today
 from alppy.models import (
     Attempt,
     Chapter,
     Class,
     Exercise,
+    Person,
     School,
     SchoolYear,
     Student,
@@ -60,7 +62,7 @@ from alppy.seed.demo import (
 )
 from alppy.seed.loader import load_demo_corpus, load_reference_data
 from alppy.services import class_service
-from alppy.services.mastery_service import recompute_for_students
+from alppy.services.mastery_service import recompute_for_people
 
 log = get_logger(__name__)
 
@@ -118,10 +120,10 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
         # the profile curve — which needs at least two points to be a curve —
         # never renders. Each pass sees only the attempts that existed on that
         # date, so the series shows the class actually learning.
-        student_ids = [s.id for s in students.values()]
+        person_ids = [s.person_id for s in students.values()]
         for lesson_moment in lesson_moments(moment):
-            recompute_for_students(db, school.id, student_ids, now=lesson_moment)
-        recompute_for_students(db, school.id, student_ids, now=moment)
+            recompute_for_people(db, school.id, person_ids, now=lesson_moment)
+        recompute_for_people(db, school.id, person_ids, now=moment)
 
     db.commit()
 
@@ -312,9 +314,17 @@ def _get_or_create_students(
     for number, (first, last) in enumerate(roster or DEMO_ROSTER, start=1):
         if first in existing:
             continue
+        person = Person(
+            id=uuid.uuid4(),
+            school_id=school.id,
+            first_name=first,
+            last_name=last,
+        )
+        db.add(person)
         student = Student(
             id=uuid.uuid4(),
             school_id=school.id,
+            person_id=person.id,
             home_class_id=school_class.id,
             school_year_id=year.id,
             # Built with format_uid so the demo carries the same zero-padded
@@ -328,15 +338,27 @@ def _get_or_create_students(
         existing[first] = student
     # Flush before seating: the join row carries a real FK to student.id.
     db.flush()
+    # `index_where` since 0027: the plain (class_id, student_id) unique
+    # constraint is gone, and the index that replaced it is PARTIAL. Postgres
+    # matches an ON CONFLICT target to a partial index only when the predicate
+    # is repeated here, so without it a re-run of the seed raises instead of
+    # doing nothing.
     db.execute(
         pg_insert(class_student)
         .values(
             [
-                {"class_id": school_class.id, "student_id": s.id}
+                {
+                    "class_id": school_class.id,
+                    "student_id": s.id,
+                    "valid_from": today(),
+                }
                 for s in existing.values()
             ]
         )
-        .on_conflict_do_nothing(index_elements=["class_id", "student_id"])
+        .on_conflict_do_nothing(
+            index_elements=["class_id", "student_id"],
+            index_where=text("valid_to IS NULL"),
+        )
     )
     return existing
 
@@ -361,11 +383,11 @@ def _simulate_history(
     three: the first class seeded would make every later one look already done,
     and staging would come up with two thirds of its classes empty.
     """
-    ids = [s.id for s in students.values()]
+    ids = [s.person_id for s in students.values()]
     already = db.execute(
         select(Attempt.id)
         .where(Attempt.school_id == school.id)
-        .where(Attempt.student_id.in_(ids))
+        .where(Attempt.person_id.in_(ids))
         .limit(1)
     ).scalar_one_or_none()
     if already is not None:
@@ -410,7 +432,7 @@ def _simulate_history(
             Attempt(
                 id=uuid.uuid4(),
                 school_id=school.id,
-                student_id=student.id,
+                person_id=student.person_id,
                 exercise_id=target.id,
                 correct=bool(row["correct"]),
                 score=1.0 if row["correct"] else 0.0,
@@ -518,10 +540,10 @@ def run_staging_seed(
             db.flush()
             summary["attempts"] += created
             if created:
-                ids = [s.id for s in students.values()]
+                ids = [s.person_id for s in students.values()]
                 for lesson_moment in lesson_moments(moment):
-                    recompute_for_students(db, school.id, ids, now=lesson_moment)
-                recompute_for_students(db, school.id, ids, now=moment)
+                    recompute_for_people(db, school.id, ids, now=lesson_moment)
+                recompute_for_people(db, school.id, ids, now=moment)
 
         summary["schools"].append(school_name)
 

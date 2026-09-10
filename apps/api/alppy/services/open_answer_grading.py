@@ -52,7 +52,7 @@ from alppy.models import (
 )
 from alppy.models.enums import DetectionOutcome, JobKind, JobStatus
 from alppy.scan.detector import LOW_CONFIDENCE
-from alppy.services.enrollment import enrolled_student_ids
+from alppy.services.enrollment import ever_enrolled_student_ids
 from alppy.storage import Storage
 
 log = get_logger(__name__)
@@ -154,7 +154,12 @@ def roster_names(db: Session, scan: Scan) -> list[str] | None:
     for student in db.scalars(
         select(Student).where(
             Student.school_id == scan.school_id,
-            Student.id.in_(enrolled_student_ids(sheet.class_id)),
+            # EVER enrolled, with no `on`. This is the PII scrub list, so it
+            # has to be a SUPERSET: a pupil who left the group in February
+            # still wrote their name on the October copy in this pile, and a
+            # current-roster read would quietly stop scrubbing it. The gate
+            # only raises for names it was told about (docs/privacy.md).
+            Student.id.in_(ever_enrolled_student_ids(sheet.class_id)),
         )
     ):
         names.extend(

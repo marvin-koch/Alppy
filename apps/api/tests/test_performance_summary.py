@@ -100,7 +100,7 @@ def _attempt(world: World, *, uid: str, sheet: Sheet, exercise: Exercise, correc
         Attempt(
             id=uuid.uuid4(),
             school_id=world.school_id,
-            student_id=world.student(uid),
+            person_id=world.person(uid),
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             correct=correct,
@@ -260,7 +260,7 @@ def test_the_sheet_the_teacher_corrected_wins_over_the_terms_average(world: Worl
     gaps, basis = gaps_for_student(
         world.db,
         school_id=world.school_id,
-        student_id=world.student("7B_01"),
+        person_id=world.person("7B_01"),
         performance=performance[world.student("7B_01")],
     )
     assert basis == "source_sheet"
@@ -284,7 +284,7 @@ def test_a_student_the_sheet_says_nothing_about_falls_back_to_their_mastery(
     gaps, basis = gaps_for_student(
         world.db,
         school_id=world.school_id,
-        student_id=world.student("7B_02"),
+        person_id=world.person("7B_02"),
         performance=performance[world.student("7B_02")],
     )
     assert basis == "mastery"
@@ -299,7 +299,7 @@ def test_a_student_with_no_evidence_at_all_is_called_a_diagnostic_not_a_success(
     gaps, basis = gaps_for_student(
         world.db,
         school_id=world.school_id,
-        student_id=world.student("7B_03"),
+        person_id=world.person("7B_03"),
         performance=None,
     )
     assert (gaps, basis) == ([], "diagnostic")

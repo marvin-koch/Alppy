@@ -42,7 +42,7 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
 from alppy.mastery.model import compute_mastery
-from alppy.models import Attempt, SheetInstance, exercise_competency
+from alppy.models import Attempt, SheetInstance, Student, exercise_competency
 from alppy.models.enums import MasteryBand
 from alppy.services.mastery_service import load_attempt_inputs
 
@@ -101,19 +101,36 @@ def sheet_performance(
     Returns an entry for every requested student, including those with nothing:
     an absent student is a fact the caller has to handle (they fall back to
     mastery), not a missing key to trip over.
+
+    Takes and returns ``student_id`` although the attempts are person-keyed
+    since 0028: this reads ONE sheet, a sheet belongs to one class in one
+    school year, and a student row is exactly that pupil-in-that-year. The
+    translation is done here rather than at each caller so a printed count
+    (``SheetInstance``, year-bound) and an answered count (``Attempt``,
+    person-bound) cannot end up keyed differently in the same dict.
     """
     at = now or datetime.now(UTC)
     ids = list(student_ids)
     if not ids:
         return {}
 
+    person_of: dict[uuid.UUID, uuid.UUID] = dict(
+        db.execute(
+            select(Student.id, Student.person_id)
+            .where(Student.school_id == school_id)
+            .where(Student.id.in_(ids))
+        ).all()  # type: ignore[arg-type]  # SQLAlchemy Row pairs
+    )
+    student_of = {person_id: student_id for student_id, person_id in person_of.items()}
+
     grouped = load_attempt_inputs(
-        db, school_id, ids, sheet_id=sheet_id, as_of=at
+        db, school_id, list(person_of.values()), sheet_id=sheet_id, as_of=at
     )
 
     by_student: dict[uuid.UUID, list[CompetencySignal]] = {sid: [] for sid in ids}
-    for (student_id, competency_id), attempts in grouped.items():
-        if student_id not in by_student:
+    for (person_id, competency_id), attempts in grouped.items():
+        student_id = student_of.get(person_id)
+        if student_id is None or student_id not in by_student:
             continue
         result = compute_mastery(attempts, at)
         by_student[student_id].append(
@@ -126,49 +143,54 @@ def sheet_performance(
             )
         )
 
-    answered = _answered_per_student(db, school_id=school_id, student_ids=ids, sheet_id=sheet_id)
-    attributed = _attributed_per_student(
-        db, school_id=school_id, student_ids=ids, sheet_id=sheet_id
+    people = list(person_of.values())
+    answered = _answered_per_person(db, school_id=school_id, person_ids=people, sheet_id=sheet_id)
+    attributed = _attributed_per_person(
+        db, school_id=school_id, person_ids=people, sheet_id=sheet_id
     )
     printed = _printed_per_student(db, school_id=school_id, student_ids=ids, sheet_id=sheet_id)
+
+    def _for(sid: uuid.UUID, counts: dict[uuid.UUID, int]) -> int:
+        person_id = person_of.get(sid)
+        return counts.get(person_id, 0) if person_id is not None else 0
 
     return {
         sid: SheetPerformance(
             student_id=sid,
             # Worst first, so a caller that truncates keeps what matters.
             signals=sorted(by_student[sid], key=lambda s: (s.score, -s.wrong)),
-            answered=answered.get(sid, 0),
+            answered=_for(sid, answered),
             printed=printed.get(sid, 0),
-            unattributed=max(0, answered.get(sid, 0) - attributed.get(sid, 0)),
+            unattributed=max(0, _for(sid, answered) - _for(sid, attributed)),
         )
         for sid in ids
     }
 
 
-def _answered_per_student(
+def _answered_per_person(
     db: Session,
     *,
     school_id: uuid.UUID,
-    student_ids: Sequence[uuid.UUID],
+    person_ids: Sequence[uuid.UUID],
     sheet_id: uuid.UUID,
 ) -> dict[uuid.UUID, int]:
     rows = db.execute(
-        select(Attempt.student_id, func.count(Attempt.id))
+        select(Attempt.person_id, func.count(Attempt.id))
         .where(
             Attempt.school_id == school_id,
             Attempt.sheet_id == sheet_id,
-            Attempt.student_id.in_(list(student_ids)),
+            Attempt.person_id.in_(list(person_ids)),
         )
-        .group_by(Attempt.student_id)
+        .group_by(Attempt.person_id)
     )
-    return {student_id: int(count) for student_id, count in rows}
+    return {person_id: int(count) for person_id, count in rows}
 
 
-def _attributed_per_student(
+def _attributed_per_person(
     db: Session,
     *,
     school_id: uuid.UUID,
-    student_ids: Sequence[uuid.UUID],
+    person_ids: Sequence[uuid.UUID],
     sheet_id: uuid.UUID,
 ) -> dict[uuid.UUID, int]:
     """Answered items that at least one competency could be attributed to.
@@ -177,16 +199,16 @@ def _attributed_per_student(
     counts items, not (item, competency) pairs.
     """
     rows = db.execute(
-        select(Attempt.student_id, func.count(func.distinct(Attempt.id)))
+        select(Attempt.person_id, func.count(func.distinct(Attempt.id)))
         .join(exercise_competency, exercise_competency.c.exercise_id == Attempt.exercise_id)
         .where(
             Attempt.school_id == school_id,
             Attempt.sheet_id == sheet_id,
-            Attempt.student_id.in_(list(student_ids)),
+            Attempt.person_id.in_(list(person_ids)),
         )
-        .group_by(Attempt.student_id)
+        .group_by(Attempt.person_id)
     )
-    return {student_id: int(count) for student_id, count in rows}
+    return {person_id: int(count) for person_id, count in rows}
 
 
 def _printed_per_student(

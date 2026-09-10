@@ -3,7 +3,7 @@
 `test_feedback.py` covers one student at a time — grounding, the PII gate, the
 approval stamp. What it does not cover is the batch the worker actually runs
 (`generate_for_sheet`) or the read path the review screen uses
-(`latest_for_students`), which between them were most of the uncovered lines in
+(`latest_for_people`), which between them were most of the uncovered lines in
 `feedback_service`.
 
 The rule that matters here is the same one as everywhere else generated content
@@ -76,7 +76,7 @@ def _wrong(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=target,
             detection_id=detection.id,
@@ -112,7 +112,7 @@ def test_a_batch_writes_one_note_per_student_with_something_to_say(
         ai=_client(provider),
     )
     assert len(notes) == 3
-    assert {n.student_id for n in notes} == {s.id for s in students}
+    assert {n.person_id for n in notes} == {s.person_id for s in students}
     # One call per student: the reason this is a job and not a request handler.
     assert len(provider.requests) == 3
 
@@ -135,7 +135,7 @@ def test_a_batch_skips_the_students_with_a_clean_paper(
         language="fr",
         ai=_client(provider),
     )
-    assert [n.student_id for n in notes] == [struggled.id]
+    assert [n.person_id for n in notes] == [struggled.person_id]
     assert len(provider.requests) == 1
 
 
@@ -250,7 +250,7 @@ def _note(
     note = MisconceptionNote(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
-        student_id=student.id,
+        person_id=student.person_id,
         subject_id=tenant.subject.id,
         based_on_sheet_id=sheet_id,
         notes=["une note"],
@@ -271,13 +271,13 @@ def test_the_newest_note_per_student_wins(db: Session, tenant: Tenant) -> None:
     _note(db, tenant, student, sheet_id, created=NOW - timedelta(days=1))
     newest = _note(db, tenant, student, sheet_id, created=NOW)
 
-    found = feedback_service.latest_for_students(
+    found = feedback_service.latest_for_people(
         db,
         school_id=tenant.school.id,
-        student_ids=[student.id],
+        person_ids=[student.person_id],
         source_sheet_id=sheet_id,
     )
-    assert found[student.id].id == newest.id
+    assert found[student.person_id].id == newest.id
 
 
 def test_a_discarded_note_is_never_returned(db: Session, tenant: Tenant) -> None:
@@ -289,8 +289,8 @@ def test_a_discarded_note_is_never_returned(db: Session, tenant: Tenant) -> None
     note.discarded_at = NOW
     db.flush()
 
-    assert feedback_service.latest_for_students(
-        db, school_id=tenant.school.id, student_ids=[student.id], source_sheet_id=sheet_id
+    assert feedback_service.latest_for_people(
+        db, school_id=tenant.school.id, person_ids=[student.person_id], source_sheet_id=sheet_id
     ) == {}
 
 
@@ -305,10 +305,10 @@ def test_a_discard_reveals_the_note_underneath_it(db: Session, tenant: Tenant) -
     newer.discarded_at = NOW
     db.flush()
 
-    found = feedback_service.latest_for_students(
-        db, school_id=tenant.school.id, student_ids=[student.id], source_sheet_id=sheet_id
+    found = feedback_service.latest_for_people(
+        db, school_id=tenant.school.id, person_ids=[student.person_id], source_sheet_id=sheet_id
     )
-    assert found[student.id].id == older.id
+    assert found[student.person_id].id == older.id
 
 
 def test_notes_are_scoped_to_the_sheet_they_were_written_about(
@@ -320,8 +320,8 @@ def test_notes_are_scoped_to_the_sheet_they_were_written_about(
     this_sheet, other_sheet = uuid.uuid4(), uuid.uuid4()
     _note(db, tenant, student, other_sheet, created=NOW)
 
-    assert feedback_service.latest_for_students(
-        db, school_id=tenant.school.id, student_ids=[student.id], source_sheet_id=this_sheet
+    assert feedback_service.latest_for_people(
+        db, school_id=tenant.school.id, person_ids=[student.person_id], source_sheet_id=this_sheet
     ) == {}
 
 
@@ -332,10 +332,10 @@ def test_another_schools_note_is_not_returned(
     sheet_id = uuid.uuid4()
     _note(db, tenant, student, sheet_id, created=NOW)
 
-    assert feedback_service.latest_for_students(
+    assert feedback_service.latest_for_people(
         db,
         school_id=other_tenant.school.id,
-        student_ids=[student.id],
+        person_ids=[student.person_id],
         source_sheet_id=sheet_id,
     ) == {}
 
@@ -344,6 +344,6 @@ def test_asking_about_nobody_asks_the_database_nothing(
     db: Session, tenant: Tenant
 ) -> None:
     """`IN ()` is a syntax error in some dialects and a full scan in others."""
-    assert feedback_service.latest_for_students(
-        db, school_id=tenant.school.id, student_ids=[], source_sheet_id=uuid.uuid4()
+    assert feedback_service.latest_for_people(
+        db, school_id=tenant.school.id, person_ids=[], source_sheet_id=uuid.uuid4()
     ) == {}

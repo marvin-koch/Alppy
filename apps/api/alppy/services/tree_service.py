@@ -70,9 +70,11 @@ def class_tree(
     school_class = class_service.get_class(db, scope, class_id)
 
     if student_id is not None:
-        student_ids = [mastery_service._owned_student(db, scope, student_id).id]
+        person_ids = [mastery_service._owned_student(db, scope, student_id).person_id]
     else:
-        student_ids = [s.id for s in class_service.list_students(db, scope, school_class.id)]
+        person_ids = [
+            s.person_id for s in class_service.list_students(db, scope, school_class.id)
+        ]
 
     branch_ids = class_service.taught_subject_ids_for_class(db, scope, school_class.id)
     if subject_id is not None:
@@ -95,7 +97,7 @@ def class_tree(
         if subject is None:  # pragma: no cover - a declared subject always exists
             continue
         branches.append(
-            _branch(db, scope, school_class.id, subject, student_ids=student_ids, now=at)
+            _branch(db, scope, school_class.id, subject, person_ids=person_ids, now=at)
         )
 
     return ClassTreeOut(class_id=school_class.id, branches=branches, computed_at=at)
@@ -107,7 +109,7 @@ def _branch(
     class_id: uuid.UUID,
     subject: Subject,
     *,
-    student_ids: list[uuid.UUID],
+    person_ids: list[uuid.UUID],
     now: datetime,
 ) -> TreeBranchOut:
     chapters = list(
@@ -165,7 +167,7 @@ def _branch(
         mastery_service.load_attempt_inputs(
             db,
             scope.school_id,
-            student_ids,
+            person_ids,
             subject_id=subject.id,
             competency_ids=sorted(needed),
             as_of=now,

@@ -30,6 +30,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    and_,
     func,
     text,
 )
@@ -41,6 +42,7 @@ from alppy.core.config import get_settings
 from alppy.db.base import Base, SchoolScopedMixin, TimestampMixin
 from alppy.models.enums import (
     AnswerBoxFill,
+    ClassKind,
     CurriculumKind,
     DetectionOutcome,
     EventKind,
@@ -96,14 +98,35 @@ teacher_school = Table(
     Base.metadata,
     Column("teacher_id", PgUUID(as_uuid=True), ForeignKey("teacher.id", ondelete="CASCADE"), primary_key=True),
     Column("school_id", PgUUID(as_uuid=True), ForeignKey("school.id", ondelete="CASCADE"), primary_key=True),
-    # Provenance, not a state machine — no `left_at`, for the reason
-    # `class_student` has none: the moment one exists, the membership check
-    # that runs on EVERY request grows a temporal predicate. Leaving a school
-    # is a deleted row.
+    # When this teacher first joined. Provenance; `valid_from` is what the
+    # reads use, and 0027 backfilled it from here.
     Column("joined_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # The membership's own life. Leaving a school is `valid_to = today`, not a
+    # deleted row — the block comment on `class_student` argues the trade once
+    # for all three tables (D87). `valid_from` is in the PK so re-joining
+    # after a gap is a second row rather than a conflict.
+    Column(
+        "valid_from",
+        Date,
+        primary_key=True,
+        nullable=False,
+        server_default=text("CURRENT_DATE"),
+    ),
+    Column("valid_to", Date, nullable=True),
     # "Who is in this staffroom" — the reverse of the composite PK's btree,
     # and the direction a colleague picker reads.
     Index("ix_teacher_school_school", "school_id", "teacher_id"),
+    # At most one CURRENT membership per pair. The widened PK does not say
+    # this: it would hold two open rows differing only in `valid_from`, which
+    # is one teacher counted twice in a staffroom. This is also the index
+    # `join_school` reopens against rather than conflicting on.
+    Index(
+        "uq_teacher_school_open",
+        "teacher_id",
+        "school_id",
+        unique=True,
+        postgresql_where=text("valid_to IS NULL"),
+    ),
 )
 
 
@@ -154,7 +177,19 @@ class Teacher(Base, TimestampMixin):
     # Every school this teacher works at. viewonly: appending cannot re-issue
     # the session cookie, and a membership the cookie does not know about is a
     # membership no request can act on.
-    schools: Mapped[list[School]] = relationship(secondary=teacher_school, viewonly=True)
+    # CURRENT memberships only. The table also holds ended ones since 0027,
+    # and a relationship returning them would put a school a teacher has left
+    # back into the switcher — the one read where "was a member" and "is a
+    # member" must not be confused.
+    schools: Mapped[list[School]] = relationship(
+        secondary=teacher_school,
+        primaryjoin=lambda: and_(
+            Teacher.id == teacher_school.c.teacher_id,
+            teacher_school.c.valid_to.is_(None),
+        ),
+        secondaryjoin=lambda: School.id == teacher_school.c.school_id,
+        viewonly=True,
+    )
 
 
 class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
@@ -200,9 +235,21 @@ class_teacher_subject = Table(
     Column("class_id", PgUUID(as_uuid=True), primary_key=True),
     Column("teacher_id", PgUUID(as_uuid=True), ForeignKey("teacher.id", ondelete="RESTRICT"), primary_key=True),
     Column("subject_id", PgUUID(as_uuid=True), primary_key=True),
-    # Provenance. No `ended_at`, for the reason `class_student` has no
-    # `left_at`: unassigning is a deleted row.
+    # Provenance; `valid_from` is what the reads use and 0027 backfilled it
+    # from here.
     Column("assigned_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # Unassigning is `valid_to = today`. A remplaçant who covered March to May
+    # becomes two dates on one row rather than a row that was there and then
+    # was not — and the sheets they created (`Sheet.created_by_id`, SET NULL)
+    # stop sitting in a class no record says they ever taught (D87).
+    Column(
+        "valid_from",
+        Date,
+        primary_key=True,
+        nullable=False,
+        server_default=text("CURRENT_DATE"),
+    ),
+    Column("valid_to", Date, nullable=True),
     # WHO TEACHES WHAT HERE. `class_subject` is the other half and they are
     # not interchangeable: that one is what the class STUDIES (a fact about
     # the class, carrying the Branch nav order), this one is who TEACHES it
@@ -239,6 +286,16 @@ class_teacher_subject = Table(
     # query (`enrollment.owned_class_ids`), which runs on nearly every
     # request, so it gets its own index.
     Index("ix_class_teacher_subject_teacher", "teacher_id", "class_id"),
+    # At most one CURRENT assignment per (class, teacher, branch) — see the
+    # matching index on `class_student`.
+    Index(
+        "uq_class_teacher_subject_open",
+        "class_id",
+        "teacher_id",
+        "subject_id",
+        unique=True,
+        postgresql_where=text("valid_to IS NULL"),
+    ),
 )
 
 
@@ -247,11 +304,34 @@ class_student = Table(
     Base.metadata,
     Column("class_id", PgUUID(as_uuid=True), ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
     Column("student_id", PgUUID(as_uuid=True), ForeignKey("student.id", ondelete="CASCADE"), primary_key=True),
-    # When this child joined this class. Provenance, not a state machine —
-    # there is deliberately no `left_at`: the moment one exists every roster
-    # read grows a temporal predicate and every test needs an injectable
-    # clock. Leaving a class is a deleted row (``class_service.unenroll``).
+    # When this child first joined this class. Provenance; `valid_from` is
+    # what the reads use, and 0027 backfilled it from here.
     Column("enrolled_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    # THE MEMBERSHIP'S OWN LIFE, and the trade this table used to refuse.
+    #
+    # The old comment here was right about the cost — every roster read grows a
+    # temporal predicate — and wrong about the balance. In Cycle 3 a pupil is
+    # streamed into a maths niveau ACROSS homerooms and moves between them
+    # mid-year, so "leaving is a deleted row" means the composition of a
+    # teaching group is a snapshot that overwrites itself: Léa disappears from
+    # the niveau-2 matrix including the October columns she sat, the teacher
+    # who marked those sheets 404s on her profile, and nothing anywhere
+    # records that she was ever in the group (D87).
+    #
+    # The predicate is paid for once, in `db/validity.py`, and `on` is a
+    # REQUIRED keyword argument on every subquery in `services/enrollment.py`
+    # precisely so no read path can keep the old meaning by accident.
+    #
+    # `valid_from` is in the PK: leaving in February and returning in May is
+    # two rows, and the pair on its own is no longer unique.
+    Column(
+        "valid_from",
+        Date,
+        primary_key=True,
+        nullable=False,
+        server_default=text("CURRENT_DATE"),
+    ),
+    Column("valid_to", Date, nullable=True),
     # NOT school-scoped, like `class_subject` and `chapter_competency`: both
     # ends already are, and every read joins through a Class already filtered
     # on the session's school. Tenancy holds transitively (I-platform-02).
@@ -261,6 +341,18 @@ class_student = Table(
     # (`mastery_service._owned_student`), which runs on every student-profile
     # request, so it gets its own index.
     Index("ix_class_student_student_id", "student_id"),
+    # At most one CURRENT enrollment per (class, pupil). The widened PK does
+    # NOT say this — two open rows differing only in `valid_from` satisfy it,
+    # and that is one child counted twice in every roster join and every
+    # matrix column. This index is the guarantee, and it is what `enroll`
+    # reopens against now that the key alone no longer collides.
+    Index(
+        "uq_class_student_open",
+        "class_id",
+        "student_id",
+        unique=True,
+        postgresql_where=text("valid_to IS NULL"),
+    ),
 )
 
 
@@ -293,6 +385,18 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     head_teacher_id: Mapped[uuid.UUID] = _fk("teacher.id", ondelete="RESTRICT")
     code: Mapped[str] = mapped_column(String(10), nullable=False)
     label: Mapped[str | None] = mapped_column(String(120))
+    # Homeroom or course group. NULL is a third state and the default — "not
+    # declared" — and NOT a synonym for HOMEROOM: every row predating 0026
+    # predates the question, and answering it for them would invent a homeroom
+    # out of the niveau groups the seed already contains.
+    #
+    # A discriminator, not a rule. Nothing branches on it yet: `class_student`
+    # is many-to-many either way and `home_class_id` already carries which
+    # class is a pupil's own. What it unlocks is a nav and a tree that can
+    # stop weighting a support group the same as the group a child belongs to.
+    kind: Mapped[ClassKind | None] = mapped_column(
+        Enum(ClassKind, name="class_kind"), nullable=True
+    )
 
     # The children this class is HOME to — the ones whose UID it minted. No
     # delete-orphan any more: with enrollment a student removed from this list
@@ -309,7 +413,17 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     # the student shares this class's school AND school year, and that
     # assertion is I-platform-10. Writes go through `class_service.enroll`.
     roster: Mapped[list[Student]] = relationship(
-        secondary=class_student, order_by="Student.number", viewonly=True
+        secondary=class_student,
+        # CURRENTLY enrolled. `class_student` holds ended rows since 0027, and
+        # this relationship keeps meaning exactly what it meant before that —
+        # anything wanting the history asks `enrollment` for it with an `on`.
+        primaryjoin=lambda: and_(
+            Class.id == class_student.c.class_id,
+            class_student.c.valid_to.is_(None),
+        ),
+        secondaryjoin=lambda: Student.id == class_student.c.student_id,
+        order_by="Student.number",
+        viewonly=True,
     )
     # The Branches this class studies — declared, not inferred. Until D57 this
     # was `SELECT DISTINCT sheet.subject_id`, which meant a brand-new class had
@@ -320,6 +434,41 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     subjects: Mapped[list[Subject]] = relationship(
         secondary=class_subject, order_by=class_subject.c.position, viewonly=True
     )
+
+
+class Person(Base, TimestampMixin, SchoolScopedMixin):
+    """A pupil, across the years. Names, and nothing else.
+
+    ``Student`` is a year-bound ENROLMENT record — uid, number, home class,
+    school year — and before 0028 it was also the only identity there was, so a
+    pupil's evidence reset every August in a product whose mastery model is
+    explicitly about decay (D87). This row is what survives the summer, and it
+    is the third instance of a split this codebase has already named twice:
+    D56 for ``Chapter``, D69 for ``Student`` — where a row sits is a column,
+    what it belongs to is a join. Here it is applied to time.
+
+    Deliberately thin. Everything that is a fact about ONE YEAR — the uid the
+    detector reads, the number the roster paste minted, the home class — stays
+    on ``Student``, because a UID is a fact about one year's paper and must not
+    change meaning. What hangs off this row is only what should outlive a year:
+    ``Attempt``, ``MasterySnapshot``, ``MasteryBranchSnapshot``,
+    ``MisconceptionNote``.
+
+    No uniqueness on the names, and there must not be: homonyms are ordinary in
+    a school of 400, and a constraint here would refuse the second Noah Favre.
+    """
+
+    __tablename__ = "person"
+
+    id: Mapped[uuid.UUID] = _pk()
+    first_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    last_name: Mapped[str] = mapped_column(String(100), nullable=False)
+    # A parent's erasure request, answered by anonymisation: the names go, the
+    # uid and the pedagogical record stay, so a class statistic does not change
+    # shape underneath a band already shown to somebody. Nothing writes it yet
+    # — the endpoint is H5's, in Phase 4 — and the column is here now because
+    # this is the migration that creates the row it belongs on.
+    anonymised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Student(Base, TimestampMixin, SchoolScopedMixin):
@@ -345,14 +494,36 @@ class Student(Base, TimestampMixin, SchoolScopedMixin):
     # delete a child who also sits elsewhere, and deleting a student is the
     # only operation allowed to destroy attempts and snapshots.
     home_class_id: Mapped[uuid.UUID] = _fk("class.id", ondelete="RESTRICT")
+    # WHO this enrolment record is for, across every year they are here. The
+    # durable identity is `Person`; this row is one year of it (D87).
+    #
+    # CASCADE: deleting the identity deletes every year of enrolment and,
+    # through them, the evidence. That is what keeps `delete_student` able to
+    # destroy a pupil's record — it deletes the person once no other year
+    # refers to them.
+    person_id: Mapped[uuid.UUID] = _fk("person.id")
     school_year_id: Mapped[uuid.UUID] = _fk("school_year.id")
     uid: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     number: Mapped[int] = mapped_column(Integer, nullable=False)
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
+    person: Mapped[Person] = relationship()
     home_class: Mapped[Class] = relationship(back_populates="home_students")
-    classes: Mapped[list[Class]] = relationship(secondary=class_student, viewonly=True)
+    # CURRENT enrollments. `scan_processing.wrong_class` reads this, so
+    # widening it to the history would stop a pile flagging a page that no
+    # longer belongs to it. A late scan of a copy sat before the pupil moved
+    # is the case that deserves a historical read, and it is a separate
+    # decision from what this relationship means (D87).
+    classes: Mapped[list[Class]] = relationship(
+        secondary=class_student,
+        primaryjoin=lambda: and_(
+            Student.id == class_student.c.student_id,
+            class_student.c.valid_to.is_(None),
+        ),
+        secondaryjoin=lambda: Class.id == class_student.c.class_id,
+        viewonly=True,
+    )
 
 
 # --------------------------------------------------------------------------
@@ -986,11 +1157,11 @@ class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
 
     __tablename__ = "misconception_note"
     __table_args__ = (
-        Index("ix_misconception_note_student_sheet", "student_id", "based_on_sheet_id"),
+        Index("ix_misconception_note_person_sheet", "person_id", "based_on_sheet_id"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    person_id: Mapped[uuid.UUID] = _fk("person.id")
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
     # The common sheet the wrong answers came from. SET NULL rather than
     # CASCADE: deleting the sheet must not silently delete the explanation of
@@ -1006,7 +1177,9 @@ class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
-    student: Mapped[Student] = relationship()
+    # The identity, not the year. What a note explains — a misconception a
+    # child holds — is not a fact about one year's enrolment record (D87).
+    person: Mapped[Person] = relationship()
 
 
 class Event(Base, TimestampMixin, SchoolScopedMixin):
@@ -1215,18 +1388,18 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
 
     __tablename__ = "attempt"
     __table_args__ = (
-        Index("ix_attempt_student_answered", "student_id", "answered_at"),
+        Index("ix_attempt_person_answered", "person_id", "answered_at"),
         # Re-scanning a pile must correct the record, not double it: mastery is
         # a weighted mean over attempts, so a duplicate silently doubles one
         # lesson's weight against every other. confirm_scan supersedes rather
         # than inserts; this is the backstop that makes that a guarantee.
         UniqueConstraint(
-            "student_id", "exercise_id", "sheet_id", name="uq_attempt_student_exercise_sheet"
+            "person_id", "exercise_id", "sheet_id", name="uq_attempt_person_exercise_sheet"
         ),
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    person_id: Mapped[uuid.UUID] = _fk("person.id")
     exercise_id: Mapped[uuid.UUID] = _fk("exercise.id", ondelete="RESTRICT")
     sheet_id: Mapped[uuid.UUID | None] = _fk("sheet.id", nullable=True, ondelete="SET NULL")
     sheet_instance_id: Mapped[uuid.UUID | None] = _fk(
@@ -1252,12 +1425,12 @@ class MasterySnapshot(Base, TimestampMixin, SchoolScopedMixin):
 
     __tablename__ = "mastery_snapshot"
     __table_args__ = (
-        Index("ix_mastery_student_competency", "student_id", "competency_id", "computed_at"),
+        Index("ix_mastery_person_competency", "person_id", "competency_id", "computed_at"),
         CheckConstraint("score >= 0 AND score <= 1", name="score_unit_interval"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    person_id: Mapped[uuid.UUID] = _fk("person.id")
     competency_id: Mapped[uuid.UUID] = _fk("competency.id")
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
@@ -1291,14 +1464,14 @@ class MasteryBranchSnapshot(Base, TimestampMixin, SchoolScopedMixin):
 
     __tablename__ = "mastery_branch_snapshot"
     __table_args__ = (
-        Index("ix_mastery_branch_student", "student_id", "subject_id", "computed_at"),
+        Index("ix_mastery_branch_person", "person_id", "subject_id", "computed_at"),
         CheckConstraint(
             "score >= 0 AND score <= 1", name="branch_score_unit_interval"
         ),
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    student_id: Mapped[uuid.UUID] = _fk("student.id")
+    person_id: Mapped[uuid.UUID] = _fk("person.id")
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)

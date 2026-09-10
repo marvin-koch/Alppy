@@ -20,8 +20,10 @@ from sqlalchemy.orm import Session, selectinload
 from alppy.api import errors
 from alppy.api.deps import Scope
 from alppy.core.uid import MAX_STUDENT_NUMBER, InvalidUidError, format_uid
+from alppy.db.validity import today, valid_on
 from alppy.models import (
     Class,
+    Person,
     Scan,
     School,
     SchoolYear,
@@ -153,7 +155,7 @@ def list_classes(db: Session, scope: Scope) -> list[Class]:
     return list(
         db.execute(
             select(Class)
-            .where(Class.id.in_(owned_class_ids(scope)))
+            .where(Class.id.in_(owned_class_ids(scope, on=today())))
             .order_by(Class.code.asc())
         ).scalars()
     )
@@ -170,7 +172,9 @@ def get_class(db: Session, scope: Scope, class_id: uuid.UUID) -> Class:
     piles or bands they may see — those are ``taught_here``.
     """
     row = db.execute(
-        select(Class).where(Class.id == class_id).where(Class.id.in_(owned_class_ids(scope)))
+        select(Class)
+        .where(Class.id == class_id)
+        .where(Class.id.in_(owned_class_ids(scope, on=today())))
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("class", id=str(class_id))
@@ -178,11 +182,16 @@ def get_class(db: Session, scope: Scope, class_id: uuid.UUID) -> Class:
 
 
 def student_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
+    on = today()
     rows = db.execute(
         select(class_student.c.class_id, func.count(Student.id))
         .join(Student, Student.id == class_student.c.student_id)
         .where(Student.school_id == scope.school_id)
-        .where(class_student.c.class_id.in_(owned_class_ids(scope)))
+        .where(class_student.c.class_id.in_(owned_class_ids(scope, on=on)))
+        # The count on a class card is the group as it is NOW, so ended
+        # enrollments are excluded here exactly as they are from the roster the
+        # card links to. Without this the badge and the list disagree.
+        .where(valid_on(class_student, on))
         .group_by(class_student.c.class_id)
     ).all()
     return {class_id: int(count) for class_id, count in rows}
@@ -200,11 +209,12 @@ def _branch_ids(
     The ownership filter is joined in here rather than trusting the caller's
     ``class_id``, the same as every other read in this module.
     """
+    on = today()
     stmt = (
         select(class_subject.c.subject_id)
         .join(Class, Class.id == class_subject.c.class_id)
         .where(Class.id == class_id)
-        .where(Class.id.in_(owned_class_ids(scope)))
+        .where(Class.id.in_(owned_class_ids(scope, on=on)))
         # `subject_id` breaks a tie: two subjects first taught in the same
         # instant can be assigned the same position (the PK is
         # (class_id, subject_id), so ON CONFLICT cannot serialise that), and a
@@ -214,7 +224,7 @@ def _branch_ids(
     )
     if mine:
         stmt = stmt.where(
-            class_subject.c.subject_id.in_(taught_subject_ids(scope, class_id))
+            class_subject.c.subject_id.in_(taught_subject_ids(scope, class_id, on=on))
         )
     return list(db.execute(stmt).scalars())
 
@@ -286,10 +296,106 @@ def declare_subject(
         .values(class_id=class_id, subject_id=subject_id, position=next_position)
         .on_conflict_do_nothing(index_elements=["class_id", "subject_id"])
     )
+    _open_staffing(db, class_id=class_id, teacher_id=scope.teacher_id, subject_id=subject_id)
+
+
+def _open_membership(db: Session, *, class_id: uuid.UUID, student_id: uuid.UUID) -> None:
+    """Seat a pupil, or leave the seat they already have. Idempotent.
+
+    Two reads and one write, where this used to be a one-line
+    ``ON CONFLICT DO NOTHING``. Since 0027 the key carries ``valid_from``, so a
+    pupil unenrolled this morning and put back this afternoon collides on the
+    PRIMARY KEY rather than on the pair — and ``DO NOTHING`` would silently
+    drop the re-enrolment, leaving the roster one child short with no error
+    anywhere. The same-day row is therefore looked for FIRST and reopened;
+    that is what "seat this pupil" means on a day their membership already
+    started.
+
+    ``uq_class_student_open`` is what makes the race safe rather than this
+    read: two concurrent enrolments both find nothing and both insert, and the
+    loser gets an integrity error rather than a second open row.
+    """
+    on = today()
+    same_day = db.execute(
+        select(class_student.c.valid_to)
+        .where(class_student.c.class_id == class_id)
+        .where(class_student.c.student_id == student_id)
+        .where(class_student.c.valid_from == on)
+    ).first()
+    if same_day is not None:
+        # A row already starts today. Either it is open — nothing to do — or it
+        # was ended this morning and reopening it is what "seat this pupil"
+        # means, because inserting a second row for the same day would collide
+        # on the primary key rather than on the pair (0027).
+        if same_day[0] is not None:
+            db.execute(
+                class_student.update()
+                .where(class_student.c.class_id == class_id)
+                .where(class_student.c.student_id == student_id)
+                .where(class_student.c.valid_from == on)
+                .values(valid_to=None)
+            )
+        return
+    already = db.execute(
+        select(class_student.c.valid_from)
+        .where(class_student.c.class_id == class_id)
+        .where(class_student.c.student_id == student_id)
+        .where(valid_on(class_student, on))
+    ).first()
+    if already is not None:
+        return
     db.execute(
-        pg_insert(class_teacher_subject)
-        .values(class_id=class_id, teacher_id=scope.teacher_id, subject_id=subject_id)
-        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
+        class_student.insert().values(
+            class_id=class_id, student_id=student_id, valid_from=on
+        )
+    )
+
+
+def _open_staffing(
+    db: Session, *, class_id: uuid.UUID, teacher_id: uuid.UUID, subject_id: uuid.UUID
+) -> None:
+    """Open a staffing row, or leave the open one alone. Idempotent.
+
+    The same shape as ``_open_membership``, and for the same reason. Two
+    colleagues assigned at once race the same way, and
+    ``uq_class_teacher_subject_open`` is what keeps the loser from writing a
+    second open row.
+    """
+    on = today()
+    same_day = db.execute(
+        select(class_teacher_subject.c.valid_to)
+        .where(class_teacher_subject.c.class_id == class_id)
+        .where(class_teacher_subject.c.teacher_id == teacher_id)
+        .where(class_teacher_subject.c.subject_id == subject_id)
+        .where(class_teacher_subject.c.valid_from == on)
+    ).first()
+    if same_day is not None:
+        if same_day[0] is not None:
+            db.execute(
+                class_teacher_subject.update()
+                .where(class_teacher_subject.c.class_id == class_id)
+                .where(class_teacher_subject.c.teacher_id == teacher_id)
+                .where(class_teacher_subject.c.subject_id == subject_id)
+                .where(class_teacher_subject.c.valid_from == on)
+                .values(valid_to=None)
+            )
+        return
+    already = db.execute(
+        select(class_teacher_subject.c.valid_from)
+        .where(class_teacher_subject.c.class_id == class_id)
+        .where(class_teacher_subject.c.teacher_id == teacher_id)
+        .where(class_teacher_subject.c.subject_id == subject_id)
+        .where(valid_on(class_teacher_subject, on))
+    ).first()
+    if already is not None:
+        return
+    db.execute(
+        class_teacher_subject.insert().values(
+            class_id=class_id,
+            teacher_id=teacher_id,
+            subject_id=subject_id,
+            valid_from=on,
+        )
     )
 
 
@@ -302,10 +408,35 @@ def join_school(db: Session, teacher_id: uuid.UUID, school_id: uuid.UUID) -> Non
     silent lockout for someone who was never added. Every path that mints a
     teacher calls this: the seed, the migration's backfill, and the fixtures.
     """
+    on = today()
+    same_day = db.execute(
+        select(teacher_school.c.valid_to)
+        .where(teacher_school.c.teacher_id == teacher_id)
+        .where(teacher_school.c.school_id == school_id)
+        .where(teacher_school.c.valid_from == on)
+    ).first()
+    if same_day is not None:
+        if same_day[0] is not None:
+            db.execute(
+                teacher_school.update()
+                .where(teacher_school.c.teacher_id == teacher_id)
+                .where(teacher_school.c.school_id == school_id)
+                .where(teacher_school.c.valid_from == on)
+                .values(valid_to=None)
+            )
+        return
+    already = db.execute(
+        select(teacher_school.c.valid_from)
+        .where(teacher_school.c.teacher_id == teacher_id)
+        .where(teacher_school.c.school_id == school_id)
+        .where(valid_on(teacher_school, on))
+    ).first()
+    if already is not None:
+        return
     db.execute(
-        pg_insert(teacher_school)
-        .values(teacher_id=teacher_id, school_id=school_id)
-        .on_conflict_do_nothing(index_elements=["teacher_id", "school_id"])
+        teacher_school.insert().values(
+            teacher_id=teacher_id, school_id=school_id, valid_from=on
+        )
     )
 
 
@@ -356,6 +487,7 @@ def list_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Studen
     through it. If you want the pupils this class is HOME to — because you are
     minting a UID or a number — use ``home_students``.
     """
+    on = today()
     return list(
         db.execute(
             select(Student)
@@ -363,8 +495,8 @@ def list_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Studen
             # 24 of them: without these two the serialiser fires 48 queries.
             .options(selectinload(Student.classes), selectinload(Student.home_class))
             .where(Student.school_id == scope.school_id)
-            .where(Student.id.in_(enrolled_in_owned_classes(scope)))
-            .where(Student.id.in_(enrolled_student_ids(class_id)))
+            .where(Student.id.in_(enrolled_in_owned_classes(scope, on=on)))
+            .where(Student.id.in_(enrolled_student_ids(class_id, on=on)))
             .order_by(Student.number.asc())
         ).scalars()
     )
@@ -381,7 +513,7 @@ def home_students(db: Session, scope: Scope, class_id: uuid.UUID) -> list[Studen
         db.execute(
             select(Student)
             .where(Student.school_id == scope.school_id)
-            .where(Student.home_class_id.in_(owned_class_ids(scope)))
+            .where(Student.home_class_id.in_(owned_class_ids(scope, on=today())))
             .where(Student.home_class_id == class_id)
             .order_by(Student.number.asc())
         ).scalars()
@@ -395,12 +527,19 @@ def get_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
     pupil co-enrolled in two teachers' classes is each teacher's to see, which
     is the whole point of D69. The school filter on top is what keeps that
     widening inside one tenant (I-platform-10).
+
+    CURRENT enrollment, deliberately, where ``mastery_service._owned_student``
+    accepts an overlapping past one. This is the gate for *acting* on a pupil —
+    renaming them, enrolling them elsewhere, deleting them — and a teacher
+    whose group a child left in February has no standing to rename them in
+    June. Reading what they did in October is a different question and gets a
+    different answer (D87).
     """
     row = db.execute(
         select(Student)
         .where(Student.id == student_id)
         .where(Student.school_id == scope.school_id)
-        .where(Student.id.in_(enrolled_in_owned_classes(scope)))
+        .where(Student.id.in_(enrolled_in_owned_classes(scope, on=today())))
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("student", id=str(student_id))
@@ -420,20 +559,25 @@ def enroll(db: Session, school_class: Class, student: Student) -> None:
         raise errors.unprocessable(
             "a student cannot be enrolled in a class from another school year"
         )
-    db.execute(
-        pg_insert(class_student)
-        .values(class_id=school_class.id, student_id=student.id)
-        .on_conflict_do_nothing(index_elements=["class_id", "student_id"])
-    )
+    _open_membership(db, class_id=school_class.id, student_id=student.id)
 
 
 def unenroll(db: Session, school_class: Class, student: Student) -> None:
-    """Remove a student from a class without touching their record.
+    """End a student's time in a class without touching their record.
 
     Refused on the home class: the home is where the UID came from and the
-    column is NOT NULL. Unenrolling drops one row — the student, their uid,
-    their attempts and their snapshots all survive. Deleting a student stays
-    the only operation that destroys evidence.
+    column is NOT NULL. The student, their uid, their attempts and their
+    snapshots all survive. Deleting a student stays the only operation that
+    destroys evidence.
+
+    An ``UPDATE``, not a ``DELETE``, since D87. The row stays and gains an end
+    date, so the matrix column for a sheet this pupil sat in October still
+    lists them and the teacher who marked it can still open their profile in
+    June. A deleted row could answer neither question, and nothing anywhere
+    recorded that the membership had ever existed.
+
+    Idempotent: ending a membership that is already over ends no row and
+    raises nothing, which is what this endpoint promised when it was a DELETE.
     """
     if student.home_class_id == school_class.id:
         raise errors.conflict(
@@ -441,10 +585,11 @@ def unenroll(db: Session, school_class: Class, student: Student) -> None:
             uid=student.uid,
         )
     db.execute(
-        class_student.delete().where(
-            class_student.c.class_id == school_class.id,
-            class_student.c.student_id == student.id,
-        )
+        class_student.update()
+        .where(class_student.c.class_id == school_class.id)
+        .where(class_student.c.student_id == student.id)
+        .where(class_student.c.valid_to.is_(None))
+        .values(valid_to=today())
     )
 
 
@@ -487,9 +632,23 @@ def add_students(
         except InvalidUidError as exc:
             raise errors.unprocessable(str(exc)) from exc
 
+        # A NEW person for every pasted pupil, deliberately — no matching by
+        # name. Homonyms are ordinary in a school of 400, and a paste that
+        # silently attached this year's Noah Favre to last year's would
+        # inherit a stranger's mastery record. Linking a returning pupil to
+        # the person they already are is a rollover, an explicit act with a
+        # teacher's confirmation behind it, and it is not this function (D87).
+        person = Person(
+            id=uuid.uuid4(),
+            school_id=scope.school_id,
+            first_name=entry.first_name.strip(),
+            last_name=entry.last_name.strip(),
+        )
+        db.add(person)
         student = Student(
             id=uuid.uuid4(),
             school_id=scope.school_id,
+            person_id=person.id,
             home_class_id=school_class.id,
             school_year_id=school_class.school_year_id,
             uid=uid,
@@ -526,7 +685,7 @@ def _pending_scan_counts(db: Session, scope: Scope) -> dict[uuid.UUID, int]:
         .where(Scan.school_id == scope.school_id)
         # Pair-grained: "3 piles waiting" must mean three piles THIS teacher
         # has to mark, not three that happen to sit in a class they share.
-        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
         .where(Scan.status.in_(PENDING_SCAN_STATUSES))
         .group_by(Sheet.class_id)
     ).all()
@@ -539,7 +698,7 @@ def _last_sheets(db: Session, scope: Scope) -> dict[uuid.UUID, Sheet]:
         .where(Sheet.school_id == scope.school_id)
         # Likewise: "last sheet" is the last one the reader made, not a
         # colleague's history homework showing up on their maths card.
-        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope))
+        .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
         .order_by(Sheet.created_at.asc(), Sheet.title.asc())
     ).scalars()
     return {sheet.class_id: sheet for sheet in rows}  # last write per class wins
@@ -558,8 +717,8 @@ def class_summary(
     pending = pending if pending is not None else _pending_scan_counts(db, scope)
     last_sheets = last_sheets if last_sheets is not None else _last_sheets(db, scope)
 
-    student_ids = [s.id for s in list_students(db, scope, school_class.id)]
-    bands, needing = band_summary(db, scope.school_id, student_ids)
+    person_ids = [s.person_id for s in list_students(db, scope, school_class.id)]
+    bands, needing = band_summary(db, scope.school_id, person_ids)
     last = last_sheets.get(school_class.id)
 
     return ClassSummary(
@@ -608,6 +767,9 @@ def get_colleague(db: Session, school_id: uuid.UUID, teacher_id: uuid.UUID) -> T
         .join(teacher_school, teacher_school.c.teacher_id == Teacher.id)
         .where(Teacher.id == teacher_id)
         .where(teacher_school.c.school_id == school_id)
+        # Someone who works here NOW. A colleague who has left must not be
+        # findable in the picker that assigns a branch.
+        .where(valid_on(teacher_school, today()))
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("teacher", id=str(teacher_id))
@@ -671,16 +833,16 @@ def assign_branch(
         select(teacher_school.c.school_id)
         .where(teacher_school.c.teacher_id == teacher.id)
         .where(teacher_school.c.school_id == school_class.school_id)
-    ).scalar_one_or_none()
+        # A CURRENT membership. The table keeps a teacher's row when they
+        # leave, and reading it here would let a colleague be assigned a
+        # branch in a school they no longer work at.
+        .where(valid_on(teacher_school, today()))
+    ).first()
     if member is None:
         raise errors.unprocessable("teacher does not work at this school")
 
     declare_subject(db, scope, school_class.id, subject.id)
-    db.execute(
-        pg_insert(class_teacher_subject)
-        .values(class_id=school_class.id, teacher_id=teacher.id, subject_id=subject.id)
-        .on_conflict_do_nothing(index_elements=["class_id", "teacher_id", "subject_id"])
-    )
+    _open_staffing(db, class_id=school_class.id, teacher_id=teacher.id, subject_id=subject.id)
     db.flush()
 
 
@@ -703,10 +865,12 @@ def unassign_branch(
     caller's intent is already satisfied.
     """
     db.execute(
-        class_teacher_subject.delete()
+        class_teacher_subject.update()
         .where(class_teacher_subject.c.class_id == school_class.id)
         .where(class_teacher_subject.c.teacher_id == teacher_id)
         .where(class_teacher_subject.c.subject_id == subject_id)
+        .where(class_teacher_subject.c.valid_to.is_(None))
+        .values(valid_to=today())
     )
     db.flush()
 
@@ -724,6 +888,9 @@ def teachers_for_class(
     rows = db.execute(
         select(class_teacher_subject.c.teacher_id, class_teacher_subject.c.subject_id)
         .where(class_teacher_subject.c.class_id == class_id)
+        # Who takes a branch here NOW. A remplaçant whose cover ended in May is
+        # on the class's history, not on its staff list in June.
+        .where(valid_on(class_teacher_subject, today()))
         .order_by(class_teacher_subject.c.assigned_at.asc())
     ).all()
 
@@ -819,6 +986,7 @@ def schools_for_teacher(db: Session, teacher_id: uuid.UUID) -> list[School]:
             select(School)
             .join(teacher_school, teacher_school.c.school_id == School.id)
             .where(teacher_school.c.teacher_id == teacher_id)
+            .where(valid_on(teacher_school, today()))
             .order_by(School.name.asc())
         ).scalars()
     )
@@ -835,6 +1003,7 @@ def list_colleagues(db: Session, school_id: uuid.UUID) -> list[Teacher]:
             select(Teacher)
             .join(teacher_school, teacher_school.c.teacher_id == Teacher.id)
             .where(teacher_school.c.school_id == school_id)
+            .where(valid_on(teacher_school, today()))
             .order_by(Teacher.last_name.asc(), Teacher.first_name.asc())
         ).scalars()
     )

@@ -303,13 +303,12 @@ def test_every_taught_class_gets_a_history_of_its_own(db: Session) -> None:
         school_class = (
             db.query(Class).filter(Class.code == entry.code).one()
         )
-        student_ids = [
-            s.id
-            for s in db.query(Student).filter(Student.home_class_id == school_class.id).all()
-        ]
-        assert len(student_ids) == entry.size, entry.code
+        roster = db.query(Student).filter(Student.home_class_id == school_class.id).all()
+        assert len(roster) == entry.size, entry.code
         attempts = (
-            db.query(Attempt).filter(Attempt.student_id.in_(student_ids)).count()
+            db.query(Attempt)
+            .filter(Attempt.person_id.in_([s.person_id for s in roster]))
+            .count()
         )
         if entry.taught:
             assert attempts > 0, f"{entry.code} was taught but has no history"

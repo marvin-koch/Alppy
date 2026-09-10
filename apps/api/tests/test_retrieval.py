@@ -27,12 +27,14 @@ from sqlalchemy.orm import Session
 from alppy.ai.client import AiClient
 from alppy.core.uid import format_uid
 from alppy.db.base import Base
+from alppy.db.validity import today
 from alppy.models import (
     Chapter,
     Class,
     Competency,
     Exercise,
     MasterySnapshot,
+    Person,
     School,
     SchoolYear,
     Source,
@@ -82,6 +84,8 @@ class World:
     chapters: dict[str, uuid.UUID]
     competencies: dict[str, uuid.UUID]
     exercises: dict[str, uuid.UUID]
+    #: uid -> person id, the other half of `students`
+    people: dict[str, uuid.UUID]
     source_id: uuid.UUID
 
     def chapter(self, key: str) -> uuid.UUID:
@@ -92,6 +96,15 @@ class World:
 
     def student(self, uid: str) -> uuid.UUID:
         return self.students[uid]
+
+    def person(self, uid: str) -> uuid.UUID:
+        """The durable identity behind a uid (D87).
+
+        A uid is a fact about one year's paper and resolves to a ``student``;
+        every attempt and every snapshot hangs off the ``person`` that student
+        points at. Tests that build evidence want this one.
+        """
+        return self.people[uid]
 
 
 ROSTER = [
@@ -141,15 +154,21 @@ def build_world(db: Session | None = None) -> World:
     db.flush()
 
     students: dict[str, uuid.UUID] = {}
+    people: dict[str, uuid.UUID] = {}
     for i, (first, last) in enumerate(ROSTER, start=1):
         # Build the uid the way the application does. A hand-rolled f-string
         # here produced "7B_01" while every real code path produces the
         # zero-padded "7B_01", and the difference only surfaced in one
         # assertion deep in the adaptive tests.
         uid = format_uid("7B", i)
+        person = Person(
+            id=uuid.uuid4(), school_id=school.id, first_name=first, last_name=last
+        )
+        db.add(person)
         student = Student(
             id=uuid.uuid4(),
             school_id=school.id,
+            person_id=person.id,
             home_class_id=school_class.id,
             school_year_id=year.id,
             uid=uid,
@@ -159,10 +178,14 @@ def build_world(db: Session | None = None) -> World:
         )
         db.add(student)
         students[uid] = student.id
+        people[uid] = person.id
     db.flush()
     db.execute(
         class_student.insert(),
-        [{"class_id": school_class.id, "student_id": sid} for sid in students.values()],
+        [
+            {"class_id": school_class.id, "student_id": sid, "valid_from": today()}
+            for sid in students.values()
+        ],
     )
     db.commit()
 
@@ -173,6 +196,7 @@ def build_world(db: Session | None = None) -> World:
         class_id=school_class.id,
         student_ids=list(students),
         students=students,
+        people=people,
         chapters=reference.chapter_ids,
         competencies=reference.competency_ids,
         exercises=corpus.exercise_ids,
@@ -193,7 +217,7 @@ def snapshot(
     row = MasterySnapshot(
         id=uuid.uuid4(),
         school_id=world.school_id,
-        student_id=world.student(student_uid),
+        person_id=world.person(student_uid),
         competency_id=world.competency(competency_code),
         computed_at=datetime.now(UTC) - timedelta(days=days_ago),
         score=score,

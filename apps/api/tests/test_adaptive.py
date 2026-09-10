@@ -94,7 +94,7 @@ def test_weakest_bands_come_first_and_solid_trails_as_stretch(world: World) -> N
 
     gaps = adaptive_service.pick_gaps(
         adaptive_service.latest_snapshots(
-            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+            world.db, school_id=world.school_id, person_id=world.person("7B_01")
         )
     )
     codes = [g.band for g in gaps]
@@ -115,7 +115,7 @@ def test_stretch_never_crowds_out_real_gap_work(world: World) -> None:
 
     gaps = adaptive_service.pick_gaps(
         adaptive_service.latest_snapshots(
-            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+            world.db, school_id=world.school_id, person_id=world.person("7B_01")
         )
     )
     assert [g.band for g in gaps] == [MasteryBand.FADING] * 4
@@ -133,7 +133,7 @@ def test_a_fully_mastered_student_gets_stretch_not_the_easy_diagnostic(world: Wo
 
     gaps = adaptive_service.pick_gaps(
         adaptive_service.latest_snapshots(
-            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+            world.db, school_id=world.school_id, person_id=world.person("7B_01")
         )
     )
     assert len(gaps) == 2, "a mastered student must not fall into the diagnostic branch"
@@ -152,7 +152,7 @@ def test_only_the_latest_snapshot_per_competency_counts(world: World) -> None:
     )
     world.db.commit()
     rows = adaptive_service.latest_snapshots(
-        world.db, school_id=world.school_id, student_id=world.student("7B_01")
+        world.db, school_id=world.school_id, person_id=world.person("7B_01")
     )
     assert len(rows) == 1
     assert rows[0].band is MasteryBand.SOLID
@@ -180,7 +180,7 @@ def test_gap_limit_keeps_a_sheet_focused(world: World) -> None:
     world.db.commit()
     gaps = adaptive_service.pick_gaps(
         adaptive_service.latest_snapshots(
-            world.db, school_id=world.school_id, student_id=world.student("7B_01")
+            world.db, school_id=world.school_id, person_id=world.person("7B_01")
         )
     )
     assert len(gaps) == adaptive_service.MAX_TARGET_COMPETENCIES

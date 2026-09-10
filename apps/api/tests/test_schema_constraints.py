@@ -39,6 +39,7 @@ from alppy.core.security import hash_password
 from alppy.db.base import Base
 from alppy.models import (
     Class,
+    Person,
     School,
     SchoolYear,
     Student,
@@ -489,9 +490,20 @@ def test_a_uid_is_unique_per_school_and_year_with_two_schools_present(
     db.flush()
 
     def pupil(school_id: uuid.UUID, year_id: uuid.UUID, class_id: uuid.UUID) -> Student:
+        # The person is per school: two schools holding "5A_1" hold two
+        # different children, which is the claim this test is checking.
+        person = Person(
+            id=uuid.uuid4(),
+            school_id=school_id,
+            first_name="Marie",
+            last_name="Favre",
+        )
+        db.add(person)
+        db.flush()
         return Student(
             id=uuid.uuid4(),
             school_id=school_id,
+            person_id=person.id,
             school_year_id=year_id,
             home_class_id=class_id,
             uid="5A_1",
@@ -591,10 +603,19 @@ def test_a_class_that_is_someones_home_cannot_be_deleted(db: Session, world: Wor
     `mastery_snapshot` and `sheet_instance` all cascade from there: a term of
     evidence gone for a child who also sat in another class.
     """
+    person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Marie",
+        last_name="Favre",
+    )
+    db.add(person)
+    db.flush()
     db.add(
         Student(
             id=uuid.uuid4(),
             school_id=world.school.id,
+            person_id=person.id,
             school_year_id=world.year.id,
             home_class_id=world.klass.id,
             uid="5A_1",
@@ -617,9 +638,18 @@ def test_unenrolling_removes_the_row_and_nothing_else(db: Session, world: World)
     untouched; that is what makes "unenrolling is not deleting" true rather
     than merely intended.
     """
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Luc",
+        last_name="Rey",
+    )
+    db.add(_person)
+    db.flush()
     student = Student(
         id=uuid.uuid4(),
         school_id=world.school.id,
+        person_id=_person.id,
         school_year_id=world.year.id,
         home_class_id=world.klass.id,
         uid="5A_2",
@@ -714,18 +744,38 @@ def test_an_exercise_difficulty_stays_between_one_and_five(db: Session, world: W
 def test_deleting_a_pupil_takes_their_evidence_with_them(db: Session, world: World) -> None:
     """The cascade behind the one operation allowed to destroy evidence.
 
-    `data-model.md` §6: `Attempt`, `MasterySnapshot` and `SheetInstance` all
-    cascade from `Student`. The API-level test can only show the pupil is
-    gone — SQLite does not enforce foreign keys (D18), so the cascade is
-    invisible there and a green assertion would mean nothing. Here it is real.
+    `data-model.md` §6: `SheetInstance` cascades from `Student`, and since 0028
+    `Attempt`, `MasterySnapshot`, `MasteryBranchSnapshot` and
+    `MisconceptionNote` cascade from `Person` instead. The API-level test can
+    only show the pupil is gone — SQLite does not enforce foreign keys (D18),
+    so the cascade is invisible there and a green assertion would mean nothing.
+    Here it is real.
+
+    **What 0028 changed, and why this test now deletes two rows.** Deleting the
+    year-bound `Student` alone no longer destroys the evidence — it cannot, or
+    a pupil's record would vanish every August. Erasure is deleting the PERSON,
+    which cascades to every year of enrolment and through them to everything
+    else. `nouns_service.delete_student` does exactly this: it removes the
+    student, then the person once no other year still refers to them. A version
+    of this test that deleted only the student would go green while destroying
+    nothing, which is the failure it exists to catch.
 
     The mirror of `test_a_class_that_is_someones_home_cannot_be_deleted`:
-    deleting a CLASS must refuse, deleting a STUDENT must cascade. Those two
+    deleting a CLASS must refuse, deleting a PERSON must cascade. Those two
     facts are one decision, and they are easy to reverse by accident.
     """
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Marie",
+        last_name="Favre",
+    )
+    db.add(_person)
+    db.flush()
     student = Student(
         id=uuid.uuid4(),
         school_id=world.school.id,
+        person_id=_person.id,
         school_year_id=world.year.id,
         home_class_id=world.klass.id,
         uid="5A_9",
@@ -745,17 +795,30 @@ def test_deleting_a_pupil_takes_their_evidence_with_them(db: Session, world: Wor
     )
     db.execute(
         pg_insert(snapshot).values(
-            id=uuid.uuid4(), school_id=world.school.id, student_id=student.id,
+            id=uuid.uuid4(), school_id=world.school.id, person_id=student.person_id,
             competency_id=cid, computed_at=sa.func.now(), score=0.8, band="SOLID",
         )
     )
     db.commit()
 
+    person_id = student.person_id
+    # Deleting the enrolment record first, the way `delete_student` does: the
+    # snapshot must survive THIS, and die with the person below.
     db.execute(sa.delete(Student.__table__).where(Student.id == student.id))
+    db.commit()
+    assert db.execute(
+        sa.select(sa.func.count())
+        .select_from(snapshot)
+        .where(snapshot.c.person_id == person_id)
+    ).scalar_one() == 1, "a year's enrolment is not the pupil"
+
+    db.execute(sa.delete(Person.__table__).where(Person.id == person_id))
     db.commit()
 
     assert db.execute(
-        sa.select(sa.func.count()).select_from(snapshot).where(snapshot.c.student_id == student.id)
+        sa.select(sa.func.count())
+        .select_from(snapshot)
+        .where(snapshot.c.person_id == person_id)
     ).scalar_one() == 0
 
 
@@ -873,8 +936,17 @@ def test_a_pupil_gets_one_printed_copy_per_sheet(db: Session, world: World) -> N
     Two for the same pupil means two papers carrying the same UID, and the
     scan path would have no way to say which pile a page came from.
     """
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Luc",
+        last_name="Rey",
+    )
+    db.add(_person)
+    db.flush()
     student = Student(
-        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        id=uuid.uuid4(), school_id=world.school.id,
+        person_id=_person.id, school_year_id=world.year.id,
         home_class_id=world.klass.id, uid="5A_3", number=3,
         first_name="Luc", last_name="Rey",
     )
@@ -923,8 +995,17 @@ def test_one_attempt_per_pupil_per_exercise_per_sheet(db: Session, world: World)
     Confirming a pile twice must not double a child's evidence — the mastery
     model weights by count, so a duplicate silently doubles that item's pull.
     """
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Ana",
+        last_name="Blanc",
+    )
+    db.add(_person)
+    db.flush()
     student = Student(
-        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        id=uuid.uuid4(), school_id=world.school.id,
+        person_id=_person.id, school_year_id=world.year.id,
         home_class_id=world.klass.id, uid="5A_4", number=4,
         first_name="Ana", last_name="Blanc",
     )
@@ -934,7 +1015,7 @@ def test_one_attempt_per_pupil_per_exercise_per_sheet(db: Session, world: World)
     db.commit()
     attempt = _TABLES["attempt"]
     common = {
-        "school_id": world.school.id, "student_id": student.id,
+        "school_id": world.school.id, "person_id": student.person_id,
         "exercise_id": exercise_id, "sheet_id": sheet_id,
         "correct": True, "score": 1.0, "answered_at": sa.func.now(),
     }
@@ -973,8 +1054,17 @@ def test_a_mastery_score_is_a_unit_interval(db: Session, world: World) -> None:
     A stored 85 (a percentage that lost its division) would read as `solid`
     forever and never decay.
     """
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        first_name="Eva",
+        last_name="Roth",
+    )
+    db.add(_person)
+    db.flush()
     student = Student(
-        id=uuid.uuid4(), school_id=world.school.id, school_year_id=world.year.id,
+        id=uuid.uuid4(), school_id=world.school.id,
+        person_id=_person.id, school_year_id=world.year.id,
         home_class_id=world.klass.id, uid="5A_5", number=5,
         first_name="Eva", last_name="Roth",
     )
@@ -990,7 +1080,7 @@ def test_a_mastery_score_is_a_unit_interval(db: Session, world: World) -> None:
     with pytest.raises(IntegrityError):
         db.execute(
             pg_insert(_TABLES["mastery_snapshot"]).values(
-                id=uuid.uuid4(), school_id=world.school.id, student_id=student.id,
+                id=uuid.uuid4(), school_id=world.school.id, person_id=student.person_id,
                 competency_id=cid, computed_at=sa.func.now(), score=85.0, band="SOLID",
             )
         )

@@ -32,7 +32,7 @@ from alppy.models import (
     Student,
 )
 from alppy.models.enums import DetectionOutcome, ExerciseType
-from alppy.services.enrollment import enrolled_in_owned_classes
+from alppy.services.enrollment import ever_shared_student_ids
 from alppy.sheets.layout import OptionLetters, tf_letters
 
 
@@ -127,7 +127,11 @@ def student_sheet_breakdown(
         select(Student)
         .where(Student.id == student_id)
         .where(Student.school_id == school_id)
-        .where(Student.id.in_(enrolled_in_owned_classes(scope)))
+        # Overlap, not current enrollment: this report is one sheet's answers,
+        # and the teacher who marked it in October keeps it in June even after
+        # the pupil has moved to another niveau group. Same widening as
+        # `mastery_service._owned_student`, for the same reason (D87).
+        .where(Student.id.in_(ever_shared_student_ids(scope)))
     ).scalar_one_or_none()
     if student is None:
         from alppy.api import errors
@@ -172,7 +176,7 @@ def student_sheet_breakdown(
         attempt.exercise_id: attempt
         for attempt in db.execute(
             select(Attempt)
-            .where(Attempt.student_id == student_id)
+            .where(Attempt.person_id == student.person_id)
             .where(Attempt.sheet_id == sheet.id)
             .where(Attempt.school_id == school_id)
         ).scalars()

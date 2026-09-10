@@ -17,7 +17,7 @@ from __future__ import annotations
 import uuid
 from collections import defaultdict
 from collections.abc import Sequence
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from typing import Final
 
 from sqlalchemy import select
@@ -46,7 +46,6 @@ from alppy.models import (
     SheetItem,
     Student,
     chapter_competency,
-    class_student,
     exercise_competency,
 )
 from alppy.models.enums import BAND_ORDER, DetectionOutcome, MasteryBand
@@ -62,7 +61,11 @@ from alppy.schemas import (
     TreeMasteryOut,
 )
 from alppy.services import competency_out, student_out
-from alppy.services.enrollment import enrolled_student_ids, owned_class_ids
+from alppy.services.enrollment import (
+    enrolled_student_ids,
+    ever_shared_student_ids,
+    owned_class_ids,
+)
 
 ATTENTION_BANDS: Final[frozenset[MasteryBand]] = frozenset(
     {MasteryBand.WEAK, MasteryBand.FADING}
@@ -72,7 +75,20 @@ MAX_STRENGTHS: Final = 5
 MAX_GAPS: Final = 8
 MAX_HISTORY_POINTS: Final = 30
 
-Key = tuple[uuid.UUID, uuid.UUID]  # (student_id, competency_id)
+Key = tuple[uuid.UUID, uuid.UUID]  # (person_id, competency_id)
+"""Keyed on the PERSON since 0028, not on the year-bound ``student`` row.
+
+That is the whole point of the split: mastery is a decay model, and the one
+interval over which decay matters most is the summer holiday. Keyed on
+``student.id`` a pupil's evidence reset every August, and a repeating pupil was
+a stranger to the system (D87).
+
+Every function here therefore takes and returns ``person_id``. Callers holding
+a ``Student`` pass ``student.person_id``; the parameter names say so, which is
+what stops a ``student.id`` being passed by habit — it would resolve to no
+attempts at all rather than to the wrong ones, but a silently empty matrix is
+not a better failure than a loud one.
+"""
 
 
 def _aware(value: datetime | None) -> datetime | None:
@@ -153,14 +169,14 @@ def mastery_out(rolled: MasteryResult, children: list[MasteryResult]) -> TreeMas
 def load_attempt_inputs(
     db: Session,
     school_id: uuid.UUID,
-    student_ids: list[uuid.UUID],
+    person_ids: list[uuid.UUID],
     *,
     subject_id: uuid.UUID | None = None,
     competency_ids: list[uuid.UUID] | None = None,
     sheet_id: uuid.UUID | None = None,
     as_of: datetime | None = None,
 ) -> dict[Key, list[AttemptInput]]:
-    """Every attempt, keyed by (student, competency).
+    """Every attempt, keyed by (person, competency).
 
     An exercise mapped to two competencies contributes to both — that is the
     point of the mapping, and it is why this cannot be a simple group-by.
@@ -175,13 +191,13 @@ def load_attempt_inputs(
     model is a weighted mean over all the evidence, and scoping it to one lesson
     would make a bad afternoon erase a term.
     """
-    if not student_ids:
+    if not person_ids:
         return {}
     if competency_ids is not None and not competency_ids:
         return {}
     stmt = (
         select(
-            Attempt.student_id,
+            Attempt.person_id,
             exercise_competency.c.competency_id,
             Attempt.correct,
             Attempt.answered_at,
@@ -189,7 +205,7 @@ def load_attempt_inputs(
         )
         .join(exercise_competency, exercise_competency.c.exercise_id == Attempt.exercise_id)
         .where(Attempt.school_id == school_id)
-        .where(Attempt.student_id.in_(student_ids))
+        .where(Attempt.person_id.in_(person_ids))
     )
     if as_of is not None:
         stmt = stmt.where(Attempt.answered_at <= as_of)
@@ -203,11 +219,11 @@ def load_attempt_inputs(
         stmt = stmt.where(Attempt.sheet_id == sheet_id)
 
     grouped: dict[Key, list[AttemptInput]] = defaultdict(list)
-    for student_id, competency_id, correct, answered_at, difficulty in db.execute(stmt):
+    for person_id, competency_id, correct, answered_at, difficulty in db.execute(stmt):
         at = _aware(answered_at)
         if at is None:  # pragma: no cover - answered_at is NOT NULL
             continue
-        grouped[(student_id, competency_id)].append(
+        grouped[(person_id, competency_id)].append(
             AttemptInput(correct=bool(correct), answered_at=at, difficulty=int(difficulty))
         )
     return dict(grouped)
@@ -216,7 +232,7 @@ def load_attempt_inputs(
 def pool_by_competency(
     grouped: dict[Key, list[AttemptInput]],
 ) -> dict[uuid.UUID, list[AttemptInput]]:
-    """Drop the student half of the key and concatenate.
+    """Drop the person half of the key and concatenate.
 
     Turns per-student attempts into class-wide ones WITHOUT inventing a second
     aggregation rule: the pooled list still goes through the unchanged
@@ -232,36 +248,43 @@ def pool_by_competency(
     and it works on results, each of which carries its own honest recency.
     """
     pooled: dict[uuid.UUID, list[AttemptInput]] = defaultdict(list)
-    for (_student_id, competency_id), attempts in grouped.items():
+    for (_person_id, competency_id), attempts in grouped.items():
         pooled[competency_id].extend(attempts)
     return dict(pooled)
 
 
 def latest_snapshots(
-    db: Session, school_id: uuid.UUID, student_ids: list[uuid.UUID]
+    db: Session, school_id: uuid.UUID, person_ids: list[uuid.UUID]
 ) -> dict[Key, MasterySnapshot]:
-    """The most recent snapshot per (student, competency)."""
-    if not student_ids:
+    """The most recent snapshot per (person, competency)."""
+    if not person_ids:
         return {}
     stmt = (
         select(MasterySnapshot)
         .where(MasterySnapshot.school_id == school_id)
-        .where(MasterySnapshot.student_id.in_(student_ids))
+        .where(MasterySnapshot.person_id.in_(person_ids))
         .order_by(MasterySnapshot.computed_at.asc())
     )
     latest: dict[Key, MasterySnapshot] = {}
     for snap in db.execute(stmt).scalars():
-        latest[(snap.student_id, snap.competency_id)] = snap
+        latest[(snap.person_id, snap.competency_id)] = snap
     return latest
 
 
 def _student_ids_for_class(
-    db: Session, school_id: uuid.UUID, class_id: uuid.UUID
+    db: Session, school_id: uuid.UUID, class_id: uuid.UUID, *, on: date
 ) -> list[Student]:
+    """The roster to build a matrix over, as it stood on ``on``.
+
+    ``on`` comes from the matrix's own ``now``, so a matrix asked for as of a
+    date in October gets October's group rather than today's — the difference
+    between a column that says what the niveau-2 group scored and one that
+    says what TODAY's niveau-2 group scored on a sheet half of them never sat.
+    """
     stmt = (
         select(Student)
         .where(Student.school_id == school_id)
-        .where(Student.id.in_(enrolled_student_ids(class_id)))
+        .where(Student.id.in_(enrolled_student_ids(class_id, on=on)))
         .order_by(Student.number.asc())
     )
     return list(db.execute(stmt).scalars())
@@ -270,7 +293,7 @@ def _student_ids_for_class(
 def assessed_competencies(
     db: Session,
     school_id: uuid.UUID,
-    student_ids: list[uuid.UUID],
+    person_ids: list[uuid.UUID],
     *,
     subject_id: uuid.UUID | None = None,
     competency_ids: list[uuid.UUID] | None = None,
@@ -280,7 +303,7 @@ def assessed_competencies(
     Showing the whole curriculum would be a wall of grey ``none`` cells; the
     teacher wants the competencies their sheets have touched.
     """
-    if not student_ids:
+    if not person_ids:
         return []
     if competency_ids is not None and not competency_ids:
         return []
@@ -289,7 +312,7 @@ def assessed_competencies(
         .join(exercise_competency, exercise_competency.c.competency_id == Competency.id)
         .join(Attempt, Attempt.exercise_id == exercise_competency.c.exercise_id)
         .where(Attempt.school_id == school_id)
-        .where(Attempt.student_id.in_(student_ids))
+        .where(Attempt.person_id.in_(person_ids))
         .distinct()
         .order_by(Competency.code.asc())
     )
@@ -305,10 +328,10 @@ def assessed_competencies(
 # --------------------------------------------------------------------------
 # Recompute
 # --------------------------------------------------------------------------
-def recompute_for_students(
+def recompute_for_people(
     db: Session,
     school_id: uuid.UUID,
-    student_ids: list[uuid.UUID],
+    person_ids: list[uuid.UUID],
     *,
     now: datetime | None = None,
 ) -> int:
@@ -320,17 +343,17 @@ def recompute_for_students(
     yesterday's row.
     """
     at = _now(now)
-    if not student_ids:
+    if not person_ids:
         return 0
 
-    grouped = load_attempt_inputs(db, school_id, student_ids, as_of=at)
-    existing = latest_snapshots(db, school_id, student_ids)
+    grouped = load_attempt_inputs(db, school_id, person_ids, as_of=at)
+    existing = latest_snapshots(db, school_id, person_ids)
     day = at.date()
     written = 0
 
-    for (student_id, competency_id), attempts in grouped.items():
+    for (person_id, competency_id), attempts in grouped.items():
         result = compute_mastery(attempts, at)
-        snap = existing.get((student_id, competency_id))
+        snap = existing.get((person_id, competency_id))
         snap_day = _aware(snap.computed_at).date() if snap is not None else None  # type: ignore[union-attr]
         if snap is not None and snap_day == day:
             snap.computed_at = at
@@ -343,7 +366,7 @@ def recompute_for_students(
                 MasterySnapshot(
                     id=uuid.uuid4(),
                     school_id=school_id,
-                    student_id=student_id,
+                    person_id=person_id,
                     competency_id=competency_id,
                     computed_at=at,
                     score=result.score,
@@ -365,7 +388,7 @@ def _write_branch_snapshots(
     grouped: dict[tuple[uuid.UUID, uuid.UUID], list[AttemptInput]],
     at: datetime,
 ) -> None:
-    """Stamp one branch-level row per (student, subject) for the curve.
+    """Stamp one branch-level row per (person, subject) for the curve.
 
     A CACHE, and the docstring on `MasteryBranchSnapshot` is the contract: no
     read path may answer "what is this child's band" from here. Every one
@@ -386,40 +409,40 @@ def _write_branch_snapshots(
     if not grouped:
         return
 
-    competency_ids = {competency_id for (_student, competency_id) in grouped}
+    competency_ids = {competency_id for (_person, competency_id) in grouped}
     subject_of = _subject_by_competency(db, school_id, competency_ids)
     if not subject_of:
         return
 
     day = at.date()
     per_branch: dict[tuple[uuid.UUID, uuid.UUID], list[MasteryResult]] = defaultdict(list)
-    for (student_id, competency_id), attempts in grouped.items():
+    for (person_id, competency_id), attempts in grouped.items():
         subject_id = subject_of.get(competency_id)
         if subject_id is None:
             # A competency no Theme in this school credits. It still counts
             # toward the child's own mastery; it simply belongs to no Branch,
             # so there is no curve for it to join.
             continue
-        per_branch[(student_id, subject_id)].append(compute_mastery(attempts, at))
+        per_branch[(person_id, subject_id)].append(compute_mastery(attempts, at))
 
     existing = {
-        (row.student_id, row.subject_id): row
+        (row.person_id, row.subject_id): row
         for row in db.execute(
             select(MasteryBranchSnapshot)
             .where(MasteryBranchSnapshot.school_id == school_id)
             .where(
-                MasteryBranchSnapshot.student_id.in_(
-                    {student_id for (student_id, _subject) in per_branch}
+                MasteryBranchSnapshot.person_id.in_(
+                    {person_id for (person_id, _subject) in per_branch}
                 )
             )
         ).scalars()
         if (stamped := _aware(row.computed_at)) is not None and stamped.date() == day
     }
 
-    for (student_id, subject_id), results in per_branch.items():
+    for (person_id, subject_id), results in per_branch.items():
         rolled = roll_up_mastery(results)
         assessed = sum(1 for r in results if r.attempts_count > 0)
-        row = existing.get((student_id, subject_id))
+        row = existing.get((person_id, subject_id))
         if row is not None:
             # One row per day, like `MasterySnapshot`: a second confirmation
             # this afternoon corrects this morning's point rather than drawing
@@ -434,7 +457,7 @@ def _write_branch_snapshots(
                 MasteryBranchSnapshot(
                     id=uuid.uuid4(),
                     school_id=school_id,
-                    student_id=student_id,
+                    person_id=person_id,
                     subject_id=subject_id,
                     computed_at=at,
                     score=rolled.score,
@@ -533,7 +556,9 @@ def class_matrix(
     # The matrix is a roster of named children: it follows class ownership, not
     # just the school boundary (decisions-log D23).
     school_class = db.execute(
-        select(Class).where(Class.id == class_id).where(Class.id.in_(owned_class_ids(scope)))
+        select(Class)
+        .where(Class.id == class_id)
+        .where(Class.id.in_(owned_class_ids(scope, on=at.date())))
     ).scalar_one_or_none()
     if school_class is None:
         raise errors.not_found("class", id=str(class_id))
@@ -542,19 +567,23 @@ def class_matrix(
     if chapter_id is not None:
         limit_to = _chapter_competency_ids(db, school_id, chapter_id)
 
-    students = _student_ids_for_class(db, school_id, class_id)
-    student_ids = [s.id for s in students]
+    students = _student_ids_for_class(db, school_id, class_id, on=at.date())
+    # The evidence is person-keyed since 0028; the matrix is student-keyed,
+    # because a matrix is one class in one year and that is what `student` IS.
+    # The translation happens here and nowhere else — `MasteryCell.student_id`
+    # stays the API contract the web client addresses a pupil by.
+    person_ids = [s.person_id for s in students]
     competencies = assessed_competencies(
-        db, school_id, student_ids, subject_id=subject_id, competency_ids=limit_to
+        db, school_id, person_ids, subject_id=subject_id, competency_ids=limit_to
     )
     grouped = load_attempt_inputs(
-        db, school_id, student_ids, subject_id=subject_id, competency_ids=limit_to
+        db, school_id, person_ids, subject_id=subject_id, competency_ids=limit_to
     )
 
     results: dict[Key, MasteryResult] = {}
     for student in students:
         for competency in competencies:
-            attempts = grouped.get((student.id, competency.id), [])
+            attempts = grouped.get((student.person_id, competency.id), [])
             results[(student.id, competency.id)] = compute_mastery(attempts, at)
 
     if sort == "weakest":
@@ -585,13 +614,19 @@ def _owned_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
     # teacher's class is theirs to read even when another teacher's class
     # minted the uid. Widened deliberately, and only here — the school filter
     # above it is what keeps the widening inside one tenant (I-platform-10).
+    #
+    # Through enrollment that OVERLAPPED this teacher's, not enrollment that is
+    # CURRENT. The profile of a pupil who left the niveau-2 group in February
+    # is exactly what the teacher who marked her October sheets needs in June
+    # to explain an orientation decision to a parent, and a current-only gate
+    # 404s it. Overlap and not "ever", so a teacher who arrived in March does
+    # not inherit a pupil who left in October — two people who never shared a
+    # room, linked only by a group (D87).
     student = db.execute(
         select(Student)
-        .join(class_student, class_student.c.student_id == Student.id)
-        .join(Class, Class.id == class_student.c.class_id)
         .where(Student.id == student_id)
         .where(Student.school_id == scope.school_id)
-        .where(Class.id.in_(owned_class_ids(scope)))
+        .where(Student.id.in_(ever_shared_student_ids(scope)))
         .limit(1)
     ).scalar_one_or_none()
     if student is None:
@@ -635,7 +670,10 @@ def competency_attempts(
         .outerjoin(ScanPage, ScanPage.id == Detection.scan_page_id)
         .outerjoin(Scan, Scan.id == ScanPage.scan_id)
         .where(Attempt.school_id == school_id)
-        .where(Attempt.student_id == student_id)
+        # The pupil's whole record, not this year's: `_owned_student` has
+        # already proved the caller may read this child, and the evidence
+        # behind a band is the evidence the band was computed from (0028).
+        .where(Attempt.person_id == student.person_id)
         .where(exercise_competency.c.competency_id == competency_id)
         .order_by(Attempt.answered_at.desc())
     )
@@ -683,9 +721,9 @@ def competency_attempts(
 
 
 def _sheets_taken(
-    db: Session, school_id: uuid.UUID, student_id: uuid.UUID
+    db: Session, school_id: uuid.UUID, person_id: uuid.UUID
 ) -> list[SheetTaken]:
-    """The sheets this student actually sat, newest first.
+    """The sheets this pupil actually sat, newest first — every year of them.
 
     Grouped in Python rather than SQL because the scan id needs a two-hop
     outer join per attempt and the row count here is a handful of sheets.
@@ -697,7 +735,7 @@ def _sheets_taken(
         .outerjoin(ScanPage, ScanPage.id == Detection.scan_page_id)
         .outerjoin(Scan, Scan.id == ScanPage.scan_id)
         .where(Attempt.school_id == school_id)
-        .where(Attempt.student_id == student_id)
+        .where(Attempt.person_id == person_id)
         .where(Attempt.sheet_id.is_not(None))
         .order_by(Attempt.answered_at.desc())
     ).all()
@@ -734,8 +772,8 @@ def _sheets_taken(
         if not competency_ids:
             continue
         taken.mastery = sheet_mastery(
-            db, school_id, sheet_id, [student_id], competency_ids
-        ).get(student_id)
+            db, school_id, sheet_id, [person_id], competency_ids
+        ).get(person_id)
 
     return sorted(by_sheet.values(), key=lambda s: s.answered_at, reverse=True)
 
@@ -762,12 +800,12 @@ def _sheet_competency_ids(
 
 
 def _history(
-    db: Session, school_id: uuid.UUID, student_id: uuid.UUID
+    db: Session, school_id: uuid.UUID, person_id: uuid.UUID
 ) -> dict[uuid.UUID, list[MasteryPoint]]:
     stmt = (
         select(MasterySnapshot)
         .where(MasterySnapshot.school_id == school_id)
-        .where(MasterySnapshot.student_id == student_id)
+        .where(MasterySnapshot.person_id == person_id)
         .order_by(MasterySnapshot.computed_at.asc())
     )
     points: dict[uuid.UUID, list[MasteryPoint]] = defaultdict(list)
@@ -792,8 +830,11 @@ def student_profile(
     school_id = scope.school_id
     student = _owned_student(db, scope, student_id)
 
-    grouped = load_attempt_inputs(db, school_id, [student_id])
-    competency_ids = [cid for (_sid, cid) in grouped]
+    # The profile is the pupil's whole record, across every year they have
+    # been here — which is what 0028 exists to make possible, and what an
+    # adaptive engine needs so a repeating pupil is not a stranger.
+    grouped = load_attempt_inputs(db, school_id, [student.person_id])
+    competency_ids = [cid for (_pid, cid) in grouped]
     by_id: dict[uuid.UUID, Competency] = {}
     if competency_ids:
         rows = db.execute(
@@ -801,7 +842,7 @@ def student_profile(
         ).scalars()
         by_id = {c.id: c for c in rows}
 
-    history = _history(db, school_id, student_id)
+    history = _history(db, school_id, student.person_id)
 
     entries: list[CompetencyMastery] = []
     for (_student_id, competency_id), attempts in grouped.items():
@@ -828,7 +869,7 @@ def student_profile(
     )[:MAX_GAPS]
     overall = sum(e.score for e in entries) / len(entries) if entries else 0.0
 
-    sheets = _sheets_taken(db, school_id, student_id)
+    sheets = _sheets_taken(db, school_id, student.person_id)
 
     return StudentProfileOut(
         student=student_out(student),
@@ -842,17 +883,17 @@ def student_profile(
 
 
 def band_summary(
-    db: Session, school_id: uuid.UUID, student_ids: list[uuid.UUID]
+    db: Session, school_id: uuid.UUID, person_ids: list[uuid.UUID]
 ) -> tuple[dict[str, int], int]:
-    """``(band_counts, students_needing_attention)`` from the latest snapshots."""
+    """``(band_counts, people_needing_attention)`` from the latest snapshots."""
     counts: dict[str, int] = {band.value: 0 for band in BAND_ORDER}
     needing: set[uuid.UUID] = set()
-    for (student_id, _competency_id), snap in latest_snapshots(
-        db, school_id, student_ids
+    for (person_id, _competency_id), snap in latest_snapshots(
+        db, school_id, person_ids
     ).items():
         counts[snap.band.value] = counts.get(snap.band.value, 0) + 1
         if snap.band in ATTENTION_BANDS:
-            needing.add(student_id)
+            needing.add(person_id)
     return counts, len(needing)
 
 
@@ -860,12 +901,15 @@ def sheet_mastery(
     db: Session,
     school_id: uuid.UUID,
     sheet_id: uuid.UUID,
-    student_ids: Sequence[uuid.UUID],
+    person_ids: Sequence[uuid.UUID],
     competency_ids: Sequence[uuid.UUID],
     *,
     now: datetime | None = None,
 ) -> dict[uuid.UUID, TreeMasteryOut]:
-    """One band per student for one sheet, rolled up from its competencies.
+    """One band per pupil for one sheet, rolled up from its competencies.
+
+    Keyed by ``person_id`` in and out — the caller holds the ``Student`` rows
+    and does the translation, the same as ``class_matrix``.
 
     The altitude the model was missing: `MasterySnapshot` answers "how is this
     child doing on X", the tree answers it for a Theme or a Branch, and nothing
@@ -887,7 +931,7 @@ def sheet_mastery(
     able to move a band (I-mastery-08).
     """
     at = now or datetime.now(UTC)
-    ids = list(student_ids)
+    ids = list(person_ids)
     covered = list(competency_ids)
     if not ids:
         return {}
@@ -895,11 +939,11 @@ def sheet_mastery(
     grouped = load_attempt_inputs(db, school_id, ids, sheet_id=sheet_id, as_of=at)
 
     out: dict[uuid.UUID, TreeMasteryOut] = {}
-    for student_id in ids:
+    for person_id in ids:
         children = [
-            compute_mastery(grouped.get((student_id, cid), []), at) for cid in covered
+            compute_mastery(grouped.get((person_id, cid), []), at) for cid in covered
         ]
-        out[student_id] = mastery_out(roll_up_mastery(children), children)
+        out[person_id] = mastery_out(roll_up_mastery(children), children)
     return out
 
 
@@ -907,7 +951,7 @@ def sheet_mastery_overall(
     db: Session,
     school_id: uuid.UUID,
     sheet_id: uuid.UUID,
-    student_ids: Sequence[uuid.UUID],
+    person_ids: Sequence[uuid.UUID],
     competency_ids: Sequence[uuid.UUID],
     *,
     now: datetime | None = None,
@@ -921,7 +965,7 @@ def sheet_mastery_overall(
     (I-mastery-10).
     """
     at = now or datetime.now(UTC)
-    ids = list(student_ids)
+    ids = list(person_ids)
     covered = list(competency_ids)
     grouped = load_attempt_inputs(db, school_id, ids, sheet_id=sheet_id, as_of=at) if ids else {}
     pooled = pool_by_competency(grouped)

@@ -19,7 +19,7 @@ from test_api_fixtures import (
 
 from alppy.models import Attempt, Competency, MasterySnapshot
 from alppy.models.enums import CurriculumKind
-from alppy.services.mastery_service import recompute_for_students
+from alppy.services.mastery_service import recompute_for_people
 
 
 def _second_competency(db: Session) -> Competency:
@@ -53,7 +53,7 @@ def _seed_history(db: Session, tenant: Tenant) -> Competency:
             Attempt(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,
-                student_id=student.id,
+                person_id=student.person_id,
                 exercise_id=strong.id,
                 correct=True,
                 score=1.0,
@@ -65,7 +65,7 @@ def _seed_history(db: Session, tenant: Tenant) -> Competency:
             Attempt(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,
-                student_id=student.id,
+                person_id=student.person_id,
                 exercise_id=weak_exercise.id,
                 correct=False,
                 score=0.0,
@@ -74,7 +74,7 @@ def _seed_history(db: Session, tenant: Tenant) -> Competency:
             )
         )
     db.commit()
-    recompute_for_students(db, tenant.school.id, [student.id])
+    recompute_for_people(db, tenant.school.id, [student.person_id])
     db.commit()
     return weak_competency
 
@@ -142,7 +142,7 @@ def test_recompute_is_idempotent_within_a_day(
 ) -> None:
     _seed_history(db, tenant)
     before = db.execute(select(MasterySnapshot)).scalars().all()
-    recompute_for_students(db, tenant.school.id, [tenant.students[0].id])
+    recompute_for_people(db, tenant.school.id, [tenant.students[0].person_id])
     db.commit()
     after = db.execute(select(MasterySnapshot)).scalars().all()
     assert len(after) == len(before) == 2
@@ -161,19 +161,19 @@ def test_a_later_day_appends_a_point_rather_than_overwriting(
     student = tenant.students[0]
     day_one = datetime.now(UTC)
 
-    recompute_for_students(db, tenant.school.id, [student.id], now=day_one)
+    recompute_for_people(db, tenant.school.id, [student.person_id], now=day_one)
     db.commit()
     first = db.execute(
-        select(MasterySnapshot).where(MasterySnapshot.student_id == student.id)
+        select(MasterySnapshot).where(MasterySnapshot.person_id == student.person_id)
     ).scalars().all()
     scores_before = sorted(round(s.score, 6) for s in first)
 
-    recompute_for_students(
-        db, tenant.school.id, [student.id], now=day_one + timedelta(days=1)
+    recompute_for_people(
+        db, tenant.school.id, [student.person_id], now=day_one + timedelta(days=1)
     )
     db.commit()
     second = db.execute(
-        select(MasterySnapshot).where(MasterySnapshot.student_id == student.id)
+        select(MasterySnapshot).where(MasterySnapshot.person_id == student.person_id)
     ).scalars().all()
 
     assert len(second) == 2 * len(first), "a later day must append, not overwrite"
@@ -206,8 +206,8 @@ def test_a_recompute_only_sees_the_evidence_that_existed_at_the_time(
     student = tenant.students[0]
     long_before = datetime.now(UTC) - timedelta(days=30)
 
-    written = recompute_for_students(
-        db, tenant.school.id, [student.id], now=long_before
+    written = recompute_for_people(
+        db, tenant.school.id, [student.person_id], now=long_before
     )
     db.commit()
     # Every attempt in the fixture is two hours old, so 30 days ago this
@@ -216,7 +216,7 @@ def test_a_recompute_only_sees_the_evidence_that_existed_at_the_time(
     assert (
         db.execute(
             select(MasterySnapshot)
-            .where(MasterySnapshot.student_id == student.id)
+            .where(MasterySnapshot.person_id == student.person_id)
             .where(MasterySnapshot.computed_at < long_before + timedelta(hours=1))
         ).scalars().all()
         == []
@@ -288,7 +288,7 @@ def test_the_drill_down_carries_provenance_back_to_the_sheet_and_the_scan(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             detection_id=detection.id,
@@ -385,7 +385,7 @@ def test_the_matrix_can_be_sorted_weakest_first(
             Attempt(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,
-                student_id=strong_student.id,
+                person_id=strong_student.person_id,
                 exercise_id=exercise.id,
                 correct=True,
                 score=1.0,
@@ -439,7 +439,7 @@ def test_the_profile_lists_the_sheets_the_student_sat(
             Attempt(
                 id=uuid.uuid4(),
                 school_id=tenant.school.id,
-                student_id=student.id,
+                person_id=student.person_id,
                 exercise_id=exercise.id,
                 sheet_id=sheet.id,
                 detection_id=detection.id,
@@ -482,7 +482,7 @@ def test_recomputing_stamps_a_branch_point_for_the_curve(
     _seed_history(db, tenant)
     rows = db.execute(
         select(MasteryBranchSnapshot).where(
-            MasteryBranchSnapshot.student_id == tenant.students[0].id
+            MasteryBranchSnapshot.person_id == tenant.students[0].person_id
         )
     ).scalars().all()
 
@@ -507,12 +507,12 @@ def test_a_second_recompute_the_same_day_corrects_the_point_rather_than_doubling
     from alppy.models import MasteryBranchSnapshot
 
     _seed_history(db, tenant)
-    recompute_for_students(db, tenant.school.id, [tenant.students[0].id])
+    recompute_for_people(db, tenant.school.id, [tenant.students[0].person_id])
     db.commit()
 
     rows = db.execute(
         select(MasteryBranchSnapshot).where(
-            MasteryBranchSnapshot.student_id == tenant.students[0].id
+            MasteryBranchSnapshot.person_id == tenant.students[0].person_id
         )
     ).scalars().all()
     assert len(rows) == 1
@@ -533,7 +533,7 @@ def test_no_read_path_answers_a_band_from_the_cache(
     _seed_history(db, tenant)
     row = db.execute(
         select(MasteryBranchSnapshot).where(
-            MasteryBranchSnapshot.student_id == tenant.students[0].id
+            MasteryBranchSnapshot.person_id == tenant.students[0].person_id
         )
     ).scalars().one()
     row.score = 1.0

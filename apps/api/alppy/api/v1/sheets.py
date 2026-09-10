@@ -354,19 +354,25 @@ def sheet_mastery(
     """
     sheet = svc.get_sheet(db, scope, sheet_id)
     competency_ids, _chapter_ids = svc.sheet_coverage(db, scope.school_id, sheet.id)
-    student_ids = [i.student_id for i in sheet.instances]
+    # A sheet instance is one year's paper, so it carries a `student_id`; the
+    # mastery behind it is the person's. The map back out keeps the response
+    # keyed the way the web client addresses a pupil (0028).
+    people = svc.people_for_instances(db, scope.school_id, sheet.instances)
+    person_ids = list(people.values())
+    by_person = mastery_service.sheet_mastery(
+        db, scope.school_id, sheet.id, person_ids, competency_ids
+    )
 
     return SheetMasteryOut(
         sheet_id=sheet.id,
         competency_ids=competency_ids,
         students=[
-            SheetStudentMastery(student_id=sid, mastery=m)
-            for sid, m in mastery_service.sheet_mastery(
-                db, scope.school_id, sheet.id, student_ids, competency_ids
-            ).items()
+            SheetStudentMastery(student_id=sid, mastery=by_person[pid])
+            for sid, pid in people.items()
+            if pid in by_person
         ],
         overall=mastery_service.sheet_mastery_overall(
-            db, scope.school_id, sheet.id, student_ids, competency_ids
+            db, scope.school_id, sheet.id, person_ids, competency_ids
         ),
         computed_at=datetime.now(UTC),
     )

@@ -11,6 +11,24 @@ class Locale(StrEnum):
     EN = "en"
 
 
+class ClassKind(StrEnum):
+    """Which of the two things a ``Class`` row is.
+
+    Both are classes and both hold a roster; the difference is what the roster
+    *means*. A homeroom is the group a pupil BELONGS to — the one that minted
+    their UID, whose maître de classe is accountable for them. A course group
+    is one they are TAUGHT in: usually one branch, usually assembled across
+    several homerooms (a Vaud niveau-2 maths group, a support group).
+
+    NULL — not a member of this enum — is the third state and the default: the
+    school has not declared. It is not a synonym for ``HOMEROOM``, and 0026
+    says why.
+    """
+
+    HOMEROOM = "homeroom"
+    COURSE = "course"
+
+
 class CurriculumKind(StrEnum):
     """Both Swiss curricula are first-class; neither is the default."""
 

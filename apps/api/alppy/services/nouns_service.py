@@ -31,11 +31,13 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
+from alppy.db.validity import today
 from alppy.models import (
     UNFILED_CHAPTER_KEY,
     Chapter,
     Class,
     Exercise,
+    Person,
     School,
     Sheet,
     Source,
@@ -66,7 +68,7 @@ def _assert_teaches_subject(db: Session, scope: Scope, subject_id: uuid.UUID) ->
     into the shared corpus, and only because the write destroys something
     (D77). A teacher who holds the branch in any class of this school passes.
     """
-    held = set(db.execute(taught_subject_ids_anywhere(scope)).scalars())
+    held = set(db.execute(taught_subject_ids_anywhere(scope, on=today())).scalars())
     if subject_id not in held:
         raise errors.unprocessable(
             "you do not teach this branch in this school",
@@ -212,6 +214,11 @@ def rename_class(
     if label is not None:
         school_class.label = label or None
     if code is not None and code != school_class.code:
+        # EVER seated, not currently seated. The guard exists because the
+        # code is printed on paper, and a pupil who left in February took an
+        # October copy carrying the old code away with them — so `class_student`
+        # is read here WITHOUT a validity predicate, deliberately. Refusing is
+        # the safe direction for a constraint about ink (D87).
         seated = db.execute(
             select(func.count())
             .select_from(class_student)
@@ -393,5 +400,20 @@ def delete_student(db: Session, scope: Scope, student: Student, *, confirm_uid: 
     home = get_class(db, scope, student.home_class_id)
     if home.head_teacher_id != scope.teacher_id:
         raise errors.not_found("student", id=str(student.id))
+    person_id = student.person_id
     db.delete(student)
     db.flush()
+
+    # The evidence moved to `person` in 0028, so deleting the year-bound row
+    # alone would now LEAVE a pupil's attempts, snapshots and notes behind —
+    # this endpoint would go on reporting success while destroying nothing.
+    # The person goes too, once no other year still refers to them; a pupil
+    # with a second year on file is not erased by deleting one of them.
+    remaining = db.execute(
+        select(func.count()).select_from(Student).where(Student.person_id == person_id)
+    ).scalar_one()
+    if not remaining:
+        person = db.get(Person, person_id)
+        if person is not None:
+            db.delete(person)
+            db.flush()

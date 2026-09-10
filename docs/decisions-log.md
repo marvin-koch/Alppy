@@ -2020,3 +2020,118 @@ throws, and a test covers the empty catalogue.
 explanation is in the browser console); or if the sheet renderer grows refusals
 that a teacher would act on differently, at which point `sheet_not_renderable`
 should split rather than acquire a details blob.
+
+---
+
+### D87 · A membership ends, and a pupil outlives the year
+
+A read-only audit of the data layer (`docs/audits/01-database-audit.md`) found
+two Critical problems, and both were about time rather than about shape. Both
+get more expensive every day the product runs, which is why they are fixed
+before anything else on that list.
+
+**Nothing recorded that a membership had ended.** `class_student`,
+`class_teacher_subject` and `teacher_school` each carried a start and no end,
+and leaving was a `DELETE`. The models said so and gave the reason — *"the
+moment one exists every roster read grows a temporal predicate and every test
+needs an injectable clock"* — and that cost is real. It was still the wrong
+trade for Cycle 3, where pupils are streamed into maths niveaux *across*
+homerooms and move between them mid-year. Léa sits three worksheets in the
+niveau-2 group in October and moves to niveau 3 in February: one `DELETE`, and
+she vanishes from the niveau-2 matrix *including the October columns she sat*,
+M. Rossier 404s on the profile of a pupil he taught for six months and marked
+three sheets for, and nothing anywhere says she was ever in that group. In
+June, asked to justify her orientation to a parent, he cannot reconstruct the
+group she was assessed in.
+
+So the three tables grow `valid_from` / `valid_to`, the primary key widens to
+carry `valid_from`, and leaving is an `UPDATE` (0027).
+
+**Three things the audit did not ask for, and each is load-bearing.**
+
+*A partial unique index per table.* Widening the key alone admits two OPEN
+memberships for one pair with different `valid_from` — one child counted twice
+in every roster join and every matrix column. `uq_class_student_open` and its
+siblings are what keep "at most one current membership" true. They are also why
+`enroll` is no longer `ON CONFLICT DO NOTHING`: keyed on the widened key, a
+pupil unenrolled this morning and put back this afternoon collides on the
+PRIMARY KEY, and `DO NOTHING` would drop the re-enrolment silently, leaving the
+roster one child short with no error anywhere.
+
+*`on` is a REQUIRED keyword argument on every subquery in
+`services/enrollment.py`.* This is the safety mechanism, and it substitutes for
+the rename 0019 and 0021 used. Adding the columns without it would have left a
+dozen read sites compiling unchanged while the tables underneath them began
+returning history — a roster quietly regaining the pupils who left, which is a
+worse bug than the one being fixed. A required argument makes each of those
+sites a type error the suite catches. The tables are NOT renamed to
+`group_membership`/`group_staffing` (the audit's deltas 3 and 4): those names
+presuppose a `teaching_group` entity, and 0026 chose `class.kind` over that
+split, so the names would be a promise the schema does not keep.
+
+*The gate for READING a pupil's past is overlap, not "ever".* `_owned_student`
+now accepts a teacher whose staffing window INTERSECTED the pupil's membership
+— which is what un-404s Léa's profile for M. Rossier. "Any pupil who was ever in
+a class I was ever in" would hand a teacher who arrived in March a pupil who
+left in October: two people who never shared a room, linked only by a group.
+`class_service.get_student` deliberately keeps the CURRENT rule, because it
+gates *acting* on a pupil — renaming, re-enrolling, deleting — and a teacher
+whose group a child left in February has no standing to rename them in June.
+
+**Two reads must not take an `on` at all, and they point opposite ways.**
+`ever_enrolled_student_ids` feeds the PII scrub list, which has to be a
+SUPERSET: a pupil who left in February still wrote their name on the October
+copy in the pile, and a current-roster read would quietly stop scrubbing it — a
+leak no test fails on, because the gate only raises for names it was told
+about. `nouns_service.rename_class`'s guard counts pupils who were EVER seated,
+because the class code is printed on paper that left with them.
+
+**A pupil's identity did not survive the summer.** `student.school_year_id` is
+NOT NULL and `uq_student_uid` is keyed on it, so 2027/28 needs a new `student`
+row with a new UUID, and `attempt`, `mastery_snapshot`,
+`mastery_branch_snapshot` and `misconception_note` all hung off `student.id`.
+For a product whose mastery model is explicitly a decay model, that reset the
+longitudinal record every August, over the one interval where decay matters
+most: Noah repeats his 10e année and Alppy proposes him work as though he had
+never seen the material he failed.
+
+`person` is the durable identity — names, and `anonymised_at`, and nothing else
+— and `student` is demoted to what it already was, a year-bound enrolment record
+(0028). This is the third instance of a split this codebase has named twice
+(D56 for `Chapter`, D69 for `Student`): *where a row sits is a column, what it
+belongs to is a join*, applied to time.
+
+The print and scan path stays on the year-bound row — `sheet_instance`,
+`answer_box_placement.student_uid`, `scan_page.student_id`,
+`exercise_variant.student_id` — because a UID is a fact about one year's paper
+and must not change meaning.
+
+**The columns are renamed, not repointed in place**, on 0019's argument: about
+twenty read sites, and under the old name every one nobody reviewed would have
+gone on compiling with the old meaning. **And the new ids are fresh, not copied
+from `student.id`.** Reusing the uuid would have made the migration free — no
+rewrite of the highest-volume table — and would have been a trap: every place
+that confused a `student_id` with a `person_id` would keep resolving, silently
+and correctly, until the first pupil had two `student` rows. Fresh uuids make
+that confusion a foreign key violation on the day it is written.
+
+**Erasure moves with the evidence.** Deleting a `Student` no longer destroys a
+pupil's record — it cannot, or the record would vanish every August — so
+`nouns_service.delete_student` deletes the person too, once no other year still
+refers to them. Without that the endpoint would have gone on reporting success
+while destroying nothing.
+
+**Two more things this release does not do.** `class.kind` (0026) is a nullable
+discriminator and nothing branches on it yet; NULL means "not declared" and is
+NOT a synonym for `homeroom`, because every row predating it predates the
+question. And `undeclare_subject`'s composite FK still CASCADE-deletes staffing
+rows, which destroys the same fact 0027 exists to preserve — flagged rather than
+changed, because altering a constraint is not a thing to do quietly.
+
+**Revisit if** a rollover path ships (a person will then have several `student`
+rows, and `_sheets_taken`, the profile and the adaptive planner will start
+returning several years at once — which is the intent, but the screens have not
+been designed for it); or if a teacher-facing "as of" control appears, at which
+point the `on` already threaded through `enrollment` is the parameter it binds
+to; or if `undeclare_subject`'s cascade is fixed, at which point ending the
+staffing rows and dropping the `class_subject` row become two steps.

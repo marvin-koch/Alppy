@@ -15,6 +15,37 @@ os.environ.setdefault("ALPPY_ENV", "ci")
 # test_jobs_queue.py.
 os.environ.setdefault("ALPPY_JOB_QUEUE_ENABLED", "false")
 
+# The suite must never reach a real provider, and until this block existed it
+# did. ``Settings`` resolves ``.env`` from the repo root (``core/config.py``),
+# so a developer's working key and ``ALPPY_AI_CHAT_PROVIDER=openai`` were in
+# force for every test in the file — including the ones asserting that an
+# *ungrounded* provider refuses to invent a verdict, which is the one thing
+# they could not have been testing. Every model-reaching test was a real,
+# billed call against a live account.
+#
+# Environment beats dotenv in pydantic-settings, so pinning here is what
+# overrides the file. Three variables, not two, and the third is the trap:
+#
+#   * the two providers, pinned to their offline stand-ins;
+#   * ``ALPPY_AI_CHAT_MODEL``, which must be cleared *as well*. ``.env`` names
+#     a ``gpt-*`` model, and ``_resolve_chat_model`` refuses a known-foreign
+#     (provider, model) pair — so pinning the provider alone makes every
+#     ``Settings()`` raise ``ValueError`` and takes the whole suite down at
+#     collection. Empty means "take that provider's default", which is
+#     ``echo``.
+#
+# The keys are cleared rather than left alone so this cannot come back through
+# a different variable: ``build_chat_provider`` falls through to the echo
+# provider on a missing key and says so in a log line, which is exactly the
+# behaviour the offline assertions want to exercise. A test that genuinely
+# needs a live provider should opt in with an explicit marker, never by
+# inheriting the ambient environment.
+os.environ.setdefault("ALPPY_AI_CHAT_PROVIDER", "echo")
+os.environ.setdefault("ALPPY_AI_EMBEDDINGS_PROVIDER", "hash")
+os.environ["ALPPY_AI_CHAT_MODEL"] = ""
+os.environ["ALPPY_OPENAI_API_KEY"] = ""
+os.environ["ALPPY_ANTHROPIC_API_KEY"] = ""
+
 NOW = datetime(2026, 9, 5, 12, 0, tzinfo=UTC)
 
 

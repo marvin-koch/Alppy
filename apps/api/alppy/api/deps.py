@@ -33,6 +33,7 @@ from alppy.core.logging import get_logger
 from alppy.core.security import read_session
 from alppy.db import tenancy
 from alppy.db.base import SchoolScopedMixin
+from alppy.db.validity import today, valid_on
 from alppy.models import Teacher, teacher_school
 from alppy.storage import Storage, get_storage
 
@@ -133,11 +134,17 @@ def get_membership(request: Request, db: DbDep, settings: SettingsDep) -> Member
     # A SELECT, deliberately — not `session.school_id in teacher.schools`. A
     # relationship read can be answered from a stale identity map, and this is
     # the single line standing between a cookie and another school's roster.
+    #
+    # A CURRENT membership, since 0027. The table keeps the row when a teacher
+    # leaves, so without the validity predicate this check would go on passing
+    # for someone who left years ago — the schema change would have quietly
+    # turned the one line that REVOKES access into a line that records it.
     member = db.execute(
         select(teacher_school.c.school_id)
         .where(teacher_school.c.teacher_id == teacher.id)
         .where(teacher_school.c.school_id == session.school_id)
-    ).scalar_one_or_none()
+        .where(valid_on(teacher_school, today()))
+    ).first()
     if member is None:
         # Valid signature, but this teacher no longer works at the school the
         # cookie names — they left, or it was never theirs.

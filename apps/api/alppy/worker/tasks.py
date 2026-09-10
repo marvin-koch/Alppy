@@ -42,6 +42,7 @@ from sqlalchemy.orm import Session
 from alppy.core.logging import get_logger
 from alppy.db import tenancy
 from alppy.db.session import SessionLocal
+from alppy.db.validity import today
 from alppy.models import Job
 from alppy.models.enums import JobStatus
 from alppy.services.enrollment import enrolled_student_ids
@@ -400,7 +401,7 @@ async def generate_feedback(ctx: dict[str, Any], job_id: str) -> None:
                 select(Student)
                 .where(
                     Student.school_id == job.school_id,
-                    Student.id.in_(enrolled_student_ids(class_id)),
+                    Student.id.in_(enrolled_student_ids(class_id, on=today())),
                 )
                 .order_by(Student.number)
             )

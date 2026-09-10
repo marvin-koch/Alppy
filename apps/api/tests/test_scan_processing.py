@@ -25,6 +25,7 @@ from alppy.models import (
     Attempt,
     Detection,
     MasterySnapshot,
+    Person,
     Scan,
     ScanPage,
     Sheet,
@@ -310,9 +311,18 @@ def test_a_page_from_another_class_is_flagged_and_not_graded(
     )
     db.add(other)
     db.flush()
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(_person)
+    db.flush()
     outsider = Student(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
+        person_id=_person.id,
         home_class_id=other.id,
         school_year_id=tenant.school_class.school_year_id,
         uid="9A_04",
@@ -595,9 +605,18 @@ def test_manual_assignment_is_limited_to_the_sheets_own_class(
     )
     db.add(other)
     db.flush()
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(_person)
+    db.flush()
     outsider = Student(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
+        person_id=_person.id,
         home_class_id=other.id,
         school_year_id=tenant.school_class.school_year_id,
         uid="9A_04",
@@ -1639,9 +1658,18 @@ def test_a_co_enrolled_students_page_is_graded_not_flagged(
     )
     db.add(other)
     db.flush()
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(_person)
+    db.flush()
     visitor = Student(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
+        person_id=_person.id,
         home_class_id=other.id,
         school_year_id=tenant.school_class.school_year_id,
         uid="9A_04",
@@ -1693,9 +1721,18 @@ def test_a_co_enrolled_student_is_offered_for_manual_assignment(
     )
     db.add(other)
     db.flush()
+    _person = Person(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        first_name="Tim",
+        last_name="Frei",
+    )
+    db.add(_person)
+    db.flush()
     visitor = Student(
         id=uuid.uuid4(),
         school_id=tenant.school.id,
+        person_id=_person.id,
         home_class_id=other.id,
         school_year_id=tenant.school_class.school_year_id,
         uid="9A_04",

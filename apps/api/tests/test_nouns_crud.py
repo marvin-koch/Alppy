@@ -231,7 +231,7 @@ def test_deleting_a_pupil_destroys_their_evidence(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise.id,
             sheet_id=sheet.id,
             detection_id=detection.id,
@@ -243,7 +243,7 @@ def test_deleting_a_pupil_destroys_their_evidence(
     )
     db.commit()
     assert db.execute(
-        Attempt.__table__.select().where(Attempt.student_id == student.id)
+        Attempt.__table__.select().where(Attempt.person_id == student.person_id)
     ).all()
 
     login(client, tenant.teacher.email)

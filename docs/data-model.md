@@ -10,6 +10,10 @@ evidence leaks into a curriculum branch it never belonged to, how a child's
 answers get thrown away as another class's paper, or how a co-teacher is locked
 out of the class they teach.
 
+For the diagrams — every table, every foreign key, every cardinality and delete rule,
+followed up through the domain, contract and UI layers — see
+[`er-model.md`](er-model.md).
+
 For the rules a reviewer has to enforce by reading, see the `§2 Invariants`
 table of each [`docs/features/`](features/) folder. For *why* a shape is what it
 is, see [`decisions-log.md`](decisions-log.md).
@@ -80,7 +84,7 @@ MasteryBranchSnapshot ──> Student, Subject             one row per (student,
 
 ---
 
-## 2 · The five "sits vs belongs" splits
+## 2 · The six "sits vs belongs" splits
 
 This is the shape the schema repeats, and the single most important thing to
 understand before changing it. Each time: **a column answers "which one", a join
@@ -93,6 +97,7 @@ table answers "which ones", and they are different questions.**
 | `Sheet` | `derived_from_id` — the principal source, printed on the feedback page | `sheet_source` — the whole evidence set | A sheet whose feedback page names one parent while its lineage draws another (D70) |
 | `Class` | `head_teacher_id` — the maître de classe, who pastes the roster and mints the UIDs | `class_teacher_subject` — every teacher×branch taught here | Deriving the Branch nav from staffing makes a branch vanish the moment its teacher is unassigned, and makes its order depend on who is looking (D73) |
 | `Teacher` | `home_school_id` — where the account is based, and what `login` mints a cookie for | `teacher_school` — every staffroom they work in | Reading the column where the tenant is meant makes a teacher who switched school go on reading the old one (D74) |
+| `Student` | `person_id` — the durable identity, one per pupil per school | — (the *year* is the column here: one `student` row per person per school year) | Hanging evidence off the year-bound row resets a pupil's record every August, in the model whose whole purpose is decay; a repeating pupil is a stranger to the system (D87) |
 
 **Why not the join table alone?** Because something always needs exactly one
 answer: the navigation tree needs one parent per Theme, the UID needs one class,
@@ -175,11 +180,21 @@ protect evidence, and each is deliberate:
 | `teacher_school` (both ends) | CASCADE | The row is only the *fact* of a membership |
 | `Sheet.chapter_id`, `SheetItem.exercise_id`, `Attempt.exercise_id` | RESTRICT | Printed sheets, scans and attempts must survive a chapter or exercise being deleted |
 | `class_student` (both ends) | CASCADE | The row is only the *fact* of an enrollment; removing it removes nothing else |
+| `Student.person_id` | CASCADE | A person's every year of enrolment goes with them — which is what keeps erasure possible once the evidence moved off the year-bound row (D87) |
+| `Attempt`, `MasterySnapshot`, `MasteryBranchSnapshot`, `MisconceptionNote` → `Person` | CASCADE | Since 0028 these hang off the person, not the year |
 
-**Unenrolling is not deleting.** It drops one `class_student` row: the pupil,
-their UID, their attempts and their snapshots all survive; they simply stop
-appearing in that class's roster, matrix and tree. It is refused on the home
-class. Deleting a `Student` is the only operation allowed to destroy evidence.
+**Unenrolling is not deleting, and since 0027 it is not a delete either.** It
+stamps `valid_to` on one `class_student` row: the pupil, their UID, their
+attempts and their snapshots all survive, and so does the *fact that they were
+in that class*, which a deleted row could not express. They stop appearing in
+that class's current roster, matrix and tree; a read that passes a past `on`
+still finds them, and the teacher who marked their October sheets can still
+open their profile in June. It is refused on the home class.
+
+**Deleting a `Person` is the only operation allowed to destroy evidence.**
+Deleting a `Student` no longer is — it cannot be, or a pupil's record would
+vanish every August — so `nouns_service.delete_student` removes the student and
+then the person, once no other year still refers to them (D87).
 
 ---
 
@@ -194,6 +209,15 @@ It does **not** move with enrollment. That is what lets a pupil join a second
 class without orphaning every sheet already sitting in a pile on the desk, and
 it is why `home_class_id` survived D69 rather than being replaced by the join
 table (`I-platform-09`).
+
+It does **not** survive the school year either, and that is the reason `person`
+exists. A UID is a fact about one year's paper: the class code in it changes
+when the pupil changes class, so it cannot be the thing a two-year mastery
+record hangs from. The whole print and scan path therefore stays on the
+year-bound `student` row — `sheet_instance`, `answer_box_placement.student_uid`,
+`scan_page.student_id`, `exercise_variant.student_id` — while `attempt`,
+`mastery_snapshot`, `mastery_branch_snapshot` and `misconception_note` hang off
+`person` (D87).
 
 ---
 

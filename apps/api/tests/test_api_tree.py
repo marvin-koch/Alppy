@@ -69,7 +69,7 @@ def _attempt(
         Attempt(
             id=uuid.uuid4(),
             school_id=tenant.school.id,
-            student_id=student.id,
+            person_id=student.person_id,
             exercise_id=exercise_id,
             correct=correct,
             score=score,

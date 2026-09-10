@@ -158,11 +158,11 @@ def wrong_attempts(
     db: Session,
     *,
     school_id: uuid.UUID,
-    student_id: uuid.UUID,
+    person_id: uuid.UUID,
     sheet_id: uuid.UUID,
     limit: int = MAX_MISTAKES,
 ) -> list[Mistake]:
-    """The student's explainable wrong answers on one sheet, oldest item first.
+    """The pupil's explainable wrong answers on one sheet, oldest item first.
 
     "Explainable" is the whole filter: we must be able to say what they marked.
     An attempt with no detection row, or one the detector never resolved, is
@@ -174,7 +174,7 @@ def wrong_attempts(
         .outerjoin(Detection, Detection.id == Attempt.detection_id)
         .where(
             Attempt.school_id == school_id,
-            Attempt.student_id == student_id,
+            Attempt.person_id == person_id,
             Attempt.sheet_id == sheet_id,
             Attempt.correct.is_(False),
         )
@@ -243,7 +243,7 @@ def generate_for_student(
     is not grounded.
     """
     mistakes = wrong_attempts(
-        db, school_id=school_id, student_id=student.id, sheet_id=source_sheet_id
+        db, school_id=school_id, person_id=student.person_id, sheet_id=source_sheet_id
     )
     if not mistakes:
         return None
@@ -284,7 +284,7 @@ def generate_for_student(
     note = MisconceptionNote(
         id=uuid.uuid4(),
         school_id=school_id,
-        student_id=student.id,
+        person_id=student.person_id,
         subject_id=subject_id,
         based_on_sheet_id=source_sheet_id,
         language=language,
@@ -303,21 +303,21 @@ def generate_for_student(
     return note
 
 
-def latest_for_students(
+def latest_for_people(
     db: Session,
     *,
     school_id: uuid.UUID,
-    student_ids: Sequence[uuid.UUID],
+    person_ids: Sequence[uuid.UUID],
     source_sheet_id: uuid.UUID,
 ) -> dict[uuid.UUID, MisconceptionNote]:
-    """The newest live note per student for one common sheet."""
-    if not student_ids:
+    """The newest live note per pupil for one common sheet, keyed by person."""
+    if not person_ids:
         return {}
     rows = db.scalars(
         select(MisconceptionNote)
         .where(
             MisconceptionNote.school_id == school_id,
-            MisconceptionNote.student_id.in_(list(student_ids)),
+            MisconceptionNote.person_id.in_(list(person_ids)),
             MisconceptionNote.based_on_sheet_id == source_sheet_id,
             MisconceptionNote.discarded_at.is_(None),
         )
@@ -325,7 +325,7 @@ def latest_for_students(
     )
     newest: dict[uuid.UUID, MisconceptionNote] = {}
     for row in rows:
-        newest.setdefault(row.student_id, row)
+        newest.setdefault(row.person_id, row)
     return newest
 
 
@@ -385,6 +385,6 @@ __all__ = [
     "Mistake",
     "generate_for_sheet",
     "generate_for_student",
-    "latest_for_students",
+    "latest_for_people",
     "wrong_attempts",
 ]
