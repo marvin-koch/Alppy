@@ -31,7 +31,16 @@ from alppy.api.deps import (
     scoped_get,
     start_job,
 )
-from alppy.models import Chapter, Competency, Exercise, Job, Source, SourceSection, Subject
+from alppy.models import (
+    Chapter,
+    Competency,
+    Exercise,
+    Job,
+    Source,
+    SourceSection,
+    Subject,
+    exercise_competency,
+)
 from alppy.models.enums import (
     EventKind,
     EventSubject,
@@ -304,6 +313,162 @@ def extract_source_section(
     return job_out(job)
 
 
+
+def _chapter_filter(chapter_id: str) -> Any:
+    """A Theme id, or the literal ``none`` for rows the ingest could not tag.
+
+    The sentinel is what makes the builder's counted "Sans thème" bucket
+    reachable: absent means "no theme filter", ``none`` means "the untagged
+    ones", and without the distinction those exercises would have no selector
+    at all now that Theme is the picker's root (D59).
+    """
+    if chapter_id == UNTAGGED_CHAPTER:
+        return Exercise.chapter_id.is_(None)
+    try:
+        return Exercise.chapter_id == uuid.UUID(chapter_id)
+    except ValueError as exc:
+        raise errors.unprocessable(
+            "chapter_id must be a uuid or 'none'", chapter_id=chapter_id
+        ) from exc
+
+
+def _search_filter(q: str) -> Any:
+    """The book's own code and title as well as the statement.
+
+    A teacher looks for "NO64" or "Rectangle coloré" far more often than for a
+    phrase from the body. `ilike` rather than a tsvector: even unscoped this is
+    one school's corpus, and an index would buy nothing a teacher could
+    measure until that is much larger than it is.
+    """
+    needle = f"%{q.strip()}%"
+    return or_(
+        Exercise.statement.ilike(needle),
+        Exercise.label.ilike(needle),
+        Exercise.title.ilike(needle),
+    )
+
+
+def _exercise_page(
+    db: Session,
+    common: list[Any],
+    *,
+    type: ExerciseType | None,
+    offset: int,
+    limit: int,
+    order_by: Any,
+) -> ExerciseListOut:
+    """One page of exercises plus the type facets, from one filter list.
+
+    The page and the facet counts take the SAME conditions, so the two can
+    never disagree about what "this filter" means. The facets deliberately
+    exclude the type filter: a chip has to report what selecting it would
+    give, not what it gives once already selected.
+    """
+    by_type = {
+        kind: int(count)
+        for kind, count in db.execute(
+            select(Exercise.type, func.count(Exercise.id)).where(*common).group_by(Exercise.type)
+        ).all()
+    }
+    facets = ExerciseFacets(
+        total=sum(by_type.values()),
+        mcq=by_type.get(ExerciseType.MCQ, 0),
+        true_false=by_type.get(ExerciseType.TRUE_FALSE, 0),
+        open=by_type.get(ExerciseType.OPEN, 0),
+    )
+
+    filtered = [*common, Exercise.type == type] if type is not None else common
+    total = int(
+        db.scalar(select(func.count()).select_from(Exercise).where(*filtered)) or 0
+    )
+    rows = db.execute(
+        select(Exercise).where(*filtered).order_by(*order_by).offset(offset).limit(limit)
+    ).scalars()
+    return ExerciseListOut(
+        items=[exercise_out(e) for e in rows],
+        total=total,
+        offset=offset,
+        limit=limit,
+        facets=facets,
+    )
+
+
+@router.get("/exercises", response_model=ExerciseListOut)
+def list_exercises(
+    school_id: TenantDep,
+    db: DbDep,
+    competency_id: Annotated[list[uuid.UUID] | None, Query()] = None,
+    source_id: Annotated[list[uuid.UUID] | None, Query()] = None,
+    subject_id: Annotated[uuid.UUID | None, Query()] = None,
+    chapter_id: Annotated[str | None, Query()] = None,
+    type: Annotated[ExerciseType | None, Query()] = None,
+    difficulty: Annotated[int | None, Query(ge=1, le=5)] = None,
+    origin: Annotated[ExerciseOrigin | None, Query()] = None,
+    approved: Annotated[bool | None, Query()] = None,
+    q: Annotated[str | None, Query(max_length=200)] = None,
+    offset: Annotated[int, Query(ge=0)] = 0,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+) -> ExerciseListOut:
+    """The school's whole corpus, filtered — the bank.
+
+    Every exercise was reachable only THROUGH the document it came from, so a
+    teacher who wanted "every fractions item at difficulty 2, wherever it came
+    from" had to open each source and filter it by hand, and an exercise they
+    wrote themselves (no source at all) was reachable from nothing but the
+    sheet it was first used on.
+
+    Staffroom-shared, like the documents it reads: scoped to the school and to
+    nothing narrower (I-platform-04). `competency_id` and `source_id` repeat.
+
+    `approved=false` is the review queue — the AI-generated items waiting for
+    the second look that `Exercise.approved_at` exists to require. Discarded
+    rows are never listed, here or anywhere.
+    """
+    common: list[Any] = [
+        Exercise.school_id == school_id,
+        Exercise.discarded_at.is_(None),
+    ]
+    if subject_id is not None:
+        common.append(Exercise.subject_id == subject_id)
+    if source_id:
+        common.append(Exercise.source_id.in_(source_id))
+    if chapter_id is not None:
+        common.append(_chapter_filter(chapter_id))
+    if difficulty is not None:
+        common.append(Exercise.difficulty == difficulty)
+    if origin is not None:
+        common.append(Exercise.origin == origin)
+    if approved is not None:
+        common.append(
+            Exercise.approved_at.is_not(None) if approved else Exercise.approved_at.is_(None)
+        )
+    if competency_id:
+        # The m2m rather than `Exercise.chapter_id`: what an exercise CREDITS,
+        # not where it sits. `ix_exercise_competency_competency` is the index
+        # this needs — the table's PK leads with `exercise_id` and cannot
+        # serve a lookup the other way round.
+        common.append(
+            Exercise.id.in_(
+                select(exercise_competency.c.exercise_id).where(
+                    exercise_competency.c.competency_id.in_(competency_id)
+                )
+            )
+        )
+    if q and q.strip():
+        common.append(_search_filter(q))
+
+    return _exercise_page(
+        db,
+        common,
+        type=type,
+        offset=offset,
+        limit=limit,
+        # Newest first across the whole corpus: `source_page` orders one
+        # document and means nothing between two.
+        order_by=(Exercise.created_at.desc(), Exercise.id.asc()),
+    )
+
+
 @router.get("/sources/{source_id}/exercises", response_model=ExerciseListOut)
 def list_source_exercises(
     source_id: uuid.UUID,
@@ -338,70 +503,21 @@ def list_source_exercises(
     ]
     if section_id is not None:
         common.append(Exercise.source_section_id == section_id)
-    # `chapter_id` is a uuid, or the literal "none" for rows the ingest could
-    # not tag at all. The sentinel is what makes the builder's counted
-    # "Sans thème" bucket reachable: absent means "no theme filter", "none"
-    # means "the untagged ones", and without the distinction those exercises
-    # would have no selector at all now that Theme is the picker's root.
-    if chapter_id == UNTAGGED_CHAPTER:
-        common.append(Exercise.chapter_id.is_(None))
-    elif chapter_id is not None:
-        try:
-            common.append(Exercise.chapter_id == uuid.UUID(chapter_id))
-        except ValueError as exc:
-            raise errors.unprocessable(
-                "chapter_id must be a uuid or 'none'", chapter_id=chapter_id
-            ) from exc
+    if chapter_id is not None:
+        common.append(_chapter_filter(chapter_id))
     if difficulty is not None:
         common.append(Exercise.difficulty == difficulty)
     if q and q.strip():
-        # `ilike` rather than a tsvector: the set is already narrowed to one
-        # document and usually one chapter, so an index would buy nothing a
-        # teacher could measure.
-        # ...and the book's own code and title as well as the statement: a
-        # teacher looks for "NO64" or "Rectangle coloré" far more often than
-        # for a phrase from the body.
-        needle = f"%{q.strip()}%"
-        common.append(
-            or_(
-                Exercise.statement.ilike(needle),
-                Exercise.label.ilike(needle),
-                Exercise.title.ilike(needle),
-            )
-        )
+        common.append(_search_filter(q))
 
-    # Facets deliberately exclude the type filter: a chip has to report what
-    # selecting it would give, not what it gives once already selected.
-    by_type = {
-        kind: int(count)
-        for kind, count in db.execute(
-            select(Exercise.type, func.count(Exercise.id)).where(*common).group_by(Exercise.type)
-        ).all()
-    }
-    facets = ExerciseFacets(
-        total=sum(by_type.values()),
-        mcq=by_type.get(ExerciseType.MCQ, 0),
-        true_false=by_type.get(ExerciseType.TRUE_FALSE, 0),
-        open=by_type.get(ExerciseType.OPEN, 0),
-    )
-
-    filtered = [*common, Exercise.type == type] if type is not None else common
-    total = int(
-        db.scalar(select(func.count()).select_from(Exercise).where(*filtered)) or 0
-    )
-    rows = db.execute(
-        select(Exercise)
-        .where(*filtered)
-        .order_by(Exercise.source_page.asc(), Exercise.created_at.asc())
-        .offset(offset)
-        .limit(limit)
-    ).scalars()
-    return ExerciseListOut(
-        items=[exercise_out(e) for e in rows],
-        total=total,
+    return _exercise_page(
+        db,
+        common,
+        type=type,
         offset=offset,
         limit=limit,
-        facets=facets,
+        # A document is read in its own order, which is the page it is printed on.
+        order_by=(Exercise.source_page.asc(), Exercise.created_at.asc()),
     )
 
 

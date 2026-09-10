@@ -22,6 +22,7 @@ import type {
   DetectionCorrection,
   DetectionOut,
   ExerciseCreate,
+  ExerciseBankQuery,
   ExerciseListOut,
   ExerciseOut,
   ExerciseQuery,
@@ -296,6 +297,18 @@ export const uploadSource = ({ file, subjectId }: { file: File; subjectId: Uuid 
 };
 
 /* ---------------------------------------------------------- exercises --- */
+/**
+ * The bank: the school's whole corpus, filtered, without naming a document.
+ *
+ * `listSourceExercises` above is the document browser and stays as it is —
+ * this shares its query and its facet block rather than replacing it. The two
+ * differ in what they can be asked: a source is one book, the bank is
+ * everything, including the exercises a teacher wrote themselves, which have
+ * no source to be browsed from at all.
+ */
+export const listExercises = (query: ExerciseBankQuery = {}) =>
+  apiRequest<ExerciseListOut>('/exercises', { query: { ...query } });
+
 export const updateExercise = (exerciseId: Uuid, body: ExerciseUpdate) =>
   apiRequest<ExerciseOut>(`/exercises/${exerciseId}`, { method: 'PATCH', body });
 

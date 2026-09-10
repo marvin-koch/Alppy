@@ -24,6 +24,7 @@ export const API_ROUTES = [
   'GET /api/v1/classes/{class_id}/tree',
   'GET /api/v1/colleagues',
   'GET /api/v1/curricula/{kind}/competencies',
+  'GET /api/v1/exercises',
   'GET /api/v1/files/{key}',
   'GET /api/v1/health',
   'GET /api/v1/home',

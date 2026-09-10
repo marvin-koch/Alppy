@@ -569,6 +569,12 @@ exercise_competency = Table(
     Base.metadata,
     Column("exercise_id", PgUUID(as_uuid=True), ForeignKey("exercise.id", ondelete="CASCADE"), primary_key=True),
     Column("competency_id", PgUUID(as_uuid=True), ForeignKey("competency.id", ondelete="CASCADE"), primary_key=True),
+    # The composite PK indexes `(exercise_id, competency_id)` and so answers
+    # "what does this exercise credit" for free. "Which exercises credit this
+    # competency" is the other direction and gets nothing from it — and it is
+    # the one the bank asks (`GET /exercises?competency_id=`), over the whole
+    # school's corpus rather than one document.
+    Index("ix_exercise_competency_competency", "competency_id"),
 )
 
 

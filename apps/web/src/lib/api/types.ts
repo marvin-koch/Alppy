@@ -21,6 +21,7 @@ export type * from '@alppy/shared/api-types';
 import type {
   AdaptiveStudentPlan,
   EventKind,
+  ExerciseOrigin,
   ExerciseOut,
   ExerciseType,
   JobStatus,
@@ -86,6 +87,30 @@ export interface ExerciseQuery {
   chapter_id?: Uuid | 'none';
   type?: ExerciseType;
   difficulty?: number;
+  q?: string;
+  offset?: number;
+  limit?: number;
+}
+
+/**
+ * The bank (`GET /exercises`). A superset of `ExerciseQuery`, which is scoped
+ * to one document and so has no need of `source_id` or `subject_id`.
+ *
+ * `competencyId` and `sourceId` repeat on the wire — the same parameter given
+ * more than once, which is what the API means by "any of these".
+ */
+export interface ExerciseBankQuery {
+  /** Repeats on the wire: `?competency_id=a&competency_id=b` means "any of". */
+  competency_id?: Uuid[];
+  source_id?: Uuid[];
+  subject_id?: Uuid;
+  /** A Theme, or the literal `'none'` for the rows no Theme owns. */
+  chapter_id?: Uuid | 'none';
+  type?: ExerciseType;
+  difficulty?: number;
+  origin?: ExerciseOrigin;
+  /** `false` is the review queue: what a model wrote and nobody has approved. */
+  approved?: boolean;
   q?: string;
   offset?: number;
   limit?: number;
