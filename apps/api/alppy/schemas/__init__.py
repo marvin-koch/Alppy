@@ -640,7 +640,16 @@ class SheetUpdate(BaseModel):
     #: Re-filing a sheet under the right Theme. Needed in practice the moment
     #: the hierarchy ships, when every existing sheet is `unfiled`.
     chapter_id: uuid.UUID | None = None
-    items: list[SheetItemIn] | None = None
+    #: Capped like `SheetCreate.items`. PATCH replaces the whole list, so an
+    #: unbounded one let a caller put a thousand items on a sheet that POST
+    #: would have refused at sixty-four — through the same renderer, which
+    #: measures every answer box in Chromium.
+    #:
+    #: No lower bound, deliberately, where POST has one: emptying a sheet is
+    #: how a teacher clears a draft, and the render route already refuses to
+    #: print one. Refusing the edit as well would make that state unreachable
+    #: and break the composer.
+    items: Annotated[list[SheetItemIn], Field(max_length=64)] | None = None
     default_points_correct: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
     default_points_penalty: Annotated[float, Field(ge=0, le=MAX_ITEM_POINTS)] | None = None
 
@@ -738,6 +747,9 @@ class SheetOut(ApiModel):
     competency_ids: list[uuid.UUID] = []
     chapter_ids: list[uuid.UUID] = []
     rendered_at: datetime | None = None
+    #: When it went to the photocopier. Null means "not yet", and is a
+    #: different fact from `rendered_at` being null.
+    printed_at: datetime | None = None
     created_at: datetime
 
 
@@ -1340,7 +1352,10 @@ class AdaptiveBatchRequest(BaseModel):
     subject_id: uuid.UUID
     title: Annotated[str, Field(min_length=1, max_length=200)]
     language: Locale
-    plans: list[AdaptiveStudentPlan]
+    #: One plan per pupil, so the bound is a class. Forty is roughly twice
+    #: the largest Sek I group, and well under what the batched generator
+    #: can be asked for in one call without a provider timing out.
+    plans: Annotated[list[AdaptiveStudentPlan], Field(max_length=40)]
     #: The common sheet this batch answers. Stored as `Sheet.derived_from_id`,
     #: which is what makes a teaching unit a chain rather than two loose rows.
     #: When `source_sheet_ids` is given this is its first entry — the two are

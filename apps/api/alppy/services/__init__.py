@@ -358,6 +358,7 @@ def sheet_out(
             key=str,
         ),
         rendered_at=sheet.rendered_at,
+        printed_at=sheet.printed_at,
         created_at=sheet.created_at,
     )
 

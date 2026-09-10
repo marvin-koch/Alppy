@@ -598,7 +598,19 @@
       "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
       "scan_already_confirmed": "Ces résultats ont déjà été enregistrés.",
       "scan_open_grading_pending": "Des réponses écrites sont encore en cours de lecture. Validez quand la lecture est terminée.",
-      "sheet_not_renderable": "Cette fiche ne peut pas être mise en page telle quelle. Vérifiez qu'elle a des élèves et des exercices, et qu'aucun énoncé ne dépasse la hauteur d'une page."
+      "sheet_not_renderable": "Cette fiche ne peut pas être mise en page telle quelle. Vérifiez qu'elle a des élèves et des exercices, et qu'aucun énoncé ne dépasse la hauteur d'une page.",
+      "unauthorized": "Votre session a expiré. Reconnectez-vous.",
+      "forbidden": "Vous n'avez pas accès à cet élément.",
+      "bad_request": "La demande n'a pas pu être traitée. Réessayez.",
+      "method_not_allowed": "Cette action n'est pas possible ici.",
+      "rate_limited": "Trop de demandes coup sur coup. Patientez un instant, puis réessayez.",
+      "service_unavailable": "Cette fonction est momentanément indisponible. Réessayez plus tard.",
+      "internal_error": "Une erreur est survenue de notre côté. Réessayez ; si cela persiste, signalez-le.",
+      "http_error": "La demande a échoué. Réessayez.",
+      "branch_holds_sheets": "Cette discipline a encore des fiches dans cette classe. Déplacez-les ou supprimez-les d'abord.",
+      "detection_not_corrected": "Cette lecture n'a jamais été corrigée, il n'y a rien à rétablir.",
+      "scan_confirmed": "Ce paquet est validé. Rouvrez-le avant de modifier une lecture.",
+      "scan_not_confirmed": "Ce paquet n'est pas validé, il n'y a rien à rouvrir."
     },
     "unavailableTitle": "Données indisponibles"
   },

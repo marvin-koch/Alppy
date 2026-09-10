@@ -114,6 +114,39 @@ def test_propose_is_unavailable_until_retrieval_ships(
         assert response.json()["error"]["code"] == "service_unavailable"
 
 
+def test_a_sheet_says_whether_it_has_been_printed(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """"Has this been printed" is what a list of sheets is really asking.
+
+    The fact was only ever in the event log, so a client had to page
+    `/timeline` and read somebody else's audit trail sideways to get it
+    (audit 02, M13). It is not `rendered_at`: a teacher renders on Sunday and
+    prints on Tuesday.
+    """
+    a = make_exercise(db, tenant, statement="a")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post("/api/v1/sheets", json=_sheet_payload(tenant, [str(a.id)])).json()["id"]
+
+    assert client.get(f"/api/v1/sheets/{sheet_id}").json()["printed_at"] is None
+
+    marked = client.post(f"/api/v1/sheets/{sheet_id}/printed")
+    assert marked.status_code == 200
+    first = marked.json()["printed_at"]
+    assert first is not None
+
+    # It is on the LIST too, which is the route that needed it.
+    listed = next(
+        s for s in client.get("/api/v1/sheets").json() if s["id"] == sheet_id
+    )
+    assert listed["printed_at"] == first
+
+    # Printing a second time does not un-print the first. The timeline keeps
+    # every occurrence; the column answers "when did this go to the copier".
+    again = client.post(f"/api/v1/sheets/{sheet_id}/printed")
+    assert again.json()["printed_at"] == first
+
+
 def test_render_refuses_an_empty_sheet(client: TestClient, tenant: Tenant, db: Session) -> None:
     a = make_exercise(db, tenant, statement="a")
     login(client, tenant.teacher.email)

@@ -700,6 +700,7 @@ export const sheet: SheetOut = {
   feedback_pdf_url: null,
   derived_from_id: null,
   rendered_at: null,
+  printed_at: null,
   created_at: '2026-03-12T14:30:00+01:00',
 };
 

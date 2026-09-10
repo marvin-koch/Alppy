@@ -975,6 +975,13 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     # do that, whatever happens to the feedback afterwards.
     feedback_pdf_key: Mapped[str | None] = mapped_column(String(500))
     rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    # When the sheet actually went to the photocopier, which is not
+    # `rendered_at`: a teacher renders on Sunday and prints on Tuesday. The
+    # fact was only ever in the event log, so "has this been printed" meant
+    # paging `/timeline` and reading somebody else's audit trail (audit 02,
+    # M13). A column rather than a lookup because `sheet_out` is pure, and a
+    # queried field would fan out one event query per row of `GET /sheets`.
+    printed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     chapter: Mapped[Chapter] = relationship()
     items: Mapped[list[SheetItem]] = relationship(

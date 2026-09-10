@@ -894,6 +894,7 @@ export interface SheetOut {
   competency_ids: Uuid[];
   chapter_ids: Uuid[];
   rendered_at: IsoDateTime | null;
+  printed_at: IsoDateTime | null;
   created_at: IsoDateTime;
 }
 

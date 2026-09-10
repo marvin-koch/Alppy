@@ -598,7 +598,19 @@
       "scan_matches_no_sheet": "None of these pages belong to the sheet you chose. Check that it is the right one.",
       "scan_already_confirmed": "These results have already been saved.",
       "scan_open_grading_pending": "Written answers are still being read. Confirm once the reading is finished.",
-      "sheet_not_renderable": "This sheet cannot be laid out as it stands. Check that it has students and exercises, and that no statement is taller than a page."
+      "sheet_not_renderable": "This sheet cannot be laid out as it stands. Check that it has students and exercises, and that no statement is taller than a page.",
+      "unauthorized": "Your session has expired. Sign in again.",
+      "forbidden": "You do not have access to that.",
+      "bad_request": "The request could not be handled. Try again.",
+      "method_not_allowed": "That action is not possible here.",
+      "rate_limited": "Too many requests in quick succession. Wait a moment, then try again.",
+      "service_unavailable": "This feature is temporarily unavailable. Try again later.",
+      "internal_error": "Something went wrong on our side. Try again; if it persists, report it.",
+      "http_error": "The request failed. Try again.",
+      "branch_holds_sheets": "This branch still has sheets in this class. Move or delete them first.",
+      "detection_not_corrected": "This reading was never corrected, so there is nothing to revert.",
+      "scan_confirmed": "This pile is confirmed. Reopen it before changing a reading.",
+      "scan_not_confirmed": "This pile is not confirmed, so there is nothing to reopen."
     },
     "unavailableTitle": "Data unavailable"
   },

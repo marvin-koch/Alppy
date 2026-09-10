@@ -228,6 +228,11 @@ jobs:
             echo "::error::the generated contract is stale — run scripts/generate-api-types.py and commit"
             exit 1
           fi
+      # The other half of the same contract: a code crosses to the client and
+      # the CLIENT owns the sentence, which only holds if it HAS one for every
+      # code the API can raise. Twelve of twenty-three had none.
+      - name: Every error code has a sentence, in every locale
+        run: python scripts/check-error-catalogue.py
 
   schema-drift:
     name: Migrations reproduce the models

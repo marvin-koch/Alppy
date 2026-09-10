@@ -598,7 +598,19 @@
       "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
       "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert.",
       "scan_open_grading_pending": "Schriftliche Antworten werden noch gelesen. Bestätigen Sie, sobald das Lesen abgeschlossen ist.",
-      "sheet_not_renderable": "Dieses Blatt kann so nicht gesetzt werden. Prüfen Sie, ob es Schülerinnen und Schüler sowie Aufgaben enthält und keine Aufgabenstellung über eine Seite hinausgeht."
+      "sheet_not_renderable": "Dieses Blatt kann so nicht gesetzt werden. Prüfen Sie, ob es Schülerinnen und Schüler sowie Aufgaben enthält und keine Aufgabenstellung über eine Seite hinausgeht.",
+      "unauthorized": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an.",
+      "forbidden": "Sie haben keinen Zugriff auf dieses Element.",
+      "bad_request": "Die Anfrage konnte nicht verarbeitet werden. Versuchen Sie es erneut.",
+      "method_not_allowed": "Diese Aktion ist hier nicht möglich.",
+      "rate_limited": "Zu viele Anfragen kurz nacheinander. Warten Sie einen Moment und versuchen Sie es erneut.",
+      "service_unavailable": "Diese Funktion ist vorübergehend nicht verfügbar. Versuchen Sie es später erneut.",
+      "internal_error": "Bei uns ist ein Fehler aufgetreten. Versuchen Sie es erneut; wenn es bestehen bleibt, melden Sie es.",
+      "http_error": "Die Anfrage ist fehlgeschlagen. Versuchen Sie es erneut.",
+      "branch_holds_sheets": "Dieses Fach hat noch Blätter in dieser Klasse. Verschieben oder löschen Sie sie zuerst.",
+      "detection_not_corrected": "Diese Lesung wurde nie korrigiert, es gibt nichts zurückzusetzen.",
+      "scan_not_confirmed": "Dieser Stapel ist nicht bestätigt, es gibt nichts erneut zu öffnen.",
+      "scan_confirmed": "Dieser Stapel ist bestätigt. Öffnen Sie ihn erneut, bevor Sie eine Lesung ändern."
     },
     "unavailableTitle": "Daten nicht verfügbar"
   },

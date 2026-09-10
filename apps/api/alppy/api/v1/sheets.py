@@ -324,6 +324,13 @@ def mark_printed(
     answer "when did 7B actually sit this".
     """
     sheet = svc.get_sheet(db, scope, sheet_id)
+    # The column and the event, together. The event is the agenda entry — who,
+    # when, how many copies — and the column is the answer to "has this been
+    # printed", which a client should not have to page an audit trail to get.
+    # Set once: printing a second time does not un-print the first, and the
+    # timeline keeps every occurrence.
+    if sheet.printed_at is None:
+        sheet.printed_at = datetime.now(UTC)
     event_service.record(
         db,
         school_id=scope.school_id,
