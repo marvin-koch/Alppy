@@ -24,7 +24,7 @@ import type {
   ScanOut,
   SheetMasteryOut,
   SheetOut,
-  SheetTakenOut,
+  SheetTaken,
   SourceOut,
   SourceSectionOut,
   StudentOut,
@@ -412,6 +412,9 @@ export const sources: SourceOut[] = [
     subject_id: id(10),
     filename: 'mathematiques-9e-cycle3.pdf',
     title: 'Mathématiques 9e — cycle 3',
+    publisher: 'CIIP',
+    isbn: '978-2-88500-123-4',
+    url: null,
     content_type: 'application/pdf',
     size_bytes: 18_432_100,
     language: 'fr',
@@ -428,6 +431,9 @@ export const sources: SourceOut[] = [
     subject_id: id(10),
     filename: 'cahier-exercices-fractions.pdf',
     title: null,
+    publisher: null,
+    isbn: null,
+    url: null,
     content_type: 'application/pdf',
     size_bytes: 4_120_400,
     language: 'fr',
@@ -824,7 +830,7 @@ export function studentProfile(studentId: string): StudentProfileOut {
 }
 
 /** The sheets behind the profile's history list. */
-const sheetsTaken: SheetTakenOut[] = [
+const sheetsTaken: SheetTaken[] = [
   {
     sheet_id: id(600),
     title: 'Fractions — controle 1',
@@ -1123,6 +1129,9 @@ export const adaptive: AdaptiveProposeResponse = {
     // one copy in four came back only partly read.
     targeting_basis: 'source_sheet' as const,
     evidence_partial: index === 3,
+    group_label: null,
+    group_index: null,
+    feedback_id: null,
     retrieved: [
       proposal(exercises[index % exercises.length] as ExerciseOut, 0.86, 'Cible la lacune principale.'),
       proposal(exercises[(index + 2) % exercises.length] as ExerciseOut, 0.79, 'Consolide un acquis fragile.'),
@@ -1157,7 +1166,7 @@ export { NOW, id };
  * backend, and the real preview is what a teacher checks before printing.
  */
 export function draftPreviewHtml(draft: {
-  title: string;
+  title?: string;
   items: { exercise_id: string; position: number; statement_override?: string | null }[];
 }): string {
   const byId = new Map(exercises.map((e) => [e.id, e]));

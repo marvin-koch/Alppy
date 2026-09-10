@@ -197,6 +197,38 @@ jobs:
             exit 1
           fi
 
+  api-contract:
+    name: The client's types match the API
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+      # `create_app()` is a factory with no side effects, so the document can
+      # be produced from a checkout with nothing running — but it does import
+      # the whole app, so the app's dependencies have to be here.
+      - name: Install system libraries for OpenCV and PyMuPDF
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends libgl1 libglib2.0-0
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e "apps/api[dev]"
+      # `apps/api/alppy/schemas/__init__.py` is the only place a wire shape is
+      # declared. The web app used to hand-mirror it in 1 162 lines, which
+      # compiled on both sides whatever either one said: four models had
+      # drifted to a different NAME, and nothing could have said whether the
+      # shapes under them had drifted too. Same arrangement as the print
+      # geometry above — regenerate, and let `git diff` be the check.
+      - name: Regenerate and diff
+        run: |
+          PYTHONPATH=apps/api python scripts/generate-api-types.py
+          if ! git diff --exit-code -- packages/shared/src/api-types.generated.ts packages/shared/src/api-routes.generated.ts; then
+            echo "::error::the generated contract is stale — run scripts/generate-api-types.py and commit"
+            exit 1
+          fi
+
   schema-drift:
     name: Migrations reproduce the models
     runs-on: ubuntu-latest

@@ -21,7 +21,7 @@ import { use, useMemo } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { useClass, useCurriculumTree, useStudentMastery } from '@/lib/api/queries';
-import type { SheetTakenOut, Uuid } from '@/lib/api/types';
+import type { SheetTaken, Uuid } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
 
@@ -75,7 +75,7 @@ export default function StudentPage({
       }
     }
     const order: string[] = [];
-    const bucket = new Map<string, SheetTakenOut[]>();
+    const bucket = new Map<string, SheetTaken[]>();
     for (const sheet of data?.sheets ?? []) {
       const key = sheet.chapter_id ?? 'unfiled';
       if (!bucket.has(key)) {

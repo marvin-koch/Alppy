@@ -77,10 +77,13 @@ import type {
  *   · `GET /sources`         -> SourceOut[]    (screen 5 lists them)
  *   · `PATCH /exercises/{id}`-> ExerciseOut    (ExerciseUpdate has no route)
  *
- * Every path below is checked against the served OpenAPI document by
- * `apps/web/src/lib/api/__tests__/contract.test.ts`. Guessing at "the obvious
- * path" is how `POST /scans/{id}/pages/{id}/assign` came to be called for two
- * milestones against an API that only ever exposed `PATCH …/pages/{id}`.
+ * Every path below is checked against the routes the API actually serves by
+ * `apps/web/src/lib/api/__tests__/contract.test.ts`, which reads this file and
+ * `@alppy/shared/api-routes` — generated from the routers, so it cannot drift.
+ * Guessing at "the obvious path" is how `POST /scans/{id}/pages/{id}/assign`
+ * came to be called for two milestones against an API that only ever exposed
+ * `PATCH …/pages/{id}`. The test checks the address, not the method: a wrong
+ * method is a 405 on the first click, a wrong path can hide for a milestone.
  */
 
 /* --------------------------------------------------------------- auth --- */

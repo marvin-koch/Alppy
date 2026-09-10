@@ -19,7 +19,7 @@ import { use, useMemo } from 'react';
 import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery } from '@/lib/api/queries';
-import type { MasteryCellOut, Uuid } from '@/lib/api/types';
+import type { MasteryCell, Uuid } from '@/lib/api/types';
 
 /**
  * Worst first, and `none` is not a weakness — it is the absence of evidence.
@@ -76,7 +76,7 @@ export default function StudentsPage({
 
   const rows: RosterRow[] = useMemo(() => {
     const cells = matrix.data?.cells ?? [];
-    const byStudent = new Map<string, MasteryCellOut[]>();
+    const byStudent = new Map<string, MasteryCell[]>();
     for (const cell of cells) {
       const list = byStudent.get(cell.student_id) ?? [];
       list.push(cell);

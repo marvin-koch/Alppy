@@ -8,3 +8,13 @@
  */
 export { SCAN_THRESHOLDS, SHEET_LAYOUT } from './layout.generated';
 export type { SheetLayout } from './layout.generated';
+
+/**
+ * `api-types.generated.ts` is the same arrangement one layer up: written by
+ * `scripts/generate-api-types.py` from `apps/api/alppy/schemas/__init__.py` as
+ * FastAPI serialises it, and CI fails if it is stale. It is re-exported both
+ * here and on the `@alppy/shared/api-types` subpath — the subpath so
+ * `apps/web`'s API layer can take the contract without also taking the print
+ * geometry, this barrel so the rule "one import path" still holds.
+ */
+export type * from './api-types.generated';
