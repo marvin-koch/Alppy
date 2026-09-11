@@ -11,6 +11,13 @@ set -eu
 
 cd /app
 
+# NOTE: migrating here is a COMPOSE convenience, not the deployment pattern.
+# This script is bind-mounted by docker-compose.yml and is not in the image; a
+# real deployment runs `alembic upgrade head` as an explicit, separate release
+# step before the new version serves anything (see `release_command` in
+# infra/fly/fly.toml and docs/deploy-api.md). The advisory lock in
+# alembic/env.py is what makes the two safe to have at once (D13).
+
 attempt=1
 max_attempts=10
 until alembic -c alembic.ini upgrade head; do
@@ -50,7 +57,17 @@ case "$ROLE" in
     python -m alppy.cli backfill-events \
       || echo "entrypoint: event backfill failed, continuing to serve" >&2
 
-    exec uvicorn alppy.main:app --host 0.0.0.0 --port 8000
+    # `--workers` from configuration, not a literal (D19). One process was
+    # serving a whole establishment: every teacher printing between lessons
+    # through a single event loop in front of synchronous SQLAlchemy.
+    #
+    # Raising it has a prerequisite and the app enforces it — more than one
+    # worker on in-process rate-limit buckets is refused at startup, because
+    # each worker would hold its own and every ceiling would silently be worth
+    # N times its stated value (D30, ALPPY_RATE_LIMIT_BACKEND).
+    exec uvicorn alppy.main:app \
+      --host 0.0.0.0 --port 8000 \
+      --workers "${ALPPY_API_WORKERS:-1}"
     ;;
   worker)
     # The API owns migrations and the seed; the worker only consumes the queue.

@@ -17,6 +17,13 @@
 # the MinIO console on the public internet with those defaults. Loopback costs
 # local development nothing.
 #
+# Every image is pinned by DIGEST as well as tag (D18). `minio/minio:latest`
+# was the worst of them — `latest` means "whatever was pushed most recently",
+# so two developers on the same commit could be running different object stores
+# and a reviewer's stack could break with no diff to look at. The digests are
+# the ones this stack was last verified against; Dependabot's docker ecosystem
+# proposes the bumps, which is what keeps a pin from becoming a fossil.
+#
 # One command brings up the whole product with demo data:
 #
 #     docker compose up
@@ -29,7 +36,7 @@ name: alppy
 
 services:
   postgres:
-    image: pgvector/pgvector:pg16
+    image: pgvector/pgvector:pg16@sha256:ccc6e83d6e35e931dc7c5def2022729d5a6c370318d099181995567ff1fb4d6b
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-alppy}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-alppy}
@@ -46,8 +53,28 @@ services:
       retries: 20
 
   redis:
-    image: redis:7-alpine
-    command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
+    image: redis:7-alpine@sha256:ff02b58f971e7d7d156a1267e283fcbbeee91773b6aa36c49dac28ecfe28eadf
+    # Append-only file as well as the RDB snapshot (D26). With `--save 60 1`
+    # alone, up to a minute of writes is lost on an unclean stop — and what is
+    # in Redis is the arq queue, so what is lost is enqueued jobs that nothing
+    # will ever run, leaving their `Job` rows RUNNING until the reaper marks
+    # them failed. The teacher sees a scan that never finishes. `everysec`
+    # bounds that at one second, which for a queue is the difference between a
+    # pile that is late and a pile that is gone.
+    #
+    # This file is the development stack; the same setting has to be made on
+    # whatever managed Redis a deployment uses — see docs/deploy-api.md.
+    command:
+      - "redis-server"
+      - "--save"
+      - "60"
+      - "1"
+      - "--appendonly"
+      - "yes"
+      - "--appendfsync"
+      - "everysec"
+      - "--loglevel"
+      - "warning"
     volumes:
       - redis-data:/data
     ports:
@@ -59,7 +86,7 @@ services:
       retries: 20
 
   minio:
-    image: minio/minio:latest
+    image: minio/minio:latest@sha256:14cea493d9a34af32f524e538b8346cf79f3321eff8e708c1e2960462bd8936e
     command: ["server", "/data", "--console-address", ":9001"]
     environment:
       MINIO_ROOT_USER: ${ALPPY_S3_ACCESS_KEY:-alppy}
@@ -78,7 +105,7 @@ services:
   # One-shot: creates the bucket, then exits 0. Everything that writes objects
   # waits on it completing successfully.
   minio-init:
-    image: minio/mc:latest
+    image: minio/mc:latest@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727
     depends_on:
       minio:
         condition: service_healthy

@@ -17,10 +17,9 @@ row by id: it always adds ``school_id`` to the filter and 404s otherwise.
 
 from __future__ import annotations
 
-import time
 import uuid
 from collections.abc import Generator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Annotated, Any, Final, TypeVar
 
 from fastapi import Depends, Header, Request, UploadFile
@@ -28,6 +27,15 @@ from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from alppy.api import errors
+
+# TokenBucketLimiter is re-exported: it moved to `limits.py` when the bucket
+# gained a second possible home (D30), and the test suite and a handful of
+# call sites still name it here.
+from alppy.api.limits import (  # noqa: F401
+    Limiter,
+    TokenBucketLimiter,
+    build_limiter,
+)
 from alppy.core.config import Settings, get_settings
 from alppy.core.logging import get_logger
 from alppy.core.security import read_session
@@ -236,99 +244,37 @@ def scoped_get(
 # --------------------------------------------------------------------------
 # Rate limiting for the AI-backed and otherwise expensive endpoints
 # --------------------------------------------------------------------------
-@dataclass(slots=True)
-class _Bucket:
-    tokens: float
-    updated_at: float
+# The buckets themselves live in `alppy/api/limits.py` now, because where they
+# live became a decision: in this process (correct for one uvicorn worker, and
+# silently worth N times its stated value for N) or in Redis (D30). Re-exported
+# here so every existing import keeps working.
+
+_ai_limiter: Limiter | None = None
+_render_limiter: Limiter | None = None
+_login_limiter: Limiter | None = None
+_login_ip_limiter: Limiter | None = None
 
 
-@dataclass(slots=True)
-class TokenBucketLimiter:
-    """In-process token bucket, one bucket per teacher.
-
-    Deliberately not distributed: this is a guard against one teacher holding
-    a click, not a billing control. The hard cost ceiling lives in
-    ``Settings.ai_max_output_tokens`` and in the provider account.
-    """
-
-    rate_per_min: int
-    burst: int | None = None
-    _buckets: dict[str, _Bucket] = field(default_factory=dict)
-
-    @property
-    def capacity(self) -> float:
-        return float(self.burst if self.burst is not None else self.rate_per_min)
-
-    def take(self, key: str, *, now: float | None = None) -> float:
-        """Consume one token. Returns 0.0 on success, else seconds to wait."""
-        if self.rate_per_min <= 0:
-            return 0.0
-        t = now if now is not None else time.monotonic()
-        bucket = self._buckets.get(key)
-        if bucket is None:
-            bucket = _Bucket(tokens=self.capacity, updated_at=t)
-            self._buckets[key] = bucket
-        refill = (t - bucket.updated_at) * (self.rate_per_min / 60.0)
-        bucket.tokens = min(self.capacity, bucket.tokens + refill)
-        bucket.updated_at = t
-        if bucket.tokens >= 1.0:
-            bucket.tokens -= 1.0
-            return 0.0
-        return (1.0 - bucket.tokens) / (self.rate_per_min / 60.0)
-
-    def peek(self, key: str, *, now: float | None = None) -> float:
-        """Seconds to wait, WITHOUT consuming a token. 0.0 when one is free.
-
-        The login path needs to know it is throttled *before* it does the
-        expensive thing (Argon2id), and it charges a token only for a failure —
-        so asking and taking have to be separable. Deliberately non-mutating:
-        a peek that refilled the bucket would let a caller poll their way past
-        the limit.
-        """
-        if self.rate_per_min <= 0:
-            return 0.0
-        bucket = self._buckets.get(key)
-        if bucket is None:
-            return 0.0
-        t = now if now is not None else time.monotonic()
-        refill = (t - bucket.updated_at) * (self.rate_per_min / 60.0)
-        tokens = min(self.capacity, bucket.tokens + refill)
-        if tokens >= 1.0:
-            return 0.0
-        return (1.0 - tokens) / (self.rate_per_min / 60.0)
-
-    def reset_key(self, key: str) -> None:
-        """Forget one bucket. A correct password clears the account's."""
-        self._buckets.pop(key, None)
-
-    def reset(self) -> None:
-        self._buckets.clear()
-
-
-_ai_limiter: TokenBucketLimiter | None = None
-_render_limiter: TokenBucketLimiter | None = None
-_login_limiter: TokenBucketLimiter | None = None
-_login_ip_limiter: TokenBucketLimiter | None = None
-
-
-def get_ai_limiter() -> TokenBucketLimiter:
+def get_ai_limiter() -> Limiter:
     global _ai_limiter
     settings = get_settings()
     if _ai_limiter is None or _ai_limiter.rate_per_min != settings.ai_rate_limit_per_min:
-        _ai_limiter = TokenBucketLimiter(rate_per_min=settings.ai_rate_limit_per_min)
+        _ai_limiter = build_limiter(
+            "ai", rate_per_min=settings.ai_rate_limit_per_min, settings=settings
+        )
     return _ai_limiter
 
 
-def get_render_limiter() -> TokenBucketLimiter:
+def get_render_limiter() -> Limiter:
     global _render_limiter
     settings = get_settings()
     rate = settings.render_rate_limit_per_min
     if _render_limiter is None or _render_limiter.rate_per_min != rate:
-        _render_limiter = TokenBucketLimiter(rate_per_min=rate)
+        _render_limiter = build_limiter("render", rate_per_min=rate, settings=settings)
     return _render_limiter
 
 
-def get_login_limiter(settings: Settings | None = None) -> TokenBucketLimiter:
+def get_login_limiter(settings: Settings | None = None) -> Limiter:
     """Failed sign-ins per account.
 
     Takes the settings rather than only reading the global ones so the limit
@@ -338,18 +284,20 @@ def get_login_limiter(settings: Settings | None = None) -> TokenBucketLimiter:
     both need this one to follow the object actually in force.
     """
     global _login_limiter
-    rate = (settings or get_settings()).login_rate_limit_per_min
+    resolved = settings or get_settings()
+    rate = resolved.login_rate_limit_per_min
     if _login_limiter is None or _login_limiter.rate_per_min != rate:
-        _login_limiter = TokenBucketLimiter(rate_per_min=rate)
+        _login_limiter = build_limiter("login", rate_per_min=rate, settings=resolved)
     return _login_limiter
 
 
-def get_login_ip_limiter(settings: Settings | None = None) -> TokenBucketLimiter:
+def get_login_ip_limiter(settings: Settings | None = None) -> Limiter:
     """Failed sign-ins per client address."""
     global _login_ip_limiter
-    rate = (settings or get_settings()).login_ip_rate_limit_per_min
+    resolved = settings or get_settings()
+    rate = resolved.login_ip_rate_limit_per_min
     if _login_ip_limiter is None or _login_ip_limiter.rate_per_min != rate:
-        _login_ip_limiter = TokenBucketLimiter(rate_per_min=rate)
+        _login_ip_limiter = build_limiter("login_ip", rate_per_min=rate, settings=resolved)
     return _login_ip_limiter
 
 

@@ -389,6 +389,67 @@ jobs:
           ALPPY_DISPOSABLE_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_rls
         run: python scripts/check-rls.py
 
+  # Neither image had ever been built by a gating job (D25). The only build was
+  # `live.yml`, which runs nightly and does not gate anything — so a Dockerfile
+  # broken on Monday was discovered on Tuesday morning at the earliest, and a
+  # Dockerfile broken by a dependency change was discovered by whoever next
+  # tried to deploy. Both images are built here and pushed nowhere: the claim is
+  # only "this builds", which is the claim that was missing.
+  images:
+    name: Both container images build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      # Cached through the Actions cache rather than a registry: there is no
+      # registry yet (D4), and a build that takes eleven minutes every time is a
+      # job someone moves off the critical path within a month.
+      - name: Build the API image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+      - name: Build the web image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          load: false
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+  # `pyproject.toml` is all `>=` ranges; `requirements.lock` is what the image
+  # actually installs, with hashes (D18). A dependency added to one and not the
+  # other means the image and the test run are two different environments — and
+  # the test run is the one that would still be green.
+  lockfile:
+    name: The Python lockfile matches the manifest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with: { version: "0.12.13" }
+      # `--check` resolves and fails rather than rewriting, which is the whole
+      # point: a lockfile CI is willing to regenerate is a lockfile that never
+      # disagrees with anything.
+      - name: uv.lock is current
+        run: uv lock --check --python 3.12
+        working-directory: apps/api
+      - name: requirements.lock matches uv.lock
+        run: |
+          uv export --frozen --no-dev --no-emit-project \
+            --format requirements.txt -o requirements.lock
+          if ! git diff --exit-code -- requirements.lock; then
+            echo "::error::requirements.lock is stale — run \`make lock\` and commit"
+            exit 1
+          fi
+        working-directory: apps/api
+
   e2e:
     name: E2E and theme screenshots
     runs-on: ubuntu-latest

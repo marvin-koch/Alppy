@@ -1,0 +1,125 @@
+# Alppy — the API and the worker. ONE app, two process groups, one image.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+# THIS IS A DRAFT. Nothing has been deployed from it, and the app, the Postgres
+# cluster, the Redis and the bucket named below DO NOT EXIST YET. Creating them
+# is a human act with a credit card; see docs/deploy-api.md for the order.
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# Why Fly, for an MVP: it is what docs/deploy-cloudflare.md already assumes
+# ("Fly.io, Render or Railway will run the container; budget roughly $5–10 a
+# month"), it runs a persistent process — which the arq worker needs and
+# Cloudflare's free tier cannot give — and it has a Zurich region, so the
+# machines and the volumes are in Switzerland even though Fly itself is a US
+# company. That last point is the honest limit of this choice: a cantonal IT
+# department asking about the CLOUD Act gets a worse answer here than it would
+# from Exoscale or Infomaniak. It is a starting position for a pilot, and the
+# thing that makes it cheap to leave is that everything specific to Fly is in
+# this one file.
+#
+# `primary_region = "zrh"` is not decoration. The scan images are photographs
+# of named children's handwriting and the roster holds their real names; the
+# region is where both live.
+
+app = "alppy"
+primary_region = "zrh"
+
+[build]
+  dockerfile = "../../apps/api/Dockerfile"
+
+# Migrations run HERE, once, before any new machine serves a request (D13).
+#
+# The compose entrypoint migrates on start because that is what makes
+# `docker compose up` one command. A deployment must not: two machines starting
+# together both ran `alembic upgrade head` against one database, and alembic's
+# per-migration transaction stops a half-applied revision, not two processes
+# applying the same one. `release_command` is a separate, single-machine step
+# that must succeed before the release proceeds — so a failed migration is a
+# failed deploy rather than a crash-looping container.
+#
+# The advisory lock in alembic/env.py is still there and still wanted: it is
+# what makes the compose path and this one safe to have at once.
+[deploy]
+  release_command = "alembic -c alembic.ini upgrade head"
+  # Rolling, not immediate: `docs/runbook/rollback.md` explains why a release
+  # carrying a column rename cannot use this and has to be taken in two steps.
+  strategy = "rolling"
+
+[env]
+  ALPPY_ENV = "production"
+  # One number for two things that must agree: uvicorn's `--workers` and the
+  # rate-limit buckets' home. More than one worker on in-process buckets is
+  # refused at startup, because each worker would hold its own and every
+  # ceiling would silently be worth N times its stated value (D19, D30).
+  ALPPY_API_WORKERS = "2"
+  ALPPY_RATE_LIMIT_BACKEND = "redis"
+  # Fly's proxy is the one hop in front of us. At 0 — the safe default —
+  # X-Forwarded-For is not read at all, and every request appears to come from
+  # the proxy: the per-IP sign-in limit collapses to one shared bucket for the
+  # whole internet. At 1 we read exactly the address Fly's proxy wrote.
+  ALPPY_TRUSTED_PROXY_HOPS = "1"
+  ALPPY_STORAGE_BACKEND = "s3"
+  ALPPY_DESIGN_CSS_DIR = "/app/design-css"
+  # Offline until there is a DPA and a decision about the vision grader (Q3).
+  # Written answers are counted as SKIPPED rather than graded; MCQ and
+  # true/false are unaffected. Changing this is a one-line change and a legal
+  # act, in that order — see docs/subprocessors.md.
+  ALPPY_AI_CHAT_PROVIDER = "echo"
+
+# Secrets are NOT here. `fly secrets set` writes them into the app's own store:
+#   ALPPY_SECRET_KEY, ALPPY_SECRET_KEY_FALLBACKS,
+#   ALPPY_DATABASE_URL (the low-privilege role), ALPPY_ADMIN_DATABASE_URL (the
+#   owner — a separate secret, and the whole of what makes row-level security
+#   real), ALPPY_REDIS_URL, ALPPY_S3_* , ALPPY_HEALTH_DETAIL_TOKEN.
+# See docs/runbook/rotate-a-secret.md.
+
+# --- the API ----------------------------------------------------------------
+[processes]
+  app = "uvicorn alppy.main:app --host 0.0.0.0 --port 8000 --workers 2"
+  worker = "python -m alppy.worker.main"
+
+[http_service]
+  internal_port = 8000
+  force_https = true
+  processes = ["app"]
+  # NOT auto-stopped. A stopped machine cold-starts on the first request, and
+  # this image carries Chromium — the teacher who pays for that is the one
+  # opening the app at 08:15 to print for 08:20.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    # LIVENESS: should this machine be restarted? No I/O, ever — `/health`
+    # opens Postgres, Redis and object storage, so a Redis outage used to kill
+    # and restart every machine that was perfectly able to serve every request
+    # not touching Redis.
+    grace_period = "30s"
+    interval = "15s"
+    method = "GET"
+    path = "/api/v1/health/live"
+    timeout = "5s"
+
+  [[http_service.checks]]
+    # READINESS: should this machine be sent traffic? A bare ok/degraded — the
+    # component breakdown lives at /health/detail behind a token (D35).
+    grace_period = "45s"
+    interval = "30s"
+    method = "GET"
+    path = "/api/v1/health"
+    timeout = "10s"
+
+# OpenCV and Chromium together want on the order of a gigabyte. 512 MB is where
+# the render job dies with an OOM that looks like a Chromium bug.
+[[vm]]
+  processes = ["app"]
+  size = "shared-cpu-2x"
+  memory = "2gb"
+
+# The worker is the heavier half: a scan pipeline pins a core in OpenCV and a
+# sheet render is a whole browser. `worker_max_jobs` is 4 by default — size
+# these together, or four concurrent jobs contend for two cores.
+[[vm]]
+  processes = ["worker"]
+  size = "shared-cpu-2x"
+  memory = "2gb"

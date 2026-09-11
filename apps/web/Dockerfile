@@ -3,7 +3,8 @@
 # Alppy web. Multi-stage: the final image carries the standalone Next.js output
 # and nothing else — no pnpm store, no source, no dev dependencies.
 
-FROM node:22-alpine AS base
+# Pinned by digest, not by tag (D18) — see apps/api/Dockerfile for why.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS base
 ENV PNPM_HOME=/pnpm PATH=/pnpm:$PATH
 RUN corepack enable
 
@@ -45,7 +46,7 @@ RUN pnpm --filter @alppy/ui build
 RUN pnpm --filter @alppy/web build
 
 # --- runtime ----------------------------------------------------------------
-FROM node:22-alpine AS runtime
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS runtime
 WORKDIR /app
 ENV NODE_ENV=production NEXT_TELEMETRY_DISABLED=1 PORT=3000
 

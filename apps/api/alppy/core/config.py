@@ -276,6 +276,34 @@ class Settings(BaseSettings):
     proxies actually in front: each extra hop is one entry of attacker-supplied
     text treated as a client address."""
 
+    rate_limit_backend: Literal["auto", "memory", "redis"] = "auto"
+    """Where a rate-limit bucket lives (D30).
+
+    `memory` is a dict in this process: correct for one uvicorn worker, and
+    silently worth N times its stated value for N workers, because each worker
+    holds its own and the same teacher is load-balanced across all of them. A
+    limit that is still configured, still enforced, and worth twice what it says
+    is the worst of the three states.
+
+    `redis` is one bucket per teacher shared by every process, refilled against
+    Redis's own clock.
+
+    `auto` — the default — means `redis` on a real deployment and `memory`
+    everywhere else, so local development and the test suite need nothing
+    running and a deployment gets the one that survives a second worker.
+    `_refuse_unsafe_deployment` refuses `api_workers > 1` on `memory`."""
+
+    api_workers: int = 1
+    """uvicorn worker processes (D19).
+
+    One process was serving a whole establishment: every teacher in a school
+    printing between lessons, through a single event loop in front of
+    synchronous SQLAlchemy. It stays 1 by default because that is right for
+    `docker compose up` and for CI, and because raising it is a deliberate act
+    with a prerequisite — see `rate_limit_backend`, which must not still be
+    `memory` when this is raised. Size it against the container's CPU
+    allocation, not against optimism: each worker is a full copy of the app."""
+
     # Not AI, still expensive: headless Chromium and synchronous pagination.
     render_rate_limit_per_min: int = 12
     """Per teacher, per process, like the AI bucket. A render is a Chromium
@@ -540,6 +568,13 @@ class Settings(BaseSettings):
             problems.append(
                 "ALPPY_SECRET_KEY is still the built-in development default; it signs "
                 "the session cookie, so anyone with this repository can forge one"
+            )
+        if self.api_workers > 1 and self.rate_limit_backend == "memory":
+            problems.append(
+                f"ALPPY_API_WORKERS is {self.api_workers} while ALPPY_RATE_LIMIT_BACKEND is "
+                "'memory'; each worker would hold its own buckets, so every rate limit — "
+                "including the one in front of sign-in — is silently multiplied by the "
+                "worker count. Use 'redis' (or 'auto') when running more than one worker"
             )
         if DEV_SECRET_KEY in self.secret_key_fallbacks:
             problems.append(

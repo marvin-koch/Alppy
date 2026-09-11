@@ -6,7 +6,15 @@
 # volatile step, so it sits above the application code and survives every
 # rebuild that only touches Python source.
 
-FROM python:3.12-slim AS base
+# Pinned by DIGEST, not by tag (D18). `python:3.12-slim` is a moving target:
+# two builds a week apart are two different base images, with a different
+# glibc and a different set of system libraries, and nothing records which one
+# produced the image that is running. That matters here more than it usually
+# does — the scan detector is numerical code, and its degradation suite is
+# calibrated against a specific OpenCV/NumPy pair. Dependabot's docker
+# ecosystem proposes the bumps; this line is what makes each one a reviewed,
+# dated commit rather than a silent change of floor.
+FROM python:3.12-slim@sha256:78387bc3881b8273120a12ebe6c1ab22b018ccc2c9adf565ae1ac9b536e184ea AS base
 
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
@@ -41,9 +49,27 @@ WORKDIR /app
 # `alppy/__init__.py` is three lines and changes about once a year, so the
 # dependency layer still survives every rebuild that only touches source.
 COPY apps/api/pyproject.toml /app/pyproject.toml
+COPY apps/api/requirements.lock /app/requirements.lock
 COPY apps/api/alppy/__init__.py /app/alppy/__init__.py
+# Two installs, and the split is the point (D18).
+#
+#   1. The LOCKED dependency set, with `--require-hashes`. Every version in
+#      `requirements.lock` is pinned and every artifact is hashed, so the image
+#      built today and the image built in March contain the same code — and a
+#      registry that served a different file for a version we already have
+#      fails the build instead of shipping. `pyproject.toml` is all `>=`
+#      ranges, which is right for a library and wrong for a deployment: the
+#      degradation suite that calibrates the scan detector is pinned to a
+#      specific OpenCV/NumPy pair, and a minor bump arriving unannounced in a
+#      rebuild is exactly the change it exists to catch.
+#   2. The application itself, `--no-deps`, because step 1 already installed
+#      them and a second resolution could only disagree with the first.
+#
+# `requirements.lock` is generated from `uv.lock`; see apps/api/README or
+# `make lock`. CI fails if either has drifted from `pyproject.toml`.
 RUN python -m pip install --upgrade pip \
-    && pip install --no-cache-dir -e .
+    && pip install --no-cache-dir --require-hashes -r requirements.lock \
+    && pip install --no-cache-dir --no-deps -e .
 
 # --- Chromium for server-side PDF rendering --------------------------------
 # The teacher's print preview and the generated PDF must come from the same

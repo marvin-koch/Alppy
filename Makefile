@@ -1,5 +1,5 @@
 # Convenience targets. `docker compose up` remains the one command that matters.
-.PHONY: help up down nuke logs seed test test-api lint typecheck fmt migration layout
+.PHONY: help up down nuke logs seed test test-api lint typecheck fmt migration layout lock
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -49,6 +49,15 @@ fmt:           ## Format
 
 migration:     ## Create a migration: make migration m="add x"
 	cd apps/api && ../../.venv/bin/alembic revision --autogenerate -m "$(m)"
+
+lock:          ## Re-resolve the Python lockfile after editing pyproject.toml
+	# uv.lock is the resolution; requirements.lock is what the image installs
+	# with --require-hashes, because pip is the installer inside the container
+	# and adding uv to it would be a second thing to keep current. CI fails if
+	# either has drifted from pyproject.toml.
+	cd apps/api && uv lock --python 3.12
+	cd apps/api && uv export --frozen --no-dev --no-emit-project \
+	  --format requirements.txt -o requirements.lock
 
 layout:        ## Re-export the print geometry to TypeScript
 	PYTHONPATH=apps/api .venv/bin/python scripts/export-layout.py
