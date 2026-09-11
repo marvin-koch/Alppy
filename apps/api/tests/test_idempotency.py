@@ -201,3 +201,153 @@ def test_one_schools_key_is_not_anothers(
         model=JobOut, work=_work,
     )
     assert a.id != b.id, "a colleague's key replayed another school's answer"
+
+
+# --------------------------------------------------------------------------
+# The other three keyed routes
+# --------------------------------------------------------------------------
+# The API has claimed a key on four routes since the backend pass; this file
+# exercised one of them (T10). The other three are the expensive ones — a pile
+# of twenty-eight photos, a differentiation batch that is one model call per
+# student, and that batch's render — and "the API supports it" is not the same
+# claim as "this route does".
+#
+# The client half landed separately: `RequestOptions.headers`,
+# `idempotencyHeader()` and the `useIdempotencyKey` hook. Before that the client
+# could not send a key at all, so the two translated refusal sentences waiting
+# in the catalogue could never fire.
+
+
+def test_every_expensive_route_claims_a_key_and_no_other_does() -> None:
+    """Enumerated, not sampled.
+
+    The interesting direction is a route LOSING the dependency: the parameter
+    is optional and defaulted, so removing it changes no signature a caller
+    would notice and no test that does not look. The other direction matters
+    too — a key on a cheap route is a promise of replay nothing implements.
+    """
+    import inspect
+
+    from alppy.api.v1 import adaptive as adaptive_routes
+    from alppy.api.v1 import scans as scan_routes
+    from alppy.api.v1 import sheets as sheet_routes
+
+    expected = {
+        # A pile of twenty-eight photos, re-uploaded because the screen did not
+        # move, is twenty-eight more pages to review by hand.
+        (scan_routes, "upload_scan"),
+        # Each render opens a new answer-box generation (B7), so two renders
+        # leave two sets of rectangles and a pile pinned to whichever it caught.
+        (sheet_routes, "render_sheet"),
+        # One model call per student. Twice is twice the bill and two sets of
+        # unapproved exercises for the teacher to review.
+        (adaptive_routes, "create_batch"),
+        (adaptive_routes, "render_batch"),
+    }
+    claimed = set()
+    for module in (scan_routes, sheet_routes, adaptive_routes):
+        for name, fn in vars(module).items():
+            if not callable(fn) or not hasattr(fn, "__annotations__"):
+                continue
+            try:
+                params = inspect.signature(fn).parameters
+            except (TypeError, ValueError):
+                continue
+            if "idem" in params:
+                claimed.add((module, name))
+
+    missing = {f"{m.__name__}.{n}" for m, n in expected - claimed}
+    extra = {f"{m.__name__}.{n}" for m, n in claimed - expected}
+    assert not missing, f"these routes stopped claiming an idempotency key: {sorted(missing)}"
+    assert not extra, (
+        f"these routes started claiming one: {sorted(extra)}. A key is a promise "
+        f"that a retry replays rather than repeats — add the route above if it is "
+        f"meant to keep it."
+    )
+
+
+def test_the_same_key_uploads_one_pile(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """A phone on a staffroom connection retries the upload it never heard back
+    from. Twenty-eight photos must not become fifty-six pages."""
+    from alppy.models import Scan
+
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+
+    headers = {"Idempotency-Key": "one-pile-please"}
+    files = {"files": ("copies.pdf", b"%PDF-1.7\n" + b"0" * 512, "application/pdf")}
+
+    first = client.post(
+        "/api/v1/scans", headers=headers, files=files, data={"sheet_id": sheet_id}
+    )
+    second = client.post(
+        "/api/v1/scans", headers=headers, files=files, data={"sheet_id": sheet_id}
+    )
+
+    assert first.status_code in (201, 202), first.text
+    assert second.status_code == first.status_code, second.text
+    assert first.json()["id"] == second.json()["id"], "the retry made a second pile"
+    assert db.query(Scan).count() == 1
+
+
+def test_a_different_key_is_a_second_pile(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The other half. A teacher who photographs a second class set means it."""
+    from alppy.models import Scan
+
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+    files = {"files": ("copies.pdf", b"%PDF-1.7\n" + b"0" * 512, "application/pdf")}
+
+    first = client.post(
+        "/api/v1/scans",
+        headers={"Idempotency-Key": "monday-pile"},
+        files=files,
+        data={"sheet_id": sheet_id},
+    )
+    second = client.post(
+        "/api/v1/scans",
+        headers={"Idempotency-Key": "tuesday-pile"},
+        files=files,
+        data={"sheet_id": sheet_id},
+    )
+
+    assert first.json()["id"] != second.json()["id"]
+    assert db.query(Scan).count() == 2
+
+
+def test_a_key_longer_than_the_column_is_refused_rather_than_truncated(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """`idempotency_key_too_long` is one of the two sentences waiting in the
+    catalogue, and it could not fire while the client had no way to send a key.
+
+    Truncating would be worse than refusing: two different long keys that share
+    a prefix would collide, and the second request would replay the first one's
+    answer — a teacher told their upload succeeded when it never ran.
+    """
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+
+    response = client.post(
+        f"/api/v1/sheets/{sheet_id}/render", headers={"Idempotency-Key": "x" * 500}
+    )
+
+    assert response.status_code == 422, response.text
+    assert response.json()["error"]["code"] in (
+        "idempotency_key_too_long",
+        "validation_error",
+        "unprocessable",
+    )

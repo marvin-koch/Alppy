@@ -267,7 +267,20 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
 
   if (isMockEnabled()) {
     const { handleMock } = await import('./mock/handlers');
-    return handleMock<T>(method, url, formData ?? body, headers);
+    // Through the SAME 401 path a real response takes (T11).
+    //
+    // This used to `return handleMock(...)` directly, which put the mock's
+    // `ApiError(401)` on a route that never reaches `noteUnauthorized` below —
+    // so the redirect-and-clear-cache behaviour was not merely untested, it was
+    // unreachable from any E2E test, because the fixture layer IS the transport
+    // in those runs. The bug was in the test seam, not in the product, which is
+    // the kind that survives longest.
+    try {
+      return await handleMock<T>(method, url, formData ?? body, headers);
+    } catch (error) {
+      if (error instanceof ApiError) noteUnauthorized(path, error);
+      throw error;
+    }
   }
 
   let response: Response;
@@ -333,7 +346,20 @@ export async function apiRequestText(path: string, options: RequestOptions = {})
 
   if (isMockEnabled()) {
     const { handleMock } = await import('./mock/handlers');
-    return handleMock<string>(method, url, body, headers);
+    // Through the SAME 401 path a real response takes (T11).
+    //
+    // This used to `return handleMock(...)` directly, which put the mock's
+    // `ApiError(401)` on a route that never reaches `noteUnauthorized` below —
+    // so the redirect-and-clear-cache behaviour was not merely untested, it was
+    // unreachable from any E2E test, because the fixture layer IS the transport
+    // in those runs. The bug was in the test seam, not in the product, which is
+    // the kind that survives longest.
+    try {
+      return await handleMock<string>(method, url, body, headers);
+    } catch (error) {
+      if (error instanceof ApiError) noteUnauthorized(path, error);
+      throw error;
+    }
   }
 
   let response: Response;
