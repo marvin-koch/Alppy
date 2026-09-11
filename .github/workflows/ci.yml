@@ -92,7 +92,7 @@ jobs:
       # RLS GUC, so a gap there is a gap in the tenant boundary itself.
       - name: Per-module coverage floors
         run: python scripts/check-coverage-floors.py coverage.xml
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: api-coverage
@@ -426,7 +426,7 @@ jobs:
       # --grep "renders in" --update-snapshots` on an ubuntu container, then
       # commit the `-linux` files — this is the second. `pnpm test:e2e` still
       # runs them locally on macOS, where the baselines are real.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         if: failure()
         with:
           name: playwright-report
