@@ -400,6 +400,11 @@
     "processingReading": "Lecture des copies…",
     "processingLabel": "Avancement de l'analyse",
     "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte.",
+    "stalled": {
+      "title": "Cette lecture prend plus de temps que prévu.",
+      "body": "Rien n'est perdu : les copies sont bien envoyées. Réessayez, ou rechargez la page dans quelques minutes.",
+      "reload": "Recharger"
+    },
     "scopedScans": "Vos corrections",
     "scopedScansHint": "Les piles des disciplines que vous n'enseignez pas ne sont pas ici.",
     "retakeLabel": "Reprendre cette page",
@@ -633,6 +638,7 @@
       "internal_error": "Une erreur inattendue s'est produite. Rien n'a été enregistré ; réessayez.",
       "method_not_allowed": "Cette action n'est pas possible ici.",
       "network_error": "L'application n'a pas pu joindre le serveur.",
+      "timeout": "Alppy ne répond pas. Votre travail n'est pas perdu : réessayez dans un instant.",
       "not_found": "Cet élément n'existe pas ou n'est plus accessible.",
       "payload_too_large": "Le fichier est trop volumineux. Scannez en plusieurs fois.",
       "rate_limited": "Trop de demandes d'affilée. Réessayez dans {seconds} secondes.",

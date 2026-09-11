@@ -1,4 +1,4 @@
-import { apiRequest, apiRequestText } from './client';
+import { apiRequest, apiRequestText, UPLOAD_TIMEOUT_MS } from './client';
 import type {
   ClassTreeOut,
   AdaptiveApproveRequest,
@@ -419,6 +419,9 @@ export const uploadScan = (files: File[], sheetId: Uuid, idempotencyKey?: string
   return apiRequest<ScanOut>('/scans', {
     method: 'POST',
     formData,
+    // Up to 120 photographs over a school's uplink: the 20s default would abort
+    // work that was progressing perfectly well.
+    timeoutMs: UPLOAD_TIMEOUT_MS,
     ...idempotent(idempotencyKey),
   });
 };
@@ -436,7 +439,11 @@ export const addScanPages = (scanId: Uuid, files: File[], supersedesPageId?: Uui
   const formData = new FormData();
   for (const file of files) formData.append('files', file);
   if (supersedesPageId) formData.append('supersedes_page_id', supersedesPageId);
-  return apiRequest<ScanOut>(`/scans/${scanId}/pages`, { method: 'POST', formData });
+  return apiRequest<ScanOut>(`/scans/${scanId}/pages`, {
+    method: 'POST',
+    formData,
+    timeoutMs: UPLOAD_TIMEOUT_MS,
+  });
 };
 
 /**

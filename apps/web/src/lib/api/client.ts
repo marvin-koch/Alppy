@@ -49,6 +49,59 @@ export function isMockEnabled(): boolean {
   }
 }
 
+/**
+ * How long a request is given before the client gives up.
+ *
+ * Nothing had a deadline. `apiRequest` accepted a `signal` and exactly one caller
+ * passed one (a debounce guard), so a request that never answered — a hung
+ * connection, a proxy holding the socket open, a school firewall swallowing the
+ * response — left its screen on the skeleton forever. There is no browser default
+ * worth relying on here: Chrome's own network timeout is minutes long.
+ *
+ * Two budgets, because the work is not comparable. A JSON read or write is a
+ * round trip and 20s is already generous. A multipart scan upload is up to 120
+ * photographs over a school's uplink, and cutting that off at 20s would abort
+ * work that was progressing perfectly well — which is why `uploadScan` and
+ * `addScanPages` get their own, much longer, budget.
+ */
+export const REQUEST_TIMEOUT_MS = 20_000;
+export const UPLOAD_TIMEOUT_MS = 10 * 60_000;
+
+/**
+ * The caller's signal and the deadline, as one signal.
+ *
+ * `AbortSignal.any` so a caller's own abort (a debounce, an unmounting screen)
+ * still works and is not replaced by the timeout. Guarded because both statics are
+ * recent: where either is missing the caller's signal is used alone and the
+ * request behaves exactly as it did before, which is the honest degradation — a
+ * missing deadline is what this fixes, not a reason to fail the request.
+ */
+function withDeadline(signal: AbortSignal | undefined, ms: number): AbortSignal | undefined {
+  if (typeof AbortSignal === 'undefined' || typeof AbortSignal.timeout !== 'function') {
+    return signal;
+  }
+  const deadline = AbortSignal.timeout(ms);
+  if (!signal) return deadline;
+  if (typeof AbortSignal.any !== 'function') return signal;
+  return AbortSignal.any([signal, deadline]);
+}
+
+/**
+ * Told apart from the caller's own abort, and from being offline.
+ *
+ * A timeout is not `network_error`: "L'application n'a pas pu joindre le serveur"
+ * is wrong and misleading when the server was reached and simply never finished.
+ * It is also not the caller's abort, which must stay an `AbortError` so
+ * react-query keeps treating it as a cancellation rather than a failure.
+ */
+function abortToError(cause: DOMException, signal: AbortSignal | undefined): unknown {
+  // `TimeoutError` is what `AbortSignal.timeout` reports through `signal.reason`.
+  const reason = (signal as { reason?: unknown } | undefined)?.reason;
+  const timedOut = reason instanceof DOMException && reason.name === 'TimeoutError';
+  if (!timedOut) return cause;
+  return new ApiError(0, 'timeout', 'the API did not answer in time');
+}
+
 export interface RequestOptions {
   /** `PUT` is here for the one route that replaces a whole list rather than
    *  patching fields — the class's branch order (D75). */
@@ -71,6 +124,8 @@ export interface RequestOptions {
    * `credentials: 'include'`, which is not a header.
    */
   headers?: Record<string, string>;
+  /** Overrides `REQUEST_TIMEOUT_MS`. The scan uploads pass `UPLOAD_TIMEOUT_MS`. */
+  timeoutMs?: number;
   /** An array value is appended once per element, which is what FastAPI reads
    *  as a repeated query parameter (`?kind=a&kind=b`). Joining it into one
    *  comma-separated value would arrive as a single unparseable string. */
@@ -189,7 +244,8 @@ function noteReachability(reachable: boolean): void {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, formData, signal, query, headers } = options;
+  const { method = 'GET', body, formData, signal, query, headers, timeoutMs } = options;
+  const deadline = withDeadline(signal, timeoutMs ?? REQUEST_TIMEOUT_MS);
   const url = withQuery(path, query);
 
   if (isMockEnabled()) {
@@ -211,10 +267,17 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
             ...headers,
           },
       body: formData ?? (body === undefined ? undefined : JSON.stringify(body)),
-      signal: signal ?? null,
+      signal: deadline ?? null,
     });
   } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    if (cause instanceof DOMException && cause.name === 'AbortError') {
+      // A deadline that expired is a failure with its own sentence; a caller's own
+      // abort stays an AbortError so react-query keeps reading it as a
+      // cancellation rather than reporting it to the teacher.
+      const mapped = abortToError(cause, deadline);
+      if (mapped instanceof ApiError) throw mapped;
+      throw cause;
+    }
     const offline = new ApiError(0, 'network_error', 'the API could not be reached');
     noteReachability(false);
     throw offline;
@@ -247,7 +310,8 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
  * the preview frame.
  */
 export async function apiRequestText(path: string, options: RequestOptions = {}): Promise<string> {
-  const { method = 'GET', body, signal, query, headers } = options;
+  const { method = 'GET', body, signal, query, headers, timeoutMs } = options;
+  const deadline = withDeadline(signal, timeoutMs ?? REQUEST_TIMEOUT_MS);
   const url = withQuery(path, query);
 
   if (isMockEnabled()) {
@@ -266,10 +330,14 @@ export async function apiRequestText(path: string, options: RequestOptions = {})
         ...headers,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
-      signal: signal ?? null,
+      signal: deadline ?? null,
     });
   } catch (cause) {
-    if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
+    if (cause instanceof DOMException && cause.name === 'AbortError') {
+      const mapped = abortToError(cause, deadline);
+      if (mapped instanceof ApiError) throw mapped;
+      throw cause;
+    }
     throw new ApiError(0, 'network_error', 'the API could not be reached');
   }
 

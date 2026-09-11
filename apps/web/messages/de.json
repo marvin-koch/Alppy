@@ -400,6 +400,11 @@
     "processingReading": "Kopien werden gelesen…",
     "processingLabel": "Fortschritt der Analyse",
     "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen.",
+    "stalled": {
+      "title": "Das Einlesen dauert länger als erwartet.",
+      "body": "Nichts ist verloren – die Kopien sind hochgeladen. Versuchen Sie es erneut oder laden Sie die Seite in einigen Minuten neu.",
+      "reload": "Neu laden"
+    },
     "scopedScans": "Ihre Korrekturen",
     "scopedScansHint": "Stapel aus Fächern, die Sie nicht unterrichten, erscheinen hier nicht.",
     "retakeLabel": "Diese Seite neu aufnehmen",
@@ -633,6 +638,7 @@
       "internal_error": "Ein unerwarteter Fehler ist aufgetreten. Es wurde nichts gespeichert; versuchen Sie es erneut.",
       "method_not_allowed": "Diese Aktion ist hier nicht möglich.",
       "network_error": "Die Anwendung konnte den Server nicht erreichen.",
+      "timeout": "Alppy antwortet nicht. Ihre Arbeit ist nicht verloren – versuchen Sie es gleich noch einmal.",
       "not_found": "Dieses Element existiert nicht oder ist nicht mehr zugänglich.",
       "payload_too_large": "Die Datei ist zu gross. Scannen Sie in mehreren Teilen.",
       "rate_limited": "Zu viele Anfragen hintereinander. Versuchen Sie es in {seconds} Sekunden erneut.",

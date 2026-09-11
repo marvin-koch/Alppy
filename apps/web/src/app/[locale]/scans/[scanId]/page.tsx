@@ -12,6 +12,7 @@ import {
   ErrorState,
   Field,
   FileDrop,
+  IconWarning,
   IlloTray,
   KeyboardHint,
   LoadingState,
@@ -42,7 +43,7 @@ import {
   useScanStudents,
   useSheet,
 } from '@/lib/api/queries';
-import { Link } from '@/i18n/navigation';
+import { Link, useRouter } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
@@ -105,6 +106,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   // The sheet the pile was printed from, for the breadcrumb and nothing else.
   const sheet = useSheet(scan.data?.sheet_id ?? null);
   const job = useJob(jobId);
+  const router = useRouter();
   const students = useScanStudents(scanId);
   // Destructured: the mutation RESULT is a new object every render, and an
   // unstable `onCorrect` would defeat any memo a page card is given. `mutate` is
@@ -351,6 +353,10 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   ).size;
   // Driven by the job, not by its prose: `message` is a log line, in English.
   const progress = job.data?.progress ?? 0;
+  // Either clock running out is the same thing to a teacher: nothing is coming.
+  // The scan's own poll covers the case where there is no job id in the URL at
+  // all, which is every pile opened from the list rather than after an upload.
+  const gaveUp = job.pollingGaveUp || scan.pollingGaveUp;
   const queued = (job.data?.status ?? 'queued') === 'queued';
   // The lifecycle a teacher reads, derived rather than stored: `status` still
   // answers only "is this pile signed off?" (D48).
@@ -450,24 +456,47 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
         // teacher. The stage drives the words now; the server string never
         // reaches the screen.
         <Panel className="mb-4 flex items-center gap-4" role="status" aria-live="polite">
-          {progress > 0 ? (
-            <ProgressRing
-              value={progress}
-              centre={fmt.percent(progress)}
-              label={t('processingLabel')}
-              size={56}
-            />
+          {/* Ten minutes in, polling stopped. A spinner that never stops reads as
+              "still working", which is the one thing this is not — so it says so,
+              and offers the only two useful actions (G10). */}
+          {gaveUp ? (
+            <>
+              <IconWarning size={32} className="shrink-0 text-warn-600" aria-hidden />
+              <div className="min-w-0">
+                <p className="text-body font-bold text-ink-900">{t('stalled.title')}</p>
+                <p className="text-body-s text-ink-500">{t('stalled.body')}</p>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  <Button size="sm" onClick={() => void scan.refetch()}>
+                    {tc('retry')}
+                  </Button>
+                  <Button size="sm" variant="ghost" onClick={() => router.refresh()}>
+                    {t('stalled.reload')}
+                  </Button>
+                </div>
+              </div>
+            </>
           ) : (
-            <Spinner size={32} className="shrink-0 text-primary-600" />
-          )}
-          <div className="min-w-0">
-            {/* The ring states the number; the words say what is happening.
+            <>
+              {progress > 0 ? (
+                <ProgressRing
+                  value={progress}
+                  centre={fmt.percent(progress)}
+                  label={t('processingLabel')}
+                  size={56}
+                />
+              ) : (
+                <Spinner size={32} className="shrink-0 text-primary-600" />
+              )}
+              <div className="min-w-0">
+                {/* The ring states the number; the words say what is happening.
                 Saying "42" in both was two answers to one question. */}
-            <p className="text-body font-bold text-ink-900">
-              {t(queued ? 'processingQueued' : 'processingReading')}
-            </p>
-            <p className="text-body-s text-ink-500">{t('processingHelp')}</p>
-          </div>
+                <p className="text-body font-bold text-ink-900">
+                  {t(queued ? 'processingQueued' : 'processingReading')}
+                </p>
+                <p className="text-body-s text-ink-500">{t('processingHelp')}</p>
+              </div>
+            </>
+          )}
         </Panel>
       ) : (
         <Panel className="mb-4" role={reading > 0 ? 'status' : undefined}>

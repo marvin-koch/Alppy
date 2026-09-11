@@ -8,6 +8,8 @@ import {
   type UseMutationResult,
   type UseQueryResult,
 } from '@tanstack/react-query';
+import { useCallback, useRef } from 'react';
+
 import * as api from './endpoints';
 import { useIdempotencyKey, type IdempotentIntent } from '@/lib/idempotency';
 import { useSelectedYear } from '@/lib/school-year-context';
@@ -982,21 +984,27 @@ export function useUpdateExercise(): UseMutationResult<
  * finished empty scan, Confirm enabled — and it never changes until they think
  * to reload. Polling stops the moment the scan reaches a terminal state.
  */
-export function useScan(scanId: Uuid | null): UseQueryResult<ScanOut> {
-  return useQuery({
+export function useScan(scanId: Uuid | null): UseQueryResult<ScanOut> & MayGiveUp {
+  const elapsed = useWatchClock(scanId);
+  /** Still moving: the pipeline is reading, or a chained grader has not answered
+   *  for every written item yet. */
+  const stillMoving = (data: ScanOut | undefined): boolean => {
+    const status = data?.status;
+    if (status === 'uploaded' || status === 'processing') return true;
+    // The verdicts on written answers arrive from a chained job after the marks
+    // are read; keep looking while any is still pending.
+    return Boolean(data?.pages.some((p) => p.detections.some((d) => d.outcome === 'pending')));
+  };
+  const query = useQuery({
     queryKey: queryKeys.scan(scanId ?? ''),
     queryFn: () => api.getScan(scanId as Uuid),
     enabled: Boolean(scanId),
-    refetchInterval: (query) => {
-      const data = query.state.data;
-      const status = data?.status;
-      if (status === 'uploaded' || status === 'processing') return 1000;
-      // The verdicts on written answers arrive from a chained job after the
-      // marks are read; keep looking while any is still pending.
-      const reading = data?.pages.some((p) => p.detections.some((d) => d.outcome === 'pending'));
-      return reading ? 2000 : false;
-    },
+    refetchInterval: (q) => (stillMoving(q.state.data) ? pollIntervalFor(elapsed()) : false),
   });
+  return {
+    ...query,
+    pollingGaveUp: stillMoving(query.data) && Boolean(scanId) && elapsed() >= POLL_CEILING_MS,
+  };
 }
 
 /** Who this scan's pages may be assigned to: the sheet's class, nobody else. */
@@ -1082,6 +1090,15 @@ export function useReopenScan(
       void client.invalidateQueries({ queryKey: ['classes'] });
       void client.invalidateQueries({ queryKey: ['students'] });
       void client.invalidateQueries({ queryKey: ['sheets'] });
+      // The sheet detail screen's class-band panel reads `sheet-mastery`, which is
+      // its OWN namespace — `['sheets']` above never matched it, so confirming a
+      // pile left that panel showing pre-confirmation bands for the full 30s
+      // staleTime. And the agenda records the confirmation, so it is stale the
+      // moment it happens. Both were missing (G8); `query-keys.test.ts` now
+      // asserts every namespace is reachable from some invalidation, which is
+      // what would have caught this.
+      void client.invalidateQueries({ queryKey: ['sheet-mastery'] });
+      void client.invalidateQueries({ queryKey: ['timeline'] });
     },
   });
 }
@@ -1116,6 +1133,15 @@ export function useConfirmScan(
       // of copies can carry more than one class's worth of paper.
       void client.invalidateQueries({ queryKey: ['classes'] });
       void client.invalidateQueries({ queryKey: ['students'] });
+      // The sheet detail screen's class-band panel reads `sheet-mastery`, which is
+      // its OWN namespace — `['sheets']` above never matched it, so confirming a
+      // pile left that panel showing pre-confirmation bands for the full 30s
+      // staleTime. And the agenda records the confirmation, so it is stale the
+      // moment it happens. Both were missing (G8); `query-keys.test.ts` now
+      // asserts every namespace is reachable from some invalidation, which is
+      // what would have caught this.
+      void client.invalidateQueries({ queryKey: ['sheet-mastery'] });
+      void client.invalidateQueries({ queryKey: ['timeline'] });
     },
   });
 }
@@ -1285,14 +1311,70 @@ export function useTimeline(query: TimelineQuery = {}): UseQueryResult<TimelineO
  * the adaptive batch all go through `GET /jobs/{id}`. Polling stops the moment
  * the job is terminal — a finished job is never re-fetched on a timer.
  */
-export function useJob(jobId: Uuid | null): UseQueryResult<JobOut> {
-  return useQuery({
+/* ------------------------------------------------------------- polling --- */
+/**
+ * Polling widens as the wait goes on, and eventually stops.
+ *
+ * `useJob` and `useScan` polled at a flat 900ms/1s/2s with no ceiling, so a job
+ * that never reached a terminal state — a worker that died, a Redis hiccup, a
+ * chained grading run that silently never started — polled for as long as the tab
+ * stayed open. On a classroom laptop left on the review screen over lunch that is
+ * thousands of pointless requests, and the screen never says anything is wrong: it
+ * shows a spinner, indefinitely, which reads as "still working".
+ *
+ * The schedule is deliberately coarse. The first fifteen seconds are where almost
+ * every job finishes and where a teacher is actually watching, so they stay fast.
+ * After a minute nobody is watching a progress ring, and after ten minutes the job
+ * is not coming back — the screen says so instead of spinning.
+ */
+const POLL_SCHEDULE = [
+  { withinMs: 15_000, everyMs: 900 },
+  { withinMs: 60_000, everyMs: 3_000 },
+  { withinMs: 600_000, everyMs: 10_000 },
+] as const;
+
+/** Ten minutes. Past this, polling stops and the screen owes an explanation. */
+export const POLL_CEILING_MS = 600_000;
+
+export function pollIntervalFor(elapsedMs: number): number | false {
+  for (const step of POLL_SCHEDULE) if (elapsedMs < step.withinMs) return step.everyMs;
+  return false;
+}
+
+/**
+ * How long this hook has been watching one id.
+ *
+ * A ref keyed on the id, reset when the id changes, so starting a second job does
+ * not inherit the first one's clock. Derived in render rather than in an effect
+ * because the interval callback needs it on the first poll, not after one.
+ */
+function useWatchClock(id: string | null): () => number {
+  const started = useRef<{ id: string | null; at: number }>({ id: null, at: 0 });
+  if (started.current.id !== id) started.current = { id, at: Date.now() };
+  const at = started.current.at;
+  return useCallback(() => Date.now() - at, [at]);
+}
+
+/** A poll that has run out of patience. Screens render an explanation off this. */
+export interface MayGiveUp {
+  /** True once polling stopped because it hit `POLL_CEILING_MS`, not because the
+   *  work finished. */
+  pollingGaveUp: boolean;
+}
+
+export function useJob(jobId: Uuid | null): UseQueryResult<JobOut> & MayGiveUp {
+  const elapsed = useWatchClock(jobId);
+  const query = useQuery({
     queryKey: queryKeys.job(jobId ?? ''),
     queryFn: () => api.getJob(jobId as Uuid),
     enabled: Boolean(jobId),
-    refetchInterval: (query) => {
-      const status = query.state.data?.status;
-      return status && isTerminal(status) ? false : 900;
+    refetchInterval: (q) => {
+      const status = q.state.data?.status;
+      if (status && isTerminal(status)) return false;
+      return pollIntervalFor(elapsed());
     },
   });
+  const status = query.data?.status;
+  const finished = Boolean(status && isTerminal(status));
+  return { ...query, pollingGaveUp: !finished && Boolean(jobId) && elapsed() >= POLL_CEILING_MS };
 }

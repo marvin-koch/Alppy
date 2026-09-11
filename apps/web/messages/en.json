@@ -400,6 +400,11 @@
     "processingReading": "Reading the copies…",
     "processingLabel": "Analysis progress",
     "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open.",
+    "stalled": {
+      "title": "This is taking longer than expected.",
+      "body": "Nothing is lost — the copies were uploaded. Try again, or reload the page in a few minutes.",
+      "reload": "Reload"
+    },
     "scopedScans": "Your corrections",
     "scopedScansHint": "Piles from branches you do not teach are not shown here.",
     "retakeLabel": "Retake this page",
@@ -633,6 +638,7 @@
       "internal_error": "Something unexpected went wrong. Nothing was saved; try again.",
       "method_not_allowed": "That action is not possible here.",
       "network_error": "The app could not reach the server.",
+      "timeout": "Alppy is not answering. Your work is not lost — try again in a moment.",
       "not_found": "That item does not exist, or is no longer available.",
       "payload_too_large": "The file is too large. Scan it in more than one batch.",
       "rate_limited": "Too many requests in a row. Try again in {seconds} seconds.",

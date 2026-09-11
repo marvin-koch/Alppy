@@ -21,4 +21,12 @@ describe.each([
   it('has a sentence for a sheet the renderer refuses', () => {
     expect(messages.errors.code.sheet_not_renderable).toBeTruthy();
   });
+
+  /** A deadline that expired is not being offline. "Could not reach the server"
+   *  is wrong when the server was reached and simply never finished, and it sends
+   *  the teacher to check their wifi instead of retrying. */
+  it('tells a timeout apart from being offline', () => {
+    expect(messages.errors.code.timeout).toBeTruthy();
+    expect(messages.errors.code.timeout).not.toBe(messages.errors.code.network_error);
+  });
 });
