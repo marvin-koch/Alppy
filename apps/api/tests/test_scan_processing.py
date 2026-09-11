@@ -23,6 +23,7 @@ from test_api_fixtures import Tenant, make_exercise
 from alppy.api.errors import ApiError
 from alppy.models import (
     Attempt,
+    Class,
     Detection,
     MasterySnapshot,
     Person,
@@ -42,9 +43,11 @@ from alppy.services.scan_processing import (
     FLAG_EXTRA_PAGE,
     FLAG_PRINTED_AFTER_PHOTO,
     FLAG_SHORT_COPY,
+    FLAG_WRONG_SHEET,
 )
 from alppy.sheets.pagination import paginate
 from alppy.sheets.render import build_sheet_data
+from alppy.sheets.uid_code import PageCode
 from alppy.storage import LocalStorage
 
 Marks = list[int | None]
@@ -150,6 +153,9 @@ def _run(
         storage_key="pile.pdf",
         storage_keys=["pile.pdf"],
         layout_version=sheet.layout_version if sheet else None,
+        # Pinned the way `create_scan` pins it, so the nonce check sees the
+        # generation the paper was printed from (B4/B7).
+        render_generation=sheet.render_generation if sheet else None,
         status=ScanStatus.UPLOADED,
     )
     db.add(scan)
@@ -167,15 +173,52 @@ def _copy_pages(db: Session, sheet: Sheet, uid: str) -> list:
     return list(paginate(list(copy.items)))
 
 
+def _page_code(db: Session, sheet: Sheet, uid: str, page_in_copy: int) -> PageCode:
+    """What layout v2 prints on this page of this copy (B4).
+
+    Built from the sheet the way `build_sheet_data` does, so the fixture
+    carries the *real* nonce rather than a plausible one — which is the point:
+    a test that printed a made-up nonce would exercise the wrong-sheet guard on
+    every page and never test the happy path at all.
+    """
+    from alppy.models import School, SchoolYear
+    from alppy.sheets.uid_code import canton_code, school_year_slot, sheet_nonce
+
+    school_class = db.get(Class, sheet.class_id)
+    year = db.get(SchoolYear, school_class.school_year_id)
+    school = db.get(School, sheet.school_id)
+    return PageCode(
+        uid=uid,
+        school_year=school_year_slot(year.starts_on.year) if year else 0,
+        page_in_copy=page_in_copy,
+        canton=canton_code(school.canton if school else None),
+        nonce=sheet_nonce(sheet.id, sheet.render_generation or 0),
+    )
+
+
 def _render_copy(db: Session, sheet: Sheet, uid: str, *, all_correct: bool = True) -> list:
-    """Every physical page of one student's copy, filled from its own key."""
+    """Every physical page of one student's copy, filled from its own key.
+
+    Rendered with the layout the SHEET declares, not with whatever is current:
+    a fixture that always printed the newest grid would stop covering v1 the
+    day v2 shipped, and v1 is the layout with paper already in circulation.
+    """
     images = []
-    for page in _copy_pages(db, sheet, uid):
+    for index, page in enumerate(_copy_pages(db, sheet, uid), start=1):
         marks: Marks = [
             (p.item.answer_index if all_correct else None) if p.item.is_gradeable else None
             for p in page.items
         ]
-        images.append(render_page(uid, page.option_counts, marks, pencil=0.95).image)
+        images.append(
+            render_page(
+                uid,
+                page.option_counts,
+                marks,
+                pencil=0.95,
+                layout_version=sheet.layout_version,
+                page_code=_page_code(db, sheet, uid, index),
+            ).image
+        )
     return images
 
 
@@ -350,7 +393,12 @@ def test_a_page_from_another_class_is_flagged_and_not_graded(
     sheet, _ = _sheet(db, tenant, answers=[0, 1])
     images = [
         *_render_copy(db, sheet, tenant.students[0].uid),
-        render_page("9A_04", [4, 4], [0, 1], pencil=0.95).image,
+        # Follows the SHEET's layout, not whatever is current: `_sheet`
+        # builds v1 sheets, and a bare `render_page` would print a v2 grid
+        # that the v1 detector reads as nothing at all.
+        render_page(
+            "9A_04", [4, 4], [0, 1], pencil=0.95, layout_version=sheet.layout_version
+        ).image,
     ]
     scan = _run(db, storage, tenant, sheet, images, monkeypatch)
 
@@ -678,9 +726,13 @@ def test_assigning_a_page_by_hand_makes_it_gradeable(
     images = _render_copy(db, sheet, student.uid)
     # Smudge the printed UID grid: coffee, a fold, a bad photocopy. The page
     # still registers; its code does not decode.
-    ox, oy = L.UID_GRID_ORIGIN_MM
-    w = L.UID_GRID_CELLS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
-    h = L.UID_GRID_ROWS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
+    # The grid of the layout THIS SHEET declares (B4) — the bare `UID_GRID_*`
+    # constants are gone precisely because they read as "current" while holding
+    # v1's numbers.
+    _grid = L.uid_grid(sheet.layout_version)
+    ox, oy = _grid.origin_mm
+    w = _grid.cells * _grid.pitch_mm
+    h = _grid.rows * _grid.pitch_mm
     cv2.rectangle(
         images[0],
         (int((ox - 1) * PX_PER_MM), int((oy - 1) * PX_PER_MM)),
@@ -876,7 +928,11 @@ def _place_boxes(
                 y_mm=rect[1],
                 w_mm=rect[2],
                 h_mm=rect[3],
-                layout_version="v1",
+                layout_version=sheet.layout_version,
+                # The generation the render job would have filed them under
+                # (B7). Left NULL, these rows belong to "before generations
+                # existed" and no scan of this sheet would ever match them.
+                render_generation=sheet.render_generation or 0,
             )
         )
     db.commit()
@@ -1175,9 +1231,13 @@ def test_a_page_assigned_by_hand_gets_its_written_answers_a_grader(
     sheet, _, rect = _open_sheet(db, tenant)
     student = tenant.students[0]
     images = _written_copy(db, sheet, student.uid, rect, ink=True)
-    ox, oy = L.UID_GRID_ORIGIN_MM
-    w = L.UID_GRID_CELLS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
-    h = L.UID_GRID_ROWS * (L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM)
+    # The grid of the layout THIS SHEET declares (B4) — the bare `UID_GRID_*`
+    # constants are gone precisely because they read as "current" while holding
+    # v1's numbers.
+    _grid = L.uid_grid(sheet.layout_version)
+    ox, oy = _grid.origin_mm
+    w = _grid.cells * _grid.pitch_mm
+    h = _grid.rows * _grid.pitch_mm
     cv2.rectangle(
         images[0],
         (int((ox - 1) * PX_PER_MM), int((oy - 1) * PX_PER_MM)),
@@ -1225,7 +1285,11 @@ def test_the_fill_told_to_the_model_is_the_boxs_own_page(
     db.add(AnswerBoxPlacement(
         id=uuid.uuid4(), school_id=sheet.school_id, sheet_id=sheet.id, exercise_id=None,
         student_uid=uid, copy_page=2, item_index=detection.item_index, box_lines=3,
-        box_fill=AnswerBoxFill.GRID, x_mm=17, y_mm=100, w_mm=176, h_mm=24, layout_version="v1",
+        box_fill=AnswerBoxFill.GRID, x_mm=17, y_mm=100, w_mm=176, h_mm=24,
+        layout_version=sheet.layout_version,
+        # The generation the render job would file it under (B7); left NULL it
+        # belongs to "before generations existed" and no scan would match it.
+        render_generation=sheet.render_generation or 0,
     ))
     db.commit()
     assert "8 mm" in _fill_for(db, detection)
@@ -1347,7 +1411,7 @@ def _render_copy_wrong(db: Session, sheet: Sheet, uid: str) -> list:
     blank. `_render_copy(all_correct=False)` leaves items empty, and a blank is
     a different act from a wrong answer under any barème with a penalty."""
     images = []
-    for page in _copy_pages(db, sheet, uid):
+    for index, page in enumerate(_copy_pages(db, sheet, uid), start=1):
         marks: Marks = []
         for p in page.items:
             if not p.item.is_gradeable or p.item.answer_index is None:
@@ -1358,7 +1422,16 @@ def _render_copy_wrong(db: Session, sheet: Sheet, uid: str) -> list:
                 oi for oi in range(p.item.option_count) if oi != p.item.answer_index
             )
             marks.append(wrong)
-        images.append(render_page(uid, page.option_counts, marks, pencil=0.95).image)
+        images.append(
+            render_page(
+                uid,
+                page.option_counts,
+                marks,
+                pencil=0.95,
+                layout_version=sheet.layout_version,
+                page_code=_page_code(db, sheet, uid, index),
+            ).image
+        )
     return images
 
 
@@ -1733,7 +1806,12 @@ def test_a_co_enrolled_students_page_is_graded_not_flagged(
     sheet, _ = _sheet(db, tenant, answers=[0, 1])
     images = [
         *_render_copy(db, sheet, tenant.students[0].uid),
-        render_page("9A_04", [4, 4], [0, 1], pencil=0.95).image,
+        # Follows the SHEET's layout, not whatever is current: `_sheet`
+        # builds v1 sheets, and a bare `render_page` would print a v2 grid
+        # that the v1 detector reads as nothing at all.
+        render_page(
+            "9A_04", [4, 4], [0, 1], pencil=0.95, layout_version=sheet.layout_version
+        ).image,
     ]
     scan = _run(db, storage, tenant, sheet, images, monkeypatch)
 
@@ -2392,3 +2470,102 @@ def test_an_unconfirmed_copy_still_tracks_the_bareme(
     assert sheet_service.points_totals_for_sheet(db, tenant.school.id, sheet)[
         student.id
     ].possible == 30.0, "an unconfirmed copy must follow the barème"
+
+
+# --------------------------------------------------------------------------
+# B4 · layout v2 through the real pipeline
+# --------------------------------------------------------------------------
+def _v2_sheet(db: Session, tenant: Tenant, *, answers: list[int]) -> Sheet:
+    """A sheet that declares layout v2, the way a freshly rendered one would."""
+    sheet, _ = _sheet(db, tenant, answers=answers)
+    sheet.layout_version = "v2"
+    sheet.render_generation = 1
+    db.commit()
+    db.refresh(sheet)
+    return sheet
+
+
+def test_a_v2_pile_grades_end_to_end(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The happy path, on the layout the product now prints."""
+    student = tenant.students[0]
+    sheet = _v2_sheet(db, tenant, answers=[0, 1])
+
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, student.uid), monkeypatch)
+
+    page = scan.pages[0]
+    assert page.detected_uid == student.uid
+    assert page.student_id == student.id
+    assert page.detections, "a v2 page produced no readings"
+    assert _flags(page) == []
+
+
+def test_a_page_printed_from_another_sheet_is_flagged_and_not_graded(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fault v1 could not even notice (audit 03, B4).
+
+    One pupil sits two sheets and carries the *same UID* on both, so a page of
+    Tuesday's test landing in Thursday's pile decoded perfectly and was read
+    against Thursday's answer key. Nothing anywhere said so — the marks were
+    real, the pupil was real, and the questions were somebody else's.
+
+    v2 prints a nonce identifying the sheet and the render it came from, and
+    the pipeline derives the same value from the pile it was uploaded into.
+    """
+    student = tenant.students[0]
+    mine = _v2_sheet(db, tenant, answers=[0, 1])
+    theirs = _v2_sheet(db, tenant, answers=[1, 0])
+    assert mine.id != theirs.id
+
+    # A page of the OTHER sheet, uploaded into this pile.
+    stray = _render_copy(db, theirs, student.uid)
+    scan = _run(db, storage, tenant, mine, stray, monkeypatch)
+
+    page = scan.pages[0]
+    assert FLAG_WRONG_SHEET in _flags(page)
+    assert page.detections == [], "answers from another sheet were graded"
+
+
+def test_a_page_printed_by_an_earlier_render_is_flagged(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The nonce carries the render generation too, so B7's pinning becomes
+    something the PAPER asserts rather than something inferred at upload.
+
+    Print on Tuesday, re-render on Wednesday, photograph Tuesday's copies on
+    Thursday: the page now says which render it came from.
+    """
+    student = tenant.students[0]
+    sheet = _v2_sheet(db, tenant, answers=[0, 1])
+    tuesday = _render_copy(db, sheet, student.uid)
+
+    sheet.render_generation = 2  # Wednesday's re-render
+    db.commit()
+    db.refresh(sheet)
+
+    scan = _run(db, storage, tenant, sheet, tuesday, monkeypatch)
+    assert FLAG_WRONG_SHEET in _flags(scan.pages[0])
+
+
+def test_the_page_number_comes_from_the_paper_not_the_upload_order(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B5's real fix rather than its mitigation (B4).
+
+    Under v1 every page of one copy carries an identical grid, so the pipeline
+    had to count uploads — and a re-shot page silently became page 1. Here the
+    pages are uploaded *backwards* and still land in their printed order.
+    """
+    student = tenant.students[0]
+    sheet = _v2_sheet(db, tenant, answers=[0, 1, 2, 3])
+    pages = _render_copy(db, sheet, student.uid)
+    assert len(pages) == 2, "this test needs a copy that spans two pages"
+
+    scan = _run(db, storage, tenant, sheet, list(reversed(pages)), monkeypatch)
+
+    by_upload = sorted(scan.pages, key=lambda p: p.page_index)
+    assert [p.page_in_copy for p in by_upload] == [1, 0], (
+        "the pages were paired by upload order, not by what they say"
+    )

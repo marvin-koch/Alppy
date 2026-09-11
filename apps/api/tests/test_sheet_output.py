@@ -24,6 +24,7 @@ from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, login, make_exercise
 
 from alppy.models.enums import ExerciseType
+from alppy.sheets.layout import LAYOUT_VERSION
 from alppy.sheets.pagination import (
     FIGURE_GAP_MM,
     FIGURE_MAX_H_MM,
@@ -111,7 +112,7 @@ def test_preview_returns_the_real_printed_document(
     assert "print-uid-grid" in html
     assert "sheet-grid-row" in html
     assert 'data-fiducial="tl"' in html
-    assert 'data-layout-version="v1"' in html
+    assert f'data-layout-version="{LAYOUT_VERSION}"' in html
 
 
 def test_preview_can_render_the_answer_key(

@@ -30,11 +30,18 @@ from dataclasses import dataclass
 from typing import Final
 
 from alppy.core.uid import InvalidUidError, format_uid, parse_uid
-from alppy.sheets.layout import UID_GRID_CELLS, UID_GRID_ROWS, uid_grid
+from alppy.sheets.layout import UID_GRIDS, uid_grid
 
-TOTAL_BITS: Final = UID_GRID_CELLS * UID_GRID_ROWS  # 32
-PAYLOAD_BITS: Final = 24
-CHECKSUM_BITS: Final = TOTAL_BITS - PAYLOAD_BITS  # 8
+#: **v1's** grid, named explicitly rather than taken from "the current
+#: layout". These three used to be derived from the module-level `UID_GRID_*`
+#: constants, which were v1's values — so they were right by accident, and the
+#: accident would have ended the moment anyone made those constants track the
+#: current version. `encode_uid`/`decode_uid` are the v1 codec and nothing else;
+#: v2's sizes come from `uid_grid("v2")` at each use.
+_V1: Final = uid_grid("v1")
+TOTAL_BITS: Final = _V1.total_bits  # 32
+PAYLOAD_BITS: Final = _V1.payload_bits  # 24
+CHECKSUM_BITS: Final = _V1.checksum_bits  # 8
 
 _LETTER_ABSENT: Final = 26
 _CHECKSUM_POLY: Final = 0x07  # CRC-8-ATM; small, cheap, catches every 1-2 bit error
@@ -134,6 +141,24 @@ class GridCell:
     filled: bool
 
 
+def _version_for_bits(count: int, version: str | None) -> str:
+    """Which layout a run of bits belongs to, when the caller did not say.
+
+    Inferred from the length rather than defaulting to the current version, and
+    that is a correctness fix rather than a convenience: `encode_uid` is
+    inherently v1, so pairing it with a cell helper that quietly assumed "the
+    newest layout" produced 32 bits in and 72 out the day v2 shipped. Length is
+    unambiguous — the grids differ in size — and a caller that knows better can
+    still say so.
+    """
+    if version is not None:
+        return version
+    for name, grid in UID_GRIDS.items():
+        if grid.total_bits == count:
+            return name
+    raise UidCodeError(f"{count} bits match no known layout grid")
+
+
 def bits_to_cells(bits: list[int], *, version: str | None = None) -> list[GridCell]:
     """Grid order is column-major: bit index = column * rows + row.
 
@@ -141,7 +166,7 @@ def bits_to_cells(bits: list[int], *, version: str | None = None) -> list[GridCe
     thing a wider grid must not change, or a v1 page read against v2's row
     count would decode to a different, real pupil rather than failing.
     """
-    rows = uid_grid(version).rows
+    rows = uid_grid(_version_for_bits(len(bits), version)).rows
     return [
         GridCell(slot=i // rows, row=i % rows, filled=bool(b))
         for i, b in enumerate(bits)
@@ -149,7 +174,7 @@ def bits_to_cells(bits: list[int], *, version: str | None = None) -> list[GridCe
 
 
 def cells_to_bits(cells: list[GridCell], *, version: str | None = None) -> list[int]:
-    grid = uid_grid(version)
+    grid = uid_grid(_version_for_bits(len(cells), version))
     bits = [0] * grid.total_bits
     for c in cells:
         bits[c.slot * grid.rows + c.row] = 1 if c.filled else 0

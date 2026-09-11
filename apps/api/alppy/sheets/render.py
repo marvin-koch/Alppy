@@ -42,6 +42,7 @@ from alppy.sheets.html import (
     render_sheet_html,
 )
 from alppy.sheets.pagination import Figure, Item
+from alppy.sheets.uid_code import canton_code, school_year_slot, sheet_nonce
 from alppy.storage import StorageError, get_storage
 
 log = get_logger(__name__)
@@ -583,6 +584,18 @@ def _instance_items(db: Any, sheet: Any, instance: Any, fallback: list[Item]) ->
     return items
 
 
+def _open_render_generation(sheet: Any) -> int:
+    """Start a new render generation, before anything is laid out.
+
+    Before `build_sheet_data`, because layout v2 prints the generation into the
+    UID grid (as half of the nonce) and the answer-box rectangles are filed
+    under it: bumping afterwards would put generation N on the paper and N+1 in
+    the database, which is precisely the disagreement B7 exists to end.
+    """
+    sheet.render_generation = (sheet.render_generation or 0) + 1
+    return int(sheet.render_generation)
+
+
 def build_sheet_data(
     db: Any,
     sheet: Any,
@@ -635,7 +648,30 @@ def build_sheet_data(
         copies=tuple(copies),
         show_legend=show_legend,
         layout_version=L.LAYOUT_VERSION,
+        # What layout v2 prints beyond the pupil (B4). Computed here rather
+        # than in `html.py`, which takes no database: the nonce needs the
+        # sheet's id and render generation, the year slot needs the class's
+        # SchoolYear, and the canton needs the School.
+        nonce=sheet_nonce(sheet.id, sheet.render_generation or 0),
+        school_year_slot=_school_year_slot_for(db, school_class),
+        canton=_canton_for(db, sheet),
     )
+
+
+def _school_year_slot_for(db: Any, school_class: Any) -> int:
+    from alppy.models import SchoolYear
+
+    year = db.get(SchoolYear, school_class.school_year_id)
+    if year is None or year.starts_on is None:  # pragma: no cover - NOT NULL
+        return 0
+    return school_year_slot(year.starts_on.year)
+
+
+def _canton_for(db: Any, sheet: Any) -> int:
+    from alppy.models import School
+
+    school = db.get(School, sheet.school_id)
+    return canton_code(school.canton if school is not None else None)
 
 
 def _subject_label(db: Any, sheet: Any) -> str:
@@ -678,11 +714,15 @@ def _persist_answer_box_placements(
     copies on Thursday, and all of them are cropped at Wednesday's geometry.
     The row that would have said so had been deleted on Wednesday.
 
-    So the generation is bumped first and the rows are written under it. The
-    delete then matches only rows of the generation being written, which is a
-    no-op except when a render is retried after a partial write — the case it
-    still needs to cover. Earlier generations stay exactly where they are,
-    because a pile printed from them may not have been photographed yet.
+    The generation is bumped by `_open_render_generation` **before**
+    `build_sheet_data` runs, not here, and the ordering is load-bearing since
+    B4: layout v2 prints the generation into the UID grid as part of the nonce,
+    so a bump after the document was built would print one generation on the
+    paper and file the rectangles under the next. The delete below then matches
+    only rows of the generation being written — a no-op except on a render
+    retried after a partial write, which is the case it still covers. Earlier
+    generations stay exactly where they are, because a pile printed from them
+    may not have been photographed yet.
 
     Returns how many were written.
     """
@@ -690,8 +730,7 @@ def _persist_answer_box_placements(
 
     from alppy.models import AnswerBoxPlacement
 
-    sheet.render_generation = (sheet.render_generation or 0) + 1
-    generation = sheet.render_generation
+    generation = sheet.render_generation or 0
     db.execute(
         delete(AnswerBoxPlacement)
         .where(AnswerBoxPlacement.sheet_id == sheet.id)
@@ -762,6 +801,8 @@ def render_sheet_pdfs(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
 
     _refuse_unapproved(sheet)
 
+    # Before the document is built: v2 prints the generation into the grid.
+    _open_render_generation(sheet)
     data = build_sheet_data(db, sheet)
     blank_html = render_sheet_html(data, kind=SheetKind.BLANK)
     blank = html_to_pdf(blank_html)
@@ -876,6 +917,7 @@ def render_adaptive_batch(db: Any, *, sheet_id: UUID) -> tuple[str, str]:
 
     _refuse_unapproved(sheet)
 
+    _open_render_generation(sheet)
     data = build_sheet_data(db, sheet, show_legend=True, require_instances=True)
     blank_html = render_sheet_html(data, kind=SheetKind.BLANK)
     blank = html_to_pdf(blank_html)

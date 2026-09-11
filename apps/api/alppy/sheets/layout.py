@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from enum import StrEnum
 from typing import Final
 
-LAYOUT_VERSION: Final = "v1"
+LAYOUT_VERSION: Final = "v2"
 
 # --- The page ------------------------------------------------------------
 PAGE_W_MM: Final = 210.0
@@ -151,14 +151,13 @@ def uid_grid(version: str | None = None) -> UidGrid:
         raise UnknownLayoutError(f"no geometry for layout {key!r}") from None
 
 
-# v1 names, kept so nothing that only ever needs the current grid has to know
-# about versions. They are the CURRENT layout's values, not v1's, the moment
-# LAYOUT_VERSION moves.
-UID_GRID_ORIGIN_MM: Final = (120.0, 30.0)
-UID_GRID_CELL_MM: Final = 4.0
-UID_GRID_GAP_MM: Final = 1.0
-UID_GRID_CELLS: Final = 8  # "7B_15" padded; one column per character slot
-UID_GRID_ROWS: Final = 4  # 4 bits per slot -> 16 symbols, enough for 0-9 A-Z subset
+# The bare `UID_GRID_*` constants are deliberately gone. They held v1's numbers
+# under a name that read as "the current grid", which is a trap with two live
+# layouts: `as_dict()` exported them beside `layoutVersion: "v2"` and the web
+# print preview would have drawn an 8x4 grid at y=30 while the server printed
+# 12x6 at y=18 — the exact drift `scripts/export-layout.py` exists to catch,
+# walking straight past it because both sides agreed on a stale number.
+# Ask `uid_grid(version)` instead, and say which version you mean.
 
 # --- Item statements -----------------------------------------------------
 ITEMS_TOP_MM: Final = 48.0
@@ -313,6 +312,18 @@ def uid_cell_centre_mm(
     return uid_grid(version).cell_centre_mm(slot, row)
 
 
+def _grid_dict(grid: UidGrid) -> dict[str, object]:
+    return {
+        "originMm": list(grid.origin_mm),
+        "cellMm": grid.cell_mm,
+        "gapMm": grid.gap_mm,
+        "cells": grid.cells,
+        "rows": grid.rows,
+        "payloadBits": grid.payload_bits,
+        "checksumBits": grid.checksum_bits,
+    }
+
+
 def as_dict() -> dict[str, object]:
     """Serialisable form, exported to TypeScript so the web print preview and the
     detector cannot drift. See ``scripts/export-layout.py``."""
@@ -332,13 +343,12 @@ def as_dict() -> dict[str, object]:
         "headerTopMm": HEADER_TOP_MM,
         "itemsTopMm": ITEMS_TOP_MM,
         "itemsBottomMm": ITEMS_BOTTOM_MM,
-        "uidGrid": {
-            "originMm": list(UID_GRID_ORIGIN_MM),
-            "cellMm": UID_GRID_CELL_MM,
-            "gapMm": UID_GRID_GAP_MM,
-            "cells": UID_GRID_CELLS,
-            "rows": UID_GRID_ROWS,
-        },
+        # The grid for the CURRENT layout, so the web preview positions what
+        # the server actually prints...
+        "uidGrid": _grid_dict(uid_grid(LAYOUT_VERSION)),
+        # ...and every grid we can still read, because a preview of an
+        # already-printed v1 sheet has to be drawn as v1 (B4).
+        "uidGrids": {name: _grid_dict(grid) for name, grid in UID_GRIDS.items()},
         "grid": {
             "topMm": GRID_TOP_MM,
             "originMm": list(GRID_ORIGIN_MM),

@@ -158,7 +158,10 @@ def test_rendering_a_sheet_records_one_placement_per_box_per_copy(
         assert row.exercise_id == free.id
         assert (row.box_lines, row.box_fill) == (8, AnswerBoxFill.GRID)
         assert row.h_mm == pytest.approx(8 * L.ANSWER_BOX_LINE_PITCH_MM, abs=0.3)
-        assert row.layout_version == "v1"
+        # The CURRENT layout, not a literal: a placement records the version
+        # it was measured under, so pinning "v1" here would fail the day v2
+        # shipped, for the right reason and in a confusing place.
+        assert row.layout_version == L.LAYOUT_VERSION
     # Every copy of a class sheet is the same paper, so the box is at the
     # same place on each.
     assert len({(r.x_mm, r.y_mm, r.w_mm, r.h_mm) for r in rows}) == 1

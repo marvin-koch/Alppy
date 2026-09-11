@@ -54,11 +54,18 @@ def test_answer_grid_sits_below_the_statement_region() -> None:
     assert L.ITEMS_TOP_MM < L.ITEMS_BOTTOM_MM
 
 
-def test_uid_grid_cells_do_not_overlap() -> None:
+@pytest.mark.parametrize("version", sorted(L.UID_GRIDS))
+def test_uid_grid_cells_do_not_overlap(version: str) -> None:
+    """Every layout we can still read, not just the one we print (B4).
+
+    Two overlapping cells is a grid that decodes to a different pupil, so this
+    has to hold for v1 as long as v1 paper exists — which is forever.
+    """
+    grid = L.uid_grid(version)
     centres = [
-        L.uid_cell_centre_mm(s, r)
-        for s in range(L.UID_GRID_CELLS)
-        for r in range(L.UID_GRID_ROWS)
+        L.uid_cell_centre_mm(s, r, version=version)
+        for s in range(grid.cells)
+        for r in range(grid.rows)
     ]
     assert len(set(centres)) == len(centres)
 

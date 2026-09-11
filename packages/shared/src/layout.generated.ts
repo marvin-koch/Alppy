@@ -5,10 +5,10 @@
 // the print markup, the server-side PDF renderer and the scan
 // detector must agree on these numbers exactly, or a scan taken
 // against one printed layout silently misreads against another.
-// layoutVersion: v1
+// layoutVersion: v2
 
 export const SHEET_LAYOUT = {
-  "layoutVersion": "v1",
+  "layoutVersion": "v2",
   "pageWMm": 210.0,
   "pageHMm": 297.0,
   "marginMm": 14.0,
@@ -43,12 +43,40 @@ export const SHEET_LAYOUT = {
   "uidGrid": {
     "originMm": [
       120.0,
-      30.0
+      18.0
     ],
     "cellMm": 4.0,
     "gapMm": 1.0,
-    "cells": 8,
-    "rows": 4
+    "cells": 12,
+    "rows": 6,
+    "payloadBits": 56,
+    "checksumBits": 16
+  },
+  "uidGrids": {
+    "v1": {
+      "originMm": [
+        120.0,
+        30.0
+      ],
+      "cellMm": 4.0,
+      "gapMm": 1.0,
+      "cells": 8,
+      "rows": 4,
+      "payloadBits": 24,
+      "checksumBits": 8
+    },
+    "v2": {
+      "originMm": [
+        120.0,
+        18.0
+      ],
+      "cellMm": 4.0,
+      "gapMm": 1.0,
+      "cells": 12,
+      "rows": 6,
+      "payloadBits": 56,
+      "checksumBits": 16
+    }
   },
   "grid": {
     "topMm": 202.0,

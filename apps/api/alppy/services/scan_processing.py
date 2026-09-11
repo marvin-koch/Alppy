@@ -65,6 +65,7 @@ from alppy.scan.detector import PageResult, process_page
 from alppy.sheets import layout as L
 from alppy.sheets.pagination import Page, paginate
 from alppy.sheets.render import build_sheet_data
+from alppy.sheets.uid_code import sheet_nonce
 from alppy.storage import Storage, storage_key
 
 log = get_logger(__name__)
@@ -99,6 +100,9 @@ FLAG_EXTRA_PAGE = "extra_page"
 FLAG_SHORT_COPY = "short_copy"
 FLAG_DUPLICATE_PAGE = "duplicate_page"
 FLAG_PRINTED_AFTER_PHOTO = "printed_after_photo"
+#: The page's printed nonce names a different sheet, or a different render of
+#: this one (layout v2 only — a v1 grid carries no nonce to check).
+FLAG_WRONG_SHEET = "wrong_sheet"
 
 
 def _later_than(a: datetime | None, b: datetime | None) -> bool:
@@ -851,6 +855,13 @@ def process_scan(
         sheet.rendered_at if sheet is not None else None, scan.created_at
     )
 
+    # What a v2 page of THIS pile must carry: the nonce identifying the sheet
+    # and the render it was printed from (B4). Derived on both sides rather
+    # than stored, so there is nothing to fall out of step with the paper.
+    expected_nonce = (
+        sheet_nonce(sheet.id, scan.render_generation or 0) if sheet is not None else None
+    )
+
     copies = _copies_by_uid(db, sheet)
     # The generation this pile was PRINTED from, pinned at upload.
     placements = _placements_by_uid(db, sheet, generation=scan.render_generation)
@@ -924,11 +935,46 @@ def process_scan(
             # for a page the teacher only needs to be told about.
             result.detections = []
 
-        printed_pages = [] if wrong_class else copies.get(result.uid or "", [])
+        # A v2 page whose nonce does not match this pile was printed from a
+        # different sheet, or from a render whose geometry has since been
+        # replaced. Either way its answers belong to another answer key, and
+        # reading them against this one is the silent misgrading v1 had no way
+        # to notice at all — one pupil sits two sheets and carries the same UID
+        # on both (B4).
+        foreign_paper = bool(
+            result.page_code is not None
+            and expected_nonce is not None
+            and result.page_code.nonce != expected_nonce
+        )
+        if foreign_paper:
+            result.detections = []
+
+        printed_pages = (
+            [] if (wrong_class or foreign_paper) else copies.get(result.uid or "", [])
+        )
         page_in_copy: int | None = None
         printed_page: Page | None = None
         overflowed = False
-        if printed_pages and result.uid:
+        if printed_pages and result.uid and result.page_code is not None:
+            # v2: the paper says which page it is. `seen` is still advanced so
+            # the short-copy sweep after the loop keeps working, but nothing is
+            # inferred from it any more — which is B5's real fix rather than its
+            # mitigation (B4).
+            seen[result.uid] += 1
+            printed = result.page_code.page_in_copy - 1
+            if 0 <= printed < len(printed_pages):
+                page_in_copy = printed
+                printed_page = printed_pages[page_in_copy]
+                result = process_page(
+                    image, printed_page.option_counts, layout_version=layout_version
+                )
+            else:
+                # The page says it is page 5 of a copy that printed three. The
+                # paper and the pagination disagree, and the paper is not the
+                # one that can be wrong about this — so the page is left
+                # unpaired rather than read against a borrowed slot.
+                overflowed = True
+        elif printed_pages and result.uid:
             # A copy longer than one page arrives as several scans carrying the
             # same UID. Count per UID: a page whose code did not decode belongs
             # to no copy and must not consume anybody's slot.
@@ -993,6 +1039,8 @@ def process_scan(
             sheet_items=sheet_items,
             crops=crops,
         )
+        if foreign_paper:
+            _add_flag(page, FLAG_WRONG_SHEET)
         if overflowed:
             _add_flag(page, FLAG_EXTRA_PAGE)
         if printed_after_photo:

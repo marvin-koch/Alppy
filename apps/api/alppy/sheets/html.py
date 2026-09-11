@@ -48,7 +48,12 @@ from alppy.sheets.pagination import (
     paginate,
     printed_figure_size_mm,
 )
-from alppy.sheets.uid_code import bits_to_cells, encode_uid
+from alppy.sheets.uid_code import (
+    PageCode,
+    bits_to_cells,
+    encode_page_code,
+    encode_uid,
+)
 
 TEMPLATE_DIR: Final = Path(__file__).resolve().parent / "templates"
 # `fonts` first: the faces have to be declared before anything asks for them,
@@ -95,6 +100,16 @@ class SheetData:
     date_label: str | None = None
     show_legend: bool = False
     layout_version: str = L.LAYOUT_VERSION
+    # --- what layout v2 prints into the grid beyond the pupil (B4) ----------
+    # All three are ignored under v1, whose grid has no room for them. They are
+    # plain values rather than model objects because this module takes no
+    # SQLAlchemy and no clock — `build_sheet_data` resolves them.
+    nonce: int = 0
+    """Identifies (sheet, render generation). `uid_code.sheet_nonce` derives it,
+    and the scan pipeline derives it again to check the paper against the pile
+    it was uploaded into."""
+    school_year_slot: int = 0
+    canton: int = 31  # uid_code.CANTON_UNSET
 
 
 @dataclass(frozen=True, slots=True)
@@ -294,13 +309,18 @@ def _fmt(value: float) -> str:
     return f"{rounded:g}"
 
 
-def geometry_context() -> dict[str, Any]:
+def geometry_context(version: str | None = None) -> dict[str, Any]:
     """Every millimetre the generated stylesheet needs, derived — never typed
-    twice — from ``alppy.sheets.layout``."""
-    uid_pitch = L.UID_GRID_CELL_MM + L.UID_GRID_GAP_MM
-    uid_grid_w = L.UID_GRID_CELLS * L.UID_GRID_CELL_MM + (L.UID_GRID_CELLS - 1) * L.UID_GRID_GAP_MM
-    uid_grid_h = L.UID_GRID_ROWS * L.UID_GRID_CELL_MM + (L.UID_GRID_ROWS - 1) * L.UID_GRID_GAP_MM
-    uid_x, uid_y = L.UID_GRID_ORIGIN_MM
+    twice — from ``alppy.sheets.layout``.
+
+    Takes a layout version since B4: the UID grid's size and position differ
+    between v1 and v2, and a stylesheet built from the current constants would
+    lay a v1 sheet out with v2's grid."""
+    grid = L.uid_grid(version)
+    uid_pitch = grid.pitch_mm
+    uid_grid_w = grid.width_mm
+    uid_grid_h = grid.height_mm
+    uid_x, uid_y = grid.origin_mm
     grid_x, grid_y = L.GRID_ORIGIN_MM
 
     # The header rule must stop before the UID grid, or it would run straight
@@ -315,7 +335,7 @@ def geometry_context() -> dict[str, Any]:
     footer_x = L.MARGIN_MM + L.FIDUCIAL_MM + 4.0
 
     return {
-        "version": L.LAYOUT_VERSION,
+        "version": version or L.LAYOUT_VERSION,
         "page_w": _fmt(L.PAGE_W_MM),
         "page_h": _fmt(L.PAGE_H_MM),
         "margin": _fmt(L.MARGIN_MM),
@@ -326,9 +346,9 @@ def geometry_context() -> dict[str, Any]:
         "header_w": _fmt(header_w),
         "uid_x": _fmt(uid_x),
         "uid_y": _fmt(uid_y),
-        "uid_cell": L.UID_GRID_CELL_MM,
-        "uid_gap": _fmt(L.UID_GRID_GAP_MM),
-        "uid_rows": L.UID_GRID_ROWS,
+        "uid_cell": grid.cell_mm,
+        "uid_gap": _fmt(grid.gap_mm),
+        "uid_rows": grid.rows,
         "uid_pitch": _fmt(uid_pitch),
         "uid_grid_h": _fmt(uid_grid_h),
         "uid_text_x": _fmt(uid_text_x),
@@ -398,11 +418,15 @@ def _html_env() -> Environment:
     )
 
 
-def render_geometry_css() -> str:
-    """The generated stylesheet. Public so a test can assert it matches
-    ``layout.py`` without going anywhere near a browser."""
+def render_geometry_css(version: str | None = None) -> str:
+    """The generated stylesheet for one layout version.
+
+    Public so a test can assert it matches ``layout.py`` without going anywhere
+    near a browser. Version-aware since B4: the UID grid's size and position
+    differ between v1 and v2, so a sheet must be laid out with the geometry it
+    declares rather than with whatever is current."""
     env = _html_env().overlay(autoescape=False)
-    return env.get_template("geometry.css.j2").render(g=geometry_context())
+    return env.get_template("geometry.css.j2").render(g=geometry_context(version))
 
 
 # --------------------------------------------------------------------------
@@ -517,7 +541,21 @@ def _row_context(placed: Any, *, is_key: bool) -> dict[str, Any]:
 
 
 def _page_context(physical: PhysicalPage, sheet: SheetData, *, is_key: bool) -> dict[str, Any]:
-    bits = encode_uid(physical.copy.uid)
+    # v1 prints the pupil; v2 prints the page (B4). `copy_page` is 1-based and
+    # is exactly what `PageCode.page_in_copy` means, so B5's "which page is
+    # this?" stops being something the scan pipeline has to infer.
+    if sheet.layout_version == "v1":
+        bits = encode_uid(physical.copy.uid)
+    else:
+        bits = encode_page_code(
+            PageCode(
+                uid=physical.copy.uid,
+                school_year=sheet.school_year_slot,
+                page_in_copy=physical.copy_page,
+                canton=sheet.canton,
+                nonce=sheet.nonce,
+            )
+        )
     meta_parts = [sheet.class_code, sheet.subject]
     if sheet.date_label:
         meta_parts.append(sheet.date_label)
@@ -532,7 +570,7 @@ def _page_context(physical: PhysicalPage, sheet: SheetData, *, is_key: bool) -> 
         "copy_pages": physical.copy_pages,
         "title": sheet.title,
         "meta": " · ".join(p for p in meta_parts if p),
-        "uid_cells": bits_to_cells(bits),
+        "uid_cells": bits_to_cells(bits, version=sheet.layout_version),
         # NB: not "items" — Jinja would resolve page.items to dict.items.
         "statements": [
             _item_context(
@@ -600,11 +638,11 @@ def render_sheet_html(sheet_data: SheetData, *, kind: str | SheetKind = SheetKin
             "tokens": Markup(css["tokens"]),
             "base": Markup(css["base"]),
             "print": Markup(css["print"]),
-            "geometry": Markup(render_geometry_css()),
+            "geometry": Markup(render_geometry_css(sheet_data.layout_version)),
         },
         # The answer-box guide patterns are inline SVG and need the pitch in
         # user units; everything else positional stays in the generated CSS.
-        "g": geometry_context(),
+        "g": geometry_context(sheet_data.layout_version),
         "pages": [_page_context(p, sheet_data, is_key=is_key) for p in pages],
     }
     return _html_env().get_template("sheet.html.j2").render(**context)
