@@ -266,7 +266,9 @@
     "fileIt": "File it",
     "printNeedsPdf": "Printing goes through the PDF: that is the document whose exact layout Alppy knows. Generate it, then print it.",
     "printNeedsPdfOpen": "This sheet has written-answer items. Alppy measures where each box sits while generating the PDF, and crops there when grading: printed any other way, no written answer can be graded automatically.",
-    "previewBlocked": "The browser blocked the preview. There is nothing wrong with the sheet itself: generate the PDF to check it."
+    "previewBlocked": "The browser blocked the preview. There is nothing wrong with the sheet itself: generate the PDF to check it.",
+    "printedOn": "Printed on {date}",
+    "printed": "Printed"
   },
   "scans": {
     "title": "Corrections",
@@ -512,6 +514,8 @@
     "save": "Save",
     "showItems": "Show the {count} exercises",
     "sourceSheet": "From",
+    "alsoAnswers": "Also answers",
+    "alsoAnswersHelp": "The other sheets whose corrected results justify this one — a reprise may answer a test and the worksheets whose gaps it revisits.",
     "statement": "Statement",
     "stretch": "Stretch",
     "subtitle": "One sheet per student, targeted at their gaps",

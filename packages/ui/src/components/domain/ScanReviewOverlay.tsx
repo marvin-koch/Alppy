@@ -71,8 +71,24 @@ export interface ScanReviewOverlayProps extends Omit<HTMLAttributes<HTMLDivEleme
   children?: ReactNode;
 }
 
+/**
+ * What a mark's box says, and what it deliberately does not.
+ *
+ * `detected` used to be green. On the very same card the item list uses green for
+ * "this answer is correct", so one colour carried two unrelated claims: the
+ * PIPELINE is confident it read a mark, and the ANSWER is right. A confidently
+ * read wrong answer got a green box, which is the worst possible reading of it
+ * (G14).
+ *
+ * So green is reserved for correctness and leaves this component entirely.
+ * `detected` is neutral ink with a firm border — "read", not "right" — and the
+ * glyphs keep the four states apart without colour at all (DC-colour-08): a tick
+ * for read, a dash for blank, a warning for ambiguous, a pencil for overruled.
+ * Confidence has its own channel in `ConfidenceBar`, which is where a teacher
+ * looks to ask how sure the machine was.
+ */
 const STATE_STYLE: Record<ScanMarkState, string> = {
-  detected: 'border-success-500 bg-success-100/50 text-success-600',
+  detected: 'border-ink-700 bg-surface/60 text-ink-900',
   empty: 'border-line-strong bg-surface/40 text-ink-500',
   ambiguous: 'border-warn-500 bg-warn-100/60 text-warn-600',
   corrected: 'border-info-500 bg-info-100/60 text-info-600',

@@ -5,6 +5,7 @@ import {
   Badge,
   Button,
   Card,
+  Checkbox,
   ConceptTag,
   EmptyState,
   ErrorState,
@@ -32,13 +33,7 @@ import { discardAdaptive as discardAdaptiveNow } from '@/lib/api/endpoints';
 import { useFormatters } from '@/lib/format';
 import { useScope } from '@/lib/scope';
 import { apiErrorMessage } from '@/lib/api/error-message';
-import {
-  loadRun,
-  recentRuns,
-  rememberRun,
-  saveRun,
-  type RecentRun,
-} from '@/lib/adaptive-session';
+import { loadRun, recentRuns, rememberRun, saveRun, type RecentRun } from '@/lib/adaptive-session';
 
 import { AdaptiveItem } from '@/components/AdaptiveItem';
 import { AddExerciseModal } from '@/components/sheet-builder/AddExerciseModal';
@@ -121,6 +116,24 @@ export default function AdaptivePage() {
   // Which common sheet's results this batch answers. Recorded as the sheet's
   // lineage, and the sheet the feedback notes are read from.
   const [sourceSheetId, setSourceSheetId] = useState<Uuid | ''>('');
+  /**
+   * Further sheets whose corrected results justify this batch, beyond the
+   * principal one.
+   *
+   * `AdaptiveBatchRequest` has carried `source_sheet_ids` since the backend pass
+   * and the builder only ever sent the singular, while the sheet detail screen
+   * rendered the plural lineage complete with a "Principal" chip — so the product
+   * displayed a shape it could not produce (G15). The API's own reason for the
+   * plural is the case this control exists for: a reprise may answer a test AND
+   * the worksheets whose gaps it revisits, and `source_sheet_id` alone can only
+   * name one of them (D70).
+   *
+   * Kept separate from `sourceSheetId` rather than folded into one list, because
+   * the two are not the same fact: the principal becomes `Sheet.derived_from_id`
+   * and is what the feedback notes are read from. The request sends the principal
+   * first, which is the order the API documents.
+   */
+  const [alsoAnswers, setAlsoAnswers] = useState<ReadonlySet<Uuid>>(() => new Set());
   // A student the teacher has picked up, waiting for a group to drop into.
   const [carrying, setCarrying] = useState<string | null>(null);
   // Teacher overrides: student uid -> group index. The model does not know
@@ -426,7 +439,9 @@ export default function AdaptivePage() {
       return {
         ...current,
         plans: current.plans.map((p) => ({ ...p, generated: edit(p.generated) })),
-        group: current.group ? { ...current.group, generated: edit(current.group.generated) } : null,
+        group: current.group
+          ? { ...current.group, generated: edit(current.group.generated) }
+          : null,
         groups: current.groups.map((g) => ({ ...g, generated: edit(g.generated) })),
       };
     });
@@ -476,10 +491,7 @@ export default function AdaptivePage() {
                 retrieved: [...g.retrieved, proposal],
                 // Shared paper: the item is for everyone in the group, because
                 // the teacher chose it for the group rather than for a gap.
-                items: [
-                  ...g.items,
-                  { exercise_id: exercise.id, for_student_uids: g.student_uids },
-                ],
+                items: [...g.items, { exercise_id: exercise.id, for_student_uids: g.student_uids }],
               }
             : g,
         ),
@@ -562,6 +574,16 @@ export default function AdaptivePage() {
     });
   };
 
+  /** The lineage, principal first, or null when this batch answers nothing. */
+  const sourceSheetIds = (): Uuid[] | null => {
+    if (!sourceSheetId) return null;
+    // The principal cannot also appear as further evidence, and the set is
+    // filtered rather than trusted: a sheet can be deselected as principal after
+    // being ticked below.
+    const rest = [...alsoAnswers].filter((id) => id !== sourceSheetId);
+    return [sourceSheetId as Uuid, ...rest];
+  };
+
   const startExport = () => {
     if (!plan) return;
     setJobId(null);
@@ -573,6 +595,9 @@ export default function AdaptivePage() {
         language: (plan.language ?? 'fr') as 'fr' | 'de' | 'en',
         plans: plansForExport(),
         source_sheet_id: sourceSheetId || null,
+        // Principal first: the API treats `source_sheet_id` as entry 0 of this
+        // list, and the sheet screen renders entry 0 with the "Principal" chip.
+        source_sheet_ids: sourceSheetIds(),
         group_count: groups.length || null,
       },
       {
@@ -692,6 +717,37 @@ export default function AdaptivePage() {
             </Select>
           </Field>
         </div>
+
+        {/* Offered only once a principal sheet is chosen: "also answers" has no
+            meaning without something to be further evidence FOR, and an empty
+            checkbox list above an unset select would read as a second, redundant
+            picker. */}
+        {sourceSheetId ? (
+          <fieldset className="mt-4 border-0 p-0">
+            <legend className="text-label uppercase text-ink-700">{t('alsoAnswers')}</legend>
+            <p className="mt-1 text-body-s text-ink-500">{t('alsoAnswersHelp')}</p>
+            <div className="mt-2 flex flex-col gap-2">
+              {(sheets.data ?? [])
+                .filter((s) => s.id !== sheetId && s.id !== sourceSheetId)
+                .map((s) => (
+                  <Checkbox
+                    key={s.id}
+                    label={s.title}
+                    checked={alsoAnswers.has(s.id)}
+                    onChange={(event) => {
+                      const { checked } = event.currentTarget;
+                      setAlsoAnswers((current) => {
+                        const next = new Set(current);
+                        if (checked) next.add(s.id);
+                        else next.delete(s.id);
+                        return next;
+                      });
+                    }}
+                  />
+                ))}
+            </div>
+          </fieldset>
+        ) : null}
 
         <div className="mt-4">
           <Toggle
@@ -853,8 +909,7 @@ export default function AdaptivePage() {
                         approve.mutate(
                           { exercise_ids: pending },
                           {
-                            onSuccess: (result) =>
-                              setApprovedIds(new Set(result.exercise_ids)),
+                            onSuccess: (result) => setApprovedIds(new Set(result.exercise_ids)),
                           },
                         )
                       }
@@ -1271,13 +1326,7 @@ function failureLine(
  * is not listed on the laptop at home. Closing that needs one field —
  * `class_id` on `JobOut` — and then this component reads the API instead.
  */
-function RecentProposals({
-  classId,
-  onOpen,
-}: {
-  classId: string;
-  onOpen: (jobId: Uuid) => void;
-}) {
+function RecentProposals({ classId, onOpen }: { classId: string; onOpen: (jobId: Uuid) => void }) {
   const t = useTranslations('adaptive');
   const fmt = useFormatters();
   // Read after mount: `localStorage` does not exist while this renders on the

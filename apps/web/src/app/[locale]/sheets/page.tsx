@@ -80,8 +80,7 @@ export default function SheetsIndexPage() {
   }, [tree.data, locale]);
   const needle = search.trim().toLowerCase();
   const visible = useMemo(
-    () =>
-      needle ? sheets.filter((sheet) => sheet.title.toLowerCase().includes(needle)) : sheets,
+    () => (needle ? sheets.filter((sheet) => sheet.title.toLowerCase().includes(needle)) : sheets),
     [sheets, needle],
   );
   const drafts = visible.filter((sheet) => !sheet.rendered_at);
@@ -139,9 +138,7 @@ export default function SheetsIndexPage() {
             />
           ) : null}
 
-          {visible.length === 0 ? (
-            <EmptyState title={t('noMatches')} size="sm" />
-          ) : null}
+          {visible.length === 0 ? <EmptyState title={t('noMatches')} size="sm" /> : null}
 
           {drafts.length > 0 ? (
             <SheetGroup
@@ -303,6 +300,10 @@ function ThemeSection({
                         .join(' · ')}
                     </span>
                   </span>
+                  {/* Printed is a stronger fact than rendered, and the one that
+                      changes what a teacher does next, so it gets the chip and
+                      carries a word rather than a colour (G23, DC-colour-08). */}
+                  {sheet.printed_at ? <Badge variant="neutral">{t('printed')}</Badge> : null}
                   <span className="hidden shrink-0 text-body-s text-ink-500 sm:block">
                     {fmt.relativeDays(sheet.rendered_at ?? sheet.created_at)}
                   </span>

@@ -382,6 +382,20 @@ export const previewSheetDraft = (body: SheetDraftPreview) =>
 export const createSheet = (body: SheetCreate) =>
   apiRequest<SheetOut>('/sheets', { method: 'POST', body });
 
+/**
+ * No caller, and that is the decision rather than an oversight (G23).
+ *
+ * The render job measures every answer box in Chromium and writes
+ * `AnswerBoxPlacement`; the scan job crops at exactly those rows. An edit path
+ * after printing would move what the scanner crops on paper already in a pile on
+ * a teacher's desk, which is the risk `DC-print-09` exists to prevent. The absence
+ * of a client edit path is what closes it from this side, so wiring this up needs
+ * a guard first — refuse once `printed_at` is set, or force a re-render and a new
+ * layout version — not just a form.
+ *
+ * Kept exported because the route exists and the contract is generated; deleting
+ * it here would only hide the question.
+ */
 export const updateSheet = (sheetId: Uuid, body: SheetUpdate) =>
   apiRequest<SheetOut>(`/sheets/${sheetId}`, { method: 'PATCH', body });
 

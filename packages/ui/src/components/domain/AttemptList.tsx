@@ -62,13 +62,22 @@ export const AttemptList = forwardRef<HTMLDivElement, AttemptListProps>(function
             data-outcome={attempt.correct ? 'correct' : 'incorrect'}
           >
             <div className="flex flex-wrap items-center gap-2">
+              {/* The state family, not the mastery ramp (G14).
+                  These borrowed `--c-mastery-solid` and `--c-mastery-fading`,
+                  and `fading` does not mean "wrong" — it means evidence has gone
+                  stale, which is a different quantity measured on a different
+                  scale. The ramp is a calibrated encoding of decayed competency
+                  evidence and a single right-or-wrong answer is not a point on
+                  it; reusing it quietly claimed they were the same measurement.
+                  The word and the glyph are still there, so this reads the same
+                  photocopied (DC-colour-08). */}
               <span
                 className={cx(
                   'inline-flex items-center gap-1 rounded-sm border px-2 py-0.5',
                   'font-display text-label font-bold',
                   attempt.correct
-                    ? 'border-[var(--c-mastery-solid)] bg-[var(--c-mastery-solid-tint)] text-[var(--c-mastery-solid-ink)]'
-                    : 'border-[var(--c-mastery-fading)] bg-[var(--c-mastery-fading-tint)] text-[var(--c-mastery-fading-ink)]',
+                    ? 'border-success-500 bg-success-100 text-success-600'
+                    : 'border-danger-500 bg-danger-100 text-danger-600',
                 )}
               >
                 <span aria-hidden="true">{attempt.correct ? '✓' : '✗'}</span>

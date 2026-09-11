@@ -266,7 +266,9 @@
     "fileIt": "Classer",
     "printNeedsPdf": "L'impression passe par le PDF : c'est le document dont Alppy connaît la mise en page exacte. Générez-le, puis imprimez-le.",
     "printNeedsPdfOpen": "Cette fiche contient des réponses rédigées. Alppy mesure l'emplacement de chaque cadre en générant le PDF, et c'est là qu'il découpe les réponses à la correction : imprimé autrement, aucune réponse rédigée ne pourra être corrigée automatiquement.",
-    "previewBlocked": "L'aperçu a été bloqué par le navigateur. La fiche elle-même n'a rien : générez le PDF pour la vérifier."
+    "previewBlocked": "L'aperçu a été bloqué par le navigateur. La fiche elle-même n'a rien : générez le PDF pour la vérifier.",
+    "printedOn": "Imprimée le {date}",
+    "printed": "Imprimée"
   },
   "scans": {
     "title": "Corrections",
@@ -512,6 +514,8 @@
     "save": "Enregistrer",
     "showItems": "Afficher les {count} exercices",
     "sourceSheet": "D'après",
+    "alsoAnswers": "Répond aussi à",
+    "alsoAnswersHelp": "Les autres fiches dont les résultats corrigés justifient celle-ci — une reprise peut répondre à un test et aux exercices dont elle revient sur les lacunes.",
     "statement": "Énoncé",
     "stretch": "Approfondissement",
     "subtitle": "Une fiche par élève, ciblée sur ses lacunes",

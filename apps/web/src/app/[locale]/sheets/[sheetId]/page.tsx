@@ -118,7 +118,9 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
     .filter((c) => s?.competency_ids.includes(c.competency_id));
   const sourceTitle = (id: string) =>
     (sheets.data ?? []).find((x) => x.id === id)?.title ?? id.slice(0, 8);
-  const rendering = render.isPending || (job.data && job.data.status !== 'succeeded' && job.data.status !== 'failed');
+  const rendering =
+    render.isPending ||
+    (job.data && job.data.status !== 'succeeded' && job.data.status !== 'failed');
   const print = printReadiness(s, { rendering: Boolean(rendering) });
 
   return (
@@ -143,6 +145,15 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
             <span className="mono">{s.layout_version}</span>
             {` · ${s.language.toUpperCase()}`}
           </p>
+          {/* `printed_at` was in the contract with no reader anywhere (G23).
+              It is a different fact from `rendered_at` — a PDF that exists is not
+              a pile of paper on a desk — and it is the one a teacher needs to
+              answer "have I already handed these out?" before generating again. */}
+          {s.printed_at ? (
+            <p className="text-body-s text-ink-500" data-printed-at>
+              {t('printedOn', { date: fmt.dateLong(s.printed_at) })}
+            </p>
+          ) : null}
         </div>
         {/* One action, and which one it is says what state the paper is in.
             A sheet whose PDF is current prints it; a sheet whose PDF is
@@ -187,9 +198,7 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-label uppercase text-ink-500">{tsheet('filedUnder')}</span>
           {homeTheme ? (
-            <Link href={`/classes/${s.class_id}/themes/${s.chapter_id}`}>
-              {homeTheme}
-            </Link>
+            <Link href={`/classes/${s.class_id}/themes/${s.chapter_id}`}>{homeTheme}</Link>
           ) : (
             <span className="text-body-s text-ink-500">{tt('unfiled')}</span>
           )}
@@ -225,9 +234,7 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
             entity, so this is the route from a sheet to its corrections. */}
         {s.scans.length > 0 ? (
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-label uppercase text-ink-500">
-              {tsheet('corrections')}
-            </span>
+            <span className="text-label uppercase text-ink-500">{tsheet('corrections')}</span>
             {s.scans.map((scan) => (
               <Link key={scan.id} href={`/scans/${scan.id}`}>
                 {scan.confirmed_at

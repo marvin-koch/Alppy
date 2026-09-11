@@ -266,7 +266,9 @@
     "fileIt": "Zuordnen",
     "printNeedsPdf": "Gedruckt wird das PDF: nur bei diesem Dokument kennt Alppy das genaue Layout. Erzeugen Sie es und drucken Sie es dann.",
     "printNeedsPdfOpen": "Dieses Blatt enthält offene Antworten. Alppy misst beim Erzeugen des PDF, wo jedes Antwortfeld steht, und schneidet genau dort für die Korrektur aus: anders gedruckt kann keine offene Antwort automatisch korrigiert werden.",
-    "previewBlocked": "Die Vorschau wurde vom Browser blockiert. Am Blatt selbst liegt es nicht: Erzeugen Sie das PDF, um es zu prüfen."
+    "previewBlocked": "Die Vorschau wurde vom Browser blockiert. Am Blatt selbst liegt es nicht: Erzeugen Sie das PDF, um es zu prüfen.",
+    "printedOn": "Gedruckt am {date}",
+    "printed": "Gedruckt"
   },
   "scans": {
     "title": "Korrekturen",
@@ -512,6 +514,8 @@
     "save": "Speichern",
     "showItems": "Die {count} Aufgaben anzeigen",
     "sourceSheet": "Nach",
+    "alsoAnswers": "Antwortet auch auf",
+    "alsoAnswersHelp": "Weitere Blätter, deren korrigierte Ergebnisse dieses hier begründen – eine Wiederholung kann einen Test und die Übungen betreffen, deren Lücken sie aufgreift.",
     "statement": "Aufgabenstellung",
     "stretch": "Vertiefung",
     "subtitle": "Ein Arbeitsblatt pro Person, auf ihre Lücken zugeschnitten",
