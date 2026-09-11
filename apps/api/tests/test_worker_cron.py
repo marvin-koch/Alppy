@@ -24,6 +24,7 @@ EXPECTED: dict[str, str] = {
     "purge_prompt_logs": "the one table holding what was actually sent to a provider never expires",
     "purge_access_log": "the read audit trail grows with every profile a teacher opens",
     "health_signals": "grading quality degrades in one school and nobody learns a number",
+    "purge_model_calls": "the trail written on every model call grows without bound",
 }
 
 
@@ -59,7 +60,8 @@ def test_the_reaper_runs_often_and_on_startup() -> None:
 
 
 @pytest.mark.parametrize(
-    "name", ["purge_prompt_logs", "purge_access_log", "purge_scan_images"]
+    "name",
+    ["purge_prompt_logs", "purge_access_log", "purge_scan_images", "purge_model_calls"],
 )
 def test_the_purges_run_nightly_and_not_at_startup(name: str) -> None:
     """A worker restarting six times during a deploy must not purge six times.

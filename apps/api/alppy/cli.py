@@ -184,6 +184,31 @@ def _purge_prompt_logs() -> int:
     return 0
 
 
+def _purge_model_calls() -> int:
+    """Delete `ModelCall` rows past ``ALPPY_MODEL_CALL_RETENTION_DAYS``.
+
+    The content-free audit trail — "did any of our data go to provider X" — and
+    the one table written on every single model call. It had no window at all,
+    which is a decision nobody took rather than a decision to keep forever;
+    three years is the shipped one, and 0 still means forever for a school that
+    wants it.
+    """
+    from alppy.ai.audit import purge_expired_calls
+
+    db = admin_session()
+    try:
+        deleted = purge_expired_calls(db)
+        db.commit()
+        log.info("model_call.purge.done", deleted=deleted)
+    except Exception:
+        db.rollback()
+        log.exception("model_call.purge.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
 def _purge_access_log() -> int:
     """Delete access-log rows past ``ALPPY_ACCESS_LOG_RETENTION_DAYS``.
 
@@ -634,6 +659,10 @@ def main(argv: list[str] | None = None) -> int:
         "purge-access-log",
         help="Delete read-audit rows past ALPPY_ACCESS_LOG_RETENTION_DAYS.",
     )
+    subparsers.add_parser(
+        "purge-model-calls",
+        help="Delete model-call audit rows past ALPPY_MODEL_CALL_RETENTION_DAYS.",
+    )
     reap_parser = subparsers.add_parser(
         "reap-jobs",
         help="Fail RUNNING jobs that stopped reporting past ALPPY_JOB_STALE_AFTER_S.",
@@ -741,6 +770,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "purge-access-log":
         return _purge_access_log()
+
+    if args.command == "purge-model-calls":
+        return _purge_model_calls()
 
     if args.command == "reap-jobs":
         return _reap_jobs(dry_run=args.dry_run)

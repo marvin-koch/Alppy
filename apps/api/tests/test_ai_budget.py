@@ -170,3 +170,43 @@ def test_a_school_inside_its_budget_is_not_stopped(
         },
     )
     assert response.status_code != 402
+
+
+# --- the audit trail's own window -------------------------------------------
+# `ModelCall` had no retention window at all, which on the one table written for
+# every single model call is an unbounded table rather than a decision to keep.
+
+
+def test_the_audit_trail_keeps_three_years_by_default() -> None:
+    """Long on purpose. It is what a school shows an auditor to answer "did any
+    of our data go to provider X", and that question arrives late — a
+    procurement review asks about the year before last. It can afford to be
+    long because the row is content-free by construction."""
+    assert Settings(_env_file=None).model_call_retention_days == 1095
+
+
+def test_rows_past_the_window_go(db: Session, tenant: Tenant) -> None:
+    from alppy.ai.audit import purge_expired_calls
+
+    _call(db, tenant, chf=1.0, age_days=1200.0)
+    kept = _call(db, tenant, chf=1.0, age_days=10.0)
+    db.commit()
+
+    assert purge_expired_calls(db) == 1
+    db.commit()
+    assert db.get(ModelCall, kept.id) is not None
+
+
+def test_zero_keeps_the_trail_forever(
+    db: Session, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """An audit trail whose default is "quietly disappears" is not one, so this
+    is opt-OUT and a school that wants everything kept sets 0."""
+    from alppy.ai import audit
+
+    _call(db, tenant, chf=1.0, age_days=5000.0)
+    db.commit()
+    monkeypatch.setattr(
+        audit, "get_settings", lambda: Settings(_env_file=None, model_call_retention_days=0)
+    )
+    assert audit.purge_expired_calls(db) == 0

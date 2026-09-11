@@ -421,6 +421,27 @@ def anonymise_student(db: Session, scope: Scope, student: Student, *, confirm_ui
         row.last_name = None
 
     db.flush()
+    # The ERASURE LOG, and it deliberately goes to the log rather than to a
+    # table (audit 07, restore runbook §4).
+    #
+    # A backup window is also the window in which an erasure is not really
+    # complete: restore to the 1st after erasing on the 3rd and the child is
+    # back — name, attempts, handwriting — with the request honoured and then
+    # quietly undone. The fix is to re-apply every erasure after a restore,
+    # which needs a record of them; and a record kept in the database being
+    # restored is a record the restore takes away too. So it is emitted to
+    # stdout, where it lands wherever logs are aggregated, outside the database.
+    #
+    # `person_id` and the uid, never the name. The point of the row is to say
+    # WHICH pupil to re-erase, and the name is the thing that was just removed.
+    log.info(
+        "privacy.erasure",
+        kind="anonymise",
+        person_id=str(person.id),
+        uid=student.uid,
+        school_id=str(scope.school_id),
+        teacher_id=str(scope.teacher_id),
+    )
     return student
 
 
@@ -499,6 +520,9 @@ def delete_student(
         raise errors.not_found("student", id=str(student.id))
     person_id = student.person_id
     student_id = student.id
+    # Read before the cascade: it is what the erasure log records, and after
+    # `db.delete` the row cannot be asked.
+    uid = student.uid
     # Read the keys BEFORE the cascade takes the rows that name them. Erasure
     # that leaves every photograph of the child's handwriting in object storage
     # is not erasure; it just makes the images unreachable through the product
@@ -524,6 +548,20 @@ def delete_student(
 
     if storage is not None and image_keys:
         _erase_objects(storage, image_keys, student_id=student_id)
+
+    # The erasure log — see the note on `anonymise_student`. A destructive
+    # erasure matters here more than an anonymisation does: after a restore the
+    # rows are back in full, and nothing in the restored database records that
+    # they were ever meant to be gone.
+    log.info(
+        "privacy.erasure",
+        kind="delete",
+        person_id=str(person_id),
+        uid=uid,
+        school_id=str(scope.school_id),
+        teacher_id=str(scope.teacher_id),
+        objects=len(image_keys),
+    )
 
 
 def _erase_objects(storage: Storage, keys: list[str], *, student_id: uuid.UUID) -> None:

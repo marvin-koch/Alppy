@@ -191,10 +191,19 @@ is a debugging aid a school opts into, not a record it is asked to keep.
 
 ## 4. Data export and deletion; retention of scans
 
-- **Export.** A school (via its admin/teacher account) can request a full export of one class:
-  roster, sheets, scans, attempts, mastery snapshots, in a documented machine-readable format
-  (JSON + the original PDF/image assets). This is the mechanism a school uses to take its data with
-  it, and the mechanism used to satisfy a data-portability request.
+- **Export.** `GET /api/v1/classes/{id}/export` returns the whole class as one JSON document —
+  every pupil currently enrolled, each with their enrolments across every year, their attempts and
+  their misconception notes. `GET /api/v1/students/{id}/export` does the same for one pupil. This is
+  the mechanism a school uses to take its data with it, and the mechanism used to satisfy a
+  data-portability request.
+
+  Two limits, stated rather than left to be discovered. The class document covers the roster **as
+  it stands**: a pupil who has left is exported individually, under the access rule that governs
+  them (a teacher who arrived in March has no standing over a pupil who left in October). And the
+  document is JSON only — the **PDF and image assets are not included**, so a school taking its
+  data also needs the object store, which today means asking. Mastery snapshots are deliberately
+  absent: they are recomputed from the attempts, and a decaying score is a photograph of a
+  calculation rather than an independent fact about a child.
 - **Deletion.** Deleting a class cascades to its students, sheets, sheet instances, scans, scan
   pages, detections, attempts, and mastery snapshots for that class. Deletion is hard delete for
   personal data (not a soft `deleted_at` flag left queryable) once any legal/contractual retention

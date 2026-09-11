@@ -102,12 +102,22 @@ offline.
 | Scan images and crops | **400 days** (school year + one term) | `purge-scan-images`, nightly 03:30 |
 | Prompt log (content) | 30 days, and **off by default** | `purge-prompt-logs`, nightly 03:10 |
 | Access log (read audit) | 365 days | `purge-access-log`, nightly 03:20 |
-| `ModelCall` (content-free audit) | No limit set | — |
+| `ModelCall` (content-free audit) | 1095 days (three years) | `purge-model-calls`, nightly 03:40 |
 | Roster, attempts, mastery | Life of the school's account | Erasure on request |
 | Backups | **Do not exist** | — |
-| Application logs | **No policy** | — |
+| Application logs | **Set by the aggregator, once one exists** | — |
 
-The last two rows are gaps, not omissions from this table.
+Backups are a gap, not an omission from this table.
+
+On application logs: **no log line identifies a pupil.** The access line carries
+the route and not the row (`core/logging.py:scrub_path`, tested in
+`test_log_hygiene.py`), so a retention window on them is an operational choice
+rather than a data-protection one. The exception is deliberate and is the
+**erasure log** — `privacy.erasure`, emitted on every anonymisation and
+deletion, carrying a `person_id` and a UID and never a name. It exists precisely
+so that it OUTLIVES the database: after a restore, every erasure since the
+restore point has to be re-applied, and a record kept inside the database being
+restored is a record the restore takes away.
 
 ---
 

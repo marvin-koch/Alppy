@@ -16,7 +16,7 @@ this, at 08:10 on a Tuesday, with a teacher waiting.
 | [Drain and restart workers](drain-workers.md) | **Usable** |
 | [A stuck grading batch](stuck-grading-batch.md) | **Usable** |
 | [Support model and deploy window](support-model.md) | **Draft — commitments are blank** |
-| [Onboarding an establishment](onboard-an-establishment.md) | **Draft** — blocked on the paperwork and on account provisioning |
+| [Onboarding an establishment](onboard-an-establishment.md) | **Draft** — the technical steps work; the paperwork lines do not tick yet |
 
 ## What must be run by a human before it can be trusted
 

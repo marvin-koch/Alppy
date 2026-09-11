@@ -121,6 +121,18 @@ async def purge_access_log(ctx: dict[str, Any]) -> None:
     await _in_thread("purge_access_log", _purge_access_log)
 
 
+async def purge_model_calls(ctx: dict[str, Any]) -> None:
+    """Enforce `ALPPY_MODEL_CALL_RETENTION_DAYS` (D2, audit 07 §DPIA).
+
+    The content-free trail a school shows an auditor. Three years by default,
+    and it had no window at all — which on the one table written for every
+    single model call is an unbounded table rather than a decision.
+    """
+    from alppy.cli import _purge_model_calls
+
+    await _in_thread("purge_model_calls", _purge_model_calls)
+
+
 async def health_signals(ctx: dict[str, Any]) -> None:
     """Log the override rate and the confidence distribution (D8).
 
@@ -159,6 +171,7 @@ def cron_jobs() -> list[CronJob]:
         cron(purge_prompt_logs, name="purge_prompt_logs", hour=3, minute=10),
         cron(purge_access_log, name="purge_access_log", hour=3, minute=20),
         cron(purge_scan_images, name="purge_scan_images", hour=3, minute=30),
+        cron(purge_model_calls, name="purge_model_calls", hour=3, minute=40),
         cron(
             health_signals,
             name="health_signals",

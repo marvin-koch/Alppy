@@ -19,11 +19,14 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Iterable
+from datetime import UTC, datetime, timedelta
 from typing import TYPE_CHECKING
 
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from alppy.ai.client import CallRecord
+from alppy.core.config import get_settings
 from alppy.core.logging import get_logger
 from alppy.models import ModelCall
 
@@ -104,4 +107,30 @@ def flush(
     return written
 
 
-__all__ = ["flush", "record_calls"]
+def purge_expired_calls(db: Session, *, now: datetime | None = None) -> int:
+    """Delete `ModelCall` rows past `ALPPY_MODEL_CALL_RETENTION_DAYS`.
+
+    The audit trail had no window at all — a decision nobody took, on the one
+    table written on EVERY model call, so a school running full ingests
+    accumulates millions of rows against a question nobody will ask about 2029.
+
+    Opt-OUT, like the access log: 0 or less keeps forever, because an audit
+    trail whose default is "quietly disappears" is not one. The shipped window
+    is three years, which is long enough for a procurement review to ask about
+    the year before last.
+
+    Deletes by id in one statement rather than by predicate, so the count
+    returned is the count that went.
+    """
+    days = get_settings().model_call_retention_days
+    if days <= 0:
+        return 0
+    cutoff = (now or datetime.now(UTC)) - timedelta(days=days)
+    ids = list(db.scalars(select(ModelCall.id).where(ModelCall.created_at < cutoff)))
+    if not ids:
+        return 0
+    db.execute(delete(ModelCall).where(ModelCall.id.in_(ids)))
+    return len(ids)
+
+
+__all__ = ["flush", "purge_expired_calls", "record_calls"]

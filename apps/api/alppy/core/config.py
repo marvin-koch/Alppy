@@ -338,6 +338,26 @@ class Settings(BaseSettings):
     #: end of one, and "who read my child's file" is asked late or not at all.
     access_log_retention_days: int = 365
 
+    #: Days to keep `ModelCall`. 0 or less means keep forever.
+    #:
+    #: 1095 — three years — and opt-OUT like the access log, for the same
+    #: reason and then some. This is the table a school shows an auditor to
+    #: answer "did any of our data go to provider X", and that question arrives
+    #: late or not at all: a trail that expired inside a school year cannot
+    #: answer one asked at the end of one, and a procurement review asks about
+    #: the year before last.
+    #:
+    #: It can afford to be long because the row is content-free by construction
+    #: — provider, model, purpose, a hash of the prompt, token counts, a cost
+    #: estimate. Never the prompt, never a name. The thing that holds content is
+    #: `PromptLog`, which is off by default, capped, and swept at 30 days.
+    #:
+    #: A number rather than "forever" because an unbounded table is a decision
+    #: nobody took: this one is written on EVERY model call, so a school running
+    #: full ingests accumulates millions of rows against a question that is
+    #: never asked about 2029.
+    model_call_retention_days: int = 1095
+
     # --- Prompt log (debugging; NOT the audit trail) ---------------------
     # `ModelCall` stays content-free whatever these say. This is the separate,
     # opt-in store of what was actually sent — see models.PromptLog.

@@ -95,12 +95,24 @@ complete.** The position taken here is **30 days**, on the basis that it is a
 defensible disaster-recovery window and that the gap is closed by procedure
 rather than pretended away:
 
-1. Keep an erasure log — pupil id, date, requester — **outside** the database
-   being restored.
-2. Step 4 of §2 is not optional: after any restore, re-apply every erasure from
-   that log that falls between the restore point and now.
+1. **The erasure log exists.** Every anonymisation and every deletion emits a
+   `privacy.erasure` line carrying `kind`, `person_id`, the pupil's UID, the
+   school and the teacher — and never the name, because the name is the thing
+   that was just removed. It goes to stdout, which is the point: it has to
+   outlive the database, and a log kept *inside* the database being restored is
+   a log the restore takes away.
+
+   ```bash
+   fly logs -a alppy | grep privacy.erasure      # or whatever aggregates stdout
+   ```
+
+   The gap that remains: **stdout goes nowhere durable today** (no aggregator,
+   no log retention). Until one exists, the practical answer is to keep a copy
+   of these lines somewhere outside the database on the day each erasure is
+   made. That is a procedure, not a mechanism, and it is the honest state.
+2. Step 4 of §2 is not optional: after any restore, re-apply every erasure whose
+   line falls between the restore point and now — `POST /students/{id}/anonymise`
+   for an anonymisation, `DELETE /students/{id}` for a deletion, each with the
+   pupil's UID as the confirmation.
 3. Tell the school. An erasure that was undone and re-applied is a fact they are
    entitled to.
-
-That log does not exist yet. It is one of the things to build before the first
-real establishment.

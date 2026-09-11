@@ -137,12 +137,31 @@ and only proceeds if it succeeds. That is the deploy-time migration step, and
 it is why the compose entrypoint's migrate-on-start is explicitly a compose
 convenience (D13).
 
-### 3.5 The first teacher **[you, and awkwardly]**
+### 3.5 The first teacher
 
-There is no account-provisioning endpoint (D12). Today the only way to create a
-teacher is `python -m alppy.cli seed`, which creates the *demo* teacher. Real
-onboarding is manual database work. This is a known gap and it is the first
-thing an establishment will need.
+```bash
+fly ssh console -a alppy -C "python -m alppy.cli list-schools"
+fly ssh console -a alppy -C \
+  "python -m alppy.cli create-teacher --email anne@college-des-alpes.ch \
+     --first-name Anne --last-name Rochat --school '<school id>'"
+```
+
+It creates the account **and** the staffroom membership, because a teacher
+without one signs in successfully and then finds an empty product. A strong
+password is generated and printed **once** — nothing stores it in recoverable
+form, so if it scrolls past, the answer is `set-password`, not a recovery.
+
+Hand it over in person or through a channel the school already trusts, and ask
+them to change it at first sign-in: Settings → Password, which is the one
+account operation a teacher can perform for themselves.
+
+The rest: `set-password`, `grant-school`, `revoke-school`, `list-teachers`.
+
+**Why commands and not an admin screen.** There is no e-mail transport in this
+product, so a self-service reset is either useless or an account takeover; and
+membership of a school *is* the permission model, so an "administrator" role is
+a concept this schema does not have. Both are real limitations and both are
+better stated than worked around.
 
 ---
 
@@ -182,6 +201,6 @@ the retention windows are being enforced at all (D2).
 | **Object-store backup** (D10) | No backup, no versioning, no deletion protection. Open. |
 | **A tested restore** (D1) | [`runbook/restore-from-backup.md`](runbook/restore-from-backup.md) is written and has never been executed. Until it has, treat the backup as unproven. |
 | **Error tracking** (D8) | The SDK wiring is in the repository and inert; it needs a vendor account. See [`runbook/`](runbook/) and `alppy/core/observability.py`. |
-| **Account provisioning** (D12) | §3.5. |
+| **E-mail** | No transport at all: no password reset link, no invitation, no notification. It is why account provisioning is a command (§3.5). |
 | **A staging environment** (D11) | `infra/fly/fly.staging.toml` exists and has never been deployed. |
 | **Real paper** (M9) | The print → scan → grade loop has never been run on a physically printed, physically filled, phone-photographed sheet. This is the single most load-bearing pre-launch task and it is not something a test can do. |

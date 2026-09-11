@@ -68,11 +68,21 @@ python -m alppy.cli backfill-events   # rebuild the agenda from existing timesta
 python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
 python -m alppy.cli purge-access-log  # enforce ALPPY_ACCESS_LOG_RETENTION_DAYS (read audit)
 python -m alppy.cli purge-scan-images # enforce ALPPY_SCAN_IMAGE_RETENTION_DAYS (400 days)
+python -m alppy.cli purge-model-calls # enforce ALPPY_MODEL_CALL_RETENTION_DAYS (3 years)
 python -m alppy.cli reap-jobs         # fail RUNNING jobs that stopped reporting
 python -m alppy.cli health-signals    # override rate, confidence deciles, registration failures
 
-# All five are ALSO on the worker's own schedule (alppy/worker/cron.py) — the
+# All six are ALSO on the worker's own schedule (alppy/worker/cron.py) — the
 # CLI form is what an operator runs to check, and it is the same code.
+
+# Accounts (D12). There is no e-mail transport and no role, so provisioning is
+# a command; the one thing a teacher does for themselves is Settings -> Password.
+python -m alppy.cli list-schools
+python -m alppy.cli create-teacher --email a@b.ch --first-name A --last-name B --school "<id>"
+python -m alppy.cli set-password --email a@b.ch      # prints a generated one, once
+python -m alppy.cli grant-school  --email a@b.ch --school "<id>"
+python -m alppy.cli revoke-school --email a@b.ch --school "<id>"   # an UPDATE, never a DELETE
+python -m alppy.cli list-teachers [--school "<id>"]
 
 make lock                             # re-resolve apps/api/uv.lock + requirements.lock
 
@@ -103,6 +113,7 @@ python scripts/fetch-per-curriculum.py
 | `apps/api/alppy/worker/cron.py` | **The schedule.** Every retention window and the stale-job reaper |
 | `apps/api/alppy/services/health_signals.py` | Override rate, confidence deciles, registration failures — per school |
 | `apps/web/src/lib/config.ts` | The web half of `core/config.py`: every env read, validated once, throws at import |
+| `apps/api/alppy/services/account_service.py` | Creating a teacher, passwords, staffroom membership (D12) |
 | `infra/fly/` | Deployment definitions — **drafts, nothing provisioned** |
 | `docs/runbook/` | Deploy, rollback, restore, secret rotation, worker drain, stuck batch, onboarding |
 | `docs/data-protection/` | Subprocessors, DPIA outline, breach procedure |
@@ -245,6 +256,15 @@ enforced, and worth four times what it says.
 at the API boundary, not inside `AiClient.complete` — that object is deliberately
 usable with no database, and a check at the point of the call abandons a class
 set half-graded.
+
+**No log line identifies a pupil.** The access line carries the route, not the
+row: `core/logging.py:scrub_path` replaces identifiers by SHAPE, so a route
+added next year is covered without anybody remembering, and the route survives
+because that is the line's whole diagnostic value. `test_log_hygiene.py` is what
+keeps it true. The one deliberate exception is `privacy.erasure`, which carries
+a `person_id` and a UID and never a name — it exists to OUTLIVE the database,
+because after a restore every erasure since the restore point has to be
+re-applied and a record inside the restored database is gone with it.
 
 **An error tracker's `before_send` is the load-bearing part.** A default-configured
 tracker sends the request body, which on this API is transcriptions of what a

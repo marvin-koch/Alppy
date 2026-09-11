@@ -43,20 +43,26 @@ Once, not per school.
       in [`../data-protection/dpia-outline.md`](../data-protection/dpia-outline.md).
 - [ ] Named contact for a breach, with an out-of-hours route.
 - [ ] The exit commitment agreed: what happens to their data if Alppy stops
-      operating. **Note that the class- and school-level export
-      `privacy.md` §4 promises does not exist** — only per-student export does.
-      Do not promise it until it is built.
+      operating. `GET /classes/{id}/export` returns a whole class as one JSON
+      document, so the answer is no longer embarrassing — but say what it does
+      **not** carry: the PDFs and the scan images live in object storage and are
+      not in the document, and the class export is the roster as it stands, so a
+      pupil who has left is exported individually.
 
 ## C · Technical setup
 
 - [ ] School row created. `School.default_curriculum` decides which competency a
       chapter is filed under **per school**, which is what lets Sion and Chur
       share one chapter — get it right at creation.
-- [ ] Teacher accounts created. **Manual database work today:** there is no
-      endpoint that creates a teacher, resets a password or revokes access. This
-      is the first thing an establishment will need and it does not exist. The
-      only account-creating command is `alppy.cli seed`, which creates the
-      *demo* teacher — do not run it against a real deployment.
+- [ ] Teacher accounts created:
+      `python -m alppy.cli create-teacher --email … --first-name … --last-name …
+      --school …`. It creates the account and the staffroom membership together,
+      and prints a generated password **once**. Do not run `seed` against a real
+      deployment — it creates the *demo* teacher with a password that is a
+      constant in this repository.
+- [ ] Each teacher told to change it at first sign-in (Settings → Password), and
+      told plainly that **there is no reset link**: a forgotten password is
+      `set-password`, run by you. There is no e-mail transport.
 - [ ] Classes and roster imported. `class_student` is an interval: a pupil who
       leaves is an `UPDATE`, never a `DELETE`.
 - [ ] Subjects and the teaching assignment (`class_teacher_subject`) set.
