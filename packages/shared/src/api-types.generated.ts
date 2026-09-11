@@ -228,6 +228,28 @@ export interface ClassCreate {
   school_year_id?: Uuid | null;
 }
 
+/**
+ * A whole class, as one document (D36).
+ *
+ * `docs/privacy.md` §4 has promised this since it was written and only the
+ * per-pupil export existed, so a school exercised its portability right
+ * twenty-four children at a time. Each pupil is rendered by exactly the shape
+ * the single-pupil export returns, so the two cannot drift.
+ *
+ * The roster **as it stands**: `class_student` is an interval, and a teacher
+ * who arrived in March has no standing over a pupil who left in October. A
+ * pupil who has left is exported individually, under the gate that governs
+ * them.
+ */
+export interface ClassExportOut {
+  generated_at: IsoDateTime;
+  class_id: Uuid;
+  class_code: string;
+  school_year: string | null;
+  student_count: number;
+  students: StudentExportOut[];
+}
+
 export interface ClassOut {
   id: Uuid;
   code: string;
@@ -731,6 +753,26 @@ export interface MisconceptionNoteOut {
   competency_ids: Uuid[];
   approved_at: IsoDateTime | null;
   created_at: IsoDateTime;
+}
+
+/**
+ * A teacher changing their own password, knowing the current one (D12).
+ *
+ * The only account operation a teacher can perform for themselves, and the
+ * only one that needs neither e-mail (there is no transport) nor a role
+ * (membership of a school *is* the permission model). Everything else —
+ * creating an account, resetting a forgotten password, revoking access — is a
+ * command run by somebody with server access; see
+ * `services/account_service.py`.
+ *
+ * `min_length` differs between the two fields on purpose. `current_password`
+ * has to admit whatever already exists, including anything created under the
+ * old 8-character bound; `new_password` is the floor for something being set
+ * now, where there is no legacy to accommodate.
+ */
+export interface PasswordChangeRequest {
+  current_password: string;
+  new_password: string;
 }
 
 /**

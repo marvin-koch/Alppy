@@ -15,6 +15,7 @@ from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import (
     BranchOrder,
     ClassCreate,
+    ClassExportOut,
     ClassOut,
     ClassTeacherOut,
     ClassUpdate,
@@ -389,6 +390,28 @@ def update_student(
     )
     db.commit()
     return student_out(student)
+
+
+@router.get("/classes/{class_id}/export", response_model=ClassExportOut)
+def export_class(class_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> ClassExportOut:
+    """The whole class, in one document (D36).
+
+    `docs/privacy.md` §4 has promised this since it was written — "the mechanism
+    a school uses to take its data with it" — and only the per-pupil route
+    existed, so a school of four hundred children exercised its portability
+    right twenty-four pupils at a time. A procurement question about leaving now
+    has an answer that is a URL.
+
+    Gated by `get_class`, the same gate every other class route uses, and the
+    roster it exports is `list_students` — the pupils sitting here **today**.
+    Deliberately not everyone who ever sat here: a teacher who arrived in March
+    has no standing over a pupil who left in October, and that gate is narrower
+    than "ever enrolled" for a reason. A pupil who has left is still exportable
+    through the per-pupil route, under the gate that governs them.
+    """
+    klass = svc.get_class(db, scope, class_id)
+    students = svc.list_students(db, scope, class_id)
+    return export_service.class_export(db, scope.school_id, klass, students)
 
 
 @router.get("/students/{student_id}/export", response_model=StudentExportOut)

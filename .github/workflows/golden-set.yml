@@ -34,6 +34,26 @@ jobs:
     name: Recognition against the golden set
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The secret is behind an ENVIRONMENT, and that is the whole of D31.
+    #
+    # Before this, any pull request from a branch in this repository that
+    # touched one of the four paths above ran with a live provider key in its
+    # environment — and a PR is, by construction, code that has not been
+    # reviewed yet. One line added to `run-golden-set.py` exfiltrates the key,
+    # and the run looks like a normal green check.
+    #
+    # A GitHub environment with a required reviewer means the secret is not
+    # injected until a human approves that specific run. The scheduled and
+    # manual runs are unaffected in practice: they run on `main`, which is
+    # reviewed code by definition, and an environment with no protection rule
+    # on the default branch does not prompt.
+    #
+    # NOTE (setup, one-off): create the `golden-set` environment in the
+    # repository settings and add `ALPPY_ANTHROPIC_API_KEY` to it as an
+    # ENVIRONMENT secret — not a repository secret — with "required reviewers"
+    # set. A repository secret stays visible to every workflow and this gate
+    # does nothing.
+    environment: golden-set
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

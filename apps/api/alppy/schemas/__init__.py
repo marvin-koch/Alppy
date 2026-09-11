@@ -57,6 +57,26 @@ class LoginRequest(BaseModel):
     password: Annotated[str, Field(min_length=8, max_length=200)]
 
 
+class PasswordChangeRequest(BaseModel):
+    """A teacher changing their own password, knowing the current one (D12).
+
+    The only account operation a teacher can perform for themselves, and the
+    only one that needs neither e-mail (there is no transport) nor a role
+    (membership of a school *is* the permission model). Everything else —
+    creating an account, resetting a forgotten password, revoking access — is a
+    command run by somebody with server access; see
+    `services/account_service.py`.
+
+    `min_length` differs between the two fields on purpose. `current_password`
+    has to admit whatever already exists, including anything created under the
+    old 8-character bound; `new_password` is the floor for something being set
+    now, where there is no legacy to accommodate.
+    """
+
+    current_password: Annotated[str, Field(min_length=8, max_length=200)]
+    new_password: Annotated[str, Field(min_length=12, max_length=200)]
+
+
 class TeacherPreferences(ApiModel):
     """The display switches. None is a real value: "not chosen" differs from
     "light", because not chosen means follow the system."""
@@ -186,6 +206,29 @@ class ExportNote(ApiModel):
     notes: list[str] = []
     based_on_sheet_id: uuid.UUID | None
     approved_at: datetime | None
+
+
+class ClassExportOut(ApiModel):
+    """A whole class, as one document (D36).
+
+    `docs/privacy.md` §4 has promised this since it was written and only the
+    per-pupil export existed, so a school exercised its portability right
+    twenty-four children at a time. Each pupil is rendered by exactly the shape
+    the single-pupil export returns, so the two cannot drift.
+
+    The roster **as it stands**: `class_student` is an interval, and a teacher
+    who arrived in March has no standing over a pupil who left in October. A
+    pupil who has left is exported individually, under the gate that governs
+    them.
+    """
+
+    generated_at: datetime
+    class_id: uuid.UUID
+    class_code: str
+    #: `2026/27`. A class code alone does not identify a class across years.
+    school_year: str | None = None
+    student_count: int
+    students: list[StudentExportOut] = []
 
 
 class StudentExportOut(ApiModel):

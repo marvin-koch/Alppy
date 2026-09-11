@@ -17,7 +17,13 @@ from fastapi.middleware.cors import CORSMiddleware
 from alppy.api.errors import install_error_handlers
 from alppy.api.v1 import api_router
 from alppy.core.config import Settings, get_settings
-from alppy.core.logging import configure_logging, get_logger, new_request_id, request_id_var
+from alppy.core.logging import (
+    configure_logging,
+    get_logger,
+    new_request_id,
+    request_id_var,
+    scrub_path,
+)
 from alppy.core.observability import configure as configure_observability
 
 log = get_logger(__name__)
@@ -107,7 +113,10 @@ def _install_request_id(app: FastAPI, *, is_deployment: bool = False) -> None:
             log.info(
                 "http.request",
                 method=request.method,
-                path=request.url.path,
+                # The ROUTE, not the row (D33). A path here routinely carries a
+                # student's primary key, and this line goes to whatever
+                # aggregates stdout under a retention policy that is not ours.
+                path=scrub_path(request.url.path),
                 status=response.status_code,
                 duration_ms=int((time.perf_counter() - started) * 1000),
             )

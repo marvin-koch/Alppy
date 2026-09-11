@@ -423,6 +423,57 @@ jobs:
           cache-from: type=gha,scope=web
           cache-to: type=gha,mode=max,scope=web
 
+  # `pip-audit` and `pnpm audit` read the manifests WE wrote. Neither has ever
+  # looked at the operating system underneath (D32), which is where a base image
+  # pinned by digest quietly accumulates CVEs between Dependabot bumps — and the
+  # API image is the fat one: Debian, OpenCV's system libraries, and a whole
+  # Chromium.
+  #
+  # HIGH and CRITICAL only, and `exit-code: 1` only on those. A scanner that
+  # fails a merge on a medium advisory in a transitive Debian package is a
+  # scanner somebody disables, and a disabled scanner reports success forever.
+  image-vulnerabilities:
+    name: Base images without known problems
+    runs-on: ubuntu-latest
+    needs: [images]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build the API image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/api/Dockerfile
+          push: false
+          load: true
+          tags: alppy-api:scan
+          cache-from: type=gha,scope=api
+      - name: Build the web image for scanning
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/web/Dockerfile
+          push: false
+          load: true
+          tags: alppy-web:scan
+          cache-from: type=gha,scope=web
+      - name: Scan the API image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: alppy-api:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+      - name: Scan the web image
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: alppy-web:scan
+          severity: HIGH,CRITICAL
+          ignore-unfixed: true
+          exit-code: "1"
+          format: table
+
   # `pyproject.toml` is all `>=` ranges; `requirements.lock` is what the image
   # actually installs, with hashes (D18). A dependency added to one and not the
   # other means the image and the test run are two different environments — and

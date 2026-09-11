@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from alppy.api import errors
 from alppy.api.deps import SettingsDep, StorageDep, TenantDep, get_db
-from alppy.core.logging import get_logger
+from alppy.core.logging import get_logger, scrub_path
 from alppy.schemas import HealthDetailOut, HealthOut, LivenessOut
 from alppy.storage import StorageError
 
@@ -149,16 +149,18 @@ def get_file(key: str, school_id: TenantDep, storage: StorageDep) -> Response:
     """
     parts = key.split("/")
     if len(parts) < 3 or parts[1] != str(school_id):
-        log.info("files.denied", reason="tenant", key=key)
+        log.info("files.denied", reason="tenant", key=scrub_path(key))
         raise errors.not_found("file")
     try:
         data = storage.get_bytes(key)
     except StorageError as exc:
-        log.info("files.denied", reason="missing", key=key)
+        log.info("files.denied", reason="missing", key=scrub_path(key))
         raise errors.not_found("file") from exc
     # The key is deliberately NOT echoed in either envelope: it is the caller's
     # own input, and reflecting it turns a 404 into a mirror for whatever they
-    # put in the path. The log keeps it, which is where it is useful.
+    # put in the path. The log keeps its SHAPE, which is where it is useful —
+    # `scans/{id}/{id}/page-000.png` says which bucket layout was asked for
+    # without naming the school or the pile (D33).
     return Response(content=data, media_type=_media_type(key))
 
 

@@ -31,6 +31,7 @@ from alppy.models import (
     exercise_competency,
 )
 from alppy.schemas import (
+    ClassExportOut,
     ExportAttempt,
     ExportEnrolment,
     ExportNote,
@@ -63,6 +64,50 @@ def student_export(db: Session, school_id: uuid.UUID, person_id: uuid.UUID) -> S
         enrolments=enrolments,
         attempts=attempts,
         notes=notes,
+    )
+
+
+def class_export(
+    db: Session, school_id: uuid.UUID, klass: Class, students: list[Student]
+) -> ClassExportOut:
+    """A whole class, as one document (D36).
+
+    `docs/privacy.md` §4 has promised this since it was written — "a school can
+    request a full export of one class ... the mechanism a school uses to take
+    its data with it" — and only the per-PUPIL export existed. Which meant a
+    school of four hundred children exercised its portability right twenty-four
+    pupils at a time, by hand, and a procurement question about leaving had no
+    answer that was not embarrassing.
+
+    **The roster as it stands, not everyone who ever sat here**, and the choice
+    matters. `class_student` is an interval, so "who is in 7B" depends on when
+    you ask; a teacher who arrived in March has no standing over a pupil who
+    left in October, and that gate — the overlap rule in
+    `ever_shared_student_ids` — is deliberately narrower than "ever enrolled".
+    Rather than invent a third access rule inside an export, this exports
+    exactly the pupils the caller may already act on. A pupil who has left is
+    still exportable individually through the per-pupil route, under the gate
+    that governs them.
+
+    Each pupil is rendered by `student_export`, so the class document and the
+    single-pupil document cannot drift: one shape, one place. Mastery snapshots
+    stay out for the reason they stay out of the pupil export — they are
+    recomputed from the attempts below, and a decaying score is a photograph of
+    a calculation, not an independent fact about a child.
+    """
+    # `Class` carries `school_year_id` and no relationship, so the label is
+    # fetched rather than traversed. It is in the document because a class code
+    # alone (`7B`) does not identify a class across years, and an export that
+    # cannot say which year it describes is an export somebody has to date by
+    # hand.
+    year = db.get(SchoolYear, klass.school_year_id)
+    return ClassExportOut(
+        generated_at=datetime.now(UTC),
+        class_id=klass.id,
+        class_code=klass.code,
+        school_year=year.label if year else None,
+        student_count=len(students),
+        students=[student_export(db, school_id, s.person_id) for s in students],
     )
 
 

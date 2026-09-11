@@ -20,7 +20,12 @@ from alppy.api.deps import (
 from alppy.core.security import hash_password, issue_session, needs_rehash, verify_password
 from alppy.models import Teacher
 from alppy.models.enums import Locale
-from alppy.schemas import LoginRequest, TeacherOut, TeacherPreferences
+from alppy.schemas import (
+    LoginRequest,
+    PasswordChangeRequest,
+    TeacherOut,
+    TeacherPreferences,
+)
 from alppy.services import class_service, teacher_out
 
 router = APIRouter(tags=["auth"])
@@ -124,6 +129,67 @@ def switch_school(
 @router.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(response: Response, settings: SettingsDep) -> None:
     response.delete_cookie(settings.session_cookie, path="/")
+
+
+@router.post("/auth/password", response_model=TeacherOut)
+def change_password(
+    payload: PasswordChangeRequest,
+    request: Request,
+    teacher: TeacherDep,
+    tenant: TenantDep,
+    db: DbDep,
+    settings: SettingsDep,
+) -> TeacherOut:
+    """Change your own password, knowing the current one (D12).
+
+    The one account operation that is an endpoint, and the reason it can be:
+    it needs no e-mail transport — which this product does not have — and no
+    role, which this schema does not have either. Creating an account or
+    resetting a forgotten password are commands run by somebody with server
+    access (`alppy.cli create-teacher`, `set-password`).
+
+    **The current password is verified even though the caller already holds a
+    valid session.** The session is the weaker claim: a cookie is what an
+    unlocked laptop in a staffroom hands to whoever sits down next, and without
+    this check a borrowed two minutes becomes a permanent takeover. Knowing the
+    old password is the thing an attacker in that position does not have.
+
+    Rate limited on the same buckets as sign-in, per account and per address,
+    because this verifies a password and Argon2id is expensive on purpose —
+    otherwise an authenticated session is an unlimited oracle for guessing the
+    password that session already implies.
+
+    **It does not sign other sessions out.** There is no server-side session
+    store to revoke against: the cookie is signed with the server key and
+    carries no password. Stated here rather than discovered, because a teacher
+    changing a password they believe is known expects the opposite. The only
+    lever that ejects a stolen session is rotating `ALPPY_SECRET_KEY`, which
+    ejects everybody in every school — see docs/runbook/rotate-a-secret.md.
+    """
+    from alppy.services.account_service import AccountError, change_own_password
+
+    email = teacher.email.lower()
+    enforce_login_rate_limit(request, email, settings)
+    try:
+        change_own_password(
+            db,
+            teacher=teacher,
+            current=payload.current_password,
+            new=payload.new_password,
+        )
+    except AccountError as exc:
+        # A wrong current password is a failed authentication and is charged
+        # like one; the other refusals (same password, too short) are the
+        # caller's own value and cost nothing to reject.
+        if "current password" in str(exc):
+            record_failed_login(request, email, settings)
+            raise errors.unauthorized("the current password is not correct") from exc
+        raise errors.unprocessable(str(exc)) from exc
+    db.commit()
+    clear_failed_logins(email, settings)
+    return teacher_out(
+        teacher, tenant, schools=class_service.schools_for_teacher(db, teacher.id)
+    )
 
 
 @router.get("/auth/me", response_model=TeacherOut)

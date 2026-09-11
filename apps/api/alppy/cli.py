@@ -33,9 +33,11 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import UTC, datetime, timedelta
+from typing import Any
 
 from sqlalchemy import select
 
+from alppy.api import errors
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
 from alppy.db.session import admin_session
@@ -288,6 +290,213 @@ def _reap_jobs(*, dry_run: bool = False) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------
+# Accounts (D12)
+# --------------------------------------------------------------------------
+# There was no way to create a teacher, reset a password or revoke access. The
+# only account-minting path was `seed`, which creates the DEMO teacher with a
+# password that is a constant in this repository — so onboarding an
+# establishment, and unlocking a teacher before a lesson, both meant hand-written
+# SQL. See `services/account_service.py` for why these are commands rather than
+# endpoints (no e-mail transport exists, and membership IS the permission model).
+
+
+def _accounts_session() -> Any:
+    """The owner's session. These are cross-school reads and writes by nature —
+    "which account is this" is the question the tenant boundary exists to refuse
+    inside a request, which is also why none of this is an endpoint."""
+    return admin_session()
+
+
+def _print_teacher_credentials(
+    email: str, password: str | None, *, school_name: str
+) -> None:
+    """Print a generated password ONCE, and say what it is and is not.
+
+    Nothing stores it: `password_hash` is Argon2id. If this scrolls past, the
+    answer is `set-password`, not a recovery — which is the property that makes
+    the store safe and the moment inconvenient.
+    """
+    print(f"\n  account : {email}")
+    print(f"  school  : {school_name}")
+    if password is not None:
+        print(f"  password: {password}")
+        print(
+            "\n  Shown once and stored only as an Argon2id hash — there is no way to\n"
+            "  read it back. Hand it over in person or through a channel the school\n"
+            "  already trusts, and ask them to change it at first sign-in\n"
+            "  (Settings, or POST /api/v1/auth/password).\n"
+        )
+    else:
+        print("  password: (the one you supplied)\n")
+
+
+def _create_teacher(
+    *, email: str, first_name: str, last_name: str, school: str, password: str | None
+) -> int:
+    from alppy.services.account_service import AccountError, create_teacher, find_school
+
+    db = _accounts_session()
+    try:
+        resolved = find_school(db, name_or_id=school)
+        created = create_teacher(
+            db,
+            email=email,
+            first_name=first_name,
+            last_name=last_name,
+            school=resolved,
+            password=password,
+        )
+        db.commit()
+    except AccountError as exc:
+        db.rollback()
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except Exception:
+        db.rollback()
+        log.exception("account.create.failed")
+        raise
+    finally:
+        db.close()
+    _print_teacher_credentials(
+        email.lower(), created.generated_password, school_name=resolved.name
+    )
+    return 0
+
+
+def _set_password(*, email: str, password: str | None) -> int:
+    from alppy.services.account_service import AccountError, find_teacher, set_password
+
+    db = _accounts_session()
+    try:
+        teacher = find_teacher(db, email=email)
+        generated = set_password(db, teacher=teacher, password=password)
+        db.commit()
+    except AccountError as exc:
+        db.rollback()
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except Exception:
+        db.rollback()
+        log.exception("account.set_password.failed")
+        raise
+    finally:
+        db.close()
+    print(f"\n  account : {email.lower()}")
+    if generated is not None:
+        print(f"  password: {generated}")
+    print(
+        "\n  NOTE: live sessions are NOT signed out. The cookie is signed with the\n"
+        "  server key and carries no password, and there is no session store to\n"
+        "  revoke against. If the old password is believed to be known by someone\n"
+        "  else, rotate ALPPY_SECRET_KEY as well — docs/runbook/rotate-a-secret.md.\n"
+    )
+    return 0
+
+
+def _grant_school(*, email: str, school: str) -> int:
+    from alppy.services.account_service import AccountError, find_school, find_teacher, grant_school
+
+    db = _accounts_session()
+    try:
+        teacher = find_teacher(db, email=email)
+        resolved = find_school(db, name_or_id=school)
+        grant_school(db, teacher=teacher, school=resolved)
+        db.commit()
+        print(f"{email.lower()} now works at {resolved.name}")
+    except AccountError as exc:
+        db.rollback()
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except Exception:
+        db.rollback()
+        log.exception("account.grant.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
+def _revoke_school(*, email: str, school: str) -> int:
+    from alppy.services.account_service import (
+        AccountError,
+        find_school,
+        find_teacher,
+        revoke_school,
+    )
+
+    db = _accounts_session()
+    try:
+        teacher = find_teacher(db, email=email)
+        resolved = find_school(db, name_or_id=school)
+        revoke_school(db, teacher=teacher, school=resolved)
+        db.commit()
+        print(
+            f"{email.lower()} no longer works at {resolved.name} as of today.\n"
+            "The membership row is kept — 'they were here from August to February'\n"
+            "is what justifies every grade they recorded."
+        )
+    except AccountError as exc:
+        db.rollback()
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    except errors.ApiError as exc:
+        # `leave_school` raises the API's conflict type for its two refusals:
+        # a staffroom cannot be emptied, and a head teacher cannot be removed
+        # from a class that still names them. Both read fine at a shell.
+        db.rollback()
+        print(f"refused: {exc.message}", file=sys.stderr)
+        if exc.details:
+            print(f"         {exc.details}", file=sys.stderr)
+        return 2
+    except Exception:
+        db.rollback()
+        log.exception("account.revoke.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
+def _list_teachers(*, school: str | None) -> int:
+    from alppy.services.account_service import AccountError, find_school, list_teachers
+
+    db = _accounts_session()
+    try:
+        resolved = find_school(db, name_or_id=school) if school else None
+        rows = list_teachers(db, school=resolved)
+    except AccountError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        return 2
+    finally:
+        db.close()
+    if not rows:
+        print("no teachers")
+        return 0
+    width = max(len(r.email) for r in rows)
+    for row in rows:
+        schools = ", ".join(row.current_schools) or "— no current staffroom —"
+        print(f"{row.email:<{width}}  {row.name:<28}  {schools}")
+    return 0
+
+
+def _list_schools() -> int:
+    from alppy.models import School
+
+    db = _accounts_session()
+    try:
+        schools = list(db.execute(select(School).order_by(School.name)).scalars())
+    finally:
+        db.close()
+    if not schools:
+        print("no schools")
+        return 0
+    for school in schools:
+        canton = school.canton or "--"
+        print(f"{school.id}  {canton}  {school.default_curriculum.value:<4}  {school.name}")
+    return 0
+
+
 def _health_signals(*, days: int) -> int:
     """Compute and log the override rate and the confidence distribution (D8).
 
@@ -452,6 +661,59 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Count what would be deleted without deleting anything.",
     )
+    # --- accounts (D12) ---
+    create = subparsers.add_parser(
+        "create-teacher",
+        help="Create a teacher account and put it in a staffroom.",
+        description=(
+            "Creates the account AND the school membership, because a teacher "
+            "without one signs in successfully and then finds an empty product. "
+            "Omit --password and a strong one is generated and printed once."
+        ),
+    )
+    create.add_argument("--email", required=True)
+    create.add_argument("--first-name", required=True)
+    create.add_argument("--last-name", required=True)
+    create.add_argument(
+        "--school", required=True, help="School id, or its exact name. `list-schools` shows both."
+    )
+    create.add_argument(
+        "--password",
+        default=None,
+        help="Leave this out. A generated password is stronger and is never typed into a shell's history.",
+    )
+
+    setpw = subparsers.add_parser(
+        "set-password",
+        help="Reset a teacher's password (they are NOT signed out).",
+    )
+    setpw.add_argument("--email", required=True)
+    setpw.add_argument("--password", default=None, help="Omit to generate one.")
+
+    grant = subparsers.add_parser(
+        "grant-school", help="Add an existing teacher to another staffroom."
+    )
+    grant.add_argument("--email", required=True)
+    grant.add_argument("--school", required=True)
+
+    revoke = subparsers.add_parser(
+        "revoke-school",
+        help="End a teacher's membership of a staffroom, as of today.",
+        description=(
+            "An UPDATE, never a DELETE: the row is kept, because 'they were here "
+            "from August to February' is what justifies every grade they recorded. "
+            "Refused for the last teacher in a school, and for a teacher who is "
+            "still head of a class."
+        ),
+    )
+    revoke.add_argument("--email", required=True)
+    revoke.add_argument("--school", required=True)
+
+    listed = subparsers.add_parser("list-teachers", help="Every teacher, or one staffroom's.")
+    listed.add_argument("--school", default=None, help="School id or exact name.")
+
+    subparsers.add_parser("list-schools", help="Every school, with its id and curriculum.")
+
     signals = subparsers.add_parser(
         "health-signals",
         help=(
@@ -482,6 +744,30 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "reap-jobs":
         return _reap_jobs(dry_run=args.dry_run)
+
+    if args.command == "create-teacher":
+        return _create_teacher(
+            email=args.email,
+            first_name=args.first_name,
+            last_name=args.last_name,
+            school=args.school,
+            password=args.password,
+        )
+
+    if args.command == "set-password":
+        return _set_password(email=args.email, password=args.password)
+
+    if args.command == "grant-school":
+        return _grant_school(email=args.email, school=args.school)
+
+    if args.command == "revoke-school":
+        return _revoke_school(email=args.email, school=args.school)
+
+    if args.command == "list-teachers":
+        return _list_teachers(school=args.school)
+
+    if args.command == "list-schools":
+        return _list_schools()
 
     if args.command == "health-signals":
         return _health_signals(days=args.days)
