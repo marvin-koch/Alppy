@@ -21,6 +21,8 @@ import { useFormatters } from '@/lib/format';
 import { aggregatePoints, pointsRatio, type PointsSummary } from '@/lib/points';
 import { CompetenceThemeFilter } from '@/components/CompetenceThemeFilter';
 import { useScope } from '@/lib/scope';
+import { RevealNames } from '@/components/RevealNames';
+import { useDiscretion } from '@/lib/discreet';
 
 /** The synthetic right-hand column: everything so far, added up. */
 const TOTAL_COLUMN = '__total__';
@@ -39,6 +41,7 @@ const TOTAL_COLUMN = '__total__';
  */
 export default function ResultsPage() {
   const t = useTranslations('results');
+  const { hideNames } = useDiscretion();
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const fmt = useFormatters();
@@ -91,10 +94,13 @@ export default function ResultsPage() {
     () =>
       (students.data ?? []).map((student) => ({
         id: student.id,
-        firstName: student.first_name,
-        lastName: student.last_name,
+        // The points matrix names every pupil beside what they scored. In
+        // projector mode the name becomes the UID — same row, same number,
+        // no answer to "who is that".
+        firstName: hideNames ? student.uid : student.first_name,
+        lastName: hideNames ? '' : student.last_name,
       })),
-    [students.data],
+    [students.data, hideNames],
   );
 
   const valueFor = (studentId: string, columnId: string): PointsValue | undefined =>
@@ -136,13 +142,17 @@ export default function ResultsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <header>
-        <h1 className="text-h1">{t('title')}</h1>
-        {currentClass ? (
-          <p className="text-body-s text-ink-500">
-            {t('forClass', { code: currentClass.code })}
-          </p>
-        ) : null}
+      <header className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-h1">{t('title')}</h1>
+          {currentClass ? (
+            <p className="text-body-s text-ink-500">
+              {t('forClass', { code: currentClass.code })}
+            </p>
+          ) : null}
+        </div>
+        {/* Only rendered when projector mode is on. */}
+        <RevealNames />
       </header>
 
       {/* Marks, narrowed to a part of the programme. On the canvas, not in a

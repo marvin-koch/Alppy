@@ -20,6 +20,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery, useCurriculumTree } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useClassSubject } from '@/lib/use-class-subject';
+import { useDiscretion } from '@/lib/discreet';
 
 /**
  * One Competence, for one class.
@@ -36,6 +37,7 @@ export default function CompetencePage({
 }) {
   const { classId, competencyId } = use(params);
   const t = useTranslations('curriculum');
+  const { hideNames } = useDiscretion();
   const tt = useTranslations('tree');
   const tm = useTranslations('mastery');
   const te = useTranslations('errors.generic');
@@ -71,11 +73,11 @@ export default function CompetencePage({
     );
     return (students ?? []).map((s) => ({
       id: s.id,
-      name: `${s.last_name.toUpperCase()} ${s.first_name}`.trim(),
+      name: hideNames ? s.uid : `${s.last_name.toUpperCase()} ${s.first_name}`.trim(),
       uid: s.uid,
       cell: byStudent.get(s.id) ?? null,
     }));
-  }, [students, matrix.data, competencyId]);
+  }, [students, matrix.data, competencyId, hideNames]);
 
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },

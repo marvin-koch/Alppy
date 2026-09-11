@@ -163,7 +163,7 @@ class Teacher(Base, TimestampMixin):
     first_name: Mapped[str] = mapped_column(String(100), nullable=False)
     last_name: Mapped[str] = mapped_column(String(100), nullable=False)
 
-    # The four display switches from DESIGN.md §8, persisted per teacher.
+    # The display switches from DESIGN.md §8, persisted per teacher.
     # NULL means "not chosen" — which is a distinct state from light or dark.
     locale: Mapped[Locale] = mapped_column(
         Enum(Locale, name="locale"), default=Locale.FR, nullable=False
@@ -172,6 +172,8 @@ class Teacher(Base, TimestampMixin):
     contrast: Mapped[str | None] = mapped_column(String(10))  # None | high
     motion: Mapped[str | None] = mapped_column(String(10))  # None | off
     calm: Mapped[str | None] = mapped_column(String(10))  # None | on
+    # Projector mode: names collapse to UIDs wherever pupils are listed.
+    discreet: Mapped[str | None] = mapped_column(String(10))  # None | on
 
     home_school: Mapped[School] = relationship(back_populates="home_teachers")
     # Every school this teacher works at. viewonly: appending cannot re-issue
@@ -194,6 +196,19 @@ class Teacher(Base, TimestampMixin):
 
 class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "school_year"
+    __table_args__ = (
+        # `2026/27`, the form every Swiss school writes on a timetable, pinned
+        # in the database (audit 03, B24). The column was a free `String(20)`
+        # and the label is not decoration: `current_school_year` looks a year up
+        # BY LABEL when no row is marked current, so "2026/2027" and "2026/27"
+        # would be two different years for one school — two rosters, two sets of
+        # UIDs, and a class quietly created in the wrong one.
+        #
+        # `LIKE` with `_` wildcards rather than a regex: `~` is Postgres-only
+        # and the suite builds its schema on SQLite (D18), where a check nobody
+        # can run is a check nobody has.
+        CheckConstraint("label LIKE '____/__'", name="ck_school_year_label"),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
     label: Mapped[str] = mapped_column(String(20), nullable=False)  # "2025/26"
@@ -969,6 +984,17 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     # do that, whatever happens to the feedback afterwards.
     feedback_pdf_key: Mapped[str | None] = mapped_column(String(500))
     rendered_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    #: Bumped on every render. The answer-box rectangles a scan is cropped at
+    #: belong to ONE render of this sheet, and `rendered_at` alone cannot say
+    #: which: print on Tuesday, edit and re-render on Wednesday for an
+    #: absentee, photograph Tuesday's copies on Thursday, and the crops land at
+    #: Wednesday's geometry. `AnswerBoxPlacement` and `Scan` both carry this so
+    #: the scan job can ask for the rectangles the paper in its hand was
+    #: actually printed with — the same job `layout_version` already does for
+    #: the layout dimension, and the same pinning pattern (B7).
+    render_generation: Mapped[int] = mapped_column(
+        Integer, default=0, server_default="0", nullable=False
+    )
 
     chapter: Mapped[Chapter] = relationship()
     items: Mapped[list[SheetItem]] = relationship(
@@ -1074,6 +1100,25 @@ class SheetInstance(Base, TimestampMixin, SchoolScopedMixin):
     # [{exercise_id, variant_id|null, position}] — resolved at render time.
     item_plan: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, default=list)
     page_count: Mapped[int | None] = mapped_column(Integer)
+    #: What this copy was worth, frozen when the pile was confirmed (B18).
+    #:
+    #: `points_earned` on a returned paper is the sum of `Attempt.score`, which
+    #: was frozen at confirmation; `points_possible` was recomputed live from
+    #: `SheetItem.points_correct` and `Sheet.default_points_correct` every time
+    #: the report was opened. So editing the barème after a pile was confirmed
+    #: silently rewrote the denominator of every paper already handed back —
+    #: 14/20 became 14/25 with no record, on a sheet the class had taken home.
+    #:
+    #: Frozen **per copy** rather than per attempt, and that is a deliberate
+    #: departure from the obvious place: an item the grader could not read
+    #: produces no `Attempt` at all, so a sum over attempts would quietly leave
+    #: those items out of what the paper was worth. This is the whole copy's
+    #: total, over its own item plan, exactly as `_possible_by_student` computes
+    #: it — captured at the one moment the number becomes a promise.
+    #:
+    #: NULL means "never confirmed", and the live computation still applies:
+    #: a sheet being previewed or edited must show the barème as it stands now.
+    points_possible: Mapped[float | None] = mapped_column(Float)
 
     # Which personalised group this copy belongs to, as a printable label
     # ("Groupe 2 · Fractions équivalentes"). A label rather than a foreign key
@@ -1100,24 +1145,49 @@ class AnswerBoxPlacement(Base, TimestampMixin, SchoolScopedMixin):
     bubble sits at a coordinate the layout fixes, so the detector can derive it
     from the item index alone; a box sits under a statement whose height the
     browser decides, so the only honest source of its position is the render
-    that went to the printer. Written wholesale when a sheet is rendered and
-    replaced on every re-render, so an exercise edited after the pile was
-    printed cannot move the rectangle the scanner crops.
+    that went to the printer. Written wholesale when a sheet is rendered — and,
+    since B7, kept **per render generation** rather than replaced outright.
 
-    Keyed the way a detection is resolved: the student's UID, which page of
-    their copy, and the page-local item index.
+    This docstring used to claim that "an exercise edited after the pile was
+    printed cannot move the rectangle the scanner crops", and the delete-then-
+    rewrite it described was precisely how an edit did move it: print on
+    Tuesday, edit and re-render on Wednesday to run off a copy for an absentee,
+    upload Tuesday's photographs on Thursday, and every one of them is cropped
+    at Wednesday's geometry. The rows the pile was measured at had been deleted
+    on Wednesday. Nothing recorded that, and a written answer cut at the wrong
+    rows is graded on whatever ink the crop happened to contain.
+
+    `Sheet.render_generation` counts renders; `Scan.render_generation` pins the
+    one a pile was printed from, exactly as `layout_version` already pins the
+    layout. Delete-and-rewrite still happens **within** one generation, which is
+    what keeps the roster reasoning true — a re-render loses the rows of a child
+    who left as surely as it gains those of one who arrived — while a *previous*
+    generation's rectangles stay where they are, because a pile printed from
+    them may not have been photographed yet.
+
+    Keyed the way a detection is resolved: the render generation, the student's
+    UID, which page of their copy, and the page-local item index.
     """
 
     __tablename__ = "answer_box_placement"
     __table_args__ = (
+        # The generation is part of the slot since B7. Without it a second
+        # render of the same sheet collides with the first on every box, which
+        # is what forced the old delete-everything-and-rewrite and with it the
+        # bug: keeping the rows was impossible, so the rectangles a printed
+        # pile was measured at could not survive the next render.
         UniqueConstraint(
-            "sheet_id", "student_uid", "copy_page", "item_index",
+            "sheet_id", "render_generation", "student_uid", "copy_page", "item_index",
             name="uq_answer_box_placement_slot",
         ),
     )
 
     id: Mapped[uuid.UUID] = _pk()
     sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
+    #: Which render of the sheet measured this rectangle (B7). NULL is every
+    #: row written before generations existed, and is matched only by a scan
+    #: that also predates them — never by a later render's crops.
+    render_generation: Mapped[int | None] = mapped_column(Integer)
     exercise_id: Mapped[uuid.UUID | None] = _fk(
         "exercise.id", nullable=True, ondelete="SET NULL"
     )
@@ -1255,6 +1325,10 @@ class Scan(Base, TimestampMixin, SchoolScopedMixin):
     # Set once from the sheet the pile was printed from, so a page is always
     # registered against the layout it was printed with (never the current one).
     layout_version: Mapped[str | None] = mapped_column(String(10))
+    #: Which render of that sheet, pinned the same way and for the same reason
+    #: (B7). NULL means a pile uploaded before generations existed: it matches
+    #: the placements that also carry NULL, and never a later render's.
+    render_generation: Mapped[int | None] = mapped_column(Integer)
     status: Mapped[ScanStatus] = mapped_column(
         Enum(ScanStatus, name="scan_status"), default=ScanStatus.UPLOADED, nullable=False
     )
@@ -1366,7 +1440,20 @@ class Detection(Base, TimestampMixin, SchoolScopedMixin):
     verdict_correct: Mapped[bool | None] = mapped_column(Boolean)
     machine_verdict_correct: Mapped[bool | None] = mapped_column(Boolean)
     # Which model read it, for the audit trail; never the prompt or the image.
+    #
+    # Since B19 this is the model that ANSWERED, taken from the response, not
+    # the one that was configured. An alias like `claude-sonnet-5` resolves to a
+    # dated build that changes underneath it, so a disputed grade traced back to
+    # the configured string named a model that may never have seen the paper.
     vision_model: Mapped[str | None] = mapped_column(String(80))
+    #: Which version of the grading prompt produced this verdict (B19).
+    #:
+    #: The model id alone does not identify the judgement: the same model under
+    #: `grade_open_answer.v2` and `.v3` is told different things about what
+    #: counts and what an instruction in the answer box means. A grade contested
+    #: months later has to be traceable to the exact pair, and prompt versions
+    #: are precisely the thing that moves between a mark and the appeal.
+    vision_prompt_version: Mapped[str | None] = mapped_column(String(20))
     # What the grader judged against. The teacher's expected answer when one
     # existed; otherwise the answer the model worked out itself, kept so the
     # teacher reviewing the verdict can see what it was measured against.
@@ -1626,6 +1713,56 @@ class Job(Base, TimestampMixin, SchoolScopedMixin):
     created_by_id: Mapped[uuid.UUID | None] = _fk(
         "teacher.id", nullable=True, ondelete="SET NULL"
     )
+    # The pile this job is about, for the two kinds that have one. A column
+    # because `grading_in_progress` had to load EVERY live job in the
+    # deployment and match `payload["scan_id"]` in Python to answer "is a
+    # grader still coming for this scan?" — a question asked on every
+    # confirmation, answered by a scan of another tenant's rows, and the reason
+    # confirmation could be blocked by a job nobody could see (audit 03, B26).
+    scan_id: Mapped[uuid.UUID | None] = _fk("scan.id", nullable=True, ondelete="CASCADE")
+
+
+class IdempotencyKey(Base, TimestampMixin, SchoolScopedMixin):
+    """One remembered answer to one write, so a retry does not do it twice.
+
+    Nothing in the product was idempotent (audit 03, B17). A phone on a flaky
+    staffroom connection retries a POST it never saw answered; a teacher
+    double-taps "print" because nothing moved yet. Both produced a second
+    render job, a second batch of unapproved exercises, a second pile — and the
+    endpoints that did guard against it did so ad hoc, each with its own
+    in-flight query and its own idea of what "the same request" meant.
+
+    The key is **claimed before the work runs**, not written after it. That
+    ordering is the whole design: two simultaneous retries race on the unique
+    constraint, exactly one wins the insert, and the loser can be told the work
+    is already happening instead of doing it again. A row written afterwards
+    would let both requests through and remember only the second.
+
+    ``response`` is the body the first attempt answered with, replayed verbatim
+    to every retry. NULL means the work is still running.
+
+    Per tenant, and that is not decoration: keying on ``(endpoint, key)`` alone
+    would let one school probe another's keyspace by guessing, and learn from a
+    409 that a particular request had been made.
+
+    ``POST /scans/{id}/confirm`` deliberately does NOT use this. It is already
+    idempotent the better way — by superseding rather than accumulating — and
+    it is the pattern the others should grow towards, not something to wrap.
+    """
+
+    __tablename__ = "idempotency_key"
+    __table_args__ = (
+        UniqueConstraint("school_id", "endpoint", "key", name="uq_idempotency_key"),
+        Index("ix_idempotency_key_created", "created_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    #: The route, as a stable name rather than a path — a path carries ids, and
+    #: two renders of two different sheets are not the same request.
+    endpoint: Mapped[str] = mapped_column(String(80), nullable=False)
+    key: Mapped[str] = mapped_column(String(200), nullable=False)
+    #: What the first attempt answered. NULL while it is still in flight.
+    response: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
 
 __all__ = [
@@ -1641,6 +1778,7 @@ __all__ = [
     "Event",
     "Exercise",
     "ExerciseVariant",
+    "IdempotencyKey",
     "Job",
     "MasteryBranchSnapshot",
     "MasterySnapshot",

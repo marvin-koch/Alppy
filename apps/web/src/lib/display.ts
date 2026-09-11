@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * The four display switches (DESIGN.md §8), persisted in two places on purpose:
+ * The display switches (DESIGN.md §8), persisted in two places on purpose:
  * server-side on the teacher record so the choice follows them to another
  * machine, and in localStorage so `ThemeScript` can apply it before paint
  * without waiting for a request.
@@ -13,6 +13,17 @@ export interface DisplayPrefs {
   contrast: 'high' | null;
   motion: 'off' | null;
   calm: 'on' | null;
+  /**
+   * Projector mode. Names collapse to UIDs wherever pupils are listed, and the
+   * teacher reveals them deliberately.
+   *
+   * A display switch rather than a screen-level option because that is what it
+   * is: the data does not change, only who can read it over the teacher's
+   * shoulder. It rides the same `data-*` attribute, so the moment it is set it
+   * is set for every screen at once — which matters, because the realistic
+   * trigger is realising you need it while the projector is already on.
+   */
+  discreet: 'on' | null;
 }
 
 export const DISPLAY_STORAGE_KEY = 'alppy.display';
@@ -22,6 +33,7 @@ export const defaultDisplay: DisplayPrefs = {
   contrast: null,
   motion: null,
   calm: null,
+  discreet: null,
 };
 
 export function readDisplay(): DisplayPrefs {
@@ -40,7 +52,7 @@ export function readDisplay(): DisplayPrefs {
 export function applyDisplay(prefs: DisplayPrefs): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
-  (['theme', 'contrast', 'motion', 'calm'] as const).forEach((key) => {
+  (['theme', 'contrast', 'motion', 'calm', 'discreet'] as const).forEach((key) => {
     const value = prefs[key];
     if (value) root.setAttribute(`data-${key}`, value);
     else root.removeAttribute(`data-${key}`);
