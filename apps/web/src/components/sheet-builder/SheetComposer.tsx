@@ -23,14 +23,16 @@ import {
   Textarea,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
 import { ITEMS_PER_PAGE } from '@/lib/optionLetters';
+import { useFormatters } from '@/lib/format';
 import { TYPE_VARIANT } from './ExerciseRow';
 import type { AnswerBoxFill, AnswerBoxLines, Uuid } from '@/lib/api/types';
 import {
   ANSWER_BOX_FILLS,
   ANSWER_BOX_LINES,
+  DEFAULT_POINTS_CORRECT,
   MAX_ANSWER_BOX_LINES,
   MAX_ITEM_POINTS,
   MAX_SHEET_ITEMS,
@@ -39,9 +41,9 @@ import {
   answerBoxOf,
   baremeOf,
   clampAnswerBoxLines,
-  clampPoints,
   expectedAnswerOf,
   hasOwnBareme,
+  parseDecimalInput,
   type AnswerBox,
   type Bareme,
   type DraftItem,
@@ -89,7 +91,8 @@ export function SheetComposer({ draft, onAdd, footer, previewOpen, onTogglePrevi
           <h2 className="text-h3">{t('onSheet')}</h2>
           {draft.count > 0 ? (
             <p className="text-body-s text-ink-500" data-numeric>
-              {t('exerciseCount', { count: draft.count })} · {t('pagesA4', { count: draft.minPages })}
+              {t('exerciseCount', { count: draft.count })} ·{' '}
+              {t('pagesA4', { count: draft.minPages })}
               {draft.isFull ? (
                 <span className="ml-1 text-warn-600">
                   ({t('itemsOfMax', { count: draft.count, max: MAX_SHEET_ITEMS })})
@@ -301,14 +304,33 @@ export function SheetComposer({ draft, onAdd, footer, previewOpen, onTogglePrevi
  * the value every item below inherits — a teacher sets it once and most sheets
  * never touch it again.
  */
+/**
+ * A barème, as text.
+ *
+ * Two fraction digits, not `fmt.number`'s default of one: a quarter-point
+ * penalty is a real barème and `0.3` is not it.
+ *
+ * Every points number on this screen goes through here, because the catalogue's
+ * own `{points, number}` formatted with next-intl's locale (`fr`, a comma) while
+ * `lib/format.ts` formats with `fr-CH` (a period, which is correct for the
+ * locale and what §10.1 of the audit defends). The two sat inches apart in this
+ * panel — `Total : 2,5 points` above a field reading `2.5` — and on the student
+ * sheet they shared a line as `3.25 / 4,5 pts`. One authority, one separator.
+ */
+function usePointsText(): (value: number) => string {
+  const fmt = useFormatters();
+  return useCallback((value: number) => fmt.number(value, 2), [fmt]);
+}
+
 function BaremePanel({ draft }: { draft: DraftSheet }) {
   const t = useTranslations('builder');
+  const points = usePointsText();
   return (
     <Panel sunken className="flex flex-col gap-2" data-bareme>
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <span className="text-label uppercase text-ink-700">{t('baremeTitle')}</span>
         <span className="text-body-s text-ink-500" data-numeric>
-          {t('baremeTotal', { points: draft.totalPoints })}
+          {t('baremeTotal', { points: points(draft.totalPoints) })}
         </span>
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
@@ -316,7 +338,7 @@ function BaremePanel({ draft }: { draft: DraftSheet }) {
           <PointsSelect
             value={draft.bareme.correct}
             presets={POINTS_PRESETS}
-            label={(v) => t('pointsOption', { points: v })}
+            label={(v) => t('pointsOption', { points: points(v) })}
             onChange={(correct) => draft.setBareme({ correct })}
           />
         </Field>
@@ -324,7 +346,8 @@ function BaremePanel({ draft }: { draft: DraftSheet }) {
           <PointsSelect
             value={draft.bareme.penalty}
             presets={PENALTY_PRESETS}
-            label={(v) => (v === 0 ? t('penaltyNone') : t('penaltyOption', { points: v }))}
+            emptyMeans={0}
+            label={(v) => (v === 0 ? t('penaltyNone') : t('penaltyOption', { points: points(v) }))}
             onChange={(penalty) => draft.setBareme({ penalty })}
           />
         </Field>
@@ -341,12 +364,21 @@ const CUSTOM_POINTS = 'custom';
  * anything else. Same shape as the box-height control next to it — presets in
  * a select, a number field when none of them fits.
  */
-function PointsSelect({
+/**
+ * A barème: pick a preset, or type one.
+ *
+ * Exported for its own test. The bug this control carried lived in the
+ * round-trip between the text a teacher types and the number the draft holds,
+ * which is reachable only by driving the real field with real keystrokes — a
+ * test of the parse alone would have passed against the broken version.
+ */
+export function PointsSelect({
   value,
   presets,
   label,
   onChange,
   placeholder,
+  emptyMeans = DEFAULT_POINTS_CORRECT,
 }: {
   value: number | undefined;
   presets: readonly number[];
@@ -355,8 +387,17 @@ function PointsSelect({
   /** Shown as the first option when the value is undefined — "follow the
    *  sheet". Absent on the sheet's own barème, which always has a value. */
   placeholder?: string;
+  /**
+   * What clearing the custom field means. Per field, not per control: an empty
+   * PENALTY field means "no penalty", and inheriting the points default here
+   * would have a teacher who deleted the contents of a penalty box walk away
+   * having set a penalty of one point. A single shared fallback cannot make
+   * this distinction: it has no idea which field it is serving.
+   */
+  emptyMeans?: number;
 }) {
   const t = useTranslations('builder');
+  const points = usePointsText();
   const isPreset = value !== undefined && presets.includes(value);
   const [custom, setCustom] = useState(value !== undefined && !isPreset);
   const showCustom = custom || (value !== undefined && !isPreset);
@@ -389,19 +430,69 @@ function PointsSelect({
         <option value={CUSTOM_POINTS}>{t('pointsCustom')}</option>
       </Select>
       {showCustom ? (
-        <Input
-          type="number"
-          inputMode="decimal"
-          numeric
-          min={0}
-          max={MAX_ITEM_POINTS}
-          step={0.25}
-          value={value ?? 0}
-          aria-label={t('pointsCustomLabel', { max: MAX_ITEM_POINTS })}
-          onChange={(event) => onChange(clampPoints(Number(event.currentTarget.value)))}
+        <DecimalField
+          value={value ?? emptyMeans}
+          emptyMeans={emptyMeans}
+          ariaLabel={t('pointsCustomLabel', { max: points(MAX_ITEM_POINTS) })}
+          onChange={onChange}
         />
       ) : null}
     </>
+  );
+}
+
+/**
+ * A barème a teacher types, as opposed to one they pick.
+ *
+ * The draft is held as TEXT and parsed only on the way out, because `1.` and
+ * `1,` and `` are all states the field passes THROUGH on the way to `1.5` and
+ * none of them is a number. The previous version round-tripped every keystroke
+ * through `Number(...)` and straight back into `value`, so typing `1.5`
+ * produced **5**: the browser's own value sanitisation empties the intermediate
+ * `1.`, `Number('')` is `0`, and the next keystroke landed in a field that had
+ * been silently reset. A comma failed the same way, one step earlier.
+ *
+ * `type="text"` with `inputMode="decimal"`, not `type="number"`: a number
+ * input's value sanitisation is what discards a comma before any handler can
+ * see it, so no parse layered on top could accept one. The cost is the native
+ * stepper, which the preset dropdown beside it already replaces.
+ */
+function DecimalField({
+  value,
+  emptyMeans,
+  ariaLabel,
+  onChange,
+}: {
+  value: number;
+  /** What an emptied field means — the caller's call, not this field's. */
+  emptyMeans: number;
+  ariaLabel: string;
+  onChange: (value: number) => void;
+}) {
+  const [draft, setDraft] = useState(() => String(value));
+
+  useEffect(() => {
+    // Follow the value when something OTHER than this field moved it. Compared
+    // against the PARSE rather than the text, so `1,50` is not rewritten to
+    // `1.5` under the cursor while the teacher is still typing it.
+    if (parseDecimalInput(draft, emptyMeans) !== value) setDraft(String(value));
+    // `draft` is deliberately not a dependency: this effect exists to overwrite
+    // the draft from outside, and depending on it would fight every keystroke.
+  }, [value, emptyMeans]);
+
+  return (
+    <Input
+      type="text"
+      inputMode="decimal"
+      numeric
+      aria-label={ariaLabel}
+      value={draft}
+      onChange={(event) => {
+        const next = event.currentTarget.value;
+        setDraft(next);
+        onChange(parseDecimalInput(next, emptyMeans));
+      }}
+    />
   );
 }
 
@@ -418,6 +509,7 @@ function PointsSelect({
  */
 function ItemSettings({ item, draft }: { item: DraftItem; draft: DraftSheet }) {
   const t = useTranslations('builder');
+  const points = usePointsText();
   const isOpen = item.exercise.type === 'open';
   const bareme = baremeOf(item, draft.bareme);
   const box = answerBoxOf(item);
@@ -438,10 +530,10 @@ function ItemSettings({ item, draft }: { item: DraftItem; draft: DraftSheet }) {
   // The barème leads the summary: it is the one setting every item has, and
   // the one a teacher checks down the whole list.
   const baremeText = [
-    t('pointsSummary', { points: bareme.correct }),
+    t('pointsSummary', { points: points(bareme.correct) }),
     bareme.penalty === 0
       ? t('penaltySummaryNone')
-      : t('penaltySummary', { points: bareme.penalty }),
+      : t('penaltySummary', { points: points(bareme.penalty) }),
   ].join(' · ');
   const summary = [
     baremeText,
@@ -461,9 +553,7 @@ function ItemSettings({ item, draft }: { item: DraftItem; draft: DraftSheet }) {
         <span>{summary}</span>
         {/* Never colour alone: an item departing from the sheet's barème says
             so in a word, not by weight or tint. */}
-        {hasOwnBareme(item) ? (
-          <Badge variant="primary">{t('baremeOverridden')}</Badge>
-        ) : null}
+        {hasOwnBareme(item) ? <Badge variant="primary">{t('baremeOverridden')}</Badge> : null}
       </summary>
       <div className="flex flex-col gap-2 pb-1">
         <ItemBaremeControl item={item} sheet={draft.bareme} onChange={draft.setItemBareme} />
@@ -499,6 +589,7 @@ function ItemBaremeControl({
   onChange: (id: Uuid, patch: Partial<Bareme> | undefined) => void;
 }) {
   const t = useTranslations('builder');
+  const points = usePointsText();
   return (
     <Panel sunken className="flex flex-col gap-2" data-item-bareme>
       <span className="text-label uppercase text-ink-700">{t('baremeItemTitle')}</span>
@@ -507,8 +598,8 @@ function ItemBaremeControl({
           <PointsSelect
             value={item.points?.correct}
             presets={POINTS_PRESETS}
-            placeholder={t('baremeFollowsSheet', { points: sheet.correct })}
-            label={(v) => t('pointsOption', { points: v })}
+            placeholder={t('baremeFollowsSheet', { points: points(sheet.correct) })}
+            label={(v) => t('pointsOption', { points: points(v) })}
             onChange={(correct) => onChange(item.exercise.id, { correct })}
           />
         </Field>
@@ -516,10 +607,9 @@ function ItemBaremeControl({
           <PointsSelect
             value={item.points?.penalty}
             presets={PENALTY_PRESETS}
-            placeholder={t('baremeFollowsSheet', { points: sheet.penalty })}
-            label={(v) =>
-              v === 0 ? t('penaltyNone') : t('penaltyOption', { points: v })
-            }
+            emptyMeans={0}
+            placeholder={t('baremeFollowsSheet', { points: points(sheet.penalty) })}
+            label={(v) => (v === 0 ? t('penaltyNone') : t('penaltyOption', { points: v }))}
             onChange={(penalty) => onChange(item.exercise.id, { penalty })}
           />
         </Field>

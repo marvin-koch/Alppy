@@ -161,10 +161,13 @@ function ItemCard({ item }: { item: StudentSheetItemOut }) {
           <Badge variant={verdict.variant}>{verdict.label}</Badge>
           <span className="text-body-s font-bold text-ink-900" data-numeric>
             {item.points_earned === null
-              ? t('pointsUngraded', { possible: item.points_possible })
+              ? t('pointsUngraded', { possible: fmt.number(item.points_possible, 2) })
               : t('points', {
+                  // Both through `fmt`, both `fr-CH`. `possible` used to be an
+                  // ICU `{possible, number}`, formatted by next-intl with `fr`
+                  // — so this one line could read `3.25 / 4,5 pts`.
                   earned: fmt.number(item.points_earned, 2),
-                  possible: item.points_possible,
+                  possible: fmt.number(item.points_possible, 2),
                 })}
           </span>
         </div>

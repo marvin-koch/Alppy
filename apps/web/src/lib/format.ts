@@ -5,34 +5,76 @@ import { useMemo } from 'react';
 import { intlLocales, isAppLocale, type AppLocale } from '@/i18n/routing';
 
 /**
- * Swiss number and date shapes. `fr` alone would print `1 234,5`; Suisse
- * romande writes `1'234.5`, and so does Deutschschweiz — hence `fr-CH` /
- * `de-CH`. Nothing in a component formats a number by hand.
+ * Swiss number and date shapes. Nothing in a component formats a number by hand.
+ *
+ * The locale tag is NOT what makes a number Swiss, and believing it was is how
+ * this file came to describe behaviour it never had. CLDR's `fr-CH` is identical
+ * to plain `fr` — `1 234,5` — and only `de-CH` and `en-CH` carry the apostrophe
+ * group and the period decimal. The comment here used to claim `fr-CH` printed
+ * `1'234.5`; it never did, and audit 05 §10.1 repeated the error and dismissed
+ * the brief's §54 on the strength of it.
+ *
+ * So the two marks are substituted explicitly, in every locale, by `swissify`
+ * below. Everything else stays where CLDR put it.
  */
 export interface Formatters {
   /** The BCP-47 tag actually used by `Intl`, e.g. `fr-CH`. */
   tag: string;
   /** 0..1 -> `84 %` (with the Swiss no-break space before the sign). */
   percent(value: number | null | undefined, fractionDigits?: number): string;
-  /** A plain number: `1'234.5`. */
+  /** A plain number: `1’234.5`, in every locale. */
   number(value: number, fractionDigits?: number): string;
   integer(value: number): string;
   /** `16.03.2026` */
   date(value: string | Date | null | undefined): string;
   /** `16 mars 2026` */
   dateLong(value: string | Date | null | undefined): string;
-  /** `16.03.2026, 14:30` */
+  /** `16.03.2026 14:30` in `fr`; `de`/`en` put a comma after the date. */
   dateTime(value: string | Date | null | undefined): string;
   /** `il y a 4 jours` */
   relativeDays(value: string | Date | null | undefined, now?: Date): string;
   fileSize(bytes: number): string;
 }
 
+/**
+ * The Swiss group and decimal marks: `1’234.5`, in French too.
+ *
+ * U+2019, not an ASCII apostrophe — that is the character CLDR gives `de-CH`,
+ * so German and English are unchanged by this and French now agrees with them.
+ * Pinned rather than read off `de-CH` so an ICU upgrade cannot quietly move the
+ * French UI on its own.
+ *
+ * A deliberate departure from CLDR for `fr` (D101): Suisse romande prose really
+ * does write a comma, but a barème, a points total and a class average are
+ * figures on a school document, and `1’234.5` is what a teacher reads there.
+ */
+const GROUP_MARK = '\u2019';
+const DECIMAL_MARK = '.';
+
+/**
+ * One locale's formatter, with the two marks replaced.
+ *
+ * Through `formatToParts` rather than a string replace, so it cannot touch a
+ * digit, the no-break space before `%`, or a minus sign — only the parts ICU
+ * itself labelled `group` and `decimal`.
+ */
+function swissify(format: Intl.NumberFormat): (value: number) => string {
+  return (value) =>
+    format
+      .formatToParts(value)
+      .map((part) =>
+        part.type === 'group' ? GROUP_MARK : part.type === 'decimal' ? DECIMAL_MARK : part.value,
+      )
+      .join('');
+}
+
 export function createFormatters(locale: AppLocale): Formatters {
   const tag = intlLocales[locale];
-  const percentFormat = new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 0 });
-  const numberFormat = new Intl.NumberFormat(tag, { maximumFractionDigits: 1 });
-  const integerFormat = new Intl.NumberFormat(tag, { maximumFractionDigits: 0 });
+  const percentFormat = swissify(
+    new Intl.NumberFormat(tag, { style: 'percent', maximumFractionDigits: 0 }),
+  );
+  const numberFormat = swissify(new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }));
+  const integerFormat = swissify(new Intl.NumberFormat(tag, { maximumFractionDigits: 0 }));
   const dateFormat = new Intl.DateTimeFormat(tag, {
     day: '2-digit',
     month: '2-digit',
@@ -54,7 +96,7 @@ export function createFormatters(locale: AppLocale): Formatters {
     timeZone: 'Europe/Zurich',
   });
   const relativeFormat = new Intl.RelativeTimeFormat(tag, { numeric: 'auto' });
-  const sizeFormat = new Intl.NumberFormat(tag, { maximumFractionDigits: 1 });
+  const sizeFormat = swissify(new Intl.NumberFormat(tag, { maximumFractionDigits: 1 }));
 
   const asDate = (value: string | Date | null | undefined): Date | null => {
     if (value === null || value === undefined) return null;
@@ -66,17 +108,19 @@ export function createFormatters(locale: AppLocale): Formatters {
     tag,
     percent(value, fractionDigits) {
       if (value === null || value === undefined || Number.isNaN(value)) return '—';
-      if (fractionDigits === undefined) return percentFormat.format(value);
-      return new Intl.NumberFormat(tag, {
-        style: 'percent',
-        maximumFractionDigits: fractionDigits,
-      }).format(value);
+      if (fractionDigits === undefined) return percentFormat(value);
+      return swissify(
+        new Intl.NumberFormat(tag, {
+          style: 'percent',
+          maximumFractionDigits: fractionDigits,
+        }),
+      )(value);
     },
     number(value, fractionDigits) {
-      if (fractionDigits === undefined) return numberFormat.format(value);
-      return new Intl.NumberFormat(tag, { maximumFractionDigits: fractionDigits }).format(value);
+      if (fractionDigits === undefined) return numberFormat(value);
+      return swissify(new Intl.NumberFormat(tag, { maximumFractionDigits: fractionDigits }))(value);
     },
-    integer: (value) => integerFormat.format(value),
+    integer: (value) => integerFormat(value),
     date: (value) => {
       const date = asDate(value);
       return date ? dateFormat.format(date) : '—';
@@ -95,7 +139,7 @@ export function createFormatters(locale: AppLocale): Formatters {
       const days = Math.round((date.getTime() - now.getTime()) / 86_400_000);
       return relativeFormat.format(days, 'day');
     },
-    fileSize: (bytes) => `${sizeFormat.format(bytes / 1_000_000)} MB`,
+    fileSize: (bytes) => `${sizeFormat(bytes / 1_000_000)} MB`,
   };
 }
 

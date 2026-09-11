@@ -5,7 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { SHEET_LAYOUT } from '@alppy/shared';
 
 import { ITEMS_PER_PAGE } from '@/lib/optionLetters';
-import type { AnswerBoxFill, AnswerBoxLines, ExerciseOut, SheetItemIn, Uuid } from '@/lib/api/types';
+import type {
+  AnswerBoxFill,
+  AnswerBoxLines,
+  ExerciseOut,
+  SheetItemIn,
+  Uuid,
+} from '@/lib/api/types';
 
 /** `SheetCreate.items` is capped here by the API. */
 export const MAX_SHEET_ITEMS = 64;
@@ -38,10 +44,29 @@ export const MAX_ITEM_POINTS = SHEET_LAYOUT.grading.maxItemPoints as number;
 export const POINTS_PRESETS: readonly number[] = [0.5, 1, 2, 3, 5];
 export const PENALTY_PRESETS: readonly number[] = [0, 0.25, 0.5, 1];
 
-/** Clamp a typed value to what the API will accept. */
-export function clampPoints(value: number): number {
-  if (!Number.isFinite(value)) return DEFAULT_POINTS_CORRECT;
-  return Math.min(MAX_ITEM_POINTS, Math.max(0, Math.round(value * 100) / 100));
+/**
+ * Read a barème out of what a teacher typed, and clamp it to what the API takes.
+ *
+ * Replaces a `clampPoints(Number(...))` pair that had two faults. It took a
+ * NUMBER, so the caller had already destroyed the text — and `1.`, `1,` and ``
+ * are all states a field passes THROUGH on the way to `1.5`, none of which
+ * survives `Number`. And it had a single fallback, the default points, which is
+ * right for the points field and wrong for the penalty field: clearing a penalty
+ * box means "no penalty", not "one point off". So the text arrives intact and
+ * the CALLER says what an empty field means.
+ *
+ * A comma is a period. `0,5` is what a Suisse-romande keyboard produces, and a
+ * field that discards the keystroke looks broken. This is the INPUT side only:
+ * display stays `fr-CH`, which writes a period, and that is correct and
+ * deliberate (see `lib/format.ts`).
+ *
+ * Anything that is not a number — empty, `-`, `1.`, `abc` — reads as
+ * `fallback`.
+ */
+export function parseDecimalInput(raw: string, fallback: number): number {
+  const parsed = Number(raw.trim().replace(',', '.'));
+  if (raw.trim() === '' || !Number.isFinite(parsed)) return fallback;
+  return Math.min(MAX_ITEM_POINTS, Math.max(0, Math.round(parsed * 100) / 100));
 }
 
 /** The barème a whole sheet grades by, and every item falls back to. */

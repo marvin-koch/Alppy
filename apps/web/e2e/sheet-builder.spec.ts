@@ -22,9 +22,7 @@ test.describe('sheet builder', () => {
 
   async function openDocument(page: import('@playwright/test').Page) {
     await gotoStable(page, '/fr/sheets/new');
-    await page
-      .getByLabel(/document source/i)
-      .selectOption({ index: 1 });
+    await page.getByLabel(/document source/i).selectOption({ index: 1 });
     await expect(page.getByRole('heading', { name: /dans le document/i })).toBeVisible();
   }
 
@@ -143,7 +141,10 @@ test.describe('sheet builder', () => {
     // Import maps every chapter but only transcribes as many as its budget
     // allows; the rest are read here, on demand.
     await expect(page.getByText(/indexé, pas encore lu/i).first()).toBeVisible();
-    await page.getByRole('button', { name: /^extraire$/i }).first().click();
+    await page
+      .getByRole('button', { name: /^extraire$/i })
+      .first()
+      .click();
 
     const calls = await page.evaluate(() => globalThis.__alppyMockCalls ?? []);
     expect(calls.some((c) => c.includes('/extract'))).toBe(true);
@@ -170,7 +171,10 @@ test.describe('sheet builder', () => {
     const sheet = page.locator('[data-composer]');
     const before = await sheet.locator('[data-student-facing]').first().innerText();
 
-    await page.getByRole('button', { name: /^descendre$/i }).first().click();
+    await page
+      .getByRole('button', { name: /^descendre$/i })
+      .first()
+      .click();
     const after = await sheet.locator('[data-student-facing]').first().innerText();
     expect(after).not.toBe(before);
   });
@@ -216,7 +220,10 @@ test.describe('sheet builder', () => {
     // this is the drawer that used to open only on a written answer.
     const settings = page.locator('[data-item-settings]');
     await expect(settings).toHaveCount(2);
-    await expect(settings.first().locator('summary')).toContainText(/1 pts · pénalité 0,25/i);
+    // `0.25`, not `0,25`: every number in the product now carries the Swiss
+    // period, in French too. `fr-CH` alone would have written a comma here --
+    // it is identical to `fr` -- so `lib/format.ts` substitutes the marks.
+    await expect(settings.first().locator('summary')).toContainText(/1 pts · pénalité 0\.25/i);
 
     // One item departs from the sheet, and says so in a word.
     await settings.first().locator('summary').click();
