@@ -49,6 +49,14 @@ class ChatRequest:
     images: tuple[ImagePart, ...] = ()
     """Empty for every text-only caller, which is all of them but the vision
     grader — so no existing provider or test needs to know the field exists."""
+    timeout_s: float | None = None
+    """Per-call ceiling, overriding the client's own (audit 03, B10).
+
+    ``None`` means "use the configured default", which is what every caller
+    wants. It exists because a vision call over one crop and a batched
+    generation call over eight plans are not comparable work, and giving them a
+    single budget means either strangling the batch or letting one crop hang for
+    three minutes. Only the batched generation path sets it."""
 
 
 @dataclass(frozen=True, slots=True)

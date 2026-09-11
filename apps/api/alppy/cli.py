@@ -32,6 +32,9 @@ from __future__ import annotations
 
 import argparse
 import sys
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy import select
 
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
@@ -179,6 +182,172 @@ def _purge_prompt_logs() -> int:
     return 0
 
 
+#: Whether a reaped job of this kind is safe to run again, decided per kind
+#: rather than uniformly (audit 03, B9). This is a statement about *cost and
+#: idempotence*, not about likelihood of success:
+#:
+#: * ``PROCESS_SCAN`` and ``GRADE_OPEN_ANSWERS`` rewrite what they already
+#:   wrote — detections are replaced per page, a verdict is written onto the
+#:   detection it belongs to — so running one twice costs time and nothing else.
+#: * ``PROPOSE_ADAPTIVE`` is the opposite and is why a blanket retry would be a
+#:   mistake: a second run writes a **second set of unapproved exercises** for
+#:   the same class and bills the school again for them. The teacher then has
+#:   two proposals to approve and no way to tell which is which.
+#: * ``GENERATE_FEEDBACK`` writes one note per pupil and bills per pupil; same
+#:   argument.
+#: * ``INGEST_SOURCE`` re-embeds a whole textbook.
+#:
+#: Nothing consumes this yet — the reaper only *records* the answer on the row —
+#: and that is deliberate. Requeuing is a separate change with a separate
+#: failure mode, and this constant is what any such change has to read.
+RETRYABLE_JOB_KINDS: frozenset[str] = frozenset({"process_scan", "grade_open_answers"})
+
+
+def _reap_jobs(*, dry_run: bool = False) -> int:
+    """Fail the jobs that stopped reporting, so nothing waits on them forever.
+
+    ``_run_job`` catches every exception and records ``FAILED`` itself, so arq's
+    own retry never fires and a job that dies *without* reaching that handler —
+    the worker killed, the container evicted, the 600 s timeout cancelling the
+    task while its ``asyncio.to_thread`` thread runs on — leaves a ``RUNNING``
+    row that nothing will ever finish.
+
+    That is not merely untidy. ``grading_in_progress`` reads exactly those rows
+    to answer "is a grader still coming for this pile?", so one dead job used to
+    refuse a confirmation indefinitely, with no route to clear it short of
+    editing the database. Confirmation no longer waits on a stale row by itself;
+    this is what stops the row lingering, and what puts a real
+    ``FAILURE_CODES`` value on it so the teacher's job list stops showing work
+    in progress that ended hours ago.
+
+    Idempotent, and safe to run on a schedule beside ``purge-prompt-logs``.
+    """
+    from alppy.models import Job
+    from alppy.models.enums import JobStatus
+    from alppy.services.job_failure import TIMEOUT
+    from alppy.services.open_answer_grading import is_job_stale
+
+    db = admin_session()
+    try:
+        running = db.execute(
+            select(Job).where(Job.status == JobStatus.RUNNING)
+        ).scalars()
+        stale = [job for job in running if is_job_stale(job)]
+        for job in stale:
+            log.info(
+                "job.reap",
+                job_id=str(job.id),
+                kind=str(job.kind),
+                last_seen=str(job.updated_at),
+                retryable=str(job.kind) in RETRYABLE_JOB_KINDS,
+                dry_run=dry_run,
+            )
+            if dry_run:
+                continue
+            job.status = JobStatus.FAILED
+            # A code from the closed set, never prose: `Job.error` crosses to a
+            # browser (D86, services/job_failure.py). "Stopped reporting for
+            # longer than the ceiling" is a timeout however it actually died.
+            job.error = TIMEOUT
+            job.finished_at = datetime.now(UTC)
+        if not dry_run:
+            db.commit()
+        log.info("job.reap.done", reaped=len(stale), dry_run=dry_run)
+    except Exception:
+        db.rollback()
+        log.exception("job.reap.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
+def _purge_scan_images(*, older_than_days: int | None, dry_run: bool = False) -> int:
+    """Delete the stored images of piles past the retention window.
+
+    Nothing has ever deleted a scan image (audit 03, B14): every photograph of
+    every child's handwriting this product has processed is still in object
+    storage, and `Storage` had no `delete` at all until now.
+
+    **Off unless somebody sets a number.** `ALPPY_SCAN_IMAGE_RETENTION_DAYS`
+    defaults to 0, meaning keep forever, and this command refuses rather than
+    guessing — a window a developer invented would quietly destroy the evidence
+    behind a mark in the week before a parent contests it.
+
+    **Confirmed piles first, and crops before pages.** The order is the point:
+    a crop is a picture of one child's handwriting, so it is the most personal
+    thing here and the least needed afterwards. Everything a grade rests on —
+    the verdict, the transcription, the mark — lives on `Detection` and is
+    untouched; what is lost is the ability to look at the paper again. A pile
+    still in review keeps its images whatever the window says, because a
+    teacher who cannot see the page cannot finish reviewing it.
+    """
+    from alppy.models import Detection, Scan, ScanPage
+    from alppy.models.enums import ScanStatus
+    from alppy.storage import get_storage
+
+    settings = get_settings()
+    days = older_than_days if older_than_days is not None else settings.scan_image_retention_days
+    if days <= 0:
+        log.warning(
+            "scan_images.purge.disabled",
+            detail=(
+                "no retention window is configured; set "
+                "ALPPY_SCAN_IMAGE_RETENTION_DAYS or pass --older-than-days. "
+                "Nothing was deleted."
+            ),
+        )
+        return 0
+
+    cutoff = datetime.now(UTC) - timedelta(days=days)
+    storage = get_storage()
+    db = admin_session()
+    deleted = 0
+    try:
+        scans = list(
+            db.execute(
+                select(Scan)
+                .where(Scan.status == ScanStatus.CONFIRMED)
+                .where(Scan.created_at < cutoff)
+            ).scalars()
+        )
+        for scan in scans:
+            pages = list(
+                db.execute(select(ScanPage).where(ScanPage.scan_id == scan.id)).scalars()
+            )
+            if not pages:
+                continue
+            crops = [
+                key
+                for key in db.execute(
+                    select(Detection.crop_key).where(
+                        Detection.scan_page_id.in_([p.id for p in pages]),
+                        Detection.crop_key.is_not(None),
+                    )
+                ).scalars()
+                if key
+            ]
+            # Crops first: most personal, least needed once a verdict is stored.
+            for key in [*crops, *(p.image_key for p in pages if p.image_key)]:
+                if dry_run:
+                    deleted += 1
+                    continue
+                try:
+                    deleted += 1 if storage.delete(key) else 0
+                except Exception as exc:
+                    log.warning("scan_images.purge.failed", key=key, error=str(exc))
+        log.info(
+            "scan_images.purge.done",
+            piles=len(scans),
+            objects=deleted,
+            older_than_days=days,
+            dry_run=dry_run,
+        )
+    finally:
+        db.close()
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     configure_logging(debug=get_settings().debug)
 
@@ -201,6 +370,33 @@ def main(argv: list[str] | None = None) -> int:
         "purge-prompt-logs",
         help="Delete prompt-log rows past the configured retention window.",
     )
+    reap_parser = subparsers.add_parser(
+        "reap-jobs",
+        help="Fail RUNNING jobs that stopped reporting past ALPPY_JOB_STALE_AFTER_S.",
+    )
+    reap_parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="List what would be reaped without writing anything.",
+    )
+    purge_scans = subparsers.add_parser(
+        "purge-scan-images",
+        help=(
+            "Delete stored page images and crops of CONFIRMED piles past the "
+            "retention window. Off unless a window is configured."
+        ),
+    )
+    purge_scans.add_argument(
+        "--older-than-days",
+        type=int,
+        default=None,
+        help="Override ALPPY_SCAN_IMAGE_RETENTION_DAYS for this run.",
+    )
+    purge_scans.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Count what would be deleted without deleting anything.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -212,6 +408,14 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "purge-prompt-logs":
         return _purge_prompt_logs()
+
+    if args.command == "reap-jobs":
+        return _reap_jobs(dry_run=args.dry_run)
+
+    if args.command == "purge-scan-images":
+        return _purge_scan_images(
+            older_than_days=args.older_than_days, dry_run=args.dry_run
+        )
 
     parser.print_help()
     return 1

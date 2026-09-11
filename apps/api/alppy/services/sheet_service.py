@@ -43,7 +43,7 @@ from alppy.services.approval import (
     ensure_printable,
 )
 from alppy.services.class_service import get_class, list_students
-from alppy.services.enrollment import taught_here
+from alppy.services.enrollment import taught_here, taught_here_ever
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
@@ -61,11 +61,45 @@ def get_sheet(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
     ever attach a sheet they teach — which is why an unmatched pile can never
     flip out of its uploader's list the moment a sheet is chosen.
     """
+    # GATE. `on=today()` because this is the resolver every *write* goes
+    # through — render, edit, mark-printed, attach a pile, bill a generation.
+    # A teacher who has left this (class, branch) may still read what they
+    # marked; `get_sheet_for_read` is that door, and it is a different one.
     sheet = db.execute(
         select(Sheet)
         .where(Sheet.id == sheet_id)
         .where(Sheet.school_id == scope.school_id)
         .where(taught_here(Sheet.class_id, Sheet.subject_id, scope, on=today()))
+    ).scalar_one_or_none()
+    if sheet is None:
+        raise errors.not_found("sheet", id=str(sheet_id))
+    return sheet
+
+
+def get_sheet_for_read(db: Session, scope: Scope, sheet_id: uuid.UUID) -> Sheet:
+    """One sheet in a branch the caller teaches **or once taught**, or 404.
+
+    The read-side twin of ``get_sheet``, and the reason the pair exists is
+    written out under ``enrollment.taught_here_ever`` (D88): a substitute who
+    marked eleven sheets between September and February has to be able to
+    reconstruct that evidence in June, and the current-only gate 404s all of
+    it — including from inside ``sheet_report``, whose own student lookup had
+    already been widened for that case and could never reach it.
+
+    Use it for reports and single-sheet reads. Never for a write, and never as
+    a shortcut when ``get_sheet`` 404s in a test — that 404 is usually correct.
+
+    ``list_sheets`` deliberately does **not** use this. Browsing is the current
+    teacher's working surface, and a group taken over in March would otherwise
+    open onto its predecessor's back catalogue. A departed teacher reaches
+    these sheets by following a pupil's profile, which is the path the case is
+    actually about.
+    """
+    sheet = db.execute(
+        select(Sheet)
+        .where(Sheet.id == sheet_id)
+        .where(Sheet.school_id == scope.school_id)
+        .where(taught_here_ever(Sheet.class_id, Sheet.subject_id, scope))
     ).scalar_one_or_none()
     if sheet is None:
         raise errors.not_found("sheet", id=str(sheet_id))
@@ -310,6 +344,9 @@ def update_sheet(
     if payload.default_points_penalty is not None:
         sheet.default_points_penalty = payload.default_points_penalty
         stale = True
+    # Read before the edit clears it: whether this sheet had already been
+    # rendered is what turns an ordinary edit into one worth recording.
+    was_printed = sheet.rendered_at is not None
     if payload.items is not None:
         _replace_items(db, school_id, sheet, payload.items)
         plan = _item_plan(payload.items)
@@ -320,6 +357,27 @@ def update_sheet(
         sheet.blank_pdf_key = None
         sheet.answer_key_pdf_key = None
         sheet.rendered_at = None
+    if stale and was_printed:
+        # An edit to a sheet that has already been printed changes what the
+        # grader judges against, on a paper the class has sat (audit 03, B21).
+        # The flat staffroom (D85) means any colleague can do it, and until now
+        # nothing recorded that anyone had — only that some columns differed
+        # from what the PDF said. Not a refusal: re-rendering after a typo is
+        # ordinary and the render is invalidated above. Just legible.
+        from alppy.services import event_service
+
+        event_service.record(
+            db,
+            school_id=school_id,
+            kind=EventKind.EXERCISE_EDITED,
+            subject_type=EventSubject.SHEET,
+            subject_id=sheet.id,
+            summary=sheet.title,
+            actor_id=scope.teacher_id,
+            class_id=sheet.class_id,
+            subject_area_id=sheet.subject_id,
+            detail={"items_replaced": payload.items is not None},
+        )
     db.flush()
     db.refresh(sheet)
     return sheet
@@ -609,7 +667,7 @@ class SheetPoints:
     possible: float
 
 
-def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
+def _possible_by_student(sheet: Sheet, *, live: bool = False) -> dict[uuid.UUID, float]:
     """What each copy of this sheet was worth, from ITS OWN item plan.
 
     Factored out so a class-wide rollup reuses this instead of re-deriving what
@@ -617,6 +675,16 @@ def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
     a different subset, so the sheet's class-wide item list is not what any one
     student held, and two places computing that separately would eventually
     disagree.
+
+    **A confirmed copy answers with the total it was confirmed at** (B18). Until
+    then this recomputed on every read, so editing the barème after a pile came
+    back rewrote the denominator of every paper already handed out — 14/20
+    became 14/25 on a sheet a parent may have signed. `SheetInstance.points_possible`
+    is NULL until the copy is confirmed, so an unconfirmed one still tracks the
+    barème as it stands, which is what the builder needs.
+
+    ``live=True`` forces the computation, and has exactly one caller: the freeze
+    itself, which needs today's arithmetic in order to store it.
     """
     items_by_exercise = {item.exercise_id: item for item in sheet.items}
     default_points = sheet.default_points_correct
@@ -637,7 +705,9 @@ def _possible_by_student(sheet: Sheet) -> dict[uuid.UUID, float]:
                 total += item.points_correct
             else:
                 total += default_points
-        possible[instance.student_id] = total
+        # The frozen total wins whenever there is one.
+        frozen = None if live else instance.points_possible
+        possible[instance.student_id] = total if frozen is None else frozen
     return possible
 
 

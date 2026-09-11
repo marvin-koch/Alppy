@@ -8,8 +8,9 @@ from typing import Annotated
 from fastapi import APIRouter, Query, status
 
 from alppy.api import errors
-from alppy.api.deps import DbDep, ScopeDep, TeacherDep, TenantDep, scoped_get
+from alppy.api.deps import DbDep, ScopeDep, StorageDep, TeacherDep, TenantDep, scoped_get
 from alppy.models import School, Subject, Teacher
+from alppy.models.enums import EventKind, EventSubject
 from alppy.schemas import (
     BranchOrder,
     ClassCreate,
@@ -28,7 +29,7 @@ from alppy.schemas import (
     SubjectOut,
     SubjectUpdate,
 )
-from alppy.services import class_out, school_out, student_out, subject_out
+from alppy.services import class_out, event_service, school_out, student_out, subject_out
 from alppy.services import class_service as svc
 from alppy.services import nouns_service as nouns
 
@@ -54,11 +55,15 @@ def list_subjects(school_id: TenantDep, db: DbDep) -> list[SubjectOut]:
 @router.get("/classes", response_model=list[ClassOut])
 def list_classes(scope: ScopeDep, db: DbDep) -> list[ClassOut]:
     counts = svc.student_counts(db, scope)
+    # Both maps are one query each. The branch nav used to be resolved per
+    # card, so a teacher with six classes paid six extra round trips for a list
+    # (audit 03, B23) — the same shape `counts` had already been batched into.
+    branches = svc.taught_subject_ids_by_class(db, scope)
     return [
         class_out(
             c,
             student_count=counts.get(c.id, 0),
-            subject_ids=svc.taught_subject_ids_for_class(db, scope, c.id),
+            subject_ids=branches.get(c.id, []),
         )
         for c in svc.list_classes(db, scope)
     ]
@@ -325,6 +330,7 @@ def delete_student(
     student_id: uuid.UUID,
     scope: ScopeDep,
     db: DbDep,
+    storage: StorageDep,
     confirm: Annotated[str, Query(description="the pupil's own uid, typed back")],
 ) -> None:
     """Destroy a pupil and every attempt, snapshot and printed copy of theirs.
@@ -333,9 +339,15 @@ def delete_student(
     UID rather than a boolean, so a caller firing at the wrong row fails
     instead of deleting the wrong child. Unenrolling is `DELETE
     .../enrollment` and is what almost every caller actually wants.
+
+    The storage handle is here because erasure now means erasure: the page
+    images and the answer-box crops go too. Until B14 the rows cascaded and
+    every photograph of the child's handwriting stayed in object storage
+    forever — unreachable through the product, which is not the same as gone,
+    and not what a parent asking for erasure was told had happened.
     """
     student = svc.get_student(db, scope, student_id)
-    nouns.delete_student(db, scope, student, confirm_uid=confirm)
+    nouns.delete_student(db, scope, student, confirm_uid=confirm, storage=storage)
     db.commit()
 
 
@@ -390,11 +402,10 @@ def add_teacher_to_school(
     you do not work at reads as missing, so this cannot be used to discover
     which school ids are real.
 
-    Membership is the whole check — there is no admin tier, deliberately (D85).
-    Note it is also add-only: no route removes a membership, so a colleague
-    added by a mistyped uuid comes out in SQL. `teacher_school` was built for
-    the removal (leaving is a deleted row, D74); the endpoint is missing, not
-    refused.
+    Membership is the whole check — there is no admin tier, deliberately (D85),
+    which is exactly why the act is recorded: joining a staffroom is gaining
+    sight of every class in the school, and in a flat model that is the change
+    most worth being able to point at afterwards (audit 03, B16).
     """
     mine = {s.id for s in svc.schools_for_teacher(db, teacher.id)}
     if school_id not in mine:
@@ -403,6 +414,62 @@ def add_teacher_to_school(
     if joining is None:
         raise errors.not_found("teacher", id=str(teacher_id))
     svc.join_school(db, joining.id, school_id)
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.TEACHER_JOINED,
+        subject_type=EventSubject.TEACHER,
+        subject_id=joining.id,
+        summary=f"{joining.first_name} {joining.last_name}".strip(),
+        actor_id=teacher.id,
+    )
+    db.commit()
+    return [
+        ColleagueOut(id=t.id, first_name=t.first_name, last_name=t.last_name)
+        for t in svc.list_colleagues(db, school_id)
+    ]
+
+
+@router.delete(
+    "/schools/{school_id}/teachers/{teacher_id}",
+    response_model=list[ColleagueOut],
+)
+def remove_teacher_from_school(
+    school_id: uuid.UUID, teacher_id: uuid.UUID, teacher: TeacherDep, db: DbDep
+) -> list[ColleagueOut]:
+    """End a colleague's membership of a staffroom this teacher works in.
+
+    The counterpart `add_teacher_to_school` never had. Gated the same way — on
+    the caller's own membership, so a school you do not work at reads as
+    missing — and idempotent in the same sense: removing someone already gone
+    changes nothing and still answers with the staffroom.
+
+    Ends the membership rather than deleting the row (D87): "they were here from
+    August to February" is what justifies every grade they recorded, and it is
+    what lets `ever_shared_student_ids` say a substitute and a pupil once shared
+    a room. `svc.leave_school` holds the two refusals — the last member, and a
+    teacher still named as a class's head — and says why.
+
+    Note there is no self-check: a teacher may remove themselves, which is how
+    someone leaves a school they no longer work at. The last-member refusal is
+    what stops that emptying a staffroom nobody could then re-enter.
+    """
+    mine = {s.id for s in svc.schools_for_teacher(db, teacher.id)}
+    if school_id not in mine:
+        raise errors.not_found("school", id=str(school_id))
+    leaving = db.get(Teacher, teacher_id)
+    if leaving is None:
+        raise errors.not_found("teacher", id=str(teacher_id))
+    svc.leave_school(db, leaving.id, school_id)
+    event_service.record(
+        db,
+        school_id=school_id,
+        kind=EventKind.TEACHER_LEFT,
+        subject_type=EventSubject.TEACHER,
+        subject_id=leaving.id,
+        summary=f"{leaving.first_name} {leaving.last_name}".strip(),
+        actor_id=teacher.id,
+    )
     db.commit()
     return [
         ColleagueOut(id=t.id, first_name=t.first_name, last_name=t.last_name)

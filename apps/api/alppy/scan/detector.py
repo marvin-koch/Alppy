@@ -28,7 +28,7 @@ import numpy.typing as npt
 
 from alppy.models.enums import DetectionOutcome
 from alppy.sheets import layout as L
-from alppy.sheets.uid_code import TOTAL_BITS, UidCodeError, decode_uid
+from alppy.sheets.uid_code import PageCode, UidCodeError, decode_page_code, decode_uid
 
 Image = npt.NDArray[np.uint8]
 
@@ -157,6 +157,12 @@ class PageResult:
     skew_deg: float
     quality: float
     error: str | None = None
+    page_code: PageCode | None = None
+    """What layout v2 read out of the grid, or None for a v1 page.
+
+    The pipeline uses it to stop guessing: which page of the copy this is comes
+    from the paper rather than from upload order (B5), and the nonce says which
+    sheet and which render it was printed from."""
     canonical: Image | None = None
     """The deskewed page, in canonical coordinates.
 
@@ -568,13 +574,27 @@ def _mark_strength(fill: float, cross: float) -> float:
     return max(fill, mapped)
 
 
-def read_uid_grid(canonical: Image) -> tuple[str | None, float, list[float]]:
-    """Read the 32-bit UID grid. Returns ``(uid, confidence, fills)``."""
+def read_uid_grid(
+    canonical: Image, *, layout_version: str | None = None
+) -> tuple[str | None, float, list[float], PageCode | None]:
+    """Read the UID grid for one layout version.
+
+    Returns ``(uid, confidence, fills, page_code)``. ``page_code`` is populated
+    only from v2, which encodes the page rather than only the pupil (B4) — the
+    school year, which page of the copy this is, the canton, and the nonce
+    identifying the sheet and render the paper came from.
+
+    **The geometry comes from the version the page was PRINTED with**, not from
+    the constants as they stand today. That is the whole point of versioning
+    them: reading a v1 page against v2's grid would sample twelve columns where
+    eight were printed and decode something plausible out of white paper.
+    """
+    grid = L.uid_grid(layout_version)
     fills: list[float] = []
-    for slot in range(L.UID_GRID_CELLS):
-        for row in range(L.UID_GRID_ROWS):
-            cx, cy = L.uid_cell_centre_mm(slot, row)
-            fills.append(_fill_ratio(canonical, cx, cy, L.UID_GRID_CELL_MM))
+    for slot in range(grid.cells):
+        for row in range(grid.rows):
+            cx, cy = grid.cell_centre_mm(slot, row)
+            fills.append(_fill_ratio(canonical, cx, cy, grid.cell_mm))
 
     bits = [1 if f >= 0.5 else 0 for f in fills]
     # Confidence is how far every cell sat from the 0.5 decision boundary: one
@@ -582,12 +602,17 @@ def read_uid_grid(canonical: Image) -> tuple[str | None, float, list[float]]:
     margins = [abs(f - 0.5) * 2.0 for f in fills]
     confidence = float(min(margins)) if margins else 0.0
 
-    if len(bits) != TOTAL_BITS:
-        return (None, 0.0, fills)
+    if len(bits) != grid.total_bits:  # pragma: no cover - sizes come from `grid`
+        return (None, 0.0, fills, None)
+
+    version = layout_version or L.LAYOUT_VERSION
     try:
-        return (decode_uid(bits), confidence, fills)
+        if version == "v1":
+            return (decode_uid(bits), confidence, fills, None)
+        code = decode_page_code(bits)
     except UidCodeError:
-        return (None, 0.0, fills)
+        return (None, 0.0, fills, None)
+    return (code.uid, confidence, fills, code)
 
 
 def detect_item(canonical: Image, item_index: int, option_count: int) -> ItemDetection:
@@ -724,7 +749,14 @@ def process_page(
     answers. Until versioned geometry exists there is exactly one honest
     response to a mismatch, and it is to refuse.
     """
-    if layout_version != L.LAYOUT_VERSION:
+    # A layout we have geometry for is readable, whether or not it is the one
+    # we currently print (B4). This used to refuse anything but the current
+    # version — the only honest answer while every coordinate came from the
+    # constants as they stand today, and the reason a version bump would have
+    # made every already-printed sheet unreadable. What must still be refused
+    # is a version this build knows nothing about: sampling it would read
+    # plausible answers out of the wrong parts of the paper.
+    if layout_version not in L.UID_GRIDS:
         return PageResult(
             registered=False,
             uid=None,
@@ -734,7 +766,7 @@ def process_page(
             quality=0.0,
             error=(
                 f"sheet was printed with layout {layout_version}, "
-                f"this detector reads {L.LAYOUT_VERSION}"
+                f"which this detector has no geometry for"
             ),
         )
 
@@ -767,7 +799,9 @@ def process_page(
             ),
         )
 
-    uid, uid_conf, _ = read_uid_grid(reg.canonical)
+    uid, uid_conf, _fills, page_code = read_uid_grid(
+        reg.canonical, layout_version=layout_version
+    )
     detections = [
         detect_item(reg.canonical, i, n) for i, n in enumerate(option_counts)
     ]
@@ -780,4 +814,5 @@ def process_page(
         skew_deg=reg.skew_deg,
         quality=reg.quality,
         canonical=reg.canonical,
+        page_code=page_code,
     )

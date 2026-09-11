@@ -115,6 +115,19 @@ no vendor call at all, for a different reason: content-licensing caution per
   one setting, `ALPPY_AI_CHAT_PROVIDER`. The `alppy/ai/` interface is provider-agnostic by
   construction (a `ChatProvider` protocol with swappable backends) so a Mistral (EU, Paris) or a
   self-hosted EU/CH-region deployment can be substituted without touching call sites.
+- **The image path is a transfer too, and of the most sensitive payload here.** §2 is written
+  about prompts, and the residency question is easy to read as being about text. It is not: the
+  vision grader sends a **photograph of one child's handwriting** to the configured provider on
+  every written answer, and the default provider is OpenAI, in the United States. The PII gate
+  cannot inspect it — it reads text — so what keeps a name out of that image is geometry
+  (`measure_answer_boxes` refuses a box outside the statement region), not inspection. Under GDPR
+  and the revised Swiss FADP this is a transfer of personal data to a third country, and
+  handwriting on a school assessment is plausibly special-category data.
+  **This is an open decision, recorded here rather than settled** (2026-09-10): the product
+  continues to send crops to the configured provider, and whether that provider must be CH/EU is
+  to be answered before any pilot with a real class. The two exits already exist —
+  `ALPPY_AI_CHAT_PROVIDER` selects the provider, and a regional or self-hosted vision model
+  substitutes without touching call sites.
 - **No processor agreement exists with either vendor yet** (§7 lists this among the things a real
   deployment needs before it holds a real class). A school that requires EU/CH residency today
   should set `ALPPY_AI_CHAT_PROVIDER=echo` or point the setting at an in-region deployment; the
@@ -196,6 +209,19 @@ is a debugging aid a school opts into, not a record it is asked to keep.
   before any real deployment, not fixed by this document; it must be configurable per school
   because retention expectations vary by canton.
 
+  **What actually happens today (2026-09-10): nothing is deleted.** The mechanism now exists —
+  `Storage.delete`, `python -m alppy.cli purge-scan-images`, and `delete_student` removing a
+  pupil's page images and crops as part of erasure — but `ALPPY_SCAN_IMAGE_RETENTION_DAYS`
+  defaults to **0, meaning keep forever**, and the purge command *refuses to run* without a
+  window rather than inventing one. That refusal is deliberate: a retention period guessed by a
+  developer would destroy the evidence behind a contested mark in the week before a parent asks
+  about it. Until a number is set, this row of the inventory below should be read as
+  "kept indefinitely", not "bounded window".
+
+  When a window is set, a purge takes the crops first and the page images second, and takes
+  neither from a pile still in review. The grade, the transcription and the verdict live on
+  `Detection` and are never touched; what is lost is the ability to look at the paper again.
+
 ## 5. Data inventory
 
 | Entity | Contains PII? | Where stored | Retention (MVP default) | Who can access |
@@ -207,8 +233,8 @@ is a debugging aid a school opts into, not a record it is asked to keep.
 | `SourceChunk` (text + embedding) | No | Postgres (`pgvector`) | Tied to parent `Source` | Same as `Source` |
 | `Exercise` / `ExerciseVariant` | No (may reference a student UID for a variant, not a name) | Postgres | Tied to parent sheet/source | Teacher(s) of the class |
 | `Sheet` / `SheetItem` / `SheetInstance` | Indirect (SheetInstance binds to a student UID) | Postgres | Tied to class; export/delete with class | Teacher(s) of the class |
-| `Scan` / `ScanPage` (image) | Yes (handwriting, potentially name if visible on the page) | S3-compatible storage | Bounded window (see §4), then deleted | Teacher(s) of the class; Alppy ops during active job processing only |
-| `Detection.crop_key` (the answer box, cut) | Handwriting; a name only if the student wrote one inside the box | S3-compatible storage, beside the page image | Same window as the page image | Teacher(s) of the class; the configured vision provider during the grading call |
+| `Scan` / `ScanPage` (image) | Yes (handwriting, potentially name if visible on the page) | S3-compatible storage | **Kept indefinitely today** — bounded window (see §4) once one is configured | Teacher(s) of the class; Alppy ops during active job processing only |
+| `Detection.crop_key` (the answer box, cut) | Handwriting; a name only if the student wrote one inside the box | S3-compatible storage, beside the page image | Same window as the page image (so: indefinitely, today) | Teacher(s) of the class; **transferred to the configured vision provider — OpenAI, US, by default — during the grading call (see §3)** |
 | `Detection` | Indirect (tied to a scan/student) | Postgres | Tied to parent scan | Teacher(s) of the class |
 | `Attempt` | Indirect (student UID + competency + score, no name) | Postgres | Retained for mastery history beyond scan deletion | Teacher(s) of the class |
 | `MasterySnapshot` | Indirect (student UID) | Postgres | Retained per-class history | Teacher(s) of the class; the student's later teachers on class handover |

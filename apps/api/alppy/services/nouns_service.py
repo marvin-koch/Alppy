@@ -31,6 +31,7 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import Scope
+from alppy.core.logging import get_logger
 from alppy.db.validity import today
 from alppy.models import (
     UNFILED_CHAPTER_KEY,
@@ -46,6 +47,9 @@ from alppy.models import (
     class_student,
 )
 from alppy.services.enrollment import taught_subject_ids_anywhere
+from alppy.storage import Storage
+
+log = get_logger(__name__)
 
 __all__ = [
     "create_subject",
@@ -365,7 +369,45 @@ def rename_student(
     return student
 
 
-def delete_student(db: Session, scope: Scope, student: Student, *, confirm_uid: str) -> None:
+def scan_image_keys_for_student(db: Session, student: Student) -> list[str]:
+    """Every stored image that is a photograph of this pupil's paper.
+
+    The page images and the answer-box crops cut from them. Collected before
+    the rows are deleted, because the rows are the only index into the object
+    store — once `ScanPage` is gone there is nothing left that knows the key
+    (audit 03, B14).
+
+    Crops are a stronger case than pages, not a weaker one: a crop is a picture
+    of one child's handwriting, cut from their paper, sent to a model provider.
+    It is the most personal artefact this product holds.
+    """
+    from alppy.models import Detection, ScanPage
+
+    pages = list(
+        db.execute(
+            select(ScanPage).where(ScanPage.student_id == student.id)
+        ).scalars()
+    )
+    keys = [p.image_key for p in pages if p.image_key]
+    if pages:
+        crops = db.execute(
+            select(Detection.crop_key).where(
+                Detection.scan_page_id.in_([p.id for p in pages]),
+                Detection.crop_key.is_not(None),
+            )
+        ).scalars()
+        keys.extend(k for k in crops if k)
+    return sorted(set(keys))
+
+
+def delete_student(
+    db: Session,
+    scope: Scope,
+    student: Student,
+    *,
+    confirm_uid: str,
+    storage: Storage | None = None,
+) -> None:
     """Destroy a pupil and everything that hangs off them.
 
     **This is the only operation in Alppy allowed to destroy evidence**
@@ -401,6 +443,13 @@ def delete_student(db: Session, scope: Scope, student: Student, *, confirm_uid: 
     if home.head_teacher_id != scope.teacher_id:
         raise errors.not_found("student", id=str(student.id))
     person_id = student.person_id
+    student_id = student.id
+    # Read the keys BEFORE the cascade takes the rows that name them. Erasure
+    # that leaves every photograph of the child's handwriting in object storage
+    # is not erasure; it just makes the images unreachable through the product
+    # (audit 03, B14). Collected here, deleted after the database work commits
+    # — an object cannot be un-deleted, so it goes last.
+    image_keys = scan_image_keys_for_student(db, student) if storage is not None else []
     db.delete(student)
     db.flush()
 
@@ -417,3 +466,33 @@ def delete_student(db: Session, scope: Scope, student: Student, *, confirm_uid: 
         if person is not None:
             db.delete(person)
             db.flush()
+
+    if storage is not None and image_keys:
+        _erase_objects(storage, image_keys, student_id=student_id)
+
+
+def _erase_objects(storage: Storage, keys: list[str], *, student_id: uuid.UUID) -> None:
+    """Delete the stored images of one erased pupil, one failure at a time.
+
+    A storage error must not roll back the erasure: the database rows are the
+    record a parent asked to have destroyed, and refusing the whole request
+    because one object had already gone would leave the pupil in the system.
+    Each failure is logged with its key so an operator can finish by hand.
+    """
+    removed = 0
+    for key in keys:
+        try:
+            removed += 1 if storage.delete(key) else 0
+        except Exception as exc:
+            log.warning(
+                "student.erase.object_failed",
+                student_id=str(student_id),
+                key=key,
+                error=str(exc),
+            )
+    log.info(
+        "student.erase.objects",
+        student_id=str(student_id),
+        requested=len(keys),
+        removed=removed,
+    )

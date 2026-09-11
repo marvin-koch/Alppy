@@ -43,12 +43,25 @@ _COST_PER_MTOK: dict[str, tuple[float, float]] = {
     "echo": (0.0, 0.0),
 }
 """CHF per million tokens. Rough by construction: an estimate on the audit row,
-never a bill. Vendors publish in USD, so a new row carries a conversion.
+never a bill. Vendors publish in USD, so a new row carries a conversion."""
 
-The ``gpt-*`` rows are UNVERIFIED placeholders. They must be checked against
-OpenAI's published prices before the default provider moves — until then they
-make the cost column plausible rather than correct, which is the one thing an
-estimate must not be when someone budgets from it."""
+#: Rows nobody has checked against the vendor's published prices.
+#:
+#: The ``gpt-*`` rows have been placeholders since they were written, and
+#: ``ai_chat_provider`` **defaults to ``openai``** — so the default deployment
+#: is the one estimating from unverified numbers, on the column
+#: `docs/privacy.md` offers a school as budget accounting (audit 03, B31).
+#:
+#: Naming them here rather than only in a docstring is the point: a docstring
+#: is read by whoever edits this file, and the person who needs to know is the
+#: one reading a cost total. `estimate_cost_chf` logs when it uses one, so the
+#: gap is in the operator's log rather than in a comment nobody opened.
+#:
+#: **To clear a row**: check the vendor's current published price, convert to
+#: CHF, correct the number if it moved, and delete the model id from this set.
+UNVERIFIED_PRICES: frozenset[str] = frozenset(
+    {"gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4.1-mini"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -157,6 +170,13 @@ def estimate_cost_chf(model: str, input_tokens: int | None, output_tokens: int |
     if rates is None:
         log.warning("ai.cost.unknown_model", model=model)
         return 0.0
+    if model in UNVERIFIED_PRICES:
+        # Not zero, and not silent. A plausible-but-unchecked number is the one
+        # thing an estimate must not be when somebody budgets from it, so the
+        # figure is still produced — an absent total is less useful than an
+        # approximate one — and the fact that it rests on an unverified rate is
+        # said out loud, once per call (audit 03, B31).
+        log.info("ai.cost.unverified_rate", model=model)
     rate_in, rate_out = rates
     return round(
         (input_tokens or 0) / 1e6 * rate_in + (output_tokens or 0) / 1e6 * rate_out, 6
@@ -194,6 +214,7 @@ class AiClient:
         max_tokens: int | None = None,
         temperature: float = 0.4,
         images: tuple[ImagePart, ...] = (),
+        timeout_s: float | None = None,
     ) -> tuple[ChatResponse, CallRecord]:
         """One model call, gated and audited.
 
@@ -225,6 +246,7 @@ class AiClient:
                     temperature=temperature,
                     purpose=purpose,
                     images=images,
+                    timeout_s=timeout_s,
                 )
             )
         except Exception as exc:

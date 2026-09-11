@@ -113,10 +113,15 @@ def student_sheet_breakdown(
     ``item_index``, which is page-local and restarts at 0 on every physical page
     (I-scanning-12). A copy photographed twice contributes once.
     """
-    from alppy.services.sheet_service import get_sheet
+    from alppy.services.sheet_service import get_sheet_for_read
 
     school_id = scope.school_id
-    sheet = get_sheet(db, scope, sheet_id)
+    # REPORT, not a gate on acting: this is the substitute's case itself.
+    # M. Rossier marked this sheet in October and is asked to justify the
+    # mark in June, after the niveau-2 group left him. The student lookup
+    # below was already widened to overlap for exactly that; resolving the
+    # sheet through the current-only gate meant it never ran (D88).
+    sheet = get_sheet_for_read(db, scope, sheet_id)
     # Ownership, not just tenancy: this report names the child and quotes every
     # answer they gave, so it follows the same rule as the class they sit in
     # (D23) — reachable through ANY class this teacher owns, and the school

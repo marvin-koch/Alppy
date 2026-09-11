@@ -21,7 +21,7 @@ import numpy.typing as npt
 
 from alppy.scan.detector import PX_PER_MM
 from alppy.sheets import layout as L
-from alppy.sheets.uid_code import encode_uid
+from alppy.sheets.uid_code import CANTON_UNSET, PageCode, encode_page_code, encode_uid
 
 Image = npt.NDArray[np.uint8]
 
@@ -150,6 +150,14 @@ def draw_smudge(
         )
 
 
+def _default_page_code(uid: str) -> PageCode:
+    """The non-identity half of a v2 grid, for a test that only cares about the
+    pupil. Page 1, no canton, and a nonce that is recognisably a fixture."""
+    return PageCode(
+        uid=uid, school_year=0, page_in_copy=1, canton=CANTON_UNSET, nonce=0
+    )
+
+
 def render_page(
     uid: str,
     option_counts: list[int],
@@ -158,12 +166,19 @@ def render_page(
     pencil: float = 0.9,
     mark_style: str = "fill",
     seed: int = 0,
+    layout_version: str | None = None,
+    page_code: PageCode | None = None,
 ) -> SyntheticSheet:
     """Draw one canonical page.
 
     ``marked[i]`` is the option the student filled for item ``i``, or None for a
     blank. ``pencil`` is how thoroughly the bubble was filled in, 0..1 — a child
     scribbling lightly is the interesting case for the confidence model.
+
+    ``layout_version`` selects the UID grid geometry (B4). Under v2 the grid
+    encodes the whole page rather than only the pupil, so ``page_code`` carries
+    the rest; passing only a ``uid`` fills the other fields with a fixed,
+    obviously-synthetic default, which is what most tests want.
     """
     if len(option_counts) != len(marked):
         raise ValueError("option_counts and marked must be the same length")
@@ -184,14 +199,19 @@ def render_page(
         )
 
     # --- UID grid: outlined cells, filled where the bit is 1
-    bits = encode_uid(uid)
-    for slot in range(L.UID_GRID_CELLS):
-        for row in range(L.UID_GRID_ROWS):
-            cx, cy = L.uid_cell_centre_mm(slot, row)
-            c = L.UID_GRID_CELL_MM / 2.0
+    version = layout_version or L.LAYOUT_VERSION
+    grid = L.uid_grid(version)
+    if version == "v1":
+        bits = encode_uid(uid)
+    else:
+        bits = encode_page_code(page_code or _default_page_code(uid))
+    for slot in range(grid.cells):
+        for row in range(grid.rows):
+            cx, cy = grid.cell_centre_mm(slot, row)
+            c = grid.cell_mm / 2.0
             p0 = (_mm(cx - c), _mm(cy - c))
             p1 = (_mm(cx + c), _mm(cy + c))
-            bit = bits[slot * L.UID_GRID_ROWS + row]
+            bit = bits[slot * grid.rows + row]
             cv2.rectangle(img, p0, p1, INK, thickness=-1 if bit else 1)
 
     # --- answer bubbles: outline always, fill where the student marked

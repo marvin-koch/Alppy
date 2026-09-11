@@ -20,6 +20,7 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    IdempotencyKeyDep,
     RenderRateLimit,
     ScopeDep,
     StorageDep,
@@ -41,7 +42,7 @@ from alppy.schemas import (
     SheetStudentMastery,
     SheetUpdate,
 )
-from alppy.services import event_service, job_out, mastery_service, sheet_out
+from alppy.services import event_service, idempotency, job_out, mastery_service, sheet_out
 from alppy.services import sheet_service as svc
 from alppy.services.class_service import get_class
 
@@ -108,7 +109,10 @@ def create_sheet(
 def get_sheet(
     sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, storage: StorageDep
 ) -> SheetOut:
-    sheet = svc.get_sheet(db, scope, sheet_id)
+    # REPORT: reading one sheet back. A teacher who has left this (class,
+    # branch) keeps what they wrote and marked; they simply cannot act on it
+    # any more, which is enforced at each write route separately (D88).
+    sheet = svc.get_sheet_for_read(db, scope, sheet_id)
     return sheet_out(
         sheet, storage=storage, points=svc.points_totals_for_sheet(db, scope.school_id, sheet)
     )
@@ -136,8 +140,26 @@ def update_sheet(
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[RenderRateLimit],
 )
-def render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
-    """Queue the blank sheet and the answer key. Returns the job to poll."""
+def render_sheet(
+    sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, idem: IdempotencyKeyDep = None
+) -> JobOut:
+    """Queue the blank sheet and the answer key. Returns the job to poll.
+
+    Honours ``Idempotency-Key`` (audit 03, B17): tapping "print" twice because
+    the screen has not moved yet used to queue two renders of the same sheet,
+    each rewriting the other's answer-box placements.
+    """
+    return idempotency.run(
+        db,
+        school_id=scope.school_id,
+        endpoint="sheets.render",
+        key=idem,
+        model=JobOut,
+        work=lambda: _render_sheet(sheet_id, scope, db),
+    )
+
+
+def _render_sheet(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     sheet = svc.get_sheet(db, scope, sheet_id)
     if not sheet.items:
         raise errors.unprocessable("a sheet with no items cannot be rendered")
@@ -279,7 +301,9 @@ def preview_sheet(
     ``render_sheet_html(db, sheet_id=...)``, a signature that does not exist,
     and answered 500 on every request.
     """
-    sheet = svc.get_sheet(db, scope, sheet_id)
+    # REPORT: the preview renders the sheet's own stored rows and writes
+    # nothing. Printing it is `render_sheet`, which stays a gate.
+    sheet = svc.get_sheet_for_read(db, scope, sheet_id)
     build_sheet_data = load_optional(
         "alppy.sheets.render", "build_sheet_data", feature="sheet preview"
     )
@@ -352,7 +376,9 @@ def sheet_mastery(
     arithmetic — which is what makes "adaptive sheet mastery" the same
     function rather than a second one that could drift from it.
     """
-    sheet = svc.get_sheet(db, scope, sheet_id)
+    # REPORT: how the class did on one sheet, computed from attempts that
+    # were recorded while this teacher held the group (D88).
+    sheet = svc.get_sheet_for_read(db, scope, sheet_id)
     competency_ids, _chapter_ids = svc.sheet_coverage(db, scope.school_id, sheet.id)
     # A sheet instance is one year's paper, so it carries a `student_id`; the
     # mastery behind it is the person's. The map back out keeps the response

@@ -476,10 +476,18 @@ def test_unassigning_a_branch_that_is_not_there_is_a_no_op(
 def test_unassigning_takes_the_branch_away_without_touching_the_sheets(
     client: TestClient, db: Session, tenant: Tenant, co_taught: Tenant, history: object
 ) -> None:
-    """Unassigning is not deleting.
+    """Unassigning is not deleting, and it is not erasing either.
 
-    The sheet survives; it simply stops being visible to that teacher. Losing
-    a branch assignment must never destroy a term of worksheets.
+    Losing a branch assignment must never destroy a term of worksheets. Since
+    D88 it must not hide them from their author either: the co-teacher who
+    wrote and marked this sheet keeps reading it after the assignment closes,
+    and simply stops being able to act on it.
+
+    This test asserted a 404 on the read until D88 answered the question the
+    codebase had been answering two ways at once — `taught_here` said a
+    departed teacher sees nothing, while `ever_shared_student_ids` handed them
+    the pupil profile that links to exactly these sheets. The write half of the
+    old assertion is the half that was load-bearing, and it is kept below.
     """
     from alppy.models import Sheet
 
@@ -498,8 +506,17 @@ def test_unassigning_takes_the_branch_away_without_touching_the_sheets(
     )
 
     login(client, co_taught.teacher.email)
-    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 404
+    # The row is untouched, and so is its author's ability to read it back.
     assert db.get(Sheet, uuid.UUID(sheet_id)) is not None
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 200
+    # What unassigning actually takes away: acting on it, and finding it by
+    # browsing the branch they no longer take.
+    assert client.post(f"/api/v1/sheets/{sheet_id}/render").status_code == 404
+    assert (
+        client.patch(f"/api/v1/sheets/{sheet_id}", json={"title": "hop"}).status_code == 404
+    )
+    listed = client.get(f"/api/v1/sheets?class_id={tenant.school_class.id}").json()
+    assert [s["id"] for s in listed] == []
 
 
 def test_a_teacher_from_another_school_cannot_be_assigned(
@@ -709,3 +726,51 @@ def test_switching_back_restores_the_first_school(
     assert {row["code"] for row in client.get("/api/v1/classes").json()} == {
         tenant.school_class.code
     }
+
+
+# --------------------------------------------------------------------------
+# B23 · the batched reads must answer exactly what the per-class ones did
+# --------------------------------------------------------------------------
+def test_the_batched_branch_nav_matches_the_per_class_one(
+    db: Session, tenant: Tenant, co_taught: Tenant, history: object
+) -> None:
+    """A performance fix that changes an answer is not a performance fix.
+
+    `GET /classes` resolved the branch nav one card at a time, so a teacher with
+    six classes paid six extra round trips for one list (audit 03, B23). The
+    batched query has to reproduce `taught_subject_ids_for_class` exactly —
+    including its ordering rule, which is `class_subject.position` with
+    `subject_id` breaking a tie so the nav cannot wobble between requests.
+    """
+    from alppy.services import class_service
+
+    for scope_owner in (tenant, co_taught):
+        scope = scope_owner.scope
+        batched = class_service.taught_subject_ids_by_class(db, scope)
+        for school_class in class_service.list_classes(db, scope):
+            one = class_service.taught_subject_ids_for_class(db, scope, school_class.id)
+            assert batched.get(school_class.id, []) == one, school_class.code
+
+
+def test_the_batched_band_summary_matches_the_per_class_one(
+    db: Session, tenant: Tenant, co_taught: Tenant
+) -> None:
+    """Same rule for the home screen's band breakdown.
+
+    A pupil in two of the teacher's classes counts in both — the card describes
+    the group, not the school — so this compares per class rather than in total.
+    """
+    from alppy.services import class_service
+    from alppy.services.mastery_service import band_summary, band_summary_by_group
+
+    scope = tenant.scope
+    rosters = class_service._person_ids_by_class(db, scope)
+    batched = band_summary_by_group(db, tenant.school.id, rosters)
+
+    for school_class in class_service.list_classes(db, scope):
+        people = [s.person_id for s in class_service.list_students(db, scope, school_class.id)]
+        assert rosters.get(school_class.id, []) == people or sorted(
+            rosters.get(school_class.id, [])
+        ) == sorted(people), school_class.code
+        expected = band_summary(db, tenant.school.id, people)
+        assert batched.get(school_class.id, ({}, 0)) == expected, school_class.code
