@@ -1,0 +1,82 @@
+# The real transport, against a real stack (T2).
+#
+# 197 of 217 behavioural E2E tests replace `apiRequest` before `fetch` is ever
+# called, so CI had NEVER exercised HTTP, JSON serialisation, status handling or
+# error mapping. `live-loop.spec.ts` is the counterweight and has existed all
+# along — skipped in every run, because nothing ever set `ALPPY_LIVE_API`.
+#
+# Two real incidents came from exactly that gap: an upload client that omitted
+# `subject_id` and 422'd invisibly because the fixture layer accepted it, and a
+# route called at the wrong address for two milestones. The first run of this
+# job reproduced the same shape a third time — the sheet builder posting
+# `subject_id: ''` when no subject is in scope.
+#
+# Its own workflow rather than a job in ci.yml, for two reasons. It is NIGHTLY
+# and on demand: adding `schedule` to ci.yml would run the whole matrix at 03:00
+# for nothing. And it is not yet a merge gate — the loop it exercises has known
+# failures, and blocking every merge on a gate that is red on arrival is how a
+# gate gets deleted. It runs, it reports, the failures get fixed; then this
+# moves to `pull_request` and becomes one.
+name: Live transport
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  live-loop:
+    name: The F1, F2 and F7 loops against a real API
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+
+      # `--wait` on the data services first: the api container runs migrations
+      # and the seed on start, and a Postgres that is still initialising makes
+      # that look like a product failure.
+      - name: Bring up the stack
+        run: |
+          docker compose up -d --wait postgres redis minio
+          docker compose up -d --wait api worker web
+
+      - name: Wait for the API to answer
+        run: |
+          for _ in $(seq 1 60); do
+            curl -fsS http://localhost:8000/api/v1/health >/dev/null && break
+            sleep 2
+          done
+          curl -fsS http://localhost:8000/api/v1/health
+
+      - name: Install Chromium
+        run: pnpm --filter @alppy/web exec playwright install --with-deps chromium
+
+      # `--project=live`, not `--grep @live`: the project is what pins this to
+      # one worker and serial mode, because it is the only spec that writes to a
+      # shared database and two browser projects running it at once upload,
+      # build and render against each other's rows. Setting ALPPY_LIVE_API also
+      # switches off the mock-backed `webServer`, which would otherwise spend
+      # four minutes building a second copy of the app that nothing talks to.
+      - name: Run the live loop
+        env:
+          ALPPY_LIVE_API: http://localhost:8000/api/v1
+          ALPPY_LIVE_WEB: http://localhost:3000
+        run: pnpm --filter @alppy/web exec playwright test --project=live
+
+      # The API's own account of the failure, which is the half a Playwright
+      # trace cannot show: a 422 renders as an empty list on screen.
+      - name: What the API said
+        if: failure()
+        run: docker compose logs --no-color --tail 300 api worker
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: live-playwright-report
+          path: apps/web/playwright-report/
+          retention-days: 7

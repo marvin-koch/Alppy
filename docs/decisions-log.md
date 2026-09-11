@@ -3319,3 +3319,55 @@ enough that the retention default of a year is the wrong shape and it wants
 partitioning rather than a sweep; or if a `MasteryBand` ever genuinely has to
 be school-configurable, at which point M5's argument is worth re-reading rather
 than re-deriving.
+
+---
+
+## Audit 06 — the test estate
+
+**The live loop runs nightly, not on every PR, and the reason is that it found
+something (T2).** `live-loop.spec.ts` has existed all along and was skipped in
+every run, because nothing ever set `ALPPY_LIVE_API`. So 197 of 217 behavioural
+E2E tests replaced `apiRequest` before `fetch`, and CI had never once exercised
+HTTP, JSON serialisation, status handling or error mapping. The first time the
+spec was actually run it failed — and the failure was the same shape as the two
+incidents that motivated writing it: **the sheet builder posts
+`subject_id: ''`** when no subject is in scope, and `POST /sheets/propose`
+answers 422 `uuid_parsing`. The mocked suite cannot see it; the fixture layer
+accepts an empty string where the API requires a UUID.
+
+Two consequences, recorded rather than left implicit:
+
+* The spec now names its class and subject in the URL (`?class=&subject=`),
+  which `scope.tsx` resolves before falling back to stored state. That is what a
+  teacher's own navigation does, and it is not a workaround — arriving at the
+  builder with nothing in scope is a real state, and the *product* answer to it
+  is still open: the propose button is enabled while the request it would send
+  cannot succeed, and a teacher who presses it gets a raw `uuid_parsing` message
+  rather than a sentence. Left to the frontend workstream, whose file this is.
+* The job is `schedule` + `workflow_dispatch` in its own workflow, not a job in
+  `ci.yml` on `pull_request`. Two of the seven live tests still fail on the F1
+  and F2 builder loops, and a merge gate that is red on arrival is a merge gate
+  somebody deletes within a week. It runs, it reports, the failures get fixed —
+  then it moves to `pull_request` and becomes a gate.
+
+**A reading the machine was unsure of is not a grade until a person looks
+(T24).** `LOW_CONFIDENCE` was counted for a report and gated nothing, so a
+teacher who confirmed a pile without opening it turned every unsure reading into
+a mark. It now blocks confirmation, and the refusal names `detection_ids` rather
+than a count because the teacher has to go and open rows. What makes that
+affordable rather than a wall in front of a thirty-copy pile is that reviewing
+is not disagreeing: `correct_detection` stamps `CORRECTED` whatever value it is
+sent, so a teacher who looks and agrees affirms by re-sending the same reading.
+`MULTIPLE`, `NOT_GRADEABLE` and `BLANK` still confirm — they score nothing and
+are counted as skipped, and stopping a pile because a child left an item empty
+would be a different product.
+
+**The school year turns over in Swiss time; a membership change does not (T5).**
+`current_school_year` defaulted to `datetime.now(UTC).date()`, and at 00:30 on
+1 August in Sion it is still 31 July in UTC — so a school set up that evening was
+given the year that ended the day before, durably, because
+`current_school_year` resolves a year BY LABEL when one already exists.
+`school_today()` is Europe/Zurich. `validity.today()` stays UTC: it stamps a
+membership change, where being a couple of hours early costs nothing because no
+read path compares it to a wall clock finer than a day, and making it injectable
+would touch twenty call sites to fix a problem that is not one.

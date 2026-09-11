@@ -56,7 +56,13 @@ export default defineConfig({
       use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 }, ...(channel ? { channel } : {}) },
     },
   ],
-  webServer: {
+  // Not started for the live run. `ALPPY_LIVE_API` means the spec is talking to
+  // a real stack at `ALPPY_LIVE_WEB`, so building and serving a second,
+  // mock-backed copy of the app costs four minutes and serves nobody — and in
+  // CI `reuseExistingServer` is false, so it really would build it.
+  webServer: process.env.ALPPY_LIVE_API
+    ? undefined
+    : {
     // A production build, not `next dev`. The dev server compiles routes on
     // demand, so the first visit to each page is slow and the suite goes flaky
     // the moment it runs in parallel -- and a screenshot taken mid-compile is
@@ -66,5 +72,5 @@ export default defineConfig({
     url: baseURL,
     reuseExistingServer: !process.env.CI,
     timeout: 240_000,
-  },
+      },
 });

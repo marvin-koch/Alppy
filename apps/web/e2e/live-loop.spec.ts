@@ -62,7 +62,21 @@ test.describe('@live the F1 loop against a real API', () => {
     expect((await upload).status()).toBe(202);
 
     // --- build a sheet ---------------------------------------------------
-    await page.goto(`${WEB}/fr/sheets/new`);
+    // With the class AND subject named in the URL. `scope.tsx` resolves them
+    // from `?class=`/`?subject=` before falling back to stored state, and this
+    // spec arrives with neither stored. Without them the builder holds
+    // `subject_id: ''` and `POST /sheets/propose` answers 422 `uuid_parsing` —
+    // which is how this spec failed the first time it was ever run against a
+    // real API. The mocked suite cannot see it: the fixture layer accepts an
+    // empty string where the API requires a UUID. See T2, and the note in
+    // `docs/decisions-log.md` about the builder firing a request it knows
+    // cannot succeed.
+    const scope = await page.evaluate(async (api) => {
+      const classes = await (await fetch(`${api}/classes`, { credentials: 'include' })).json();
+      const subjects = await (await fetch(`${api}/subjects`, { credentials: 'include' })).json();
+      return { classId: classes[0].id as string, subjectId: subjects[0].id as string };
+    }, API);
+    await page.goto(`${WEB}/fr/sheets/new?class=${scope.classId}&subject=${scope.subjectId}`);
     // class + subject + source document. The builder is document-first now, so
     // the retrieval path lives behind its own tab.
     await expect(page.locator('main select').first()).toBeVisible();
