@@ -3472,3 +3472,136 @@ threshold and not arq's ceiling, and the two stopped describing the same job.
 `worker_max_jobs` is now a setting rather than a literal because worker sizing is
 a deliberate choice: `db_pool_size` is sized against it, and a scan pipeline pins
 a core.
+
+---
+
+## Phase 7 — deployment preparation, phases 1 to 6
+
+Several of these were blocked on decisions the repository cannot make. Rather
+than stall, each was taken as an explicitly-stated MVP default, chosen to be
+cheap to change and recorded here so that changing it is a decision rather than
+a discovery.
+
+**The scheduler lives in the worker, not in a provider's console (D2).** arq
+supports `cron_jobs` natively and the worker is already a persistent process
+holding the right credentials, so there is nothing to provision; it is reviewed
+and tested beside the tasks it schedules; and it survives a host migration
+without anybody remembering to recreate it. A scheduler configured in a console
+exists on exactly one provider, and the host is not decided. The reaper runs
+every five minutes and at startup — a worker coming back from a crash is
+precisely when there are stale `RUNNING` rows blocking a teacher's confirmation
+— and the purges run nightly and staggered, and NOT at startup, because a worker
+restarting six times during a deploy must not purge six times. Every job body
+runs in a thread and swallows its failure after logging: all four are
+idempotent, so the next run does the work the failed one did not, and a purge
+that cannot reach object storage must not take the reaper down with it.
+
+**Scan-image retention defaults to 400 days (D3).** The old default of 0 —
+keep forever — was right for exactly as long as nothing enforced any number: a
+window a developer invented would have destroyed the evidence behind a mark the
+week before a parent contested it. It stopped being right the moment the real
+alternative became an unbounded, permanently growing store of photographs of
+named children's handwriting. 400 days is a school year plus one term, so a mark
+given in June is still appealable against the page the following spring. It is a
+starting position, not a school's policy. Per-school and per-canton windows are
+flagged and not built: that is a column on `School` read per pile by the purge,
+and it belongs with the data model.
+
+**Fly.io in `zrh`, as a starting position (D4).** It runs a persistent process,
+which the worker needs and Cloudflare's free tier cannot give; it is what
+`deploy-cloudflare.md` already assumed; and Zurich means the machines and volumes
+are in Switzerland. The honest limit is stated in the file rather than buried:
+Fly is a US company, so a cantonal IT department asking about the CLOUD Act gets
+a better answer from Exoscale or Infomaniak. What makes it cheap to reverse is
+that everything Fly-specific is in two files. **Nothing is provisioned and
+nothing has been deployed from them.**
+
+**Migrations move to a release step (D13, the larger half).** `release_command`
+runs `alembic upgrade head` on one machine and the release does not proceed if it
+fails — so a failed migration is a failed deploy rather than a crash loop. The
+compose entrypoint keeps migrating on start, because that is what makes
+`docker compose up` one command, and now says in the file that this is a compose
+convenience. The advisory lock is what makes having both safe.
+
+**One lockfile is the resolution and one is what pip installs (D18).**
+`uv.lock` is universal and regenerable; `requirements.lock` is the hashed,
+pip-consumable export the image installs with `--require-hashes`. Adding uv to
+the runtime image would be a second thing to keep current for no gain. This
+matters more here than it usually would: the scan detector is numerical code and
+its degradation suite is calibrated against a specific OpenCV/NumPy pair.
+
+**`--workers` and the Redis rate-limit buckets are one change (D19, D30).**
+Each uvicorn worker held its own bucket dict, so N workers silently multiplied
+every ceiling — including the one in front of sign-in — by N. A limit that is
+still configured, still enforced, and worth four times what it says is the worst
+of the three possible states, so `_refuse_unsafe_deployment` refuses the
+combination outright. The shared bucket is a Lua script, because
+read-modify-write from Python is three round trips with other workers racing
+between them; it reads Redis's own `TIME`, because two processes with drifting
+monotonic clocks would refill one bucket twice. A Redis outage degrades to this
+process's own bucket: a weaker limit, never no limit and never a refusal —
+raising would lock a school out of its own product, and returning "no wait" would
+remove the brake in front of Argon2id exactly when the system is already
+unhealthy.
+
+**The override rate is a column comparison, not an outcome count (D8).**
+`correct_detection` stamps `CORRECTED` whether the teacher agreed or disagreed
+(T24), so counting outcomes measures *attention* and reports it as error. What
+`health_signals` measures is the stored value differing from the write-once
+`machine_*` columns, and it reports the review count beside it, because an
+override rate over a pile nobody opened says nothing about the scanner.
+Registration failure rate is the third signal and the most diagnostic: a page
+whose fiducials cannot be located produces no readings at all, so a school whose
+photocopier has drifted *disappears* from the override rate rather than showing
+up in it. Logged rather than written to a summary table — a trend needs history
+and a table is the better answer, but the thing missing today is the number, not
+its archive.
+
+**The spend cap bounds what can be STARTED, not what finishes (D21).** It sits
+beside the rate limiter at the API boundary rather than inside
+`AiClient.complete`, for two reasons: `AiClient` is deliberately usable with no
+database at all, and a check at the point of the call abandons a class set
+half-graded — which is a worse thing to hand a teacher than a ceiling overshot by
+one job. 402 rather than 429, because this is not "slow down" and a client
+retrying on 429 would hammer a door that is not going to open. The defaults
+(20 CHF a day, 200 a month, per school, on rolling windows) leave room for one
+textbook ingest: a cap nobody can run the product under gets raised to infinity
+on the first bad afternoon.
+
+**The error tracker's `before_send` is the load-bearing part, not the
+boilerplate (D8).** A default-configured tracker sends the request body, and on
+this API that body is transcriptions of what a named child wrote, presigned links
+to photographs of their handwriting, roster names, or a password. Body, cookies
+and credential headers are dropped, the query string is redacted, and context is
+scrubbed by key to a bounded depth — error reporting must never become the
+outage. Session replay is *absent* rather than sampled at zero: a default that
+can be raised by editing one number is a different thing from an integration that
+never had it. The SDK is an optional extra, so the default image carries no
+tracker and the absence is reported once at startup.
+
+**Paperwork: three documents drafted, three deliberately not.** The subprocessor
+table, a DPIA outline with the factual sections filled in from the code, and a
+breach procedure whose order of operations is stated and whose names and
+timelines are blanks. The DPA, the processing register and the parental privacy
+notice are not drafted in substance — they carry legal weight, and a
+plausible-looking draft is worse than an empty section because it gets signed.
+The premise that changed for all of them: the shipped default AI provider is
+offline, so no personal data currently leaves the deployment, which makes "no
+transfer until there is a DPA" a position that can be held rather than a reason
+to wait.
+
+**Rollback policy, decided: the application rolls back, the database rolls
+forward.** `alembic downgrade` is never run on a production database — several
+migrations are irreversible in substance, and a `downgrade()` that restores a
+*column* does not restore what was in it. The consequence is a rule rather than a
+preference: a release containing a destructive migration must say so in its own
+commit message and cannot be rolled back, which means it is deployed on its own
+and never bundled with a feature. A rename that has to happen is two releases,
+each individually rollback-able.
+
+**The restore procedure is written and has never been run, and says so.** An
+untested backup is a belief, and the moment it is needed is the worst moment to
+find out it was wrong. It also records the consequence that is easy to miss: a
+backup window is the window in which an erasure is not really complete, so a
+restore has to re-apply every erasure since the restore point — from a log kept
+outside the database being restored, which does not exist yet.

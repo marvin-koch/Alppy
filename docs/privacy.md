@@ -268,8 +268,32 @@ endpoint.
 
 ## 6. Explicitly out of scope for the MVP
 
-The following are necessary before Alppy processes real, non-demo student data at any school, and
-are deliberately not solved yet:
+**Update, 2026-09-11.** Three of the items below now have a real, current
+starting document in [`data-protection/`](data-protection/), and one of the
+list's premises has changed:
+
+* [`data-protection/subprocessors.md`](data-protection/subprocessors.md) — the
+  subprocessor register, with residency and transfer positions. **Complete and
+  maintained**; update it in the same change that changes a vendor.
+* [`data-protection/dpia-outline.md`](data-protection/dpia-outline.md) — the
+  DPIA's structure, with the factual sections filled in from the code and the
+  risk assessment and legal conclusions deliberately empty.
+* [`data-protection/breach-procedure.md`](data-protection/breach-procedure.md) —
+  the order of operations, with every name and timeline left blank.
+
+The DPA, the processing register and the parental notice are **not** drafted,
+and deliberately: they carry legal weight, and a plausible-looking draft is
+worse than an empty section because it gets signed.
+
+The premise that changed: **in the shipped configuration no personal data
+leaves the deployment.** The default AI provider is offline (`echo`), so the
+transfers that most of the list below is about are not currently happening.
+Written answers are counted as skipped rather than graded; nothing else is
+affected. That makes "no transfer until the paperwork exists" a position that
+can be held while the paperwork is done.
+
+The following are still necessary before Alppy processes real, non-demo student
+data at any school:
 
 - **DPIA** (Datenschutz-Folgenabschätzung) — a full assessment is a prerequisite for real rollout,
   not a nice-to-have; this document is an input to that assessment, not a substitute for it.
@@ -291,3 +315,10 @@ are deliberately not solved yet:
 
 Until these exist, Alppy should run only on synthetic/demo data and opt-in pilot data that the pilot
 school has explicitly accepted the current state of this document for.
+
+The operational half — deploy, rollback, restore, secret rotation, worker drain,
+a stuck batch, and a pre-launch checklist for a new establishment — is in
+[`runbook/`](runbook/). Read [`runbook/restore-from-backup.md`](runbook/restore-from-backup.md)
+before accepting any pilot: **there are still no backups of anything**, so a
+volume loss is total and permanent loss of a term of graded work. That is the
+largest remaining gap and it is not a paperwork one.

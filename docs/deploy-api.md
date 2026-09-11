@@ -53,7 +53,7 @@ reverse is that everything Fly-specific is in two files.
 |---|---|---|
 | 1 | Create the Fly account and organisation | Identity and payment |
 | 2 | Choose the production domain | HSTS, the cookie and CORS all name it |
-| 3 | Decide the vision-grading provider, or leave it `echo` | A DPA is a signature, not a setting — see [`subprocessors.md`](subprocessors.md) |
+| 3 | Decide the vision-grading provider, or leave it `echo` | A DPA is a signature, not a setting — see [`data-protection/subprocessors.md`](data-protection/subprocessors.md) |
 | 4 | Read [`runbook/`](runbook/) end to end once | Three of its six procedures cannot be trusted until you have run them |
 
 ---

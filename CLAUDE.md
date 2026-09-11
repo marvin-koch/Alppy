@@ -67,6 +67,14 @@ ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://OWNER:pw@localhost:5432/alppy
 python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
 python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
 python -m alppy.cli purge-access-log  # enforce ALPPY_ACCESS_LOG_RETENTION_DAYS (read audit)
+python -m alppy.cli purge-scan-images # enforce ALPPY_SCAN_IMAGE_RETENTION_DAYS (400 days)
+python -m alppy.cli reap-jobs         # fail RUNNING jobs that stopped reporting
+python -m alppy.cli health-signals    # override rate, confidence deciles, registration failures
+
+# All five are ALSO on the worker's own schedule (alppy/worker/cron.py) — the
+# CLI form is what an operator runs to check, and it is the same code.
+
+make lock                             # re-resolve apps/api/uv.lock + requirements.lock
 
 # Regenerate the PER from CIIP's own API. Needs network; the output is
 # COMMITTED, because `docker compose up` must work without one.
@@ -92,6 +100,12 @@ python scripts/fetch-per-curriculum.py
 | `apps/api/alppy/ai/` | Provider-agnostic AI layer, versioned prompts, PII gate |
 | `packages/ui/src/design/` | Tokens, base, motion, print, recipes |
 | `packages/shared` | Types generated from the OpenAPI document |
+| `apps/api/alppy/worker/cron.py` | **The schedule.** Every retention window and the stale-job reaper |
+| `apps/api/alppy/services/health_signals.py` | Override rate, confidence deciles, registration failures — per school |
+| `apps/web/src/lib/config.ts` | The web half of `core/config.py`: every env read, validated once, throws at import |
+| `infra/fly/` | Deployment definitions — **drafts, nothing provisioned** |
+| `docs/runbook/` | Deploy, rollback, restore, secret rotation, worker drain, stuck batch, onboarding |
+| `docs/data-protection/` | Subprocessors, DPIA outline, breach procedure |
 
 ---
 
@@ -205,6 +219,37 @@ because a leak is a caller bug. See [`docs/privacy.md`](docs/privacy.md).
 
 **AI-generated exercises are never printed without teacher approval** *(DC-content-05)*
 (`Exercise.approved_at`).
+
+**Every retention window is enforced by `worker/cron.py`, and nowhere else.**
+Four correct, tested CLI commands existed and nothing ran any of them, so every
+window was a promise kept by somebody remembering. A window with no cron entry
+is not a window. The purges are nightly and never `run_at_startup` — a worker
+restarting six times during a deploy must not purge six times — and the reaper
+runs every five minutes *and* at startup, because a worker coming back from a
+crash is exactly when there are stale `RUNNING` rows refusing a teacher's
+confirmation. `test_worker_cron.py` pins the set.
+
+**The override rate is a comparison, never a count of `CORRECTED`.**
+`correct_detection` stamps `CORRECTED` whether the teacher agreed or disagreed,
+so counting outcomes measures attention and reports it as error. `Detection`'s
+write-once `machine_*` columns are the other half of the comparison and are the
+only reason the question can be asked at all — never overwrite them.
+
+**A rate-limit bucket in this process is worth N times its stated value for N
+workers.** `ALPPY_RATE_LIMIT_BACKEND` decides where it lives and the startup
+validator refuses `api_workers > 1` on `memory`. Do not "simplify" that guard
+away: the failure it prevents is invisible — the limit is still configured, still
+enforced, and worth four times what it says.
+
+**A spend cap bounds what can be STARTED.** `AiBudget` sits beside `AiRateLimit`
+at the API boundary, not inside `AiClient.complete` — that object is deliberately
+usable with no database, and a check at the point of the call abandons a class
+set half-graded.
+
+**An error tracker's `before_send` is the load-bearing part.** A default-configured
+tracker sends the request body, which on this API is transcriptions of what a
+named child wrote and presigned links to photographs of their handwriting. See
+`core/observability.py`; session replay is absent, not sampled at zero.
 
 **A failure crosses to the client as a code; the client owns the sentence.** An
 exception's own text is never assigned to a field a browser reads. `Source.error`
