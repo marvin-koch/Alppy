@@ -15,16 +15,30 @@ import {
   IlloSummit,
   LoadingState,
   Panel,
+  ProgressRing,
   SegmentedControl,
   Select,
   Slider,
+  Spinner,
   Toggle,
+  useToast,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
+import { useRouter } from '@/i18n/navigation';
+import { discardAdaptive as discardAdaptiveNow } from '@/lib/api/endpoints';
+import { useFormatters } from '@/lib/format';
 import { useScope } from '@/lib/scope';
 import { apiErrorMessage } from '@/lib/api/error-message';
+import {
+  loadRun,
+  recentRuns,
+  rememberRun,
+  saveRun,
+  type RecentRun,
+} from '@/lib/adaptive-session';
 
 import { AdaptiveItem } from '@/components/AdaptiveItem';
 import { AddExerciseModal } from '@/components/sheet-builder/AddExerciseModal';
@@ -37,6 +51,7 @@ import {
   useFeedback,
   useGenerateFeedback,
   useClasses,
+  useCurriculumTree,
   useDiscardAdaptive,
   useSheets,
   useClass,
@@ -86,9 +101,14 @@ function groupsOf(plan: AdaptiveProposeResponse | null): AdaptiveGroupPlan[] {
   return plan.group ? [plan.group] : [];
 }
 
+/** Long enough to notice the row vanish and change your mind; short enough
+ *  that nobody is waiting on it. */
+const DISCARD_UNDO_MS = 8000;
+
 export default function AdaptivePage() {
   const t = useTranslations('adaptive');
   const tc = useTranslations('common');
+  const fmt = useFormatters();
   const classes = useClasses();
   const subjects = useSubjects();
 
@@ -110,7 +130,30 @@ export default function AdaptivePage() {
   // The planning runs in the worker, so the screen holds a job id and reads the
   // proposal back once it lands — the same shape as the feedback and export
   // chains further down this file.
-  const [proposeJobId, setProposeJobId] = useState<Uuid | null>(null);
+  //
+  // The id lives in the URL rather than in state, which is the whole of the
+  // recoverability fix: `useState` meant that closing the laptop between
+  // pressing Proposer and reading the result lost the only handle on a proposal
+  // that is sitting finished in the database. The scan flow has always done it
+  // this way (`scans/new` redirects to `/scans/{id}?job={jobId}`).
+  //
+  // `replace`, not `push`: a proposal is not a place in the history, and a
+  // teacher pressing Back after Proposer means "leave", not "unstart".
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const proposeJobId = (searchParams.get('job') as Uuid | null) ?? null;
+  const setProposeJobId = useCallback(
+    (id: Uuid | null) => {
+      // Every other parameter is somebody else's: the scope (class, subject)
+      // is sticky and lives here too, and dropping it would reset the screen.
+      const next = new URLSearchParams(searchParams.toString());
+      if (id) next.set('job', id);
+      else next.delete('job');
+      const query = next.toString();
+      router.replace(query ? `/adaptive?${query}` : '/adaptive');
+    },
+    [router, searchParams],
+  );
   const [plan, setPlan] = useState<AdaptiveProposeResponse | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
   const [busyExercise, setBusyExercise] = useState<Uuid | null>(null);
@@ -123,6 +166,31 @@ export default function AdaptivePage() {
   // has to reflect a fact about the database, not about this browser tab.
   const [approvedIds, setApprovedIds] = useState<ReadonlySet<Uuid>>(new Set());
 
+  // Discards waiting out their undo window: id -> the timer that will send it,
+  // and the plan to put back if the teacher changes their mind.
+  const pendingDiscards = useRef(
+    new Map<Uuid, { timer: number; snapshot: AdaptiveProposeResponse | null }>(),
+  );
+  const { toast } = useToast();
+
+  // Leaving the screen sends them. A discard the teacher did not undo is a
+  // discard they meant, and dropping it on unmount would put the exercise back
+  // in circulation without anyone deciding that.
+  useEffect(() => {
+    const pending = pendingDiscards.current;
+    return () => {
+      const ids = [...pending.keys()];
+      for (const entry of pending.values()) window.clearTimeout(entry.timer);
+      pending.clear();
+      // The endpoint directly, not the mutation: a react-query mutation
+      // started by a component that is unmounting has nowhere to report back
+      // to. Nothing here needs a result — the screen is gone.
+      if (ids.length > 0) void discardAdaptiveNow({ exercise_ids: ids }).catch(() => {});
+    };
+    // Mount/unmount only: the flush must see the map as it stands when the
+    // screen goes away, and the ref is stable by construction.
+  }, []);
+
   const propose = useProposeAdaptive();
   const proposeJob = useJob(proposeJobId);
   const proposeSucceeded = proposeJob.data?.status === 'succeeded';
@@ -130,6 +198,9 @@ export default function AdaptivePage() {
   // Busy from the click until the proposal is in hand: the mutation, the job,
   // and the read that follows it are one wait as far as the teacher is
   // concerned, and three spinners in a row would say otherwise.
+  // What the job says about itself, for the ring and the words above it.
+  const proposeProgress = proposeJob.data?.progress ?? 0;
+  const proposeQueued = (proposeJob.data?.status ?? 'queued') === 'queued';
   const proposing =
     propose.isPending ||
     (proposeJobId != null &&
@@ -143,6 +214,32 @@ export default function AdaptivePage() {
   useEffect(() => {
     if (proposal.data) setPlan(proposal.data);
   }, [proposal.data]);
+
+  // What the teacher changed about this proposal, which the server has not been
+  // told about: the group moves, and the ids of an export already started.
+  // Keyed by job id, so two runs cannot read each other's overrides.
+  //
+  // NOT `approvedIds`. See the note where it is declared: approval is a fact
+  // about the database and the export gate reads it, so restoring it from a
+  // tab's storage could open that gate on nobody's authority. A recovered run
+  // shows its generated exercises as unapproved until the server says
+  // otherwise — safe, and one click to put right. Making it *true* on recovery
+  // needs a read the API does not have: the stored proposal is a payload
+  // snapshot (`AdaptiveProposal.payload`), so the `approved_at` inside it is
+  // frozen at proposal time, and there is no "which of these ids are approved"
+  // endpoint to ask instead.
+  useEffect(() => {
+    if (!proposeJobId) return;
+    const run = loadRun(proposeJobId);
+    setMoves(run.moves);
+    setSheetId(run.sheetId);
+    setJobId(run.jobId);
+  }, [proposeJobId]);
+
+  useEffect(() => {
+    if (!proposeJobId) return;
+    saveRun(proposeJobId, { moves, sheetId, jobId });
+  }, [proposeJobId, moves, sheetId, jobId]);
   const writeFeedback = useGenerateFeedback();
   const approveNotes = useApproveFeedback();
   const discardNote = useDiscardFeedback();
@@ -183,8 +280,21 @@ export default function AdaptivePage() {
   // `student_uid`). Fetching the names here to read `.length` put them in the
   // page's cache for no reason at all.
   const klass = useClass(classId || null);
+  // The plan carries competency IDS; the tree is what turns them into the codes
+  // a teacher recognises. Without it this screen printed `a3f9c012` — the first
+  // eight characters of a UUID — in a `ConceptTag`, which is the component
+  // whose entire job is to show a curriculum code (F16). The sheet detail page
+  // already fetches this, for the same reason and with the same one request.
   const rosterSize = Math.max(2, klass.data?.student_count ?? 2);
   const subjectId = scope.subjectId ?? '';
+  const curriculum = useCurriculumTree(classId || null, { subjectId: subjectId || undefined });
+
+  /** `competency_id` -> the code printed on the programme. */
+  const competencyCode = new Map(
+    (curriculum.data?.branches ?? [])
+      .flatMap((branch) => branch.competences)
+      .map((competence) => [competence.competency_id, competence.code]),
+  );
 
   const pending = generatedIds(plan);
   const approved = pending.length > 0 && pending.every((id) => approvedIds.has(id));
@@ -404,18 +514,52 @@ export default function AdaptivePage() {
     );
   };
 
+  /**
+   * Discard, with a window to take it back (F18).
+   *
+   * The server's discard is final — "they are never proposed or printed again"
+   * — and there is no route that restores one. So the undo cannot reverse the
+   * call; it has to precede it. The exercise leaves the screen at once, and
+   * the request goes out when the toast expires.
+   *
+   * Nothing is inconsistent in between: the export builds from `plan`, which
+   * has already dropped the item, so a teacher who exports inside the window
+   * gets exactly what they see. What the deferred call decides is only whether
+   * the exercise can be proposed again later.
+   *
+   * The snapshot is the whole plan rather than the one proposal, because
+   * putting a proposal back where it came from means knowing which student's
+   * list and which position — and the plan we already hold answers both
+   * exactly.
+   */
+  const commitDiscard = (exerciseId: Uuid) => {
+    const entry = pendingDiscards.current.get(exerciseId);
+    if (!entry) return;
+    window.clearTimeout(entry.timer);
+    pendingDiscards.current.delete(exerciseId);
+    discard.mutate({ exercise_ids: [exerciseId] });
+  };
+
+  const undoDiscard = (exerciseId: Uuid) => {
+    const entry = pendingDiscards.current.get(exerciseId);
+    if (!entry) return;
+    window.clearTimeout(entry.timer);
+    pendingDiscards.current.delete(exerciseId);
+    setPlan(entry.snapshot);
+  };
+
   const handleDiscard = (exerciseId: Uuid) => {
-    setBusyExercise(exerciseId);
-    discard.mutate(
-      { exercise_ids: [exerciseId] },
-      {
-        onSuccess: () => {
-          forget(exerciseId);
-          replaceProposal(exerciseId, null);
-        },
-        onSettled: () => setBusyExercise(null),
-      },
-    );
+    const snapshot = plan;
+    forget(exerciseId);
+    replaceProposal(exerciseId, null);
+    const timer = window.setTimeout(() => commitDiscard(exerciseId), DISCARD_UNDO_MS);
+    pendingDiscards.current.set(exerciseId, { timer, snapshot });
+    toast({
+      title: t('discarded'),
+      variant: 'default',
+      duration: DISCARD_UNDO_MS,
+      action: { label: tc('undo'), onClick: () => undoDiscard(exerciseId) },
+    });
   };
 
   const startExport = () => {
@@ -581,6 +725,10 @@ export default function AdaptivePage() {
                 },
                 {
                   onSuccess: (job) => {
+                    // Remembered before anything else: this is the record that
+                    // survives the tab being closed, and the id is the only
+                    // handle on a proposal the worker is still building.
+                    rememberRun(classId || null, job.id, new Date().toISOString());
                     setProposeJobId(job.id);
                     setPlan(null);
                     setApprovedIds(new Set());
@@ -639,13 +787,49 @@ export default function AdaptivePage() {
       ) : null}
 
       {proposing ? (
-        <LoadingState shape="list" label={t('preparing')} rows={5} />
+        <>
+          {/* Twenty-four students is twenty-four sequential provider calls
+              behind one 600-second timeout, and this said nothing about how
+              far it had got for the whole of it (F13). `useJob` has always
+              fetched `progress`; the scan screen has always drawn it. Same
+              shape, same components.
+
+              A ring only once there is something to report: one drawn at 0 is
+              a meter saying "nothing has happened", which is both wrong and
+              discouraging while a queue is still being picked up. */}
+          <Panel className="mb-4 flex items-center gap-4" role="status" aria-live="polite">
+            {proposeProgress > 0 ? (
+              <ProgressRing
+                value={proposeProgress}
+                centre={fmt.percent(proposeProgress)}
+                label={t('preparing')}
+                size={56}
+              />
+            ) : (
+              <Spinner size={32} className="shrink-0 text-primary-600" />
+            )}
+            <div className="min-w-0">
+              <p className="text-body font-bold text-ink-900">
+                {t(proposeQueued ? 'preparingQueued' : 'preparing')}
+              </p>
+              <p className="text-body-s text-ink-500">{t('preparingHelp')}</p>
+            </div>
+          </Panel>
+          <LoadingState shape="list" label={t('preparing')} rows={5} />
+        </>
       ) : !plan ? (
-        <EmptyState
-          illustration={<IlloSummit />}
-          title={t('empty.title')}
-          description={t('empty.body')}
-        />
+        <>
+          <EmptyState
+            illustration={<IlloSummit />}
+            title={t('empty.title')}
+            description={t('empty.body')}
+          />
+          {/* Somewhere to look for a run whose tab is gone. Rendered under the
+              empty state because that is the screen a teacher lands on when
+              they come back — the same screen that used to offer them nothing
+              but a button that would rebuild what already exists. */}
+          <RecentProposals classId={classId} onOpen={setProposeJobId} />
+        </>
       ) : (
         <>
           {generatedCount > 0 ? (
@@ -980,11 +1164,19 @@ export default function AdaptivePage() {
 
                       {p.targeted_competency_ids.length > 0 ? (
                         <ul className="mt-2 flex list-none flex-wrap gap-1 p-0">
-                          {p.targeted_competency_ids.slice(0, 6).map((id) => (
-                            <li key={id}>
-                              <ConceptTag code={id.slice(0, 8)} />
-                            </li>
-                          ))}
+                          {/* A competency the tree does not name is not shown
+                              as a UUID stump: the tag is for codes, and a
+                              teacher reading `a3f9c012` learns nothing they
+                              could act on. */}
+                          {p.targeted_competency_ids
+                            .slice(0, 6)
+                            .map((id) => ({ id, code: competencyCode.get(id) }))
+                            .filter((entry) => entry.code !== undefined)
+                            .map((entry) => (
+                              <li key={entry.id}>
+                                <ConceptTag code={entry.code as string} />
+                              </li>
+                            ))}
                         </ul>
                       ) : null}
 
@@ -1062,4 +1254,52 @@ function failureLine(
         requested: failure.requested,
       });
   }
+}
+
+/**
+ * The last few differentiation runs started for this class, on this browser.
+ *
+ * Deliberately local. `GET /jobs?kind=propose_adaptive` exists and has no
+ * caller, but it is scoped to the SCHOOL — `JobOut` carries no `class_id` —
+ * so a server-side list would show a teacher that a colleague started a run at
+ * 10:15, and could offer them a row that answers 404 when opened (correctly:
+ * `read_proposal` gates on the class). Reading the ids back out of this
+ * browser answers the case the finding is actually about — the laptop closed
+ * between pressing Proposer and reading the result — without either problem.
+ *
+ * The gap this leaves, stated plainly: a run started on the classroom desktop
+ * is not listed on the laptop at home. Closing that needs one field —
+ * `class_id` on `JobOut` — and then this component reads the API instead.
+ */
+function RecentProposals({
+  classId,
+  onOpen,
+}: {
+  classId: string;
+  onOpen: (jobId: Uuid) => void;
+}) {
+  const t = useTranslations('adaptive');
+  const fmt = useFormatters();
+  // Read after mount: `localStorage` does not exist while this renders on the
+  // server, and reading it during render would make the two disagree.
+  const [runs, setRuns] = useState<RecentRun[]>([]);
+  useEffect(() => setRuns(recentRuns(classId || null)), [classId]);
+
+  if (runs.length === 0) return null;
+
+  return (
+    <Panel className="mt-4">
+      <h2 className="mb-1 text-label uppercase text-ink-500">{t('recent.title')}</h2>
+      <p className="mb-3 text-body-s text-ink-700">{t('recent.body')}</p>
+      <ul className="flex flex-col gap-2">
+        {runs.map((run) => (
+          <li key={run.jobId}>
+            <Button variant="ghost" onClick={() => onOpen(run.jobId)}>
+              {fmt.dateTime(run.startedAt)}
+            </Button>
+          </li>
+        ))}
+      </ul>
+    </Panel>
+  );
 }
