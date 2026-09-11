@@ -1,5 +1,5 @@
 # Convenience targets. `docker compose up` remains the one command that matters.
-.PHONY: help up down logs seed test test-api lint typecheck fmt migration layout
+.PHONY: help up down nuke logs seed test test-api lint typecheck fmt migration layout
 
 help:
 	@grep -E '^[a-z-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN{FS=":.*?## "}{printf "  \033[36m%-14s\033[0m %s\n", $$1, $$2}'
@@ -7,7 +7,16 @@ help:
 up:            ## Bring up the whole stack with demo data
 	docker compose up --build
 
-down:          ## Stop everything and drop the volumes
+down:          ## Stop everything, KEEPING the data
+	docker compose down
+
+# `down` used to be this, and `make down` is one keystroke from `make up` on a
+# keyboard and one line from it in this file (D34). It drops the Postgres
+# volume: a term of graded work, and there are no backups to restore it from.
+# Renamed, and it asks.
+nuke:          ## Stop everything AND DESTROY every volume (database included)
+	@printf 'This deletes the postgres, redis and minio volumes. Type "nuke" to confirm: ' \
+	  && read -r reply && [ "$$reply" = "nuke" ] || { echo "aborted"; exit 1; }
 	docker compose down -v
 
 logs:          ## Follow the api and worker logs

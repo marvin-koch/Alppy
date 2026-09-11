@@ -49,6 +49,18 @@ SECURITY_HEADERS = {
     "Content-Security-Policy": "frame-ancestors 'self'",
 }
 
+#: HSTS (D23). Added to `SECURITY_HEADERS` only on a real deployment, by
+#: `_install_request_id` — the same `env in (staging, production)` test that
+#: decides the session cookie's `Secure` flag and whether the OpenAPI document
+#: is mounted. Emitting it unconditionally would pin `localhost` to HTTPS for a
+#: year in the browser of anyone who ran `docker compose up`, which breaks every
+#: other local stack on that machine and is not undone by fixing the header.
+#:
+#: One year, subdomains included, deliberately no `preload`: preload is a
+#: submission to a browser-vendor list that is slow to leave, and the production
+#: domain is not settled. Adding it later is a one-word change.
+HSTS_HEADER = ("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
 DESCRIPTION = """
 Alppy — teacher-facing tooling for Swiss compulsory school (Sek I, cycle 3).
 
@@ -57,7 +69,11 @@ session cookie, and every scoped query filters on the school resolved from it.
 """
 
 
-def _install_request_id(app: FastAPI) -> None:
+def _install_request_id(app: FastAPI, *, is_deployment: bool = False) -> None:
+    headers = dict(SECURITY_HEADERS)
+    if is_deployment:
+        headers[HSTS_HEADER[0]] = HSTS_HEADER[1]
+
     @app.middleware("http")
     async def request_context(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -69,7 +85,7 @@ def _install_request_id(app: FastAPI) -> None:
         try:
             response = await call_next(request)
             response.headers[REQUEST_ID_HEADER] = request_id
-            for header, value in SECURITY_HEADERS.items():
+            for header, value in headers.items():
                 response.headers.setdefault(header, value)
             log.info(
                 "http.request",
@@ -122,7 +138,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=[REQUEST_ID_HEADER],
     )
-    _install_request_id(app)
+    _install_request_id(app, is_deployment=is_deployment)
     install_error_handlers(app)
     app.include_router(api_router)
     return app

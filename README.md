@@ -31,6 +31,13 @@ Then open <http://localhost:3000> and sign in as the demo teacher printed in the
 compose logs. **No API key is required**: the AI layer ships deterministic
 offline providers so the whole product runs on a clean machine.
 
+> **`docker-compose.yml` is a development and demo stack, not a deployment
+> artifact.** Every credential in it has a working default — that is what lets
+> the command above need no `.env` — and on a server those same defaults put a
+> school's roster behind the password `alppy`. The data services publish to
+> `127.0.0.1` only for that reason. A real deployment is a different set of
+> files; see `docs/deploy-api.md`.
+
 Working on it without Docker:
 
 ```bash

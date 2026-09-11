@@ -1,3 +1,4 @@
+import { readWebConfig, type WebConfig } from './config';
 import { THEME_SCRIPT_CSP_HASH } from './theme-script';
 
 /**
@@ -27,26 +28,6 @@ import { THEME_SCRIPT_CSP_HASH } from './theme-script';
  * and forms may only post to us.
  */
 
-/** `https://host:port` for an absolute URL, else null. A relative API base
- *  (`/api/v1`, the reverse-proxied default) is already covered by `'self'`. */
-function originOf(value: string | undefined): string | null {
-  if (!value) return null;
-  try {
-    return new URL(value).origin;
-  } catch {
-    return null;
-  }
-}
-
-/** Space- or comma-separated, so one variable can name a bucket and a CDN. */
-function origins(value: string | undefined): string[] {
-  if (!value) return [];
-  return value
-    .split(/[\s,]+/)
-    .map((entry) => originOf(entry) ?? '')
-    .filter((entry) => entry !== '');
-}
-
 export interface CspOptions {
   /** Per-request, base64. Next.js stamps it onto its own inline bootstrap
    *  scripts when it finds it in the request's CSP header. */
@@ -54,11 +35,13 @@ export interface CspOptions {
   /** `next dev` compiles with `eval`. Allowing it in a real deployment would
    *  hand an injected string the one primitive this policy exists to deny. */
   dev?: boolean;
+  /** Read fresh from the environment by default: the middleware runs per
+   *  request and the compose stack sets `ALPPY_MEDIA_ORIGINS` at runtime. */
+  config?: WebConfig;
 }
 
-export function buildCsp({ nonce, dev = false }: CspOptions): string {
-  const apiOrigin = originOf(process.env.NEXT_PUBLIC_API_BASE_URL);
-  const mediaOrigins = origins(process.env.ALPPY_MEDIA_ORIGINS);
+export function buildCsp({ nonce, dev = false, config = readWebConfig() }: CspOptions): string {
+  const { apiOrigin, mediaOrigins } = config;
 
   const script = [
     "'self'",
@@ -126,3 +109,43 @@ export const STATIC_SECURITY_HEADERS: ReadonlyArray<{ key: string; value: string
     value: 'camera=(), microphone=(), geolocation=(), payment=(), usb=()',
   },
 ];
+
+/**
+ * HSTS (D23). One year, subdomains included, and deliberately **no `preload`**:
+ * preload is a submission to a browser-vendor list that is slow to leave, and
+ * the production domain is not settled yet. Adding it later is a one-word
+ * change; getting off the list is not.
+ *
+ * `includeSubDomains` is what makes it worth having here. The session cookie is
+ * host-only, but the object store and any future subdomain are not covered by
+ * the apex's own TLS habits — and a teacher on a school wifi typing `alppy.ch`
+ * makes exactly one plaintext request, which is the one this removes.
+ */
+export const HSTS_HEADER = {
+  key: 'Strict-Transport-Security',
+  value: 'max-age=31536000; includeSubDomains',
+} as const;
+
+/**
+ * The static headers for a given deployment.
+ *
+ * Split from the constant because HSTS must not be emitted over plain HTTP:
+ * `docker compose up` serves this app on `http://localhost:3000`, and a browser
+ * that pins `localhost` to HTTPS for a year has broken every other developer's
+ * local stack too. The gate is `ALPPY_ENV`, the same test the API uses for the
+ * session cookie's `Secure` flag — "this is a real deployment", stated once.
+ *
+ * Called from the MIDDLEWARE, not from `next.config.ts`: Next resolves
+ * `headers()` at build time into `routes-manifest.json`, so a header gated on a
+ * runtime variable would be frozen at whatever the build machine had. A browser
+ * applies HSTS to the whole host from any one response, so the document
+ * responses the middleware handles are enough — the asset routes it skips do
+ * not need their own copy.
+ */
+export function securityHeaders(
+  config: WebConfig = readWebConfig(),
+): ReadonlyArray<{ key: string; value: string }> {
+  return config.isDeployment
+    ? [...STATIC_SECURITY_HEADERS, HSTS_HEADER]
+    : STATIC_SECURITY_HEADERS;
+}

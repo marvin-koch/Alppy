@@ -19,11 +19,22 @@ from alppy.storage import LocalStorage, sanitise_filename, storage_key
 # --------------------------------------------------------------------------
 # Health
 # --------------------------------------------------------------------------
-def test_health_never_throws_and_reports_each_dependency(client: TestClient) -> None:
+def test_health_reports_a_verdict_and_nothing_else(client: TestClient) -> None:
+    """The public probe never names the failing component (D35).
+
+    Which of Postgres, Redis or the object store is down is a map of the
+    deployment's internals, and this route answers without a session."""
     response = client.get("/api/v1/health")
     assert response.status_code == 200
     body = response.json()
     assert body["status"] in {"ok", "degraded"}
+    assert set(body) == {"status", "version"}
+
+
+def test_health_detail_reports_each_dependency(client: TestClient) -> None:
+    response = client.get("/api/v1/health/detail")
+    assert response.status_code == 200
+    body = response.json()
     assert set(body) == {"status", "version", "database", "redis", "storage"}
     assert isinstance(body["database"], bool)
     assert body["storage"] is True  # the local backend is always reachable

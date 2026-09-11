@@ -14,7 +14,11 @@ COPY package.json pnpm-workspace.yaml pnpm-lock.yaml* .npmrc ./
 COPY apps/web/package.json apps/web/
 COPY packages/ui/package.json packages/ui/
 COPY packages/shared/package.json packages/shared/
-RUN pnpm install --frozen-lockfile || pnpm install
+# No `|| pnpm install` fallback: the lockfile is committed, CI installs with
+# `--frozen-lockfile` everywhere else, and a fallback that quietly resolves
+# fresh versions is how two builds a week apart stop being the same image
+# (D17). Out-of-date lockfile means fix the lockfile, not ship a different one.
+RUN pnpm install --frozen-lockfile
 
 # --- build ------------------------------------------------------------------
 FROM base AS build

@@ -339,6 +339,21 @@ class OpenAiChatProvider:
                 model=self._model,
                 instructions=request.system,
                 input=content,
+                # Do not keep this on the provider's side (D6, B-4). The
+                # Responses API stores the request and response for 30 days by
+                # default, and this is the call that carries a photograph of a
+                # named child's handwriting: the crop goes out because the PII
+                # gate can only read text, and geometry — not redaction — is
+                # what keeps the name off it (`measure_answer_boxes`). Storage
+                # there would be a copy of that image in a third country, held
+                # under a retention window we neither set nor sweep, which is
+                # precisely the thing `ALPPY_SCAN_IMAGE_RETENTION_DAYS` exists
+                # to bound on our own side.
+                #
+                # This is one of the levers; it is not the whole of D6. The
+                # transfer still happens and still needs a DPA and a decision
+                # about the provider (see docs/audits/07, Q3).
+                store=False,
                 # Covers reasoning *and* visible output on a reasoning model, so
                 # a budget spent thinking returns nothing — see the check below.
                 max_output_tokens=request.max_tokens,

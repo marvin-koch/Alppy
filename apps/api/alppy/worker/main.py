@@ -65,8 +65,15 @@ class WorkerSettings:
 
     # A stuck pipeline (a wedged model call, a hung Chromium render) must
     # never hold a worker slot forever.
-    job_timeout = 600  # seconds
-    max_jobs = 4
+    #
+    # Both read from settings rather than being literals (D22). They were 600
+    # and 4 here while `job_timeout_s`'s own docstring said this class read it,
+    # and `job_stale_after_s` — what the reaper uses to decide a RUNNING row has
+    # nobody behind it — is derived from `job_timeout_s`. A deployment that
+    # raised the setting therefore moved the reaper's threshold and not arq's
+    # ceiling, so the two stopped describing the same job.
+    job_timeout = get_settings().job_timeout_s
+    max_jobs = get_settings().worker_max_jobs
     keep_result = 3600  # seconds; job status is also durable in Postgres
 
 

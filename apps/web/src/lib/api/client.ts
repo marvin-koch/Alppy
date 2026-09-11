@@ -1,3 +1,4 @@
+import { readWebConfig } from '../config';
 import type { ApiErrorBody } from './types';
 
 /**
@@ -36,7 +37,9 @@ export class ApiError extends Error {
   }
 }
 
-export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/v1';
+// Read through `lib/config.ts` (D27), which is also where the check lives that
+// this base and `ALPPY_MEDIA_ORIGINS` describe the same deployment.
+export const API_BASE = readWebConfig().apiBaseUrl;
 
 /**
  * Fixture mode: the screens render without a backend (tests, design review).
@@ -56,8 +59,9 @@ export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/v1';
  * useful are not production builds.
  */
 export function isMockEnabled(): boolean {
-  if (process.env.NEXT_PUBLIC_ALPPY_MOCK === '1') return true;
-  if (process.env.NODE_ENV === 'production') return false;
+  const config = readWebConfig();
+  if (config.mockEnabled) return true;
+  if (!config.dev) return false;
   if (typeof window === 'undefined') return false;
   try {
     return window.localStorage.getItem('alppy.mock') === '1';

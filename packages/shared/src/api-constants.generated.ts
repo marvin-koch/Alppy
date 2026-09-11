@@ -30,6 +30,7 @@ export const API_ERROR_CODES = [
   'rate_limited',
   'scan_already_confirmed',
   'scan_confirmed',
+  'scan_low_confidence_unreviewed',
   'scan_matches_no_sheet',
   'scan_no_sheet',
   'scan_not_confirmed',

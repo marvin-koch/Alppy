@@ -19,7 +19,7 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from sqlalchemy import engine_from_config, pool
+from sqlalchemy import engine_from_config, pool, text
 
 from alembic import context
 from alppy.core.config import get_settings
@@ -62,8 +62,36 @@ def run_migrations_offline() -> None:
         context.run_migrations()
 
 
+#: Advisory-lock key for "somebody is migrating this database" (D13).
+#:
+#: Any stable 64-bit integer; this one is arbitrary and only has to stay the
+#: same forever, so every process asking for it is asking for the same lock.
+#: Changing it silently reopens the race it closes.
+MIGRATION_LOCK_KEY = 0x41_4C_50_50_59_00_01  # b"ALPPY" + a counter
+
+
 def run_migrations_online() -> None:
-    """Run migrations against a live connection — the normal path."""
+    """Run migrations against a live connection — the normal path.
+
+    Serialized on a Postgres advisory lock. The API container runs
+    ``alembic upgrade head`` on start (``infra/api/entrypoint.sh``), so two
+    instances starting together — a rolling deploy, a crash-loop, a scale-up —
+    both ran it at once against the same database. Alembic's own protection is
+    a transaction per migration, which stops a *half-applied* revision and does
+    nothing about two processes applying the same one: one of them fails on a
+    duplicate object, the container exits, and the orchestrator restarts it
+    into the same race.
+
+    ``pg_advisory_lock`` is session-scoped, so it is held for the whole upgrade
+    and released in ``finally`` — not ``pg_advisory_xact_lock``, because a
+    migration is free to commit and that would drop the lock mid-run. The
+    second instance blocks until the first is done and then finds nothing to
+    do, which is the intended outcome: it starts, a few seconds later.
+
+    This is the small half of D13. Migrating from inside the serving
+    container's start at all is the larger question, and it belongs with the
+    deploy pipeline (audit 07, Phase 3).
+    """
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -71,14 +99,29 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(
-            connection=connection,
-            target_metadata=target_metadata,
-            compare_type=True,
-        )
+        # Postgres only. SQLite has no advisory locks and no concurrent
+        # migrator to protect against — the suite builds its schema with
+        # `create_all` and never comes through here.
+        locked = connection.dialect.name == "postgresql"
+        if locked:
+            connection.execute(
+                text("SELECT pg_advisory_lock(:key)"), {"key": MIGRATION_LOCK_KEY}
+            )
+        try:
+            context.configure(
+                connection=connection,
+                target_metadata=target_metadata,
+                compare_type=True,
+            )
 
-        with context.begin_transaction():
-            context.run_migrations()
+            with context.begin_transaction():
+                context.run_migrations()
+        finally:
+            if locked:
+                connection.execute(
+                    text("SELECT pg_advisory_unlock(:key)"),
+                    {"key": MIGRATION_LOCK_KEY},
+                )
 
 
 if context.is_offline_mode():

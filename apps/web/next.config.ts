@@ -38,6 +38,13 @@ const nextConfig: NextConfig = {
    *
    * The Content-Security-Policy is NOT here: it carries a per-request nonce
    * and is set in `src/middleware.ts`.
+   *
+   * `Strict-Transport-Security` is NOT here either, for a less obvious reason:
+   * Next evaluates `headers()` during `next build` and freezes the result into
+   * `routes-manifest.json`, so a value that depends on the *runtime*
+   * `ALPPY_ENV` — which is exactly what the HSTS gate is — would be decided by
+   * whatever the build machine had set. It is emitted by the middleware
+   * instead; see `securityHeaders` in `src/lib/csp.ts`.
    */
   async headers() {
     return [{ source: '/:path*', headers: [...STATIC_SECURITY_HEADERS] }];

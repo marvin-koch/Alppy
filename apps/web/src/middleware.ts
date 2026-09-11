@@ -1,6 +1,7 @@
 import createMiddleware from 'next-intl/middleware';
 import { NextResponse, type NextRequest } from 'next/server';
-import { buildCsp } from './lib/csp';
+import { readWebConfig, type WebConfig } from './lib/config';
+import { buildCsp, HSTS_HEADER } from './lib/csp';
 import { routing } from './i18n/routing';
 
 const intlMiddleware = createMiddleware(routing);
@@ -50,16 +51,17 @@ function newNonce(): string {
  * Ours is allowed by hash instead; see `lib/theme-script.ts`.
  */
 export default function middleware(request: NextRequest) {
+  const config = readWebConfig();
   const nonce = newNonce();
-  const csp = buildCsp({ nonce, dev: process.env.NODE_ENV !== 'production' });
+  const csp = buildCsp({ nonce, dev: config.dev, config });
   request.headers.set('x-nonce', nonce);
   request.headers.set('content-security-policy', csp);
 
-  const response = withSecurityHeaders(intlMiddleware(request), csp);
+  const response = withSecurityHeaders(intlMiddleware(request), csp, config);
 
   // Fixture mode has no backend and therefore no session cookie. Gating it
   // would redirect the whole screenshot suite to the login screen.
-  if (process.env.NEXT_PUBLIC_ALPPY_MOCK === '1') return response;
+  if (config.mockEnabled) return response;
 
   // Demo mode: the API answers a cookieless request as the demo teacher
   // (`Settings.demo_mode`), so there is no session to gate on and this would
@@ -69,7 +71,7 @@ export default function middleware(request: NextRequest) {
   //
   // Both halves must be set: the API alone leaves the visitor at /login, the
   // web alone leaves them in an app whose every request 401s.
-  if (process.env.NEXT_PUBLIC_ALPPY_DEMO_MODE === '1') return response;
+  if (config.demoMode) return response;
 
   const { pathname, search } = request.nextUrl;
   if (isPublic(pathname)) return response;
@@ -80,13 +82,22 @@ export default function middleware(request: NextRequest) {
   const login = new URL(`/${locale}/login`, request.url);
   const from = `${pathname}${search}`;
   if (from && from !== `/${locale}`) login.searchParams.set('from', from);
-  return withSecurityHeaders(NextResponse.redirect(login), csp);
+  return withSecurityHeaders(NextResponse.redirect(login), csp, config);
 }
 
 /** The rest of the headers are static and live in `next.config.ts`, which also
- *  covers the asset routes this middleware never runs on. */
-function withSecurityHeaders(response: NextResponse, csp: string): NextResponse {
+ *  covers the asset routes this middleware never runs on — except HSTS, which
+ *  is gated on the runtime `ALPPY_ENV` and so cannot be frozen into the build's
+ *  route manifest. See `securityHeaders` in `lib/csp.ts` (D23). */
+function withSecurityHeaders(
+  response: NextResponse,
+  csp: string,
+  config: WebConfig,
+): NextResponse {
   response.headers.set('Content-Security-Policy', csp);
+  if (config.isDeployment) {
+    response.headers.set(HSTS_HEADER.key, HSTS_HEADER.value);
+  }
   return response;
 }
 

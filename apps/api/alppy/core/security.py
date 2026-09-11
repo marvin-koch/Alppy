@@ -63,8 +63,15 @@ def _serializer(settings: Settings | None = None) -> URLSafeTimedSerializer:
     # use, "the library's default" is not a thing to leave implicit on the one
     # line standing between a cookie and a school's roster. Naming it also means
     # a future default change cannot silently invalidate every live session.
+    # A key RING, not a key (D24). itsdangerous signs with the last entry and
+    # verifies against every one of them, so a retired key listed in
+    # `ALPPY_SECRET_KEY_FALLBACKS` keeps existing cookies valid while every new
+    # cookie is signed with the current key. Ordering is the whole contract
+    # here: put the primary anywhere but last and the app starts signing with a
+    # key it is in the middle of retiring.
+    keys: list[str] = [*s.secret_key_fallbacks, s.secret_key]
     return URLSafeTimedSerializer(
-        s.secret_key,
+        keys,
         salt=SESSION_SALT,
         signer_kwargs={"digest_method": hashlib.sha256},
     )

@@ -3371,3 +3371,104 @@ given the year that ended the day before, durably, because
 membership change, where being a couple of hours early costs nothing because no
 read path compares it to a wall clock finer than a day, and making it injectable
 would touch twenty call sites to fix a problem that is not one.
+
+---
+
+## Phase 7 — deployment preparation, phase 0
+
+Everything below is code or configuration with no external dependency: no host,
+no vendor account, no paperwork. They were taken together because each one is
+small and the *combination* is what moves the security posture — and because the
+phases that follow are all blocked on decisions this repository cannot make.
+
+**The container images have one dependency list each, and it is the manifest
+(D16, D17).** Both images carried a fallback — `pip install -e . 2>/dev/null ||
+pip install <inline list>` and `pnpm install --frozen-lockfile || pnpm install` —
+and the Python one had already drifted: no `openai`, which is the default chat
+provider, and no `pillow-heif`, which is how an iPhone photograph of a pile of
+copies is decoded at all. `2>/dev/null` meant nothing said which branch ran. Both
+fallbacks are gone; the editable install now works because `alppy/__init__.py` is
+copied in beside `pyproject.toml`, which is what setuptools needs to resolve
+`packages.find`, and which changes about once a year so the dependency layer
+still survives a source-only rebuild.
+
+**HSTS is emitted by the middleware, not by `next.config.ts` (D23).** Next
+evaluates `headers()` during `next build` and freezes the result into
+`routes-manifest.json`, so a header gated on the *runtime* `ALPPY_ENV` — which
+this one has to be, or `docker compose up` pins `localhost` to HTTPS in the
+developer's browser for a year — would be decided by whatever the build machine
+had set. A browser applies HSTS to the whole host from any one response, so the
+document responses the middleware handles are enough. No `preload`: that is a
+submission to a browser-vendor list that is slow to leave, and the production
+domain is not settled.
+
+**The session key is a ring, and `itsdangerous` takes it as a list (D24).** The
+audit suggested `fallback_signers`; that argument rotates the *algorithm*, and we
+name the digest explicitly and have never changed it. The key ring is the
+list-valued `secret_key`, where the last entry signs and every entry verifies —
+so `_serializer` builds `[*fallbacks, primary]` and the order is the contract.
+What this buys is that rotating a key is a procedure (add, deploy, wait out the
+12-hour session lifetime, drop) rather than logging every teacher in every school
+out mid-lesson. A key that can only be rotated by causing an outage is a key that
+never gets rotated, which is not the state a leaked one should find us in.
+
+**`/health` answers a verdict; the breakdown moved behind a token (D35).**
+Which of Postgres, Redis and the object store is down is a map of the deployment's
+internals, and it was offered to anyone, unauthenticated, on the one route whose
+job is to answer when everything else cannot. `/health` keeps `ok`/`degraded` —
+that is the whole of what an orchestrator does with it, and a readiness probe
+that needs a cookie is a readiness probe that fails. `/health/detail` carries the
+components, is open in `local`/`ci`, and everywhere else needs
+`ALPPY_HEALTH_DETAIL_TOKEN` and answers **404** rather than 401, because a 401
+confirms the route is there. A token rather than a network check because behind a
+reverse proxy every request arrives from the proxy, so "the peer is private" is
+true of the whole internet; a genuinely internal listener is an infrastructure
+decision that has not been made.
+
+**The web app has a configuration module, and it refuses (D27).** `lib/config.ts`
+is the web half of `core/config.py`: every `process.env` read in one place,
+validated once, throwing at import. The check that earns it is
+`ALPPY_MEDIA_ORIGINS` against `ALPPY_S3_PUBLIC_ENDPOINT_URL` — out of step, the
+scan review screen renders its rows, its verdict buttons, and empty frames where
+the crops should be, with the only explanation in the browser console. The
+compose file now passes the endpoint to the web container so the two can be
+compared at all. Two shapes on purpose: `readWebConfig()` re-reads the
+environment on every call, because the middleware runs per request and the
+compose stack sets these at runtime, and `assertWebConfig()` runs once at import.
+
+**`make down` keeps the data; `make nuke` asks (D34).** `down -v` drops the
+Postgres volume — a term of graded work, and there are no backups to restore it
+from — and `make down` is one keystroke from `make up`.
+
+**Migrations take an advisory lock (D13, half).** Two API containers starting
+together both ran `alembic upgrade head` against the same database, and alembic's
+per-migration transaction stops a half-applied revision, not two processes
+applying the same one. `pg_advisory_lock`, session-scoped and released in
+`finally` — not the transaction-scoped variant, because a migration is free to
+commit and would drop it mid-run. Moving the migration out of the serving
+container's start altogether is the other half, and it belongs with a deploy
+pipeline that does not exist yet.
+
+**The development compose file says what it is, and publishes to loopback
+(D5).** Every credential in it has a working default, which is the point on a
+laptop and a breach on a server. Docker publishes to `0.0.0.0` by default and on
+Linux opens the firewall to do it, so `docker compose up` on a VPS put Postgres,
+Redis and the MinIO console on the public internet with password `alppy`.
+`127.0.0.1:` on every data service costs local development nothing.
+
+**`store=False` on the OpenAI grading call (D6, one lever).** The Responses API
+keeps the request and response for 30 days by default, and this is the call
+carrying a photograph of a named child's handwriting — the crop goes out because
+the PII gate reads text and geometry is what keeps the name off the image. That
+would be a copy in a third country under a retention window we neither set nor
+sweep. It is one lever and not the whole finding: the transfer still happens, and
+still needs a DPA and a provider decision.
+
+**`WorkerSettings` reads its own settings (D22).** `job_timeout` and `max_jobs`
+were literals while `job_timeout_s`'s docstring said otherwise, and
+`job_stale_after_s` — what the reaper uses to decide a `RUNNING` row has nobody
+behind it — is derived from the setting. So raising it moved the reaper's
+threshold and not arq's ceiling, and the two stopped describing the same job.
+`worker_max_jobs` is now a setting rather than a literal because worker sizing is
+a deliberate choice: `db_pool_size` is sized against it, and a scan pipeline pins
+a core.

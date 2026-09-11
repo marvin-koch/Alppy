@@ -13,6 +13,7 @@ See docs/privacy.md for what is behind the door.
 from __future__ import annotations
 
 import pytest
+from fastapi.testclient import TestClient
 from pydantic import ValidationError
 
 from alppy.cli import _seed
@@ -272,3 +273,146 @@ def test_a_distinct_staging_bucket_boots() -> None:
 def test_development_environments_need_no_bucket_separation() -> None:
     """`docker compose up` has one MinIO and no production to collide with."""
     assert Settings(_env_file=None, env="local").production_s3_bucket is None
+
+
+def _client(settings: Settings) -> TestClient:
+    """A client whose REQUEST HANDLERS see `settings`, not the process's.
+
+    `create_app(settings)` decides what the factory itself decides — the OpenAPI
+    mount, the HSTS header — but `SettingsDep` resolves through
+    `deps.get_app_settings`, which reads the process-wide settings. The API
+    fixtures override it for the same reason; without it a route that branches
+    on `env` is tested against `local` whatever this file passes in.
+    """
+    from fastapi.testclient import TestClient
+
+    from alppy.api import deps
+    from alppy.main import create_app
+
+    app = create_app(settings)
+    app.dependency_overrides[deps.get_app_settings] = lambda: settings
+    return TestClient(app)
+
+
+# --- The session key ring (D24) --------------------------------------------
+# Rotating a signing key used to mean logging every teacher in every school out
+# at the instant of the deploy, which is to say it meant never rotating it.
+
+
+def test_a_retired_key_still_reads_its_own_cookies() -> None:
+    """The whole point: the old key verifies, the new key signs."""
+    import uuid
+
+    from alppy.core.security import issue_session, read_session
+
+    old = _settings(secret_key="the-key-that-is-being-retired")
+    teacher, school = uuid.uuid4(), uuid.uuid4()
+    cookie = issue_session(teacher, school, settings=old)
+
+    rotated = _settings(
+        secret_key="the-new-key-signing-from-now-on",
+        secret_key_fallbacks=("the-key-that-is-being-retired",),
+    )
+    seen = read_session(cookie, settings=rotated)
+    assert seen is not None
+    assert (seen.teacher_id, seen.school_id) == (teacher, school)
+
+
+def test_dropping_the_fallback_is_what_ends_the_old_key() -> None:
+    """The second half of the procedure, and the reason it is a procedure: the
+    old key stops working when it is removed from the list, not before."""
+    import uuid
+
+    from alppy.core.security import issue_session, read_session
+
+    old = _settings(secret_key="the-key-that-is-being-retired")
+    cookie = issue_session(uuid.uuid4(), uuid.uuid4(), settings=old)
+    finished = _settings(secret_key="the-new-key-signing-from-now-on")
+    assert read_session(cookie, settings=finished) is None
+
+
+def test_a_new_cookie_is_signed_with_the_primary_not_the_fallback() -> None:
+    """itsdangerous signs with the LAST entry of the ring, which is why
+    `_serializer` builds `[*fallbacks, primary]` in that order. Reversed, the
+    app would sign with the key it is in the middle of retiring."""
+    import uuid
+
+    from alppy.core.security import issue_session, read_session
+
+    rotated = _settings(
+        secret_key="the-new-key-signing-from-now-on",
+        secret_key_fallbacks=("the-key-that-is-being-retired",),
+    )
+    cookie = issue_session(uuid.uuid4(), uuid.uuid4(), settings=rotated)
+    primary_only = _settings(secret_key="the-new-key-signing-from-now-on")
+    assert read_session(cookie, settings=primary_only) is not None
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_the_development_key_is_refused_in_the_fallback_list_too(env: str) -> None:
+    """A retired key is still ACCEPTED. Listing the published one there forges
+    sessions exactly as well as setting it as the primary would."""
+    with pytest.raises(ValidationError) as caught:
+        _settings(env=env, secret_key_fallbacks=(DEV_SECRET_KEY,))
+    assert "ALPPY_SECRET_KEY_FALLBACKS" in str(caught.value)
+
+
+# --- The health breakdown (D35) --------------------------------------------
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_the_component_breakdown_is_not_public_on_a_deployment(env: str) -> None:
+    """`/health` stays open — a load balancer carries no cookie — but which
+    dependency is down is a map of the internals, offered to an anonymous
+    reader on the one route built to answer when nothing else can."""
+    settings = _settings(env=env, health_detail_token="s3cret-token")
+    client = _client(settings)
+    assert client.get("/api/v1/health").status_code == 200
+    assert set(client.get("/api/v1/health").json()) == {"status", "version"}
+
+    # 404, not 401: a 401 confirms the route exists.
+    assert client.get("/api/v1/health/detail").status_code == 404
+    assert (
+        client.get(
+            "/api/v1/health/detail", headers={"X-Alppy-Health-Token": "wrong"}
+        ).status_code
+        == 404
+    )
+    allowed = client.get("/api/v1/health/detail", headers={"X-Alppy-Health-Token": "s3cret-token"})
+    assert allowed.status_code == 200
+    assert set(allowed.json()) == {"status", "version", "database", "redis", "storage"}
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_an_unset_token_closes_the_breakdown_rather_than_opening_it(env: str) -> None:
+    client = _client(_settings(env=env, health_detail_token=None))
+    assert client.get("/api/v1/health/detail").status_code == 404
+
+
+# --- HSTS (D23) ------------------------------------------------------------
+
+
+@pytest.mark.parametrize("env", ["staging", "production"])
+def test_a_real_deployment_asks_for_hsts(env: str) -> None:
+    from fastapi.testclient import TestClient
+
+    from alppy.main import create_app
+
+    client = TestClient(create_app(_settings(env=env)))
+    header = client.get("/api/v1/health").headers["Strict-Transport-Security"]
+    assert header == "max-age=31536000; includeSubDomains"
+    # No `preload`: the list is slow to leave and the domain is not settled.
+    assert "preload" not in header
+
+
+@pytest.mark.parametrize("env", ["local", "ci"])
+def test_local_development_is_never_pinned_to_https(env: str) -> None:
+    """`docker compose up` serves this over plain HTTP on localhost. A browser
+    that pins that host for a year has broken every other stack on the machine,
+    and removing the header afterwards does not undo it."""
+    from fastapi.testclient import TestClient
+
+    from alppy.main import create_app
+
+    client = TestClient(create_app(Settings(_env_file=None, env=env)))
+    assert "Strict-Transport-Security" not in client.get("/api/v1/health").headers

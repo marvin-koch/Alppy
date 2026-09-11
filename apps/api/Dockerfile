@@ -25,18 +25,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# --- dependencies (cached until pyproject changes) -------------------------
+# --- dependencies (cached until pyproject or the package root changes) ------
+#
+# `pyproject.toml` is the ONLY dependency list. There used to be a second one
+# inlined here behind `pip install -e . 2>/dev/null || pip install <list>`, and
+# it had drifted: it was missing `openai` (the default chat provider) and
+# `pillow-heif` (the iPhone HEIC scan path), and `2>/dev/null` hid which of the
+# two branches had actually run. An image that silently builds without the
+# decoder for the format most scans arrive in is worse than a build that fails
+# (D16). So: one install, no fallback, loud on failure.
+#
+# The package root is copied in beside the manifest because setuptools resolves
+# `[tool.setuptools.packages.find]` at install time — with only `pyproject.toml`
+# present it finds no package and the editable install has nothing to point at.
+# `alppy/__init__.py` is three lines and changes about once a year, so the
+# dependency layer still survives every rebuild that only touches source.
 COPY apps/api/pyproject.toml /app/pyproject.toml
+COPY apps/api/alppy/__init__.py /app/alppy/__init__.py
 RUN python -m pip install --upgrade pip \
-    && pip install --no-cache-dir -e . 2>/dev/null || pip install --no-cache-dir \
-        "fastapi>=0.115.0" "uvicorn[standard]>=0.32.0" "sqlalchemy>=2.0.36" \
-        "alembic>=1.14.0" "psycopg[binary]>=3.2.3" "pgvector>=0.3.6" \
-        "pydantic>=2.10.0" "pydantic-settings>=2.6.0" "python-multipart>=0.0.18" \
-        "argon2-cffi>=23.1.0" "itsdangerous>=2.2.0" "arq>=0.26.1" "redis>=5.2.0" \
-        "boto3>=1.35.0" "httpx>=0.28.0" "anthropic>=0.40.0" "pypdf>=5.1.0" \
-        "pdfplumber>=0.11.4" "numpy>=2.1.0" "opencv-python-headless>=4.10.0" \
-        "pillow>=11.0.0" "pymupdf>=1.24.0" "structlog>=24.4.0" "jinja2>=3.1.4" \
-        "playwright>=1.49.0" "email-validator>=2.2.0"
+    && pip install --no-cache-dir -e .
 
 # --- Chromium for server-side PDF rendering --------------------------------
 # The teacher's print preview and the generated PDF must come from the same

@@ -58,6 +58,31 @@ class Settings(BaseSettings):
     env: Literal["local", "ci", "staging", "production"] = "local"
     debug: bool = False
     secret_key: str = Field(default=DEV_SECRET_KEY, min_length=8)
+
+    secret_key_fallbacks: tuple[str, ...] = ()
+    """Retired signing keys that are still ACCEPTED, never used to sign (D24).
+
+    Without this, rotating `ALPPY_SECRET_KEY` invalidates every live session at
+    the instant the new value is deployed: every teacher in every school is
+    logged out mid-lesson, mid-scan, mid-review. A key that can only be rotated
+    by causing an outage is a key that is never rotated, which is the state a
+    leaked one must not find us in.
+
+    With it, rotation is a procedure rather than an incident. Set the new key as
+    `ALPPY_SECRET_KEY` and move the old one into this list, deploy, wait out
+    `session_max_age_s` (12 hours — so, overnight), then remove it. Cookies
+    signed with the old key keep working for exactly as long as they would have
+    anyway, and new ones are signed with the new key from the first request.
+
+    `itsdangerous` takes the key ring as a list on `secret_key`, where the LAST
+    entry signs and every entry verifies — which is why `_serializer` builds
+    `[*fallbacks, primary]` in that order. (Its `fallback_signers` argument is
+    for rotating the *algorithm*, not the key; we name the digest explicitly and
+    have never changed it.)
+
+    JSON list in the environment, like `ALPPY_CORS_ORIGINS`:
+    `ALPPY_SECRET_KEY_FALLBACKS='["the-previous-key"]'`."""
+
     session_cookie: str = "alppy_session"
     session_max_age_s: int = 60 * 60 * 12
 
@@ -294,6 +319,37 @@ class Settings(BaseSettings):
     pile indefinitely because a stuck row said a grader was still coming, and
     there was no route to clear it."""
 
+    health_detail_token: str | None = None
+    """Shared secret for `GET /api/v1/health/detail` (D35).
+
+    `/health` answers `ok` or `degraded` to anyone, because a load balancer
+    carries no cookie and a readiness probe that needs one is a readiness probe
+    that fails. It used to answer with the *breakdown* as well — which of
+    Postgres, Redis and the object store was down — and that is a map of the
+    deployment's internals handed to an unauthenticated reader, most useful at
+    exactly the moment we are least able to respond.
+
+    So the breakdown moved to its own route, and this is what opens it. Unset,
+    the route answers 404 outside `local`/`ci` — the same shape as the OpenAPI
+    document, and for the same reason: a thing that does not exist cannot be
+    probed. `local` and `ci` leave it open, because that is where it is read.
+
+    A token rather than a network check on purpose. Behind a reverse proxy every
+    request arrives from the proxy, so "is the peer on a private address" is
+    true for the whole internet; a real internal-only path is an infrastructure
+    decision (a second listener, a private service port) that does not exist yet
+    — see docs/audits/07, Phase 3."""
+
+    worker_max_jobs: int = 4
+    """How many jobs one arq worker process runs at once.
+
+    A deliberate, visible number rather than a literal in ``WorkerSettings``
+    (D22). It is load-bearing twice over: ``db_pool_size`` is sized against it
+    (each job holds a session for its whole life), and a scan pipeline pins a
+    core in OpenCV, so raising it past the container's CPU allocation buys
+    contention rather than throughput. Raise the pool with it or the worker
+    blocks on itself while Postgres sits idle."""
+
     provider_timeout_s: float = 60.0
     """Per-request ceiling on a chat/vision provider call.
 
@@ -467,6 +523,12 @@ class Settings(BaseSettings):
             problems.append(
                 "ALPPY_SECRET_KEY is still the built-in development default; it signs "
                 "the session cookie, so anyone with this repository can forge one"
+            )
+        if DEV_SECRET_KEY in self.secret_key_fallbacks:
+            problems.append(
+                "ALPPY_SECRET_KEY_FALLBACKS contains the built-in development default; a "
+                "retired key in that list is still ACCEPTED, so this forges sessions exactly "
+                "as well as setting it as the primary would"
             )
         if self.s3_secret_key == DEV_S3_SECRET_KEY:
             problems.append(

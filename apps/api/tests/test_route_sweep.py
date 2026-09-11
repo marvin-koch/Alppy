@@ -80,6 +80,11 @@ ROUTES = _routes()
 PUBLIC: dict[tuple[str, str], str] = {
     ("GET", "/api/v1/health"): "the readiness probe; a load balancer has no cookie",
     ("GET", "/api/v1/health/live"): "the liveness probe, same",
+    ("GET", "/api/v1/health/detail"): (
+        "the component breakdown, for an operator rather than a probe; open in "
+        "local and ci, and gated on ALPPY_HEALTH_DETAIL_TOKEN everywhere else "
+        "(D35) — see test_deployment_guards"
+    ),
     ("POST", "/api/v1/auth/login"): "how a session is obtained in the first place",
     ("POST", "/api/v1/auth/logout"): (
         "clearing a cookie must work when the cookie is already invalid, or a "
@@ -300,7 +305,7 @@ def test_the_allow_lists_are_the_size_they_were_argued_to_be() -> None:
     failing sweep is to add a line, and the cheapest way is the one that gets
     taken at 18:00 on a Friday.
     """
-    assert len(PUBLIC) == 4, "a route became public — is that intended?"
+    assert len(PUBLIC) == 5, "a route became public — is that intended?"
     assert len(NOT_TENANT_SCOPED) == 1, "a route stopped being tenant-scoped — why?"
     assert len(BODY_NOT_SYNTHESIZABLE) == 0, (
         "a route can no longer be reached generically; its tenancy claim now "

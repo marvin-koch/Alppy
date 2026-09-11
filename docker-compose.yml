@@ -1,3 +1,22 @@
+# =============================================================================
+# A DEVELOPMENT AND DEMO STACK. NOT A DEPLOYMENT ARTIFACT.
+# =============================================================================
+#
+# Every credential below has a development default that works with no .env at
+# all, which is the point on a laptop and a data breach on a server: the
+# database holding a school's roster would be reachable with password `alppy`.
+# The API refuses to boot with these defaults when ALPPY_ENV is `staging` or
+# `production` (core/config.py:_refuse_unsafe_deployment), but Postgres, Redis
+# and MinIO have no such guard — they are just started. Do not run this file on
+# a host that is not a developer's own machine; see docs/deploy-api.md for what
+# a deployment actually looks like.
+#
+# Every data service therefore publishes to 127.0.0.1 ONLY (D5). Docker
+# publishes to 0.0.0.0 by default and, on Linux, punches its own hole in the
+# firewall to do it — so `docker compose up` on a VPS put Postgres, Redis and
+# the MinIO console on the public internet with those defaults. Loopback costs
+# local development nothing.
+#
 # One command brings up the whole product with demo data:
 #
 #     docker compose up
@@ -19,7 +38,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/init.sql:/docker-entrypoint-initdb.d/00-init.sql:ro
     ports:
-      - "${POSTGRES_PORT:-5432}:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-alppy} -d ${POSTGRES_DB:-alppy}"]
       interval: 5s
@@ -32,7 +51,7 @@ services:
     volumes:
       - redis-data:/data
     ports:
-      - "${REDIS_PORT:-6379}:6379"
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
@@ -48,8 +67,8 @@ services:
     volumes:
       - minio-data:/data
     ports:
-      - "${MINIO_PORT:-9000}:9000"
-      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+      - "127.0.0.1:${MINIO_PORT:-9000}:9000"
+      - "127.0.0.1:${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -204,6 +223,12 @@ services:
       # only explanation in the browser console. Read at runtime, not baked
       # in — the middleware builds the policy per request.
       ALPPY_MEDIA_ORIGINS: ${ALPPY_MEDIA_ORIGINS:-http://localhost:9000}
+      # The same value the api service is given, so `src/lib/config.ts` can
+      # check that the two agree and refuse to start when they do not (D27).
+      # Out of step, the review screen shows empty frames where the crops are
+      # and says nothing about why.
+      ALPPY_S3_PUBLIC_ENDPOINT_URL: ${ALPPY_S3_PUBLIC_ENDPOINT_URL:-http://localhost:9000}
+      ALPPY_ENV: ${ALPPY_ENV:-local}
     depends_on:
       api:
         condition: service_healthy

@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { buildCsp, STATIC_SECURITY_HEADERS } from './csp';
+import { HSTS_HEADER, buildCsp, STATIC_SECURITY_HEADERS, securityHeaders } from './csp';
 import { THEME_SCRIPT_CSP_HASH } from './theme-script';
 
 function directive(csp: string, name: string): string | undefined {
@@ -85,5 +85,38 @@ describe('STATIC_SECURITY_HEADERS', () => {
     // A student uuid lives in the path; `no-referrer-when-downgrade` and the
     // browser default would both send it to the object store.
     expect(byKey['Referrer-Policy']).toBe('strict-origin-when-cross-origin');
+  });
+});
+
+describe('securityHeaders', () => {
+  const base: Parameters<typeof securityHeaders>[0] = {
+    env: 'production',
+    isDeployment: true,
+    dev: false,
+    apiBaseUrl: '/api/v1',
+    apiOrigin: null,
+    mediaOrigins: [],
+    s3PublicOrigin: null,
+    mockEnabled: false,
+    demoMode: false,
+  };
+
+  it('adds HSTS on a real deployment', () => {
+    const keys = securityHeaders(base).map((h) => h.key);
+    expect(keys).toContain('Strict-Transport-Security');
+  });
+
+  /** `docker compose up` serves this on http://localhost:3000. Pinning that
+   *  host to HTTPS for a year breaks every other local stack on the machine. */
+  it('never adds HSTS outside a deployment', () => {
+    const keys = securityHeaders({ ...base, env: 'local', isDeployment: false }).map((h) => h.key);
+    expect(keys).not.toContain('Strict-Transport-Security');
+  });
+
+  /** A year, subdomains included, and no `preload`: the preload list is slow
+   *  to leave and the production domain is not settled. */
+  it('asks for a year and covers subdomains, without preloading', () => {
+    expect(HSTS_HEADER.value).toBe('max-age=31536000; includeSubDomains');
+    expect(HSTS_HEADER.value).not.toContain('preload');
   });
 });

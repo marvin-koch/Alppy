@@ -608,17 +608,36 @@ export interface HTTPValidationError {
 }
 
 /**
- * READINESS: should this instance be sent traffic?
+ * The same readiness check, with the component breakdown.
  *
- * Three connections, and a `degraded` answer when any of them is down. See
- * `LivenessOut` for why the two are different questions.
+ * `GET /api/v1/health/detail`, gated on `ALPPY_HEALTH_DETAIL_TOKEN`. This is
+ * the shape `HealthOut` used to have, and the one an operator actually wants
+ * at 08:20 on a Tuesday.
  */
-export interface HealthOut {
+export interface HealthDetailOut {
   status: 'ok' | 'degraded';
   version: string;
   database: boolean;
   redis: boolean;
   storage: boolean;
+}
+
+/**
+ * READINESS: should this instance be sent traffic?
+ *
+ * Three connections are checked and a `degraded` answer means one of them is
+ * down — but WHICH one is not in this response (D35). This route is
+ * unauthenticated, because a load balancer carries no cookie, and the
+ * breakdown is a map of the deployment's internals: it says which dependency
+ * to attack, or simply that the storage backend is unreachable right now, to
+ * anybody who asks. The verdict is all an orchestrator needs; `HealthDetailOut`
+ * is the same check with the components, behind a token.
+ *
+ * See `LivenessOut` for why readiness and liveness are different questions.
+ */
+export interface HealthOut {
+  status: 'ok' | 'degraded';
+  version: string;
 }
 
 export interface HomeOut {
