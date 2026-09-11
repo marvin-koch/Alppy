@@ -51,7 +51,7 @@ export const teacher: TeacherOut = {
     { id: id(2), name: 'Collège de démonstration', canton: 'VD', default_curriculum: 'PER' },
     { id: id(3), name: 'Oberstufe Chur', canton: 'GR', default_curriculum: 'LP21' },
   ],
-  preferences: { locale: 'fr', theme: null, contrast: null, motion: null, calm: null },
+  preferences: { locale: 'fr', theme: null, contrast: null, motion: null, calm: null, discreet: null },
 };
 
 export const subjects: SubjectOut[] = [
@@ -756,6 +756,10 @@ export const scan: ScanOut = {
     {
       id: id(810),
       page_index: 0,
+      // Added with the flag/dropped-correction fields on ScanPageOut; empty is
+      // the ordinary page: nothing flagged, no correction lost to a reassign.
+      flags: [],
+      corrections_dropped: [],
       image_url: '/mock/scan-page.svg',
       registered: true,
       detected_uid: '7B_04',
@@ -768,6 +772,10 @@ export const scan: ScanOut = {
     {
       id: id(811),
       page_index: 1,
+      // Added with the flag/dropped-correction fields on ScanPageOut; empty is
+      // the ordinary page: nothing flagged, no correction lost to a reassign.
+      flags: [],
+      corrections_dropped: [],
       image_url: '/mock/scan-page.svg',
       registered: true,
       detected_uid: null,
@@ -783,6 +791,8 @@ export const scan: ScanOut = {
       // nobody, and it must not hold the other copies hostage.
       id: id(812),
       page_index: 2,
+      flags: [],
+      corrections_dropped: [],
       image_url: '/mock/scan-page.svg',
       registered: false,
       detected_uid: null,

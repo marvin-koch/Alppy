@@ -22,8 +22,8 @@
     "switchSubject": "Changer de discipline",
     "timeline": "Agenda",
     "results": "Suivi",
-    "switchSchool": "Changer d'école",
-    "currentSchool": "École courante"
+    "switchSchool": "Changer d'établissement",
+    "currentSchool": "Établissement courant"
   },
   "auth": {
     "signIn": "Se connecter",
@@ -133,11 +133,11 @@
     "allCompetences": "Toutes les compétences",
     "coverage": "{assessed} sur {total} compétences évaluées",
     "weakestInside": "le plus fragile : {band}",
-    "branchBand": "Branche · {band}",
+    "branchBand": "Discipline · {band}",
     "emptyScope": {
       "title": "Rien à afficher ici",
       "body": "Aucune copie corrigée pour cette compétence ou ce thème.",
-      "action": "Voir toute la branche"
+      "action": "Voir toute la discipline"
     }
   },
   "student": {
@@ -175,8 +175,8 @@
     "notice": "À noter",
     "pages": "{count, plural, one {# page} other {# pages}}",
     "showExercises": "Voir les exercices",
-    "subject": "Matière",
-    "subjectHelp": "Le manuel est classé sous cette matière ; c'est elle qui cadre les propositions.",
+    "subject": "Discipline",
+    "subjectHelp": "Le manuel est classé sous cette discipline ; c'est elle qui cadre les propositions.",
     "title": "Manuels",
     "upload": "Téléverser un PDF",
     "uploadFailed": "Le téléversement a échoué. Réessayez.",
@@ -234,7 +234,7 @@
     "sheetTitle": "Titre de la fiche",
     "similarity": "Similarité",
     "source": "Source",
-    "subjectLabel": "Matière",
+    "subjectLabel": "Discipline",
     "title": "Fiches",
     "why": "Pourquoi cette proposition",
     "empty": {
@@ -257,7 +257,10 @@
     "unfiledThemeHelp": "Fiches créées avant que les thèmes existent. Ouvrez-en une pour la classer — rien n'a été deviné à votre place.",
     "groupGeneral": "Fiches générales",
     "groupPersonalized": "Fiches personnalisées",
-    "fileIt": "Classer"
+    "fileIt": "Classer",
+    "printNeedsPdf": "L'impression passe par le PDF : c'est le document dont Alppy connaît la mise en page exacte. Générez-le, puis imprimez-le.",
+    "printNeedsPdfOpen": "Cette fiche contient des réponses rédigées. Alppy mesure l'emplacement de chaque cadre en générant le PDF, et c'est là qu'il découpe les réponses à la correction : imprimé autrement, aucune réponse rédigée ne pourra être corrigée automatiquement.",
+    "previewBlocked": "L'aperçu a été bloqué par le navigateur. La fiche elle-même n'a rien : générez le PDF pour la vérifier."
   },
   "scans": {
     "title": "Corrections",
@@ -384,7 +387,12 @@
     "processingLabel": "Avancement de l'analyse",
     "processingHelp": "Alppy repère les repères de page, lit le code élève, puis les cases. Vous pouvez laisser cette page ouverte.",
     "scopedScans": "Vos corrections",
-    "scopedScansHint": "Les piles des branches que vous n'enseignez pas ne sont pas ici."
+    "scopedScansHint": "Les piles des disciplines que vous n'enseignez pas ne sont pas ici.",
+    "retakeLabel": "Reprendre cette page",
+    "retakeHelp": "La nouvelle photo remplace celle-ci dans la même pile.",
+    "retakeCamera": "Photographier la page",
+    "retakeWait": "Attendez la fin de la lecture de la pile avant de reprendre une page.",
+    "reopenConfirm": "Confirmer : retirer les résultats de {count, plural, one {# élève} other {# élèves}}"
   },
   "adaptive": {
     "addExercise": "Ajouter un exercice",
@@ -442,17 +450,17 @@
     "feedbackPending": "{count, plural, one {# note attend votre relecture.} other {# notes attendent votre relecture.}} Rien ne sera imprimé d’ici là.",
     "feedbackTitle": "Retour personnalisé",
     "forStudents": "Pour : {uids}",
-    "groupCount": "Nombre de groupes",
+    "groupCount": "Nombre de séries",
     "groupCountHelp": "1 : une seule fiche pour toute la classe. Autant que d'élèves : une fiche chacun.",
-    "groupCountMany": "{count, plural, one {# groupe formé} other {# groupes formés}} — les élèves ayant la même lacune principale sont réunis.",
+    "groupCountMany": "{count, plural, one {# série formée} other {# séries formées}} — les élèves ayant la même lacune principale sont réunis.",
     "groupCountOne": "Une seule fiche partagée par toute la classe.",
     "groupCountPerStudent": "Une fiche par élève.",
     "groupFor": "Pour {count} élèves sur {total}",
     "groupMembers": "{count, plural, one {# élève} other {# élèves}}",
     "groupTitle": "Fiche commune",
-    "groupedByModel": "Répartition proposée par l'IA, à partir des groupes calculés.",
-    "groupedByRule": "Groupes formés par lacune principale.",
-    "groupsTitle": "Groupes personnalisés",
+    "groupedByModel": "Répartition proposée par l'IA, à partir des séries calculées.",
+    "groupedByRule": "Séries formées par lacune principale.",
+    "groupsTitle": "Séries personnalisées",
     "hideItems": "Masquer les exercices",
     "itemsPerStudent": "Exercices par élève",
     "llmGrouping": "Laisser l'IA proposer la répartition",
@@ -467,8 +475,8 @@
     "modePerStudent": "Une par élève",
     "moveCancel": "Annuler",
     "moveHere": "Déplacer {uid} ici",
-    "moveHint": "Sélectionnez un élève pour le déplacer vers un autre groupe. Vous savez des choses que le modèle ignore.",
-    "moveSelected": "{uid} sélectionné — choisissez le groupe qui lui convient.",
+    "moveHint": "Sélectionnez un élève pour le déplacer vers une autre série. Vous savez des choses que le modèle ignore.",
+    "moveSelected": "{uid} sélectionné — choisissez la série qui lui convient.",
     "needsApproval": "{count, plural, one {# exercice à approuver} other {# exercices à approuver}}",
     "notApprovedWarning": "Les exercices générés doivent être approuvés avant d'être imprimés.",
     "preparing": "Préparation…",
@@ -490,7 +498,14 @@
     "subtitle": "Une fiche par élève, ciblée sur ses lacunes",
     "targeting": "Compétences ciblées",
     "title": "Fiches adaptées",
-    "trueLabel": "Vrai"
+    "trueLabel": "Vrai",
+    "recent": {
+      "title": "Reprises récentes",
+      "body": "Une proposition lancée depuis ce navigateur. Elle reste disponible même si l'onglet a été fermé."
+    },
+    "preparingQueued": "En attente d'un poste de travail…",
+    "preparingHelp": "Un appel au modèle par élève. Vous pouvez fermer l'onglet : la proposition reste accessible.",
+    "discarded": "Exercice écarté."
   },
   "settings": {
     "title": "Réglages",
@@ -508,7 +523,7 @@
     "calm": "Mode lecture",
     "calmHelp": "Masque les illustrations décoratives.",
     "saved": "Enregistré",
-    "school": "École",
+    "school": "Établissement",
     "schoolName": "Nom",
     "canton": "Canton",
     "curriculum": "Plan d'études",
@@ -533,7 +548,10 @@
     "bookTitle": "Titre",
     "publisher": "Éditeur",
     "isbn": "ISBN",
-    "sourceUrl": "Lien"
+    "sourceUrl": "Lien",
+    "newSchoolTitle": "Nouvel établissement",
+    "newSchoolHelp": "Vous en devenez membre immédiatement. Votre session reste sur l'établissement courant : changez-en depuis le rail quand vous êtes prêt.",
+    "newSchoolAction": "Créer l'établissement"
   },
   "exercise": {
     "type": {
@@ -570,7 +588,10 @@
     "save": "Enregistrer",
     "search": "Rechercher",
     "showAll": "Tout afficher",
-    "yes": "Oui"
+    "yes": "Oui",
+    "none": "Aucune",
+    "undo": "Annuler",
+    "saving": "Enregistrement…"
   },
   "errors": {
     "generic": {
@@ -586,19 +607,37 @@
     "offline": "Vous semblez hors ligne.",
     "unauthorized": "Votre session a expiré. Reconnectez-vous.",
     "code": {
-      "unsupported_media_type": "Ce format n'est pas accepté. Utilisez un PDF, un JPEG ou un PNG.",
-      "payload_too_large": "Le fichier est trop volumineux. Scannez en plusieurs fois.",
-      "unprocessable": "Le fichier n'a pas pu être lu. Vérifiez qu'il n'est pas vide ni abîmé.",
-      "validation_error": "La demande est incomplète. Vérifiez les champs et réessayez.",
+      "bad_request": "La demande n'a pas pu être traitée. Rechargez la page et réessayez.",
+      "branch_holds_sheets": "Cette discipline porte encore des fiches. Déplacez-les ou supprimez-les d'abord.",
       "conflict": "Cette action n'est plus possible dans l'état actuel.",
-      "not_found": "Cet élément n'existe pas ou n'est plus accessible.",
-      "network_error": "L'application n'a pas pu joindre le serveur.",
+      "detection_not_corrected": "Cette lecture n'a pas été corrigée : il n'y a rien à rétablir.",
       "fallback": "L'envoi a échoué. Réessayez.",
-      "scan_pages_unassigned": "Certaines pages ne sont attribuées à personne. Attribuez-les ou écartez-les, puis validez.",
-      "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
+      "forbidden": "Vous n'avez pas accès à cet élément.",
+      "http_error": "Le serveur a répondu de façon inattendue. Réessayez.",
+      "idempotency_in_flight": "Cette demande est déjà en cours. Attendez sa fin plutôt que de la relancer.",
+      "idempotency_key_too_long": "La demande est mal formée. Rechargez la page et réessayez.",
+      "internal_error": "Une erreur inattendue s'est produite. Rien n'a été enregistré ; réessayez.",
+      "method_not_allowed": "Cette action n'est pas possible ici.",
+      "network_error": "L'application n'a pas pu joindre le serveur.",
+      "not_found": "Cet élément n'existe pas ou n'est plus accessible.",
+      "payload_too_large": "Le fichier est trop volumineux. Scannez en plusieurs fois.",
+      "rate_limited": "Trop de demandes d'affilée. Réessayez dans {seconds} secondes.",
       "scan_already_confirmed": "Ces résultats ont déjà été enregistrés.",
+      "scan_confirmed": "Cette pile est validée. Rouvrez-la avant de modifier une lecture.",
+      "scan_matches_no_sheet": "Aucune de ces pages ne correspond à la fiche choisie. Vérifiez que c'est la bonne fiche.",
+      "scan_no_sheet": "Cette pile n'est rattachée à aucune fiche. Choisissez la fiche dont ce sont les copies.",
+      "scan_not_confirmed": "Cette pile n'est pas encore validée.",
       "scan_open_grading_pending": "Des réponses écrites sont encore en cours de lecture. Validez quand la lecture est terminée.",
-      "sheet_not_renderable": "Cette fiche ne peut pas être mise en page telle quelle. Vérifiez qu'elle a des élèves et des exercices, et qu'aucun énoncé ne dépasse la hauteur d'une page."
+      "scan_pages_unassigned": "Certaines pages ne sont attribuées à personne. Attribuez-les ou écartez-les, puis validez.",
+      "scan_processing": "La pile est encore en cours de lecture. Réessayez dans un instant.",
+      "school_last_teacher": "Vous êtes le dernier enseignant de cet établissement : il ne peut pas rester sans personne.",
+      "service_unavailable": "Ce service est momentanément indisponible. Réessayez dans quelques minutes.",
+      "sheet_not_renderable": "Cette fiche ne peut pas être mise en page telle quelle. Vérifiez qu'elle a des élèves et des exercices, et qu'aucun énoncé ne dépasse la hauteur d'une page.",
+      "teacher_still_head": "Cet enseignant est encore maître de classe. Confiez la classe à quelqu'un d'autre d'abord.",
+      "unauthorized": "Votre session a expiré. Reconnectez-vous pour continuer.",
+      "unprocessable": "Le fichier n'a pas pu être lu. Vérifiez qu'il n'est pas vide ni abîmé.",
+      "unsupported_media_type": "Ce format n'est pas accepté. Utilisez un PDF, un JPEG ou un PNG.",
+      "validation_error": "La demande est incomplète. Vérifiez les champs et réessayez."
     },
     "unavailableTitle": "Données indisponibles"
   },
@@ -722,7 +761,8 @@
     "themeModalTitle": "Choisir un thème",
     "unfiledBucket": "Sans thème ({count})",
     "unfiledBucketHelp": "Exercices que le manuel n'a pas rattachés à un thème",
-    "unfiledCannotFile": "« Sans thème » sert à retrouver ces exercices, pas à ranger une fiche."
+    "unfiledCannotFile": "« Sans thème » sert à retrouver ces exercices, pas à ranger une fiche.",
+    "extractingProgress": "Lecture du chapitre… {percent}"
   },
   "newExercise": {
     "title": "Ajouter un exercice",
@@ -831,14 +871,14 @@
   },
   "tree": {
     "title": "Programme",
-    "branch": "Branche",
+    "branch": "Discipline",
     "competence": "Compétence",
     "theme": "Thème",
     "sheetCount": "{count, plural, =0 {aucune fiche} one {# fiche} other {# fiches}}",
     "unfiled": "Non classé",
     "unfiledSheets": "{count, plural, =0 {aucune fiche} one {# fiche} other {# fiches}}",
     "unfiledHelp": "Fiches créées avant les thèmes. Ouvrez-en une pour la classer.",
-    "empty": "Aucun thème dans cette branche pour l'instant."
+    "empty": "Aucun thème dans cette discipline pour l'instant."
   },
   "students": {
     "title": "Élèves",
@@ -871,8 +911,8 @@
   "teaching": {
     "title": "Qui enseigne quoi",
     "heading": "Qui enseigne quoi · {code}",
-    "summary": "{branches, plural, =0 {aucune branche} one {# branche} other {# branches}} · {teachers, plural, one {# enseignant} other {# enseignants}}",
-    "branchesTitle": "Branches de la classe",
+    "summary": "{disciplines, plural, =0 {aucune discipline} one {# discipline} other {# disciplines}} · {teachers, plural, one {# enseignant} other {# enseignants}}",
+    "branchesTitle": "Disciplines de la classe",
     "branchesHelp": "L'ordre est celui de la classe : il vaut pour vos collègues aussi.",
     "headTeacher": "Maître de classe",
     "nobody": "Personne",
@@ -885,23 +925,23 @@
     "moveDown": "Descendre",
     "removeTeacher": "Retirer {name} de {branch}",
     "removeBranch": "Retirer {branch} de la classe",
-    "declareTitle": "Déclarer une branche",
-    "declareHelp": "Seules les branches de votre école apparaissent ici. En déclarer une vous l'attribue aussi.",
+    "declareTitle": "Déclarer une discipline",
+    "declareHelp": "Seules les disciplines de votre établissement apparaissent ici. En déclarer une vous l'attribue aussi.",
     "declare": "Déclarer",
-    "allDeclared": "La classe étudie déjà toutes les branches de l'école.",
+    "allDeclared": "La classe étudie déjà toutes les disciplines de l'établissement.",
     "confirmRemoveTitle": "Retirer {branch} de la classe ?",
-    "confirmRemoveBody": "La {code} n'étudiera plus cette branche : elle quitte le programme de la classe et les attributions qui la portent disparaissent avec elle. Aucune fiche n'est supprimée.",
+    "confirmRemoveBody": "La {code} n'étudiera plus cette discipline : elle quitte le programme de la classe et les attributions qui la portent disparaissent avec elle. Aucune fiche n'est supprimée.",
     "confirmRemoveAlternativeTitle": "Vous vouliez peut-être seulement vous retirer ?",
-    "confirmRemoveAlternativeBody": "La branche reste au programme de la classe et vos collègues la gardent. Retirez votre nom dans la liste plutôt qu'ici.",
-    "confirmRemoveAction": "Retirer la branche",
-    "branchHoldsSheets": "{count, plural, one {Cette branche porte encore # fiche dans la {code}. Rangez-la ailleurs, ou laissez la branche en place.} other {Cette branche porte encore # fiches dans la {code}. Rangez-les ailleurs, ou laissez la branche en place.}}",
+    "confirmRemoveAlternativeBody": "La discipline reste au programme de la classe et vos collègues la gardent. Retirez votre nom dans la liste plutôt qu'ici.",
+    "confirmRemoveAction": "Retirer la discipline",
+    "branchHoldsSheets": "{count, plural, one {Cette discipline porte encore # fiche dans la {code}. Rangez-la ailleurs, ou laissez la discipline en place.} other {Cette discipline porte encore # fiches dans la {code}. Rangez-les ailleurs, ou laissez la discipline en place.}}",
     "empty": {
-      "title": "Aucune branche déclarée",
-      "body": "Dites ce que la classe étudie. Chaque branche déclarée devient un fil du programme, et celles que vous prenez apparaissent dans vos fiches.",
-      "action": "Déclarer une branche"
+      "title": "Aucune discipline déclarée",
+      "body": "Dites ce que la classe étudie. Chaque discipline déclarée devient un fil du programme, et celles que vous prenez apparaissent dans vos fiches.",
+      "action": "Déclarer une discipline"
     },
     "error": {
-      "title": "Impossible d'afficher les branches",
+      "title": "Impossible d'afficher les disciplines",
       "body": "La liste n'a pas pu être chargée. Rien n'a été modifié."
     }
   },
@@ -923,11 +963,11 @@
     },
     "competenceMissing": {
       "title": "Compétence introuvable",
-      "body": "Elle n'appartient peut-être pas à la branche affichée."
+      "body": "Elle n'appartient peut-être pas à la discipline affichée."
     },
     "themeMissing": {
       "title": "Thème introuvable",
-      "body": "Il n'appartient peut-être pas à la branche affichée."
+      "body": "Il n'appartient peut-être pas à la discipline affichée."
     }
   },
   "sheetDetail": {
@@ -940,5 +980,18 @@
     "scanRevised": "Pile revue",
     "scanPending": "Pile à relire",
     "classBand": "La classe sur cette fiche"
+  },
+  "connection": {
+    "offline": "Hors ligne — Alppy ne répond pas. Vos corrections déjà envoyées sont enregistrées."
+  },
+  "discreet": {
+    "title": "Mode discret",
+    "help": "Remplace les noms des élèves par leur code (7B_04) partout où ils sont listés. Pour projeter la classe sans afficher qui est qui.",
+    "showNames": "Afficher les noms",
+    "hideNames": "Masquer les noms",
+    "revealedWarning": "Les noms sont visibles. Ils seront masqués à nouveau en quittant cette page.",
+    "toggled": "Mode discret activé.",
+    "untoggled": "Mode discret désactivé.",
+    "shortcutHint": "Maj + D"
   }
 }

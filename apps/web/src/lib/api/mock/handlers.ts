@@ -70,6 +70,49 @@ const state: MockState = {
 let jobCounter = 0;
 let regenerateCounter = 0;
 
+/**
+ * Which kind each job was, kept where a reload cannot lose it.
+ *
+ * The fixture's state is module state: it dies with the page. The real API's
+ * jobs are rows, and the whole of F4 rests on that difference — a proposal
+ * outlives the tab that asked for it, which is why putting the job id in the
+ * URL is worth doing at all. A fixture that forgets every job on reload cannot
+ * model the one property the feature depends on, and a test written against it
+ * would be testing the fixture's amnesia.
+ *
+ * So the kind is remembered — in `localStorage`, not `sessionStorage`, because
+ * a server is shared between a teacher's tabs and `sessionStorage` is not.
+ * That is all that is needed: the proposal itself is rebuilt from the fixtures
+ * on demand (`currentProposal`), exactly as the server rebuilds it from its
+ * stored payload.
+ */
+const JOB_KINDS_KEY = 'alppy.mock.jobKinds';
+
+function rememberJobKind(id: string, kind: JobOut['kind']): void {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(JOB_KINDS_KEY) ?? '{}') as Record<
+      string,
+      string
+    >;
+    raw[id] = kind;
+    window.localStorage.setItem(JOB_KINDS_KEY, JSON.stringify(raw));
+  } catch {
+    /* No storage: the fixture simply forgets, as it always did. */
+  }
+}
+
+function rememberedJobKind(id: string): JobOut['kind'] | null {
+  try {
+    const raw = JSON.parse(window.localStorage.getItem(JOB_KINDS_KEY) ?? '{}') as Record<
+      string,
+      JobOut['kind']
+    >;
+    return raw[id] ?? null;
+  } catch {
+    return null;
+  }
+}
+
 function startJob(kind: JobOut['kind'], result: Record<string, unknown>): JobOut {
   jobCounter += 1;
   const job: JobOut & { ticks: number } = {
@@ -85,6 +128,7 @@ function startJob(kind: JobOut['kind'], result: Record<string, unknown>): JobOut
     ticks: 0,
   };
   state.jobs[job.id] = job;
+  rememberJobKind(job.id, kind);
   // The finished result is stashed until the job reports success.
   pendingResults[job.id] = result;
   return stripTicks(job);
@@ -130,8 +174,27 @@ function stripTicks(job: JobOut & { ticks: number }): JobOut {
 
 /** Each poll advances the job, so the progress bar in the UI actually moves. */
 function pollJob(jobId: string): JobOut {
-  const job = state.jobs[jobId];
-  if (!job) throw new ApiError(404, 'not_found', 'job not found');
+  let job = state.jobs[jobId];
+  if (!job) {
+    // A job this page never started: the reload case. The server would answer
+    // with the finished row, so the fixture does too, rather than the 404 that
+    // made a recovered run look like a lost one.
+    const kind = rememberedJobKind(jobId);
+    if (!kind) throw new ApiError(404, 'not_found', 'job not found');
+    job = {
+      id: jobId,
+      kind,
+      status: 'succeeded',
+      progress: 1,
+      message: null,
+      result: {},
+      error: null,
+      created_at: fx.NOW,
+      finished_at: fx.NOW,
+      ticks: 4,
+    };
+    state.jobs[jobId] = job;
+  }
   job.ticks += 1;
   if (job.ticks >= 4) {
     job.status = 'succeeded';
@@ -628,6 +691,20 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   m = match(path, /^\/sheets\/([^/]+)\/render$/);
   if (m && method === 'POST') {
     const sheetId = m[1] ?? '';
+    // Resolved the way the GET below resolves it, so a render and a re-read
+    // of the same URL cannot disagree about which sheet they mean.
+    const target = state.sheets[sheetId] ?? state.sheets[fx.sheet.id];
+    // What the worker does on the way back: both keys onto the sheet, and
+    // `rendered_at`. The mock used to return the job and leave the sheet
+    // untouched, so a rendered sheet never became a printable one here — and
+    // the print gate (`lib/print.ts`), which reads exactly those fields, had
+    // no reachable "ready" state in fixture mode. Mirrors the adaptive batch
+    // render below, which already did this.
+    if (target) {
+      target.blank_pdf_url = `/mock/${sheetId}-blank.pdf`;
+      target.answer_key_pdf_url = `/mock/${sheetId}-answer-key.pdf`;
+      target.rendered_at = fx.NOW;
+    }
     return startJob('render_sheet', {
       blank_pdf_url: `/mock/${sheetId}-blank.pdf`,
       answer_key_pdf_url: `/mock/${sheetId}-answer-key.pdf`,
@@ -652,6 +729,21 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
   /* --------------------------------------------------------- scans --- */
   if (method === 'POST' && path === '/scans') {
     return startJob('process_scan', { scan_id: fx.scan.id });
+  }
+  m = match(path, /^\/scans\/([^/]+)\/pages$/);
+  if (m && method === 'POST') {
+    const scanId = m[1] ?? '';
+    const target = state.scans[scanId] ?? state.scans[fx.scan.id];
+    if (!target) throw new ApiError(404, 'not_found', 'scan not found');
+    // The retake supersedes the page it replaces, in the same request — the
+    // server discards it in one transaction so the copy is never briefly
+    // longer than it was printed.
+    const superseded = body instanceof FormData ? body.get('supersedes_page_id') : null;
+    if (typeof superseded === 'string') {
+      const page = target.pages.find((candidate) => candidate.id === superseded);
+      if (page) page.discarded = true;
+    }
+    return { ...target, job_id: startJob('process_scan', { scan_id: target.id }).id };
   }
   m = match(path, /^\/scans\/([^/]+)\/detections\/([^/]+)$/);
   if (m && method === 'PATCH') {

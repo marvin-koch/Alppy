@@ -257,7 +257,10 @@
     "unfiledThemeHelp": "Blätter aus der Zeit vor den Themen. Öffnen Sie eines, um es zuzuordnen — es wurde nichts für Sie erraten.",
     "groupGeneral": "Allgemeine Blätter",
     "groupPersonalized": "Personalisierte Blätter",
-    "fileIt": "Zuordnen"
+    "fileIt": "Zuordnen",
+    "printNeedsPdf": "Gedruckt wird das PDF: nur bei diesem Dokument kennt Alppy das genaue Layout. Erzeugen Sie es und drucken Sie es dann.",
+    "printNeedsPdfOpen": "Dieses Blatt enthält offene Antworten. Alppy misst beim Erzeugen des PDF, wo jedes Antwortfeld steht, und schneidet genau dort für die Korrektur aus: anders gedruckt kann keine offene Antwort automatisch korrigiert werden.",
+    "previewBlocked": "Die Vorschau wurde vom Browser blockiert. Am Blatt selbst liegt es nicht: Erzeugen Sie das PDF, um es zu prüfen."
   },
   "scans": {
     "title": "Korrekturen",
@@ -384,7 +387,12 @@
     "processingLabel": "Fortschritt der Analyse",
     "processingHelp": "Alppy sucht die Passmarken, liest den Schülercode und dann die Felder. Sie können diese Seite offen lassen.",
     "scopedScans": "Ihre Korrekturen",
-    "scopedScansHint": "Stapel aus Fächern, die Sie nicht unterrichten, erscheinen hier nicht."
+    "scopedScansHint": "Stapel aus Fächern, die Sie nicht unterrichten, erscheinen hier nicht.",
+    "retakeLabel": "Diese Seite neu aufnehmen",
+    "retakeHelp": "Das neue Foto ersetzt dieses im selben Stapel.",
+    "retakeCamera": "Seite fotografieren",
+    "retakeWait": "Warten Sie, bis der Stapel fertig gelesen ist, bevor Sie eine Seite neu aufnehmen.",
+    "reopenConfirm": "Bestätigen: Ergebnisse von {count, plural, one {# Lernenden} other {# Lernenden}} zurückziehen"
   },
   "adaptive": {
     "addExercise": "Aufgabe hinzufügen",
@@ -442,17 +450,17 @@
     "feedbackPending": "{count, plural, one {# Notiz wartet auf Ihre Prüfung.} other {# Notizen warten auf Ihre Prüfung.}} Vorher wird nichts gedruckt.",
     "feedbackTitle": "Persönliche Rückmeldung",
     "forStudents": "Für: {uids}",
-    "groupCount": "Anzahl Gruppen",
+    "groupCount": "Anzahl Serien",
     "groupCountHelp": "1: ein einziges Blatt für die ganze Klasse. So viele wie Lernende: ein Blatt pro Person.",
-    "groupCountMany": "{count, plural, one {# Gruppe gebildet} other {# Gruppen gebildet}} — Lernende mit derselben Hauptlücke kommen zusammen.",
+    "groupCountMany": "{count, plural, one {# Serie gebildet} other {# Serien gebildet}} — Lernende mit derselben Hauptlücke kommen zusammen.",
     "groupCountOne": "Ein einziges Blatt für die ganze Klasse.",
     "groupCountPerStudent": "Ein Blatt pro Lernende.",
     "groupFor": "Für {count} von {total} Lernenden",
     "groupMembers": "{count, plural, one {# Lernende} other {# Lernende}}",
     "groupTitle": "Gemeinsames Blatt",
-    "groupedByModel": "Einteilung von der KI vorgeschlagen, ausgehend von den berechneten Gruppen.",
-    "groupedByRule": "Gruppen nach der Hauptlücke gebildet.",
-    "groupsTitle": "Personalisierte Gruppen",
+    "groupedByModel": "Einteilung von der KI vorgeschlagen, ausgehend von den berechneten Serien.",
+    "groupedByRule": "Serien nach der Hauptlücke gebildet.",
+    "groupsTitle": "Personalisierte Serien",
     "hideItems": "Aufgaben ausblenden",
     "itemsPerStudent": "Aufgaben pro Person",
     "llmGrouping": "Die KI die Einteilung vorschlagen lassen",
@@ -467,8 +475,8 @@
     "modePerStudent": "Eines pro Person",
     "moveCancel": "Abbrechen",
     "moveHere": "{uid} hierher verschieben",
-    "moveHint": "Wählen Sie eine Person aus, um sie in eine andere Gruppe zu verschieben. Sie wissen Dinge, die das Modell nicht kennt.",
-    "moveSelected": "{uid} ausgewählt — wählen Sie die passende Gruppe.",
+    "moveHint": "Wählen Sie eine Person aus, um sie in eine andere Serie zu verschieben. Sie wissen Dinge, die das Modell nicht kennt.",
+    "moveSelected": "{uid} ausgewählt — wählen Sie die passende Serie.",
     "needsApproval": "{count, plural, one {# Aufgabe freizugeben} other {# Aufgaben freizugeben}}",
     "notApprovedWarning": "Generierte Aufgaben müssen vor dem Druck freigegeben werden.",
     "preparing": "Wird vorbereitet…",
@@ -490,7 +498,14 @@
     "subtitle": "Ein Arbeitsblatt pro Person, auf ihre Lücken zugeschnitten",
     "targeting": "Anvisierte Kompetenzen",
     "title": "Angepasste Blätter",
-    "trueLabel": "Wahr"
+    "trueLabel": "Wahr",
+    "recent": {
+      "title": "Zuletzt gestartet",
+      "body": "Ein Vorschlag, der von diesem Browser aus gestartet wurde. Er bleibt verfügbar, auch wenn der Tab geschlossen wurde."
+    },
+    "preparingQueued": "Wartet auf einen freien Platz…",
+    "preparingHelp": "Ein Modellaufruf pro Lernendem. Sie können den Tab schliessen: Der Vorschlag bleibt abrufbar.",
+    "discarded": "Aufgabe verworfen."
   },
   "settings": {
     "title": "Einstellungen",
@@ -533,7 +548,10 @@
     "bookTitle": "Titel",
     "publisher": "Verlag",
     "isbn": "ISBN",
-    "sourceUrl": "Link"
+    "sourceUrl": "Link",
+    "newSchoolTitle": "Neue Schule",
+    "newSchoolHelp": "Sie werden sofort Mitglied. Ihre Sitzung bleibt bei der aktuellen Schule: Wechseln Sie über die Leiste, wenn Sie so weit sind.",
+    "newSchoolAction": "Schule erstellen"
   },
   "exercise": {
     "type": {
@@ -570,7 +588,10 @@
     "save": "Speichern",
     "search": "Suchen",
     "showAll": "Alle anzeigen",
-    "yes": "Ja"
+    "yes": "Ja",
+    "none": "Keine",
+    "undo": "Rückgängig",
+    "saving": "Wird gespeichert…"
   },
   "errors": {
     "generic": {
@@ -586,19 +607,37 @@
     "offline": "Sie scheinen offline zu sein.",
     "unauthorized": "Ihre Sitzung ist abgelaufen. Bitte melden Sie sich erneut an.",
     "code": {
-      "unsupported_media_type": "Dieses Format wird nicht akzeptiert. Nutzen Sie PDF, JPEG oder PNG.",
-      "payload_too_large": "Die Datei ist zu gross. Scannen Sie in mehreren Teilen.",
-      "unprocessable": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob sie leer oder beschädigt ist.",
-      "validation_error": "Die Anfrage ist unvollständig. Prüfen Sie die Felder und versuchen Sie es erneut.",
+      "bad_request": "Die Anfrage konnte nicht verarbeitet werden. Laden Sie die Seite neu und versuchen Sie es erneut.",
+      "branch_holds_sheets": "Dieses Fach enthält noch Blätter. Verschieben oder löschen Sie sie zuerst.",
       "conflict": "Diese Aktion ist im aktuellen Zustand nicht mehr möglich.",
-      "not_found": "Dieses Element existiert nicht oder ist nicht mehr zugänglich.",
-      "network_error": "Die Anwendung konnte den Server nicht erreichen.",
+      "detection_not_corrected": "Diese Lesung wurde nicht korrigiert: Es gibt nichts zurückzusetzen.",
       "fallback": "Das Hochladen ist fehlgeschlagen. Versuchen Sie es erneut.",
-      "scan_pages_unassigned": "Einige Seiten sind niemandem zugeordnet. Ordnen Sie sie zu oder sortieren Sie sie aus, dann bestätigen Sie.",
-      "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
+      "forbidden": "Sie haben keinen Zugriff auf dieses Element.",
+      "http_error": "Der Server hat unerwartet geantwortet. Versuchen Sie es erneut.",
+      "idempotency_in_flight": "Diese Anfrage läuft bereits. Warten Sie das Ende ab, statt sie neu zu starten.",
+      "idempotency_key_too_long": "Die Anfrage ist fehlerhaft. Laden Sie die Seite neu und versuchen Sie es erneut.",
+      "internal_error": "Ein unerwarteter Fehler ist aufgetreten. Es wurde nichts gespeichert; versuchen Sie es erneut.",
+      "method_not_allowed": "Diese Aktion ist hier nicht möglich.",
+      "network_error": "Die Anwendung konnte den Server nicht erreichen.",
+      "not_found": "Dieses Element existiert nicht oder ist nicht mehr zugänglich.",
+      "payload_too_large": "Die Datei ist zu gross. Scannen Sie in mehreren Teilen.",
+      "rate_limited": "Zu viele Anfragen hintereinander. Versuchen Sie es in {seconds} Sekunden erneut.",
       "scan_already_confirmed": "Diese Ergebnisse wurden bereits gespeichert.",
+      "scan_confirmed": "Dieser Stapel ist bestätigt. Öffnen Sie ihn wieder, bevor Sie eine Lesung ändern.",
+      "scan_matches_no_sheet": "Keine dieser Seiten gehört zum gewählten Blatt. Prüfen Sie, ob es das richtige ist.",
+      "scan_no_sheet": "Dieser Stapel gehört zu keinem Blatt. Wählen Sie das Blatt, von dem diese Kopien stammen.",
+      "scan_not_confirmed": "Dieser Stapel ist noch nicht bestätigt.",
       "scan_open_grading_pending": "Schriftliche Antworten werden noch gelesen. Bestätigen Sie, sobald das Lesen abgeschlossen ist.",
-      "sheet_not_renderable": "Dieses Blatt kann so nicht gesetzt werden. Prüfen Sie, ob es Schülerinnen und Schüler sowie Aufgaben enthält und keine Aufgabenstellung über eine Seite hinausgeht."
+      "scan_pages_unassigned": "Einige Seiten sind niemandem zugeordnet. Ordnen Sie sie zu oder sortieren Sie sie aus, dann bestätigen Sie.",
+      "scan_processing": "Der Stapel wird noch gelesen. Versuchen Sie es gleich noch einmal.",
+      "school_last_teacher": "Sie sind die letzte Lehrperson dieser Schule: Sie kann nicht ohne jemanden bleiben.",
+      "service_unavailable": "Dieser Dienst ist vorübergehend nicht verfügbar. Versuchen Sie es in einigen Minuten erneut.",
+      "sheet_not_renderable": "Dieses Blatt kann so nicht gesetzt werden. Prüfen Sie, ob es Schülerinnen und Schüler sowie Aufgaben enthält und keine Aufgabenstellung über eine Seite hinausgeht.",
+      "teacher_still_head": "Diese Lehrperson ist noch Klassenlehrperson. Übergeben Sie die Klasse zuerst.",
+      "unauthorized": "Ihre Sitzung ist abgelaufen. Melden Sie sich erneut an.",
+      "unprocessable": "Die Datei konnte nicht gelesen werden. Prüfen Sie, ob sie leer oder beschädigt ist.",
+      "unsupported_media_type": "Dieses Format wird nicht akzeptiert. Nutzen Sie PDF, JPEG oder PNG.",
+      "validation_error": "Die Anfrage ist unvollständig. Prüfen Sie die Felder und versuchen Sie es erneut."
     },
     "unavailableTitle": "Daten nicht verfügbar"
   },
@@ -722,7 +761,8 @@
     "themeModalTitle": "Thema wählen",
     "unfiledBucket": "Ohne Thema ({count})",
     "unfiledBucketHelp": "Aufgaben, die das Lehrmittel keinem Thema zugeordnet hat",
-    "unfiledCannotFile": "«Ohne Thema» dient dazu, diese Aufgaben zu finden, nicht dazu, ein Blatt abzulegen."
+    "unfiledCannotFile": "«Ohne Thema» dient dazu, diese Aufgaben zu finden, nicht dazu, ein Blatt abzulegen.",
+    "extractingProgress": "Kapitel wird gelesen… {percent}"
   },
   "newExercise": {
     "title": "Aufgabe hinzufügen",
@@ -940,5 +980,18 @@
     "scanRevised": "Stapel überarbeitet",
     "scanPending": "Stapel zu prüfen",
     "classBand": "Die Klasse auf diesem Blatt"
+  },
+  "connection": {
+    "offline": "Offline — Alppy antwortet nicht. Bereits gesendete Korrekturen sind gespeichert."
+  },
+  "discreet": {
+    "title": "Diskreter Modus",
+    "help": "Ersetzt die Namen der Lernenden überall durch ihren Code (7B_04). Zum Projizieren der Klasse, ohne zu zeigen, wer wer ist.",
+    "showNames": "Namen anzeigen",
+    "hideNames": "Namen ausblenden",
+    "revealedWarning": "Die Namen sind sichtbar. Beim Verlassen dieser Seite werden sie wieder ausgeblendet.",
+    "toggled": "Diskreter Modus aktiviert.",
+    "untoggled": "Diskreter Modus deaktiviert.",
+    "shortcutHint": "Umschalt + D"
   }
 }

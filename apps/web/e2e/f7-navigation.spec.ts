@@ -30,7 +30,7 @@ test.describe('the class and subject switcher', () => {
     // two of each — so all three render.
     const selects = scope.locator('select');
     await expect(selects).toHaveCount(3);
-    await expect(scope.getByLabel(/école/i)).toHaveValue(/.+/);
+    await expect(scope.getByLabel(/établissement/i)).toHaveValue(/.+/);
     await expect(scope.getByLabel(/classe/i)).toHaveValue(/.+/);
     await expect(scope.getByLabel(/discipline/i)).toHaveValue(/.+/);
   });
