@@ -66,6 +66,7 @@ import type {
   StudentSheetOut,
   SubjectOut,
   TeacherOut,
+  PasswordChangeRequest,
   TeacherPreferences,
   TimelineOut,
   TimelineQuery,
@@ -166,6 +167,19 @@ export const switchSchool = (schoolId: Uuid) =>
 
 export const updatePreferences = (body: Partial<TeacherPreferences>) =>
   apiRequest<TeacherOut>('/teachers/me/preferences', { method: 'PATCH', body });
+
+/**
+ * Change your own password, knowing the current one (D12).
+ *
+ * The only account operation a teacher performs for themselves. Creating an
+ * account and resetting a forgotten password are commands run by somebody with
+ * server access — there is no e-mail transport, so a self-service reset link is
+ * not a thing this product can send.
+ *
+ * It does NOT sign other sessions out; the screen says so.
+ */
+export const changePassword = (body: PasswordChangeRequest) =>
+  apiRequest<TeacherOut>('/auth/password', { method: 'POST', body });
 
 /* --------------------------------------------------------------- home --- */
 export const getHome = (schoolYearId?: Uuid) =>

@@ -581,6 +581,18 @@
     "sourceUrl": "Link",
     "newSchoolTitle": "Neue Schule",
     "newSchoolHelp": "Sie werden sofort Mitglied. Ihre Sitzung bleibt bei der aktuellen Schule: Wechseln Sie über die Leiste, wenn Sie so weit sind.",
+    "password": "Passwort",
+    "passwordHelp": "Ändern Sie Ihr Passwort. Das ist der einzige Kontovorgang, den Sie selbst ausführen können: Ein Konto anzulegen oder ein vergessenes Passwort zurückzusetzen geht über die Person, die den Server betreut.",
+    "currentPassword": "Aktuelles Passwort",
+    "currentPasswordHelp": "Wird auch dann verlangt, wenn Sie angemeldet sind: Eine offene Sitzung ist das, was ein unversperrt zurückgelassener Computer im Lehrerzimmer der nächsten Person überlässt.",
+    "newPassword": "Neues Passwort",
+    "newPasswordHelp": "Mindestens {count} Zeichen. Ein Satz, den Sie sich merken, ist besser als ein kompliziertes Wort.",
+    "newPasswordTooShort": "Mindestens {count} Zeichen.",
+    "confirmPassword": "Neues Passwort bestätigen",
+    "confirmPasswordMismatch": "Die beiden Passwörter stimmen nicht überein.",
+    "passwordSessionsNote": "Ihre anderen Sitzungen bleiben offen: Das Cookie enthält kein Passwort, es gibt also nichts zu entwerten. Wenn Sie vermuten, dass jemand anders das alte kennt, informieren Sie die Person, die den Server betreut.",
+    "passwordChanged": "Passwort geändert.",
+    "changePassword": "Passwort ändern",
     "newSchoolAction": "Schule erstellen"
   },
   "exercise": {

@@ -581,6 +581,18 @@
     "sourceUrl": "Lien",
     "newSchoolTitle": "Nouvel établissement",
     "newSchoolHelp": "Vous en devenez membre immédiatement. Votre session reste sur l'établissement courant : changez-en depuis le rail quand vous êtes prêt.",
+    "password": "Mot de passe",
+    "passwordHelp": "Changez votre mot de passe. C'est la seule opération de compte que vous pouvez faire vous-même : la création d'un compte et la réinitialisation d'un mot de passe oublié passent par la personne qui administre le serveur.",
+    "currentPassword": "Mot de passe actuel",
+    "currentPasswordHelp": "Demandé même si vous êtes déjà connecté : une session ouverte, c'est ce qu'un ordinateur laissé déverrouillé en salle des maîtres offre à la personne suivante.",
+    "newPassword": "Nouveau mot de passe",
+    "newPasswordHelp": "Au moins {count} caractères. Une phrase dont vous vous souvenez vaut mieux qu'un mot compliqué.",
+    "newPasswordTooShort": "Au moins {count} caractères.",
+    "confirmPassword": "Confirmer le nouveau mot de passe",
+    "confirmPasswordMismatch": "Les deux mots de passe ne sont pas identiques.",
+    "passwordSessionsNote": "Vos autres sessions restent ouvertes : le cookie ne contient pas le mot de passe, il n'y a donc rien à invalider. Si vous pensez que quelqu'un d'autre connaît l'ancien, prévenez la personne qui administre le serveur.",
+    "passwordChanged": "Mot de passe modifié.",
+    "changePassword": "Modifier le mot de passe",
     "newSchoolAction": "Créer l'établissement"
   },
   "exercise": {

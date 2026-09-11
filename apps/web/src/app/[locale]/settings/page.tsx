@@ -3,6 +3,7 @@
 import { Card, Field, SegmentedControl, Toggle } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
 
+import { PasswordSettings } from '@/components/PasswordSettings';
 import { SchoolSettings } from '@/components/SchoolSettings';
 import { useEffect, useState } from 'react';
 
@@ -46,6 +47,14 @@ export default function SettingsPage() {
           can be done at all. */}
       <div className="mb-8">
         <SchoolSettings />
+      </div>
+
+      {/* The account, below the school and above the display switches. Rarer
+          than a theme change and more consequential than either: a teacher
+          handed a generated password when their school was set up had no way
+          to replace it at all before this (D12). */}
+      <div className="mb-8">
+        <PasswordSettings />
       </div>
 
       <Card className="mb-4">

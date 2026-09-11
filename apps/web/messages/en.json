@@ -581,6 +581,18 @@
     "sourceUrl": "Link",
     "newSchoolTitle": "New establishment",
     "newSchoolHelp": "You become a member immediately. Your session stays on the current establishment: switch from the rail when you are ready.",
+    "password": "Password",
+    "passwordHelp": "Change your password. It is the only account operation you can perform yourself: creating an account and resetting a forgotten password both go through whoever runs the server.",
+    "currentPassword": "Current password",
+    "currentPasswordHelp": "Asked for even though you are signed in: an open session is what a laptop left unlocked in the staffroom hands to whoever sits down next.",
+    "newPassword": "New password",
+    "newPasswordHelp": "At least {count} characters. A phrase you will remember beats a complicated word.",
+    "newPasswordTooShort": "At least {count} characters.",
+    "confirmPassword": "Confirm the new password",
+    "confirmPasswordMismatch": "The two passwords are not the same.",
+    "passwordSessionsNote": "Your other sessions stay open: the cookie carries no password, so there is nothing to invalidate. If you think someone else knows the old one, tell whoever runs the server.",
+    "passwordChanged": "Password changed.",
+    "changePassword": "Change password",
     "newSchoolAction": "Create establishment"
   },
   "exercise": {

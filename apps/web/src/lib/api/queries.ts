@@ -71,6 +71,7 @@ import type {
   StudentSheetOut,
   SubjectOut,
   TeacherOut,
+  PasswordChangeRequest,
   TeacherPreferences,
   TimelineOut,
   TimelineQuery,
@@ -296,6 +297,26 @@ export function useUpdatePreferences(): UseMutationResult<
   const client = useQueryClient();
   return useMutation({
     mutationFn: api.updatePreferences,
+    onSuccess: (teacher) => client.setQueryData(queryKeys.me, teacher),
+  });
+}
+
+/**
+ * Change your own password (D12).
+ *
+ * No cache invalidation beyond `me`: nothing else in the client depends on a
+ * password, and the session cookie is unchanged — the server has no session
+ * store to revoke against, so every other tab and device stays signed in. The
+ * screen says that out loud rather than letting a teacher assume otherwise.
+ */
+export function useChangePassword(): UseMutationResult<
+  TeacherOut,
+  Error,
+  PasswordChangeRequest
+> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.changePassword,
     onSuccess: (teacher) => client.setQueryData(queryKeys.me, teacher),
   });
 }
