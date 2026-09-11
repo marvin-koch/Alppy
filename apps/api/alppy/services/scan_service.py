@@ -834,6 +834,28 @@ def confirm_scan(
     """
     at = now or datetime.now(UTC)
     school_id = scope.school_id
+
+    # Serialise one pile's confirmation against itself, BEFORE the status is
+    # read (T6).
+    #
+    # The status is read on the next line and written about 150 lines later,
+    # and everything between — settling abandoned grading jobs, resolving the
+    # bareme per item, writing every Attempt — is not instantaneous. Two
+    # teachers on a co-taught class, or one teacher double-tapping on a slow
+    # connection, both passed the guard and both wrote. Nothing downstream
+    # objected, because `confirm_scan` supersedes BY DESIGN — a re-scan is
+    # meant to overwrite — so no unique constraint stands behind the guard.
+    # Measured, not assumed: without this line both confirmations succeed and
+    # the pupil is graded twice.
+    #
+    # A bare row lock rather than a re-read through `get_scan`, so the second
+    # caller blocks here and then sees CONFIRMED on the read below rather than
+    # racing it. Held until the transaction commits, which is the whole
+    # handler. SQLite ignores FOR UPDATE, which is why the test that proves
+    # this lives in `test_schema_constraints.py` against real Postgres: the
+    # default engine is one connection on a StaticPool and cannot race.
+    db.execute(select(Scan.id).where(Scan.id == scan_id).with_for_update())
+
     scan = get_scan(db, scope, scan_id)
     if scan.status is ScanStatus.CONFIRMED:
         raise errors.conflict(

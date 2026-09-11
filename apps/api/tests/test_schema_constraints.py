@@ -40,6 +40,7 @@ from alppy.core.security import hash_password
 from alppy.db.base import Base
 from alppy.models import (
     Class,
+    Scan,
     Person,
     School,
     SchoolYear,
@@ -76,6 +77,10 @@ _TABLE_NAMES = (
     "sheet_item",
     "sheet_instance",
     "attempt",
+    "person",
+    "scan",
+    "scan_page",
+    "detection",
 )
 _TABLES = Base.metadata.tables
 
@@ -1345,3 +1350,168 @@ def test_the_open_indexes_are_partial_on_the_engine_that_ships(
         assert "WHERE (valid_to IS NULL)" in definition, (
             f"{name} is not partial: {definition}"
         )
+
+
+# --------------------------------------------------------------------------
+# Confirming a pile, twice at once
+# --------------------------------------------------------------------------
+# `confirm_scan` reads the scan's status and writes it about 150 lines later,
+# and everything between — settling abandoned grading jobs, resolving the
+# bareme per item, writing every Attempt — takes real time. Two teachers on a
+# co-taught class, or one teacher double-tapping on a slow connection, both
+# passed the guard and both wrote: two attempt rows per pupil per exercise from
+# one pile, and mastery recomputed over the pair. Nothing downstream objects,
+# because `confirm_scan` supersedes BY DESIGN — a re-scan is supposed to
+# overwrite — so there is no unique constraint standing behind the guard.
+#
+# This cannot be tested on the default engine, and that is the reason it lives
+# here. The unit fixture is one SQLite connection on a StaticPool so that every
+# session sees every other's committed work, which is what makes the savepoint
+# design work and what makes a race impossible to write. The existing
+# "confirming twice is a conflict" test is sequential on one session and proves
+# only that the guard works when nothing is racing it.
+
+
+def _confirmable_pile(db: Session, world: World) -> uuid.UUID:
+    """The smallest scan `confirm_scan` will actually grade.
+
+    The branch has to be declared and assigned: reading a pile is PAIR-grained
+    since D73 — a sheet belongs to a (class, subject), and a colleague holding
+    a different branch in the same class has no business reading its marks — so
+    a head teacher with no assignment gets "scan not found", not a race.
+    """
+    from alppy.models.enums import DetectionOutcome, ScanStatus
+
+    world.declare(db, world.french)
+    world.assign(db, world.martin, world.french)
+    sheet_id = _sheet(db, world)
+    # Its own exercise rather than `_exercise`: that helper's MCQ carries no
+    # options and no `answer_index`, so there is nothing to grade against and
+    # the pile confirms zero attempts — which trips the "nothing could be
+    # matched" refusal instead of the race this test is about.
+    exercise_id = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["exercise"]).values(
+            id=exercise_id, school_id=world.school.id, subject_id=world.french.id,
+            type="MCQ", origin="TEACHER", language="fr", statement="1/2 + 1/4 ?",
+            options=["3/4", "2/6"], answer_index=0, difficulty=3,
+        )
+    )
+    item_id = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["sheet_item"]).values(
+            id=item_id, school_id=world.school.id, sheet_id=sheet_id,
+            exercise_id=exercise_id, position=0,
+        )
+    )
+    person_id, student_id = uuid.uuid4(), uuid.uuid4()
+    db.add(Person(id=person_id, school_id=world.school.id, first_name="Lea", last_name="Roth"))
+    db.flush()
+    db.add(
+        Student(
+            id=student_id, school_id=world.school.id, person_id=person_id,
+            school_year_id=world.year.id, home_class_id=world.klass.id,
+            uid="5A_7", number=7, first_name="Lea", last_name="Roth",
+        )
+    )
+    db.flush()
+
+    scan_id, page_id = uuid.uuid4(), uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["scan"]).values(
+            id=scan_id, school_id=world.school.id, sheet_id=sheet_id,
+            original_filename="copies.pdf", storage_key="scans/copies.pdf",
+            status=ScanStatus.NEEDS_REVIEW.value,
+        )
+    )
+    db.execute(
+        pg_insert(_TABLES["scan_page"]).values(
+            id=page_id, school_id=world.school.id, scan_id=scan_id, page_index=0,
+            image_key="scans/page-000.png", registered=True, student_id=student_id,
+        )
+    )
+    db.execute(
+        pg_insert(_TABLES["detection"]).values(
+            id=uuid.uuid4(), school_id=world.school.id, scan_page_id=page_id,
+            sheet_item_id=item_id, exercise_id=exercise_id, item_index=0,
+            detected_index=0, confidence=0.97,
+            outcome=DetectionOutcome.DETECTED.value,
+        )
+    )
+    db.commit()
+    return scan_id
+
+
+def test_one_pile_cannot_be_confirmed_twice_at_once(
+    db: Session, world: World, pg_session_factory: sessionmaker[Session]
+) -> None:
+    """Two real connections confirm the same pile at the same moment.
+
+    Both threads are held at a barrier and released together, so the overlap is
+    forced rather than hoped for — two threads started normally would usually
+    have the first finish before the second began, and would then pass against
+    an unlocked `confirm_scan`, proving nothing on a schedule nobody controls.
+
+    The assertion that carries the weight is the pair at the end: exactly one
+    confirmation succeeds, and exactly one attempt row exists for one pupil,
+    one exercise, one pile. Verified against the unlocked version, where the
+    two transactions instead DEADLOCK — each holding rows the other needs —
+    and Postgres kills one with `DeadlockDetected`. That is the production
+    symptom too: not a silent double-write but a 500 on a teacher's screen,
+    with whichever half committed left behind.
+    """
+    import threading
+
+    from alppy.api.errors import ApiError
+    from alppy.models.enums import ScanStatus
+    from alppy.services import scan_service
+    from alppy.services.class_service import Scope
+
+    scan_id = _confirmable_pile(db, world)
+    scope = Scope(school_id=world.school.id, teacher_id=world.martin.id)
+
+    start_together = threading.Barrier(2)
+    outcomes: list[str] = []
+    lock = threading.Lock()
+
+    def confirm() -> None:
+        session = pg_session_factory()
+        try:
+            start_together.wait(timeout=10)
+            scan_service.confirm_scan(session, scope, scan_id)
+            session.commit()
+            result = "confirmed"
+        except ApiError as exc:
+            result = exc.code or "api_error"
+        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+            result = f"{type(exc).__name__}"
+        finally:
+            session.rollback()
+            session.close()
+        with lock:
+            outcomes.append(result)
+
+    threads = [threading.Thread(target=confirm, daemon=True) for _ in range(2)]
+    for thread in threads:
+        thread.start()
+    for thread in threads:
+        thread.join(timeout=30)
+        assert not thread.is_alive(), "a confirmation never finished"
+
+    check = pg_session_factory()
+    try:
+        attempts = check.execute(
+            sa.select(sa.func.count()).select_from(_TABLES["attempt"])
+        ).scalar_one()
+        status = check.execute(sa.select(Scan.status).where(Scan.id == scan_id)).scalar_one()
+    finally:
+        check.close()
+
+    assert sorted(outcomes) == ["confirmed", "scan_already_confirmed"], (
+        f"expected one winner and one refusal, got {sorted(outcomes)}"
+    )
+    assert status is ScanStatus.CONFIRMED
+    assert attempts == 1, (
+        f"one pupil, one exercise, one pile — got {attempts} attempts: the "
+        f"second confirmation graded it again"
+    )
