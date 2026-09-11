@@ -76,9 +76,19 @@ export function buildCsp({ nonce, dev = false }: CspOptions): string {
     // The API in dev and in the compose stack is a second origin; behind the
     // production reverse proxy it is `/api/v1` and `'self'` already covers it.
     ['connect-src', ["'self'", ...(apiOrigin ? [apiOrigin] : []), ...(dev ? ['ws:'] : [])]],
-    // Both sheet previews: `src` from the API (same origin through the proxy)
-    // and `srcDoc`, which the browser resolves against the parent document.
-    ['frame-src', ["'self'"]],
+    // Both sheet previews: `src` from the API and `srcDoc`, which the browser
+    // resolves against the parent document. The API origin is named here for
+    // the same reason it is named in `connect-src` — in the compose stack and
+    // in `pnpm dev` it is a second origin, and behind the production reverse
+    // proxy it is `/api/v1` and `'self'` already covers it.
+    //
+    // Leaving it out was worse than it looked: the preview's error path checks
+    // a `fetch`, which `connect-src` permits and which therefore SUCCEEDS, so a
+    // blocked frame produced a blank A4 with no error at all — and the print
+    // button of the day fell through to `window.open`, which worked. The one
+    // pre-print check a teacher had was invisible in the shipped default
+    // configuration.
+    ['frame-src', ["'self'", ...(apiOrigin ? [apiOrigin] : [])]],
     ['object-src', ["'none'"]],
     ['base-uri', ["'none'"]],
     ['form-action', ["'self'"]],

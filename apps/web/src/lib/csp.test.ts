@@ -53,6 +53,18 @@ describe('buildCsp', () => {
     expect(directive(buildCsp({ nonce: 'n' }), 'img-src')).toBe("img-src 'self' data: blob:");
   });
 
+  /** The preview iframe is a document served BY THE API. `frame-src 'self'`
+   *  alone blocked it in every deployment where the API is a second origin —
+   *  which is the compose default — and the failure was silent: the preview's
+   *  own error check is a `fetch`, and `connect-src` lets that through. */
+  it('admits the API origin as a frame source, so the preview can render', () => {
+    process.env.NEXT_PUBLIC_API_BASE_URL = 'http://localhost:8000/api/v1';
+    expect(directive(buildCsp({ nonce: 'n' }), 'frame-src')).toContain('http://localhost:8000');
+
+    process.env.NEXT_PUBLIC_API_BASE_URL = '/api/v1';
+    expect(directive(buildCsp({ nonce: 'n' }), 'frame-src')).toBe("frame-src 'self'");
+  });
+
   /** The compose stack and `pnpm dev` both talk to the API cross-origin; the
    *  production reverse proxy does not, and `/api/v1` must not become a
    *  garbage source expression. */
