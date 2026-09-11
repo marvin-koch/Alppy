@@ -17,6 +17,7 @@ missing child.
 from __future__ import annotations
 
 from datetime import UTC, date, datetime
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import ColumnElement, Table, and_, or_
 
@@ -30,6 +31,31 @@ def today() -> date:
     else — no read path compares it to a wall clock finer than a day.
     """
     return datetime.now(UTC).date()
+
+
+#: Where the product's calendar lives. The school year, the timetable and the
+#: date printed on a sheet are all facts about a Swiss school day, not about UTC.
+SCHOOL_TZ = ZoneInfo("Europe/Zurich")
+
+
+def school_today() -> date:
+    """The date it is *at the school*.
+
+    Distinct from ``today()`` above, and the distinction is worth two functions
+    rather than one argument. ``today()`` stamps a membership change, where
+    being a couple of hours early costs nothing — no read path compares it to a
+    wall clock finer than a day. This one answers "which school year is it",
+    where the same couple of hours straddles a YEAR boundary: at 00:30 on 1
+    August in Sion it is still 31 July in UTC, so a school created in that
+    window would be given ``2025/26`` — the year that ended the day before —
+    and the label is not decoration, because `current_school_year` resolves a
+    year BY LABEL when one already exists.
+
+    Two hours once a year is a small window. It is also the two hours when a
+    Swiss teacher is most likely to be setting up for the year that starts in
+    the morning.
+    """
+    return datetime.now(SCHOOL_TZ).date()
 
 
 def valid_on(table: Table, on: date) -> ColumnElement[bool]:

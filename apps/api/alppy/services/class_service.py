@@ -11,7 +11,7 @@ regenerated.
 from __future__ import annotations
 
 import uuid
-from datetime import UTC, date, datetime
+from datetime import date
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session, selectinload
 from alppy.api import errors
 from alppy.api.deps import Scope
 from alppy.core.uid import MAX_STUDENT_NUMBER, InvalidUidError, format_uid
-from alppy.db.validity import today, valid_on
+from alppy.db.validity import school_today, today, valid_on
 from alppy.models import (
     Class,
     Person,
@@ -124,7 +124,7 @@ def current_school_year(
     if existing is not None:
         return existing
 
-    label, starts_on, ends_on = _school_year_bounds(today or datetime.now(UTC).date())
+    label, starts_on, ends_on = _school_year_bounds(today or school_today())
     by_label = db.execute(
         select(SchoolYear)
         .where(SchoolYear.school_id == school_id)
