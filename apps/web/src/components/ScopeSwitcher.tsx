@@ -19,8 +19,9 @@ import type { Uuid } from '@/lib/api/types';
  * truncated its own name ("7B — Classe de Mm").
  *
  * One panel, two rows, one idea: where you are. The code is the thing a
- * teacher recognises, so it leads; the long label follows and truncates
- * gracefully instead of clipping mid-word.
+ * teacher recognises, so it leads; the label follows on its own line, because
+ * in Cycle 3 a "class" may be a niveau group and the label is the only place
+ * that says so (F9).
  *
  * It renders nothing at all when there is only one class and one subject — a
  * switcher with one option in it is furniture, not a control. When only one of
@@ -49,6 +50,14 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
     s.labels?.[locale] ?? s.labels?.fr ?? s.key;
 
   const row = 'flex min-h-11 items-center gap-2 px-3';
+  // The class row stacks instead of sharing one line. A code and a label were
+  // competing for the same width with a chevron, so `10MB — Maths, niveau 2`
+  // arrived as `10MB — Maths, nive…`. Until a class carries a `kind`, that
+  // label is the ONLY thing telling a teacher whether they are looking at
+  // their homeroom or at one of their teaching groups, and truncating it is
+  // truncating the answer (F9).
+  const classRow = 'flex min-h-11 flex-col justify-center gap-0.5 px-3 py-1.5';
+  const classLabel = 'line-clamp-2 text-body-s leading-snug text-ink-700';
 
   return (
     <div
@@ -90,24 +99,24 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             label: c.label ? `${c.code} — ${c.label}` : c.code,
           }))}
         >
-          <span className={row}>
-            <span className="rounded-sm bg-primary-100 px-2 py-0.5 font-display text-body-s font-semibold text-primary-700">
-              {current?.code}
+          <span className={classRow}>
+            <span className="flex items-center gap-2">
+              <span className="rounded-sm bg-primary-100 px-2 py-0.5 font-display text-body-s font-semibold text-primary-700">
+                {current?.code}
+              </span>
+              <IconChevronDown size={16} className="ml-auto shrink-0 text-ink-500" />
             </span>
-            <span className="min-w-0 flex-1 truncate text-body-s text-ink-700">
-              {current?.label ?? ''}
-            </span>
-            <IconChevronDown size={16} className="shrink-0 text-ink-500" />
+            {current?.label ? <span className={classLabel}>{current.label}</span> : null}
           </span>
         </SelectSurface>
       ) : current ? (
-        <span className={row}>
-          <span className="rounded-sm bg-primary-100 px-2 py-0.5 font-display text-body-s font-semibold text-primary-700">
-            {current.code}
+        <span className={classRow}>
+          <span className="flex items-center gap-2">
+            <span className="rounded-sm bg-primary-100 px-2 py-0.5 font-display text-body-s font-semibold text-primary-700">
+              {current.code}
+            </span>
           </span>
-          <span className="min-w-0 flex-1 truncate text-body-s text-ink-700">
-            {current.label ?? ''}
-          </span>
+          {current.label ? <span className={classLabel}>{current.label}</span> : null}
         </span>
       ) : null}
 

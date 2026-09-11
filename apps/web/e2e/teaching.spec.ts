@@ -89,7 +89,7 @@ test('removing a branch that still holds sheets is refused, with the count', asy
   await gotoStable(page, TEACHING);
 
   await panelFor(page, 'Mathématiques').getByRole('button', { name: /^Retirer$/ }).click();
-  const confirm = page.getByRole('button', { name: 'Retirer la branche' });
+  const confirm = page.getByRole('button', { name: 'Retirer la discipline' });
   await expect(confirm).toBeEnabled();
   await confirm.click();
 
