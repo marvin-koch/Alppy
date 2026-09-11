@@ -25,19 +25,23 @@ test.describe('the class and subject switcher', () => {
     const scope = root.locator('[data-scope-switcher]');
     await expect(scope).toBeVisible();
 
-    // Three dimensions since D74: school, then class, then discipline. Each
-    // row appears only when it is a real choice, and the fixture teacher has
-    // two of each — so all three render.
+    // Four dimensions since the school year was wired up (G3): school, then
+    // year, then class, then discipline. Each row appears only when it is a real
+    // choice, and the fixture teacher has two of each — so all four render.
+    //
+    // The year sits ABOVE the class deliberately. School and year decide which
+    // world you are in; class and discipline narrow it. This assertion is also
+    // the reachability guarantee on a phone, where the whole switcher is behind
+    // the drawer — which is why `school-year.spec.ts` can stay desktop-only.
     const selects = scope.locator('select');
-    await expect(selects).toHaveCount(3);
+    await expect(selects).toHaveCount(4);
     await expect(scope.getByLabel(/établissement/i)).toHaveValue(/.+/);
+    await expect(scope.getByLabel(/année scolaire/i)).toHaveValue(/.+/);
     await expect(scope.getByLabel(/classe/i)).toHaveValue(/.+/);
     await expect(scope.getByLabel(/discipline/i)).toHaveValue(/.+/);
   });
 
-  test('switching class puts it in the URL and survives a reload', async ({
-    page,
-  }, testInfo) => {
+  test('switching class puts it in the URL and survives a reload', async ({ page }, testInfo) => {
     test.skip(testInfo.project.name === 'phone', 'driven through the rail on the desktop');
     await withDisplay(page, {});
     await gotoStable(page, '/fr');
@@ -172,8 +176,8 @@ test('the two navigation landmarks are told apart', async ({ page }, testInfo) =
   await withDisplay(page, {});
   await gotoStable(page, '/fr');
   // Both were labelled "Accueil" — the name of a destination, not of a region.
-  const names = await page.locator('nav[aria-label]').evaluateAll((els) =>
-    els.map((el) => el.getAttribute('aria-label')),
-  );
+  const names = await page
+    .locator('nav[aria-label]')
+    .evaluateAll((els) => els.map((el) => el.getAttribute('aria-label')));
   expect(new Set(names).has('Accueil')).toBe(false);
 });

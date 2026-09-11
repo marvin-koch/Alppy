@@ -57,6 +57,20 @@ export interface RequestOptions {
   /** Multipart upload; `body` is ignored when this is set. */
   formData?: FormData;
   signal?: AbortSignal;
+  /**
+   * Extra request headers, merged over the defaults.
+   *
+   * This exists for `Idempotency-Key` (D98, `api/deps.py:idempotency_key`). Four
+   * routes are expensive to repeat — uploading a pile, rendering a sheet, a
+   * differentiation batch and its render — and the API has claimed a key on all
+   * four since the backend pass, with two translated refusal sentences waiting in
+   * the catalogue (`idempotency_in_flight`, `idempotency_key_too_long`). The
+   * client had no way to send one, so neither sentence could ever fire.
+   *
+   * Merged LAST on purpose, so a caller can override `Accept`; it cannot remove
+   * `credentials: 'include'`, which is not a header.
+   */
+  headers?: Record<string, string>;
   /** An array value is appended once per element, which is what FastAPI reads
    *  as a repeated query parameter (`?kind=a&kind=b`). Joining it into one
    *  comma-separated value would arrive as a single unparseable string. */
@@ -175,12 +189,12 @@ function noteReachability(reachable: boolean): void {
 }
 
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, formData, signal, query } = options;
+  const { method = 'GET', body, formData, signal, query, headers } = options;
   const url = withQuery(path, query);
 
   if (isMockEnabled()) {
     const { handleMock } = await import('./mock/handlers');
-    return handleMock<T>(method, url, formData ?? body);
+    return handleMock<T>(method, url, formData ?? body, headers);
   }
 
   let response: Response;
@@ -190,8 +204,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
       // Cookie session: the API sets an HttpOnly cookie, the browser returns it.
       credentials: 'include',
       headers: formData
-        ? { Accept: 'application/json' }
-        : { Accept: 'application/json', ...(body === undefined ? {} : { 'Content-Type': 'application/json' }) },
+        ? { Accept: 'application/json', ...headers }
+        : {
+            Accept: 'application/json',
+            ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+            ...headers,
+          },
       body: formData ?? (body === undefined ? undefined : JSON.stringify(body)),
       signal: signal ?? null,
     });
@@ -229,12 +247,12 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
  * the preview frame.
  */
 export async function apiRequestText(path: string, options: RequestOptions = {}): Promise<string> {
-  const { method = 'GET', body, signal, query } = options;
+  const { method = 'GET', body, signal, query, headers } = options;
   const url = withQuery(path, query);
 
   if (isMockEnabled()) {
     const { handleMock } = await import('./mock/handlers');
-    return handleMock<string>(method, url, body);
+    return handleMock<string>(method, url, body, headers);
   }
 
   let response: Response;
@@ -245,6 +263,7 @@ export async function apiRequestText(path: string, options: RequestOptions = {})
       headers: {
         Accept: 'text/html',
         ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
       },
       body: body === undefined ? undefined : JSON.stringify(body),
       signal: signal ?? null,

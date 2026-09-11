@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 
 import { useMe, useSwitchSchool } from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
+import { useSelectedYear } from '@/lib/school-year';
 import type { Uuid } from '@/lib/api/types';
 
 /**
@@ -31,10 +32,13 @@ import type { Uuid } from '@/lib/api/types';
 export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const t = useTranslations('nav');
   const locale = useLocale();
-  const { classes, subjects, classId, subjectId, setClass, setSubject, isLoading } =
-    useScope();
+  const { classes, subjects, classId, subjectId, setClass, setSubject, isLoading } = useScope();
   const me = useMe();
   const switchSchool = useSwitchSchool();
+  // Above the class row, because it is above it in meaning: class and subject
+  // narrow what you see WITHIN a year, and the year decides which year's roster,
+  // sheets, piles and mastery are being narrowed.
+  const { years, schoolYearId, setSchoolYear, isPastYear } = useSelectedYear();
 
   // A teacher at one school never sees a school row: switching is real but
   // rare, and a control with one option is furniture (D74).
@@ -42,12 +46,17 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const currentSchool = schools.find((school) => school.id === me.data?.school_id);
 
   if (isLoading) return null;
-  if (classes.length <= 1 && subjects.length <= 1 && schools.length <= 1) return null;
+  // A school in its first year has one year and gets no row, like a teacher at
+  // one school. But a teacher LOOKING at a past year always gets the row, even
+  // in the degenerate case: the way back must never be missing.
+  const showYears = years.length > 1 || isPastYear;
+  if (classes.length <= 1 && subjects.length <= 1 && schools.length <= 1 && !showYears) {
+    return null;
+  }
 
   const current = classes.find((c) => c.id === classId) ?? classes[0];
   const currentSubject = subjects.find((s) => s.id === subjectId) ?? subjects[0];
-  const subjectName = (s: (typeof subjects)[number]) =>
-    s.labels?.[locale] ?? s.labels?.fr ?? s.key;
+  const subjectName = (s: (typeof subjects)[number]) => s.labels?.[locale] ?? s.labels?.fr ?? s.key;
 
   const row = 'flex min-h-11 items-center gap-2 px-3';
   // The class row stacks instead of sharing one line. A code and a label were
@@ -60,10 +69,7 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
   const classLabel = 'line-clamp-2 text-body-s leading-snug text-ink-700';
 
   return (
-    <div
-      className="overflow-hidden rounded-md border border-line bg-surface"
-      data-scope-switcher
-    >
+    <div className="overflow-hidden rounded-md border border-line bg-surface" data-scope-switcher>
       {schools.length > 1 ? (
         <SelectSurface
           label={t('switchSchool')}
@@ -81,6 +87,36 @@ export function ScopeSwitcher({ onNavigate }: { onNavigate?: () => void }) {
             <span className="min-w-0 flex-1 truncate text-body-s font-semibold text-ink-900">
               {currentSchool?.name ?? ''}
             </span>
+            <IconChevronDown size={16} className="shrink-0 text-ink-500" />
+          </span>
+        </SelectSurface>
+      ) : null}
+
+      {showYears ? (
+        <SelectSurface
+          label={t('switchYear')}
+          value={schoolYearId ?? ''}
+          onChange={(value) => {
+            setSchoolYear(value as Uuid);
+            onNavigate?.();
+          }}
+          options={years.map((year) => ({ value: year.id, label: year.label }))}
+        >
+          <span className={`${row} border-b border-line`}>
+            <span
+              className="min-w-0 flex-1 truncate text-body-s font-semibold text-ink-900"
+              data-numeric
+            >
+              {years.find((y) => y.id === schoolYearId)?.label ?? ''}
+            </span>
+            {/* The chip is the second channel: the row alone reads as a label,
+                and a teacher who left the year selected yesterday needs the
+                switcher itself to say so, not just the banner on the page. */}
+            {isPastYear ? (
+              <span className="shrink-0 rounded-sm bg-warn-100 px-1.5 py-0.5 text-label uppercase text-warn-600">
+                {t('pastYearShort')}
+              </span>
+            ) : null}
             <IconChevronDown size={16} className="shrink-0 text-ink-500" />
           </span>
         </SelectSurface>

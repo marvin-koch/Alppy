@@ -9,8 +9,9 @@ import {
   type UseQueryResult,
 } from '@tanstack/react-query';
 import * as api from './endpoints';
+import { useIdempotencyKey, type IdempotentIntent } from '@/lib/idempotency';
+import { useSelectedYear } from '@/lib/school-year-context';
 import type {
-  ClassTreeOut,
   AdaptiveApproveRequest,
   AdaptiveApproveResponse,
   AdaptiveBatchRequest,
@@ -23,9 +24,10 @@ import type {
   ChapterOut,
   ClassCreate,
   ClassOut,
-  ClassTeacherOut,
-  ColleagueOut,
   ClassPointsOut,
+  ClassTeacherOut,
+  ClassTreeOut,
+  ColleagueOut,
   CompetencyAttemptsOut,
   CurriculumKind,
   DetectionCorrection,
@@ -42,6 +44,7 @@ import type {
   FeedbackGenerateRequest,
   HomeOut,
   JobOut,
+  LocalisedText,
   MasteryMatrixOut,
   MatrixSort,
   MisconceptionNoteOut,
@@ -50,18 +53,18 @@ import type {
   ScanOut,
   ScanPageOut,
   ScanUnvalidateResponse,
+  SchoolCreate,
+  SchoolOut,
+  SchoolYearOut,
   SheetConfidenceOut,
   SheetCreate,
+  SheetMasteryOut,
   SheetOut,
   SheetProposeRequest,
   SheetProposeResponse,
-  LocalisedText,
-  SchoolCreate,
-  SchoolOut,
   SourceOut,
   SourceSectionOut,
   StudentOut,
-  SheetMasteryOut,
   StudentProfileOut,
   StudentSheetOut,
   SubjectOut,
@@ -98,8 +101,32 @@ export const queryKeys = {
       q.limit ?? DEFAULT_PAGE_SIZE,
     ] as const,
   adaptiveProposal: (jobId: Uuid) => ['adaptive', 'proposal', jobId] as const,
-  home: ['home'] as const,
-  classes: ['classes'] as const,
+  schoolYears: ['school-years'] as const,
+  /**
+   * The school year is part of the KEY, not just of the request.
+   *
+   * Without it, switching year returns the cached answer for the year you left —
+   * for thirty seconds by `staleTime`, and instantly on any key already in
+   * memory. A teacher would read last year's roster, last year's piles and last
+   * year's matrix under this year's heading, which is worse than not having the
+   * feature (audit 05 G3). Every namespace whose contents a year changes carries
+   * it, and they were changed together rather than one screen at a time, because
+   * this object is the cheap place to do it and gets dearer with every screen
+   * that reads from it unchanged.
+   *
+   * `home` and `classes` grew a segment, so the plain arrays they used to be are
+   * now `homePrefix` / `classesPrefix` for invalidation. The list key for classes
+   * is `['classes', 'list', year]` rather than `['classes', year]` deliberately:
+   * `klass(id)` is `['classes', id]`, and a year id sitting in the same slot as a
+   * class id is a collision waiting for the first invalidation that guesses
+   * wrong.
+   */
+  home: (schoolYearId?: Uuid | null) => ['home', schoolYearId ?? null] as const,
+  /** Every year's home. What a write invalidates. */
+  homePrefix: ['home'] as const,
+  classes: (schoolYearId?: Uuid | null) => ['classes', 'list', schoolYearId ?? null] as const,
+  /** Every class query, list and detail, in every year. */
+  classesPrefix: ['classes'] as const,
   klass: (id: Uuid) => ['classes', id] as const,
   students: (id: Uuid) => ['classes', id, 'students'] as const,
   // Under the ['classes', id] prefix on purpose: who teaches a class is a fact
@@ -109,12 +136,22 @@ export const queryKeys = {
   colleagues: ['colleagues'] as const,
   // The prefix ['classes', id, 'mastery'] is what confirming a scan
   // invalidates, so every filter/sort variant has to hang off it.
-  classPoints: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid } = {}) =>
-    ['classes', id, 'points', options.subjectId ?? null, options.chapterId ?? null] as const,
+  classPoints: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid; asOf?: string } = {}) =>
+    [
+      'classes',
+      id,
+      'points',
+      options.subjectId ?? null,
+      options.chapterId ?? null,
+      options.asOf ?? null,
+    ] as const,
   sheetConfidence: (id: Uuid) => ['sheets', id, 'confidence'] as const,
-  studentSheet: (studentId: Uuid, sheetId: Uuid) =>
-    ['students', studentId, 'sheets', sheetId] as const,
-  classMastery: (id: Uuid, options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {}) =>
+  studentSheet: (studentId: Uuid, sheetId: Uuid, asOf?: string) =>
+    ['students', studentId, 'sheets', sheetId, asOf ?? null] as const,
+  classMastery: (
+    id: Uuid,
+    options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort; asOf?: string } = {},
+  ) =>
     [
       'classes',
       id,
@@ -122,17 +159,27 @@ export const queryKeys = {
       options.subjectId ?? null,
       options.chapterId ?? null,
       options.sort ?? 'roster',
+      options.asOf ?? null,
     ] as const,
-  classTree: (id: Uuid, options: { subjectId?: Uuid; studentId?: Uuid } = {}) =>
-    ['classes', id, 'tree', options.subjectId ?? null, options.studentId ?? null] as const,
+  classTree: (id: Uuid, options: { subjectId?: Uuid; studentId?: Uuid; asOf?: string } = {}) =>
+    [
+      'classes',
+      id,
+      'tree',
+      options.subjectId ?? null,
+      options.studentId ?? null,
+      options.asOf ?? null,
+    ] as const,
   /** Every filter variant of one class's tree. Invalidation wants the prefix,
    *  never the full key: a key built with `{}` would miss the variant a screen
    *  actually asked for. */
   classTreePrefix: (id: Uuid) => ['classes', id, 'tree'] as const,
-  sheetMastery: (sheetId: Uuid) => ['sheet-mastery', sheetId] as const,
-  studentMastery: (id: Uuid) => ['students', id, 'mastery'] as const,
-  competencyAttempts: (studentId: Uuid, competencyId: Uuid) =>
-    ['students', studentId, 'mastery', 'attempts', competencyId] as const,
+  sheetMastery: (sheetId: Uuid, asOf?: string) => ['sheet-mastery', sheetId, asOf ?? null] as const,
+  /** Every `as_of` variant of one sheet's bands. What confirming a pile hits. */
+  sheetMasteryPrefix: (sheetId: Uuid) => ['sheet-mastery', sheetId] as const,
+  studentMastery: (id: Uuid, asOf?: string) => ['students', id, 'mastery', asOf ?? null] as const,
+  competencyAttempts: (studentId: Uuid, competencyId: Uuid, asOf?: string) =>
+    ['students', studentId, 'mastery', 'attempts', competencyId, asOf ?? null] as const,
   subjects: ['subjects'] as const,
   chapters: (subjectId?: Uuid) => ['chapters', subjectId ?? null] as const,
   competencies: (kind: CurriculumKind, subjectKey?: string) =>
@@ -155,9 +202,14 @@ export const queryKeys = {
       query.offset ?? 0,
       query.limit ?? DEFAULT_PAGE_SIZE,
     ] as const,
-  sheets: (classId?: Uuid, subjectId?: Uuid) =>
-    ['sheets', classId ?? null, subjectId ?? null] as const,
-  scans: (sheetId?: Uuid) => ['scans', sheetId ?? null] as const,
+  sheets: (classId?: Uuid, subjectId?: Uuid, schoolYearId?: Uuid | null) =>
+    ['sheets', 'list', classId ?? null, subjectId ?? null, schoolYearId ?? null] as const,
+  /** Every sheet query, list and detail, in every year. */
+  sheetsPrefix: ['sheets'] as const,
+  scans: (sheetId?: Uuid, schoolYearId?: Uuid | null) =>
+    ['scans', 'list', sheetId ?? null, schoolYearId ?? null] as const,
+  /** Every scan query, list and detail, in every year. */
+  scansPrefix: ['scans'] as const,
   sheet: (id: Uuid) => ['sheets', id] as const,
   scan: (id: Uuid) => ['scans', id] as const,
   detections: (id: Uuid) => ['scans', id, 'detections'] as const,
@@ -194,7 +246,11 @@ export function useMe(enabled = true): UseQueryResult<TeacherOut> {
   return useQuery({ queryKey: queryKeys.me, queryFn: api.getMe, retry: false, enabled });
 }
 
-export function useLogin(): UseMutationResult<TeacherOut, Error, { email: string; password: string }> {
+export function useLogin(): UseMutationResult<
+  TeacherOut,
+  Error,
+  { email: string; password: string }
+> {
   const client = useQueryClient();
   return useMutation({
     mutationFn: api.login,
@@ -242,19 +298,45 @@ export function useUpdatePreferences(): UseMutationResult<
   });
 }
 
+/* -------------------------------------------------- the school year --- */
+/**
+ * The years this establishment has run.
+ *
+ * The discovery route for every `school_year_id` filter and every `as_of`: an id
+ * has to come from somewhere. `staleTime: Infinity` — a school gains a year once
+ * a year, and this list is the thing every other key hangs off.
+ */
+export function useSchoolYears(enabled = true): UseQueryResult<SchoolYearOut[]> {
+  return useQuery({
+    queryKey: queryKeys.schoolYears,
+    queryFn: api.listSchoolYears,
+    staleTime: Number.POSITIVE_INFINITY,
+    enabled,
+  });
+}
+
 /* --------------------------------------------------------------- home --- */
 export function useHome(): UseQueryResult<HomeOut> {
-  // Wrapped, not passed bare: `getHome` now takes an optional school year, and
+  // The year comes from the provider rather than from an argument, so no screen
+  // can forget to pass it — the failure mode being a teacher shown last year's
+  // numbers under this year's heading (G3). `lib/school-year.tsx` explains why it
+  // is a separate module rather than part of `useScope`.
+  const { schoolYearId } = useSelectedYear();
+  // Wrapped, not passed bare: `getHome` takes an optional school year, and
   // react-query calls `queryFn` with its own context object — which would
   // arrive as that argument and go out as `?school_year_id=[object Object]`.
-  return useQuery({ queryKey: queryKeys.home, queryFn: () => api.getHome() });
+  return useQuery({
+    queryKey: queryKeys.home(schoolYearId),
+    queryFn: () => api.getHome(schoolYearId ?? undefined),
+  });
 }
 
 /* ------------------------------------------------------------ classes --- */
 export function useClasses(enabled = true): UseQueryResult<ClassOut[]> {
+  const { schoolYearId } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.classes,
-    queryFn: () => api.listClasses(),
+    queryKey: queryKeys.classes(schoolYearId),
+    queryFn: () => api.listClasses(schoolYearId ?? undefined),
     enabled,
   });
 }
@@ -264,8 +346,8 @@ export function useCreateClass(): UseMutationResult<ClassOut, Error, ClassCreate
   return useMutation({
     mutationFn: api.createClass,
     onSuccess: () => {
-      void client.invalidateQueries({ queryKey: queryKeys.classes });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.classesPrefix });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
@@ -281,8 +363,8 @@ export function useAddStudents(): UseMutationResult<
     onSuccess: (_data, { classId }) => {
       void client.invalidateQueries({ queryKey: queryKeys.students(classId) });
       void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
-      void client.invalidateQueries({ queryKey: queryKeys.classes });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.classesPrefix });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
@@ -317,7 +399,7 @@ export function useStudents(classId: Uuid | null): UseQueryResult<StudentOut[]> 
 function invalidateTeaching(client: ReturnType<typeof useQueryClient>, classId: Uuid) {
   void client.invalidateQueries({ queryKey: queryKeys.classTeachers(classId) });
   void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
-  void client.invalidateQueries({ queryKey: queryKeys.classes });
+  void client.invalidateQueries({ queryKey: queryKeys.classesPrefix });
   void client.invalidateQueries({ queryKey: queryKeys.classTreePrefix(classId) });
 }
 
@@ -364,9 +446,7 @@ export function useDeclareBranch(): UseMutationResult<
   const client = useQueryClient();
   return useMutation({
     mutationFn: ({ classId, subjectId, declare }) =>
-      declare
-        ? api.declareBranch(classId, subjectId)
-        : api.undeclareBranch(classId, subjectId),
+      declare ? api.declareBranch(classId, subjectId) : api.undeclareBranch(classId, subjectId),
     onSuccess: (_data, { classId }) => invalidateTeaching(client, classId),
   });
 }
@@ -412,8 +492,8 @@ export function useDeleteStudent(): UseMutationResult<
     onSuccess: (_data, { classId }) => {
       void client.invalidateQueries({ queryKey: queryKeys.students(classId) });
       void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
-      void client.invalidateQueries({ queryKey: queryKeys.classes });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.classesPrefix });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
       void client.invalidateQueries({ queryKey: queryKeys.classMastery(classId, {}) });
     },
   });
@@ -429,8 +509,8 @@ export function useUpdateClass(): UseMutationResult<
     mutationFn: ({ classId, body }) => api.updateClass(classId, body),
     onSuccess: (_data, { classId }) => {
       void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
-      void client.invalidateQueries({ queryKey: queryKeys.classes });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.classesPrefix });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
@@ -567,26 +647,44 @@ export function useChapters(subjectId?: Uuid): UseQueryResult<ChapterOut[]> {
 
 export function useCreateRoster(
   classId: Uuid | null,
-): UseMutationResult<StudentOut[], Error, { students: Array<{ first_name: string; last_name: string }> }> {
+): UseMutationResult<
+  StudentOut[],
+  Error,
+  { students: Array<{ first_name: string; last_name: string }> }
+> {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (body: { students: Array<{ first_name: string; last_name: string }> }) =>
       api.createRoster(classId as Uuid, body),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
 
 /* ------------------------------------------------------------ reports --- */
+/**
+ * `asOf` comes from the selected school year, not from the caller.
+ *
+ * It is a DIFFERENT parameter from `school_year_id`, and conflating them would be
+ * the interesting way to get this wrong. The id says which year's objects to
+ * list; `as_of` rewinds the mastery model — attempts after it are dropped, the
+ * decay is measured to it, and the roster moves with it (`api/v1/mastery.py`).
+ * Selecting a past year and leaving `as_of` at "now" would decay that year's
+ * attempts by however long ago it ended and show a class that had learnt nothing.
+ * `undefined` for the current year, which is what every read here meant before
+ * this existed.
+ */
 export function useClassPoints(
   classId: Uuid | null,
   options: { subjectId?: Uuid; chapterId?: Uuid } = {},
 ): UseQueryResult<ClassPointsOut> {
+  const { asOf } = useSelectedYear();
+  const withYear = { ...options, asOf };
   return useQuery({
-    queryKey: queryKeys.classPoints(classId ?? '', options),
-    queryFn: () => api.getClassPoints(classId as Uuid, options),
+    queryKey: queryKeys.classPoints(classId ?? '', withYear),
+    queryFn: () => api.getClassPoints(classId as Uuid, withYear),
     enabled: Boolean(classId),
   });
 }
@@ -595,9 +693,10 @@ export function useStudentSheet(
   studentId: Uuid | null,
   sheetId: Uuid | null,
 ): UseQueryResult<StudentSheetOut> {
+  const { asOf } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.studentSheet(studentId ?? '', sheetId ?? ''),
-    queryFn: () => api.getStudentSheet(studentId as Uuid, sheetId as Uuid),
+    queryKey: queryKeys.studentSheet(studentId ?? '', sheetId ?? '', asOf),
+    queryFn: () => api.getStudentSheet(studentId as Uuid, sheetId as Uuid, asOf),
     enabled: Boolean(studentId && sheetId),
   });
 }
@@ -615,9 +714,11 @@ export function useClassMastery(
   classId: Uuid | null,
   options: { subjectId?: Uuid; chapterId?: Uuid; sort?: MatrixSort } = {},
 ): UseQueryResult<MasteryMatrixOut> {
+  const { asOf } = useSelectedYear();
+  const withYear = { ...options, asOf };
   return useQuery({
-    queryKey: queryKeys.classMastery(classId ?? '', options),
-    queryFn: () => api.getClassMastery(classId as Uuid, options),
+    queryKey: queryKeys.classMastery(classId ?? '', withYear),
+    queryFn: () => api.getClassMastery(classId as Uuid, withYear),
     enabled: Boolean(classId),
   });
 }
@@ -633,9 +734,11 @@ export function useCurriculumTree(
   classId: Uuid | null,
   options: { subjectId?: Uuid; studentId?: Uuid } = {},
 ): UseQueryResult<ClassTreeOut> {
+  const { asOf } = useSelectedYear();
+  const withYear = { ...options, asOf };
   return useQuery({
-    queryKey: queryKeys.classTree(classId ?? '', options),
-    queryFn: () => api.getClassTree(classId as Uuid, options),
+    queryKey: queryKeys.classTree(classId ?? '', withYear),
+    queryFn: () => api.getClassTree(classId as Uuid, withYear),
     enabled: Boolean(classId),
   });
 }
@@ -644,25 +747,28 @@ export function useCompetencyAttempts(
   studentId: Uuid | null,
   competencyId: Uuid | null,
 ): UseQueryResult<CompetencyAttemptsOut> {
+  const { asOf } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.competencyAttempts(studentId ?? '', competencyId ?? ''),
-    queryFn: () => api.getCompetencyAttempts(studentId as Uuid, competencyId as Uuid),
+    queryKey: queryKeys.competencyAttempts(studentId ?? '', competencyId ?? '', asOf),
+    queryFn: () => api.getCompetencyAttempts(studentId as Uuid, competencyId as Uuid, asOf),
     enabled: Boolean(studentId && competencyId),
   });
 }
 
 export function useStudentMastery(studentId: Uuid | null): UseQueryResult<StudentProfileOut> {
+  const { asOf } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.studentMastery(studentId ?? ''),
-    queryFn: () => api.getStudentMastery(studentId as Uuid),
+    queryKey: queryKeys.studentMastery(studentId ?? '', asOf),
+    queryFn: () => api.getStudentMastery(studentId as Uuid, asOf),
     enabled: Boolean(studentId),
   });
 }
 
 export function useSheetMastery(sheetId: Uuid | null): UseQueryResult<SheetMasteryOut> {
+  const { asOf } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.sheetMastery(sheetId ?? ''),
-    queryFn: () => api.getSheetMastery(sheetId as Uuid),
+    queryKey: queryKeys.sheetMastery(sheetId ?? '', asOf),
+    queryFn: () => api.getSheetMastery(sheetId as Uuid, asOf),
     enabled: Boolean(sheetId),
   });
 }
@@ -676,7 +782,7 @@ export function useEnrollStudent(classId: Uuid | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
       void client.invalidateQueries({ queryKey: ['classes'] });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
@@ -688,7 +794,7 @@ export function useUnenrollStudent(classId: Uuid | null) {
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.students(classId ?? '') });
       void client.invalidateQueries({ queryKey: ['classes'] });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
     },
   });
 }
@@ -778,17 +884,19 @@ export function useUploadSource(): UseMutationResult<
 
 /* ------------------------------------------------------------- sheets --- */
 export function useSheets(classId?: Uuid, subjectId?: Uuid): UseQueryResult<SheetOut[]> {
+  const { schoolYearId } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.sheets(classId, subjectId),
-    queryFn: () => api.listSheets(classId, subjectId),
+    queryKey: queryKeys.sheets(classId, subjectId, schoolYearId),
+    queryFn: () => api.listSheets(classId, subjectId, schoolYearId ?? undefined),
   });
 }
 
 /* -------------------------------------------------------------- scans --- */
 export function useScans(sheetId?: Uuid): UseQueryResult<ScanOut[]> {
+  const { schoolYearId } = useSelectedYear();
   return useQuery({
-    queryKey: queryKeys.scans(sheetId),
-    queryFn: () => api.listScans(sheetId),
+    queryKey: queryKeys.scans(sheetId, schoolYearId),
+    queryFn: () => api.listScans(sheetId, schoolYearId ?? undefined),
   });
 }
 
@@ -812,8 +920,29 @@ export function useCreateSheet(): UseMutationResult<SheetOut, Error, SheetCreate
   return useMutation({ mutationFn: api.createSheet });
 }
 
-export function useRenderSheet(): UseMutationResult<JobOut, Error, Uuid> {
-  return useMutation({ mutationFn: api.renderSheet });
+/**
+ * Each of these four carries an `Idempotency-Key`, and the key belongs to the
+ * teacher's INTENT rather than to the request.
+ *
+ * So `clear()` runs on SUCCESS only: a retry after a failure is the same
+ * intention and must reuse the key, and only work that actually landed releases
+ * it. A caller that needs to break the chain — different files chosen, the
+ * button pressed again having changed something — owns an `IdempotentIntent`
+ * itself and calls `restart()`, which is what the optional argument is for.
+ *
+ * Passing `api.renderSheet` bare here is now a type error rather than a silent
+ * bug, which is the one piece of luck in this change: react-query calls
+ * `mutationFn` with its own context object, and that object would have arrived
+ * as the key and gone out as `Idempotency-Key: [object Object]` (the same trap
+ * `useHome` documents).
+ */
+export function useRenderSheet(intent?: IdempotentIntent): UseMutationResult<JobOut, Error, Uuid> {
+  const own = useIdempotencyKey();
+  const active = intent ?? own;
+  return useMutation({
+    mutationFn: (sheetId: Uuid) => api.renderSheet(sheetId, active.key()),
+    onSuccess: () => active.clear(),
+  });
 }
 
 /**
@@ -879,12 +1008,15 @@ export function useScanStudents(scanId: Uuid | null): UseQueryResult<StudentOut[
   });
 }
 
-export function useUploadScan(): UseMutationResult<
-  ScanOut,
-  Error,
-  { files: File[]; sheetId: Uuid }
-> {
-  return useMutation({ mutationFn: ({ files, sheetId }) => api.uploadScan(files, sheetId) });
+export function useUploadScan(
+  intent?: IdempotentIntent,
+): UseMutationResult<ScanOut, Error, { files: File[]; sheetId: Uuid }> {
+  const own = useIdempotencyKey();
+  const active = intent ?? own;
+  return useMutation({
+    mutationFn: ({ files, sheetId }) => api.uploadScan(files, sheetId, active.key()),
+    onSuccess: () => active.clear(),
+  });
 }
 
 /**
@@ -946,7 +1078,7 @@ export function useReopenScan(
       // Reopening withdraws grades, so it invalidates exactly what confirming
       // does — the same numbers move, in the other direction.
       void client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
       void client.invalidateQueries({ queryKey: ['classes'] });
       void client.invalidateQueries({ queryKey: ['students'] });
       void client.invalidateQueries({ queryKey: ['sheets'] });
@@ -974,7 +1106,7 @@ export function useConfirmScan(
     mutationFn: () => api.confirmScan(scanId as Uuid),
     onSuccess: () => {
       void client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') });
-      void client.invalidateQueries({ queryKey: queryKeys.home });
+      void client.invalidateQueries({ queryKey: queryKeys.homePrefix });
       // ...and the moment the points dashboard changes, for the same reason.
       void client.invalidateQueries({ queryKey: ['sheets'] });
       // Confirming is the moment the matrix changes. Without these two the
@@ -997,18 +1129,12 @@ export function useConfirmScan(
  * twenty-four sequential provider calls with a browser waiting on them.
  * Follow it with `useJob`, then `useAdaptiveProposal`.
  */
-export function useProposeAdaptive(): UseMutationResult<
-  JobOut,
-  Error,
-  AdaptiveProposeRequest
-> {
+export function useProposeAdaptive(): UseMutationResult<JobOut, Error, AdaptiveProposeRequest> {
   return useMutation({ mutationFn: api.proposeAdaptive });
 }
 
 /** The proposal a finished job built. Enabled only once there is a job id. */
-export function useAdaptiveProposal(
-  jobId: Uuid | null,
-): UseQueryResult<AdaptiveProposeResponse> {
+export function useAdaptiveProposal(jobId: Uuid | null): UseQueryResult<AdaptiveProposeResponse> {
   return useQuery({
     queryKey: queryKeys.adaptiveProposal(jobId ?? ''),
     queryFn: () => api.readAdaptiveProposal(jobId as Uuid),
@@ -1025,12 +1151,26 @@ export function useAdaptiveProposal(
  * to their item lists is fast and synchronous, while driving a headless browser
  * over 170 pages is not.
  */
-export function useBatchAdaptive(): UseMutationResult<SheetOut, Error, AdaptiveBatchRequest> {
-  return useMutation({ mutationFn: api.batchAdaptive });
+export function useBatchAdaptive(
+  intent?: IdempotentIntent,
+): UseMutationResult<SheetOut, Error, AdaptiveBatchRequest> {
+  const own = useIdempotencyKey();
+  const active = intent ?? own;
+  return useMutation({
+    mutationFn: (body: AdaptiveBatchRequest) => api.batchAdaptive(body, active.key()),
+    onSuccess: () => active.clear(),
+  });
 }
 
-export function useRenderAdaptiveBatch(): UseMutationResult<JobOut, Error, Uuid> {
-  return useMutation({ mutationFn: api.renderAdaptiveBatch });
+export function useRenderAdaptiveBatch(
+  intent?: IdempotentIntent,
+): UseMutationResult<JobOut, Error, Uuid> {
+  const own = useIdempotencyKey();
+  const active = intent ?? own;
+  return useMutation({
+    mutationFn: (sheetId: Uuid) => api.renderAdaptiveBatch(sheetId, active.key()),
+    onSuccess: () => active.clear(),
+  });
 }
 
 export function useApproveAdaptive(): UseMutationResult<

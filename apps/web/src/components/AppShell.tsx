@@ -22,6 +22,7 @@ import { useEffect, useRef, useState, type ReactNode } from 'react';
 // matching below never has to know which locale it is in.
 import { Link, usePathname } from '@/i18n/navigation';
 import { ScopeSwitcher } from '@/components/ScopeSwitcher';
+import { useSelectedYear } from '@/lib/school-year';
 import { useConnection } from '@/lib/connection';
 import { applyDisplay, readDisplay } from '@/lib/display';
 import { useUpdatePreferences } from '@/lib/api/queries';
@@ -77,6 +78,8 @@ export function AppShell({ children }: { children: ReactNode }) {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const connection = useConnection();
   const tdiscreet = useTranslations('discreet');
+  const tyear = useTranslations('schoolYear');
+  const { selectedYear, currentYear, isPastYear, setSchoolYear } = useSelectedYear();
   const locale = useLocale() as AppLocale;
   const updatePrefs = useUpdatePreferences();
   /** What the shortcut just did, for the live region below. */
@@ -187,6 +190,35 @@ export function AppShell({ children }: { children: ReactNode }) {
         </p>
       ) : null}
 
+      {/* A past year, said loudly and on every screen.
+          Deliberately a full-width bar and not a chip. Every number below it —
+          the matrix, the roster, the piles, a class average — belongs to a year
+          that has ended, and a teacher reading last year's figures as this
+          year's is a worse outcome than not being able to look at all (G3).
+          It offers the way back in the same breath, because the commonest reason
+          to be here is having forgotten the switcher is set.
+
+          Never colour alone (DC-colour-08): the year is named in words. */}
+      {selectedYear && isPastYear ? (
+        <p
+          role="status"
+          aria-live="polite"
+          data-past-year
+          className="flex min-h-11 flex-wrap items-center justify-center gap-x-2 gap-y-1 bg-warn-100 px-4 py-2 text-center text-body-s font-bold text-warn-700"
+        >
+          <span>{tyear('pastYear', { year: selectedYear.label })}</span>
+          {currentYear ? (
+            <button
+              type="button"
+              onClick={() => setSchoolYear(currentYear.id)}
+              className="min-h-11 underline underline-offset-2 hover:no-underline focus-visible:outline-none focus-visible:shadow-[var(--focus-ring)]"
+            >
+              {tyear('backToCurrent', { year: currentYear.label })}
+            </button>
+          ) : null}
+        </p>
+      ) : null}
+
       {/* Mobile header */}
       <header
         data-app-header
@@ -229,7 +261,11 @@ export function AppShell({ children }: { children: ReactNode }) {
           {nav()}
         </aside>
 
-        <main id="main" tabIndex={-1} className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-12 md:pt-8">
+        <main
+          id="main"
+          tabIndex={-1}
+          className="min-w-0 flex-1 px-4 pb-24 pt-4 md:px-8 md:pb-12 md:pt-8"
+        >
           {children}
         </main>
       </div>

@@ -6,9 +6,11 @@ import { ToastProvider, TooltipProvider } from '@alppy/ui';
 import { Suspense, useEffect, useState, type ReactNode } from 'react';
 
 import { setUnauthorizedHandler } from '@/lib/api/client';
-import { useRouter } from '@/i18n/navigation';
+import { usePathname, useRouter } from '@/i18n/navigation';
 import { RevealProvider } from '@/lib/discreet';
 import { ScopeProvider } from '@/lib/scope';
+import { useSchoolYears } from '@/lib/api/queries';
+import { SchoolYearProvider } from '@/lib/school-year';
 
 export function Providers({ children }: { children: ReactNode }) {
   const t = useTranslations('common');
@@ -67,11 +69,36 @@ export function Providers({ children }: { children: ReactNode }) {
             {/* Projector mode's temporary reveal: one provider, reset on every
                 navigation, so it cannot outlive the screen it was meant for. */}
             <RevealProvider>
-              <ScopeProvider>{children}</ScopeProvider>
+              {/* ABOVE ScopeProvider, which calls `useClasses` — and `useClasses`
+                  now reads the selected year. Below it and the class list would
+                  be fetched for "no year" on the first render and cached under
+                  that key. */}
+              <SchoolYearGate>
+                <ScopeProvider>{children}</ScopeProvider>
+              </SchoolYearGate>
             </RevealProvider>
           </Suspense>
         </ToastProvider>
       </TooltipProvider>
     </QueryClientProvider>
+  );
+}
+
+/**
+ * Fetches the year list and hands it to `SchoolYearProvider`.
+ *
+ * Split out because `lib/school-year.tsx` must not import `lib/api/queries`:
+ * `queries` imports `useSelectedYear`, and the other direction would close a
+ * cycle. So the provider takes the list as a prop and this component is the one
+ * place that knows where the list comes from.
+ */
+function SchoolYearGate({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
+  // The login screen is outside the session, exactly as `ScopeProvider` treats it.
+  const years = useSchoolYears(pathname !== '/login');
+  return (
+    <SchoolYearProvider years={years.data ?? []} isLoading={years.isLoading}>
+      {children}
+    </SchoolYearProvider>
   );
 }

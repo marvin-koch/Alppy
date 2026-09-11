@@ -73,6 +73,23 @@ import type {
 } from './types';
 
 /**
+ * The `Idempotency-Key` header, or nothing.
+ *
+ * Four routes are expensive to repeat and the API has claimed a key on all four
+ * since the backend pass (D98): uploading a pile, rendering a sheet, building a
+ * differentiation batch, rendering that batch. Opt-in per request — absent means
+ * "behave exactly as before" — which is why every one of these takes the key as
+ * an optional last argument rather than minting one here.
+ *
+ * Minting it here would defeat the whole mechanism: a key generated per REQUEST
+ * is a new key on the retry, which is the case idempotency exists to collapse.
+ * The key belongs to the teacher's INTENT, so `useIdempotencyKey` holds it in a
+ * ref across retries and clears it on success.
+ */
+const idempotent = (key?: string): { headers?: Record<string, string> } =>
+  key === undefined ? {} : { headers: { 'Idempotency-Key': key } };
+
+/**
  * The API surface of `docs/plan.md` §4, typed against `alppy/schemas`.
  *
  * Three routes are not spelled out in §4 but are required by the screens in §5
@@ -112,10 +129,8 @@ export const updateClass = (id: Uuid, body: { label?: string | null; code?: stri
 export const updateSchool = (body: { name?: string; canton?: string | null }) =>
   apiRequest<SchoolOut>('/schools/me', { method: 'PATCH', body });
 
-export const updateStudent = (
-  id: Uuid,
-  body: { first_name?: string; last_name?: string },
-) => apiRequest<StudentOut>(`/students/${id}`, { method: 'PATCH', body });
+export const updateStudent = (id: Uuid, body: { first_name?: string; last_name?: string }) =>
+  apiRequest<StudentOut>(`/students/${id}`, { method: 'PATCH', body });
 
 /** Takes the pupil's own uid, typed back — see `ConfirmDestructive`. */
 /** The pupil's uid goes in the BODY: in the query string it lands in every
@@ -134,11 +149,9 @@ export const deleteChapter = (id: Uuid) =>
 export const updateSource = (
   id: Uuid,
   body: { title?: string; language?: string; publisher?: string; isbn?: string; url?: string },
-) =>
-  apiRequest<SourceOut>(`/sources/${id}`, { method: 'PATCH', body });
+) => apiRequest<SourceOut>(`/sources/${id}`, { method: 'PATCH', body });
 
-export const deleteSource = (id: Uuid) =>
-  apiRequest<void>(`/sources/${id}`, { method: 'DELETE' });
+export const deleteSource = (id: Uuid) => apiRequest<void>(`/sources/${id}`, { method: 'DELETE' });
 
 /**
  * Act for another of this teacher's schools from here on.
@@ -246,16 +259,14 @@ export const listClassTeachers = (classId: Uuid) =>
 export const listColleagues = () => apiRequest<ColleagueOut[]>('/colleagues');
 
 export const assignBranch = (classId: Uuid, teacherId: Uuid, subjectId: Uuid) =>
-  apiRequest<ClassTeacherOut[]>(
-    `/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`,
-    { method: 'POST' },
-  );
+  apiRequest<ClassTeacherOut[]>(`/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`, {
+    method: 'POST',
+  });
 
 export const unassignBranch = (classId: Uuid, teacherId: Uuid, subjectId: Uuid) =>
-  apiRequest<ClassTeacherOut[]>(
-    `/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`,
-    { method: 'DELETE' },
-  );
+  apiRequest<ClassTeacherOut[]>(`/classes/${classId}/teachers/${teacherId}/branches/${subjectId}`, {
+    method: 'DELETE',
+  });
 
 /** Say the class studies this branch — and that the caller takes it. */
 export const declareBranch = (classId: Uuid, subjectId: Uuid) =>
@@ -314,8 +325,7 @@ export const extractSourceSection = ({
 }: {
   sourceId: Uuid;
   sectionId: Uuid;
-}) =>
-  apiRequest<JobOut>(`/sources/${sourceId}/sections/${sectionId}/extract`, { method: 'POST' });
+}) => apiRequest<JobOut>(`/sources/${sourceId}/sections/${sectionId}/extract`, { method: 'POST' });
 
 /** Filtered and paginated in Postgres. A textbook is a thousand exercises and
  *  the client is behind a Worker proxy, so the whole document never travels. */
@@ -389,8 +399,11 @@ export const listScans = (sheetId?: Uuid, schoolYearId?: Uuid) =>
     query: { sheet_id: sheetId, school_year_id: schoolYearId },
   });
 
-export const renderSheet = (sheetId: Uuid) =>
-  apiRequest<JobOut>(`/sheets/${sheetId}/render`, { method: 'POST' });
+export const renderSheet = (sheetId: Uuid, idempotencyKey?: string) =>
+  apiRequest<JobOut>(`/sheets/${sheetId}/render`, {
+    method: 'POST',
+    ...idempotent(idempotencyKey),
+  });
 
 /* -------------------------------------------------------------- scans --- */
 /**
@@ -399,11 +412,15 @@ export const renderSheet = (sheetId: Uuid) =>
  * `sheetId` is required, not optional: without it the pipeline has no answer
  * key and no per-copy pagination, so it reads every mark and grades nothing.
  */
-export const uploadScan = (files: File[], sheetId: Uuid) => {
+export const uploadScan = (files: File[], sheetId: Uuid, idempotencyKey?: string) => {
   const formData = new FormData();
   for (const file of files) formData.append('files', file);
   formData.append('sheet_id', sheetId);
-  return apiRequest<ScanOut>('/scans', { method: 'POST', formData });
+  return apiRequest<ScanOut>('/scans', {
+    method: 'POST',
+    formData,
+    ...idempotent(idempotencyKey),
+  });
 };
 
 /**
@@ -415,11 +432,7 @@ export const uploadScan = (files: File[], sheetId: Uuid) => {
  * photograph being replaced in the same transaction, so the copy never briefly
  * has more pages than were printed for it.
  */
-export const addScanPages = (
-  scanId: Uuid,
-  files: File[],
-  supersedesPageId?: Uuid | null,
-) => {
+export const addScanPages = (scanId: Uuid, files: File[], supersedesPageId?: Uuid | null) => {
   const formData = new FormData();
   for (const file of files) formData.append('files', file);
   if (supersedesPageId) formData.append('supersedes_page_id', supersedesPageId);
@@ -446,10 +459,7 @@ export const getScan = (scanId: Uuid) => apiRequest<ScanOut>(`/scans/${scanId}`)
  * `ScanOut.pages`, which is why the shape could change without a screen
  * moving. This is the flat route, for a caller that wants the pile as rows.
  */
-export const listDetections = (
-  scanId: Uuid,
-  page: { offset?: number; limit?: number } = {},
-) =>
+export const listDetections = (scanId: Uuid, page: { offset?: number; limit?: number } = {}) =>
   apiRequest<DetectionListOut>(`/scans/${scanId}/detections`, {
     query: { offset: page.offset, limit: page.limit },
   });
@@ -561,11 +571,7 @@ export const getStudentMastery = (studentId: Uuid, asOf?: string) =>
     query: { as_of: asOf },
   });
 
-export const getCompetencyAttempts = (
-  studentId: Uuid,
-  competencyId: Uuid,
-  asOf?: string,
-) =>
+export const getCompetencyAttempts = (studentId: Uuid, competencyId: Uuid, asOf?: string) =>
   apiRequest<CompetencyAttemptsOut>(
     `/students/${studentId}/competencies/${competencyId}/attempts`,
     { query: { as_of: asOf } },
@@ -581,7 +587,7 @@ export const proposeAdaptive = (body: AdaptiveProposeRequest) =>
 /** The built proposal. Its own call rather than a field on the job: the screen
  *  polls the job every 900 ms, and a class of 24 is close to a megabyte. */
 export const readAdaptiveProposal = (jobId: Uuid) =>
-  apiRequest<AdaptiveProposeResponse>(`/adaptive/proposal/${jobId}`)
+  apiRequest<AdaptiveProposeResponse>(`/adaptive/proposal/${jobId}`);
 
 /**
  * Creating the batch is NOT rendering it. This returns the `SheetOut` it just
@@ -589,11 +595,18 @@ export const readAdaptiveProposal = (jobId: Uuid) =>
  * this as a `JobOut` is what made the export button poll `/jobs/<sheet-id>`
  * forever — `apiRequest<T>` is an unchecked assertion, so nothing caught it.
  */
-export const batchAdaptive = (body: AdaptiveBatchRequest) =>
-  apiRequest<SheetOut>('/adaptive/batch', { method: 'POST', body });
+export const batchAdaptive = (body: AdaptiveBatchRequest, idempotencyKey?: string) =>
+  apiRequest<SheetOut>('/adaptive/batch', {
+    method: 'POST',
+    body,
+    ...idempotent(idempotencyKey),
+  });
 
-export const renderAdaptiveBatch = (sheetId: Uuid) =>
-  apiRequest<JobOut>(`/adaptive/batch/${sheetId}/render`, { method: 'POST' });
+export const renderAdaptiveBatch = (sheetId: Uuid, idempotencyKey?: string) =>
+  apiRequest<JobOut>(`/adaptive/batch/${sheetId}/render`, {
+    method: 'POST',
+    ...idempotent(idempotencyKey),
+  });
 
 export const approveAdaptive = (body: AdaptiveApproveRequest) =>
   apiRequest<AdaptiveApproveResponse>('/adaptive/approve', { method: 'POST', body });
