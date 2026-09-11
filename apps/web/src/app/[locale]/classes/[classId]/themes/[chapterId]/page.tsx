@@ -22,7 +22,8 @@ import { useClass, useCurriculumTree, useSheets } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useFormatters } from '@/lib/format';
 import { useClassSubject } from '@/lib/use-class-subject';
-import { requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, requestIdOf } from '@/lib/api/error-message';
+import { NotFoundState } from '@/components/NotFoundState';
 
 /** One Theme, for one class: where it sits, what it credits, what was set. */
 export default function ThemePage({
@@ -32,6 +33,7 @@ export default function ThemePage({
 }) {
   const { classId, chapterId } = use(params);
   const t = useTranslations('curriculum');
+  const tnav = useTranslations('nav');
   const tt = useTranslations('tree');
   const tm = useTranslations('mastery');
   const te = useTranslations('errors.generic');
@@ -100,6 +102,11 @@ export default function ThemePage({
   }
 
   if (tree.isError) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(tree.error)) {
+      return <NotFoundState backHref={`/classes/${classId}`} backLabel={tnav('classes')} />;
+    }
     return (
       <div className="mx-auto max-w-4xl">
         {header}

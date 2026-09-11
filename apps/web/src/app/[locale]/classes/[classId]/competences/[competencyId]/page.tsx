@@ -23,7 +23,8 @@ import { useClassSubject } from '@/lib/use-class-subject';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
-import { requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, requestIdOf } from '@/lib/api/error-message';
+import { NotFoundState } from '@/components/NotFoundState';
 
 /**
  * One Competence, for one class.
@@ -40,6 +41,7 @@ export default function CompetencePage({
 }) {
   const { classId, competencyId } = use(params);
   const t = useTranslations('curriculum');
+  const tnav = useTranslations('nav');
   const { hideNames } = useDiscretion();
   const tt = useTranslations('tree');
   const tm = useTranslations('mastery');
@@ -114,6 +116,11 @@ export default function CompetencePage({
   }
 
   if (tree.isError) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(tree.error)) {
+      return <NotFoundState backHref={`/classes/${classId}`} backLabel={tnav('classes')} />;
+    }
     return (
       <div className="mx-auto max-w-4xl">
         {header}

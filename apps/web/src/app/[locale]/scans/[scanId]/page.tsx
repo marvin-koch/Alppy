@@ -45,7 +45,7 @@ import {
   useSheet,
 } from '@/lib/api/queries';
 import { Link, useRouter } from '@/i18n/navigation';
-import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { RevealNames } from '@/components/RevealNames';
@@ -54,6 +54,7 @@ import { useFormatters } from '@/lib/format';
 import { useDiscretion } from '@/lib/discreet';
 import { studentName } from '@/lib/studentName';
 import { pupilLabel } from '@/lib/pupil-label';
+import { NotFoundState } from '@/components/NotFoundState';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -372,6 +373,11 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
   if (scan.isLoading) return <LoadingState shape="list" label={tc('loading')} rows={6} />;
   if (scan.isError || !scan.data) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(scan.error)) {
+      return <NotFoundState backHref={'/scans'} backLabel={tnav('scans')} />;
+    }
     return (
       <ErrorState
         title={te('title')}
@@ -731,6 +737,28 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
 /* ------------------------------------------------------------------ page --- */
 
+/**
+ * How many times each page card has rendered, when a test is counting.
+ *
+ * The same seam, and the same reason, as `__alppyMockCalls` in the fixture layer:
+ * a wasted render is invisible from outside. React reconciles an identical render
+ * to zero DOM mutations, so a mutation observer — the obvious way to measure this,
+ * and the one tried first — cannot tell thirty cards re-rendering from one, which
+ * is exactly the difference `memo` is here to make. Audit 05 §12.2 says plainly
+ * that G11 was reasoned and never measured; this is what lets it be.
+ *
+ * Costs nothing when nobody is counting: the global is undefined in every build,
+ * only `scan-review-perf.spec.ts` sets it, and nothing in the app reads it.
+ */
+declare global {
+  var __alppyRenderCounts: Record<string, number> | undefined;
+}
+
+function countRender(id: string): void {
+  const counts = globalThis.__alppyRenderCounts;
+  if (counts) counts[id] = (counts[id] ?? 0) + 1;
+}
+
 const PageCard = memo(function PageCard({
   scanId,
   page,
@@ -773,6 +801,7 @@ const PageCard = memo(function PageCard({
   const discard = useDiscardScanPage(scanId);
   const [choice, setChoice] = useState<Uuid | ''>('');
 
+  countRender(page.id);
   const marks = useMemo(() => toScanMarks(page.detections), [page.detections]);
 
   /**

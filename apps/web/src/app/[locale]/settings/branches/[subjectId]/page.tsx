@@ -6,7 +6,7 @@ import { use, useState } from 'react';
 
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { LockedValue } from '@/components/LockedValue';
-import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import {
   useChapters,
   useDeleteChapter,
@@ -17,6 +17,7 @@ import {
   useUpdateSource,
 } from '@/lib/api/queries';
 import type { ChapterOut, SourceOut, Uuid } from '@/lib/api/types';
+import { NotFoundState } from '@/components/NotFoundState';
 
 /**
  * One Branch's Themes and textbooks — the two things a teacher curates.
@@ -33,6 +34,7 @@ import type { ChapterOut, SourceOut, Uuid } from '@/lib/api/types';
 export default function BranchSettingsPage({ params }: { params: Promise<{ subjectId: string }> }) {
   const { subjectId } = use(params);
   const t = useTranslations('settings');
+  const tnav = useTranslations('nav');
   const tc = useTranslations('common');
   const tcode = useTranslations('errors.code');
   const te = useTranslations('errors.generic');
@@ -69,6 +71,11 @@ export default function BranchSettingsPage({ params }: { params: Promise<{ subje
     return <LoadingState shape="list" label={tc('loading')} rows={4} />;
   }
   if (chapters.isError) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(chapters.error)) {
+      return <NotFoundState backHref={"/settings"} backLabel={tnav('settings')} />;
+    }
     return (
       <ErrorState
         title={te('title')}

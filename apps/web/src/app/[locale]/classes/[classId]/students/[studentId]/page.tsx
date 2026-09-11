@@ -26,7 +26,8 @@ import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
-import { requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, requestIdOf } from '@/lib/api/error-message';
+import { NotFoundState } from '@/components/NotFoundState';
 
 /** The same thresholds as docs/mastery-model.md §2, for the overall ring. */
 function bandOf(score: number): MasteryBand {
@@ -43,6 +44,7 @@ export default function StudentPage({
 }) {
   const { classId, studentId } = use(params);
   const t = useTranslations('student');
+  const tnav = useTranslations('nav');
   const { hideNames } = useDiscretion();
   const tm = useTranslations('mastery');
   const tt = useTranslations('tree');
@@ -93,6 +95,11 @@ export default function StudentPage({
 
   if (isLoading || tree.isLoading) return <LoadingState shape="profile" label={tc('loading')} />;
   if (isError || !data) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(error)) {
+      return <NotFoundState backHref={`/classes/${classId}/students`} backLabel={tnav('classes')} />;
+    }
     return (
       <ErrorState
         title={te('title')}

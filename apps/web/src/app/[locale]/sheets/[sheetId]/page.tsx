@@ -24,7 +24,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { use, useEffect, useRef, useState } from 'react';
 
 import { ApiError, API_BASE } from '@/lib/api/client';
-import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
+import { isNotFound, apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { ApiErrorBody } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { printReadiness } from '@/lib/print';
@@ -38,6 +38,7 @@ import {
   useSheets,
 } from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
+import { NotFoundState } from '@/components/NotFoundState';
 
 export default function SheetPage({ params }: { params: Promise<{ sheetId: string }> }) {
   const { sheetId } = use(params);
@@ -93,6 +94,11 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
 
   if (sheet.isLoading) return <LoadingState shape="sheet" label={tc('loading')} />;
   if (sheet.isError || !sheet.data) {
+    // A stale bookmark, a link from a colleague, an id that stopped being
+    // this teacher's: a 404 is an answer, and "réessayez" re-asks it (G26).
+    if (isNotFound(sheet.error)) {
+      return <NotFoundState backHref={"/sheets"} backLabel={tnav('sheets')} />;
+    }
     return (
       <ErrorState
         title={te('title')}

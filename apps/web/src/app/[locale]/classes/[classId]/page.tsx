@@ -23,6 +23,7 @@ import { CellDrillDown } from '@/components/CellDrillDown';
 import { CurriculumTree } from '@/components/CurriculumTree';
 import { Link, useRouter } from '@/i18n/navigation';
 import { isNotFound, requestIdOf } from '@/lib/api/error-message';
+import { NotFoundState } from '@/components/NotFoundState';
 import type { MatrixSort, Uuid } from '@/lib/api/types';
 import { useClass, useClassMastery, useCurriculumTree, useStudents } from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
@@ -39,7 +40,6 @@ export default function ClassPage({ params }: { params: Promise<{ classId: strin
   const tm = useTranslations('mastery');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
-  const tcode = useTranslations('errors.code');
   const tnav = useTranslations('nav');
   const ta = useTranslations('a11y');
   const tstud = useTranslations('students');
@@ -122,19 +122,7 @@ export default function ClassPage({ params }: { params: Promise<{ classId: strin
 
   if (isError) {
     return gone ? (
-      // No retry: the way forward is the class list, not this address again.
-      // And no request id either — a 404 is not a malfunction to report, it is an
-      // answer. Reporting it would send a teacher to support about a class that
-      // is simply no longer theirs.
-      <ErrorState
-        title={te('title')}
-        description={tcode('not_found')}
-        action={
-          <Link href="/classes" className="ard-btn" data-variant="primary">
-            {tnav('classes')}
-          </Link>
-        }
-      />
+      <NotFoundState backHref="/classes" backLabel={tnav('classes')} />
     ) : (
       <ErrorState
         title={te('title')}
