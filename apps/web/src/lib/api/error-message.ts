@@ -24,9 +24,7 @@ type Translate = (key: string, values?: Record<string, string | number>) => stri
 export function apiErrorMessage(error: unknown, t: Translate): string {
   const code = error instanceof ApiError ? error.code : null;
   return (
-    (code === null ? null : translate(t, code, valuesFor(error))) ??
-    translate(t, 'fallback') ??
-    ''
+    (code === null ? null : translate(t, code, valuesFor(error))) ?? translate(t, 'fallback') ?? ''
   );
 }
 
@@ -55,4 +53,17 @@ function translate(
   } catch {
     return null;
   }
+}
+
+/**
+ * The failing request's id, when the failure carries one.
+ *
+ * Separate from `apiErrorMessage` because it answers a different question and is
+ * addressed to a different reader: the sentence is for the teacher, this is for
+ * whoever they report the problem to. `api/errors.py` puts it on every envelope
+ * and `client.ts` has always parsed it; until now only the `global-error`
+ * boundary rendered it, which is the boundary least likely to fire (G18).
+ */
+export function requestIdOf(error: unknown): string | null {
+  return error instanceof ApiError ? error.requestId : null;
 }

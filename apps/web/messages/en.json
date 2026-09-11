@@ -413,7 +413,11 @@
     "retakeHelp": "The new photo replaces this one in the same pile.",
     "retakeCamera": "Photograph the page",
     "retakeWait": "Wait until the pile has finished being read before retaking a page.",
-    "reopenConfirm": "Confirm: withdraw {count, plural, one {# student's} other {# students'}} results"
+    "reopenConfirm": "Confirm: withdraw {count, plural, one {# student's} other {# students'}} results",
+    "pageBroken": {
+      "title": "Page {page} could not be displayed.",
+      "body": "The other pages in this pile are still correctable. Reload, or photograph this page again."
+    }
   },
   "adaptive": {
     "addExercise": "Add an exercise",
@@ -452,6 +456,9 @@
     },
     "exporting": "Exporting…",
     "failureHint": "These students have shorter sheets. Everything else was exported normally.",
+    "retryStudent": "Try again for this pupil",
+    "retryingStudent": "Trying again…",
+    "retryStudentFailed": "The retry failed. Try again, or prepare the whole class afresh.",
     "failureIncomplete": "{uid}: {produced} of {requested} generated exercises were produced.",
     "failurePiiGate": "{uid}: the prompt was blocked before leaving Alppy, so nothing was generated.",
     "failureProvider": "{uid}: the AI provider could not be reached.",
@@ -930,7 +937,8 @@
     "delete": "Delete",
     "uid": "Identifier",
     "addOne": "Add one pupil",
-    "addOneHelp": "A single pupil, without pasting a list. Their number follows the last one given."
+    "addOneHelp": "A single pupil, without pasting a list. Their number follows the last one given.",
+    "rosterHandoff": "The class was created, but the list could not be saved. Nothing is lost — it is below, send it again."
   },
   "teaching": {
     "title": "Who teaches what",

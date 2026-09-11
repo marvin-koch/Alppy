@@ -63,7 +63,8 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(
   const controlId = id ?? `${generated}-control`;
   const helpId = `${generated}-help`;
   const errorId = `${generated}-error`;
-  const describedBy = [help ? helpId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
+  const describedBy =
+    [help ? helpId : null, error ? errorId : null].filter(Boolean).join(' ') || undefined;
   const invalid = Boolean(error);
 
   const labelNode = (
@@ -100,8 +101,18 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(
           {help}
         </p>
       ) : null}
+      {/* `role="alert"` once, centrally, so every form in the product announces
+          its errors rather than each screen remembering to (G20). A validation
+          message that only exists visually is a message a screen-reader user
+          never receives — they tab past a field that has silently turned red.
+          Assertive rather than polite: it is a direct answer to what the teacher
+          just typed, not background news. */}
       {error ? (
-        <p id={errorId} className="flex items-start gap-1.5 text-body-s font-bold text-danger-600">
+        <p
+          id={errorId}
+          role="alert"
+          className="flex items-start gap-1.5 text-body-s font-bold text-danger-600"
+        >
           <IconWarning size={16} className="mt-0.5" />
           <span>{error}</span>
         </p>

@@ -140,6 +140,21 @@ export default function AdaptivePage() {
   // everything about a class, and the partition is a proposal, not a verdict.
   const [moves, setMoves] = useState<Record<string, number>>({});
   const [feedbackJobId, setFeedbackJobId] = useState<Uuid | null>(null);
+  /**
+   * One pupil's plan, being built again after it failed.
+   *
+   * The failures panel listed each pupil the model could not plan for and offered
+   * nothing to do about it: the only remedy was re-proposing the whole class,
+   * which spends a provider call per pupil and throws away every group move and
+   * discard the teacher has made since (G17).
+   *
+   * Its own job chain, deliberately, rather than reusing the main one. The main
+   * chain's effect assigns `setPlan(proposal.data)` wholesale, so routing a
+   * one-pupil proposal through it would replace the entire plan with a proposal
+   * containing exactly one child.
+   */
+  const [retryFor, setRetryFor] = useState<Uuid | null>(null);
+  const [retryJobId, setRetryJobId] = useState<Uuid | null>(null);
   // The planning runs in the worker, so the screen holds a job id and reads the
   // proposal back once it lands — the same shape as the feedback and export
   // chains further down this file.
@@ -265,6 +280,48 @@ export default function AdaptivePage() {
     (feedbackJobId != null &&
       feedbackJob.data?.status !== 'succeeded' &&
       feedbackJob.data?.status !== 'failed');
+  const retryJob = useJob(retryJobId);
+  const retryProposal = useAdaptiveProposal(
+    retryJob.data?.status === 'succeeded' ? retryJobId : null,
+  );
+  const retryFailed = retryJob.data?.status === 'failed' || propose.isError;
+
+  /**
+   * Merge one pupil's fresh plan into the working copy.
+   *
+   * Merged, never assigned: everything else on screen — the other pupils' plans,
+   * the groups, the teacher's moves and discards — has to survive a retry that
+   * concerns one child. Replaced in place when they already had an entry, appended
+   * when they did not, which is the usual case since a failure means nothing was
+   * produced for them.
+   */
+  useEffect(() => {
+    const fresh = retryProposal.data;
+    const student = retryFor;
+    if (!fresh || !student) return;
+    setPlan((current) => {
+      if (!current) return current;
+      const incoming = fresh.plans.find((p) => p.student_id === student);
+      // It can fail again, and saying so beats silently dropping the row.
+      const stillFailed = fresh.failures.find((f) => f.student_id === student);
+      const had = current.plans.some((p) => p.student_id === student);
+      return {
+        ...current,
+        plans: incoming
+          ? had
+            ? current.plans.map((p) => (p.student_id === student ? incoming : p))
+            : [...current.plans, incoming]
+          : current.plans,
+        failures: [
+          ...current.failures.filter((f) => f.student_id !== student),
+          ...(stillFailed ? [stillFailed] : []),
+        ],
+      };
+    });
+    setRetryFor(null);
+    setRetryJobId(null);
+  }, [retryProposal.data, retryFor]);
+
   const feedback = useFeedback(sourceSheetId || null, writing);
   const approve = useApproveAdaptive();
   const discard = useDiscardAdaptive();
@@ -406,6 +463,33 @@ export default function AdaptivePage() {
   }
 
   /* ------------------------------------------------------------- actions */
+  /** Ask for one pupil's plan again, on its own job. */
+  function retryStudent(studentId: Uuid) {
+    setRetryFor(studentId);
+    propose.mutate(
+      {
+        class_id: classId,
+        subject_id: subjectId,
+        // The whole point: scoped to one child. `student_ids` has been on the
+        // request type all along and nothing ever sent a non-empty one.
+        student_ids: [studentId],
+        items_per_student: itemsPerStudent,
+        allow_generation: allowGeneration,
+        // Never group a retry: grouping partitions a CLASS, and a partition of one
+        // pupil is not a partition. The pupil keeps whatever group the teacher
+        // already put them in — `moves` is keyed by uid and is untouched by this.
+        group: false,
+        n_groups: null,
+        llm_grouping: false,
+        source_sheet_id: sourceSheetId || null,
+      },
+      {
+        onSuccess: (job) => setRetryJobId(job.id),
+        onError: () => setRetryFor(null),
+      },
+    );
+  }
+
   function replaceProposal(replacedId: Uuid, replacement: ExerciseProposal | null) {
     setPlan((current) => {
       if (!current) return current;
@@ -932,13 +1016,35 @@ export default function AdaptivePage() {
                 <IconWarning aria-hidden />
                 {t('failuresTitle', { count: failures.length })}
               </p>
-              <ul className="mt-2 flex list-none flex-col gap-1 p-0 text-body-s">
+              <ul className="mt-2 flex list-none flex-col gap-2 p-0 text-body-s">
                 {failures.map((failure) => (
-                  <li key={`${failure.student_uid}-${failure.reason}`}>
-                    {failureLine(t, failure)}
+                  <li
+                    key={`${failure.student_uid}-${failure.reason}`}
+                    className="flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <span className="min-w-0">{failureLine(t, failure)}</span>
+                    {/* One pupil, one retry (G17). Re-proposing the whole class
+                        is a provider call per child and discards every group move
+                        and discard made since; this asks only for the pupil who
+                        failed and merges the answer in. */}
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={retryFor === failure.student_id}
+                      busyLabel={t('retryingStudent')}
+                      disabled={retryFor !== null}
+                      onClick={() => retryStudent(failure.student_id)}
+                    >
+                      {t('retryStudent')}
+                    </Button>
                   </li>
                 ))}
               </ul>
+              {retryFailed ? (
+                <p className="mt-2 text-body-s text-danger-600" role="alert">
+                  {t('retryStudentFailed')}
+                </p>
+              ) : null}
               <p className="mt-2 text-body-s text-ink-500">{t('failureHint')}</p>
             </Panel>
           ) : null}

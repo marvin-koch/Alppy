@@ -9,6 +9,7 @@ import {
   Checkbox,
   ConfidenceBar,
   EmptyState,
+  ErrorBoundary,
   ErrorState,
   Field,
   FileDrop,
@@ -648,27 +649,59 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
       <div className="flex flex-col gap-4">
         {visiblePages.map((page) => (
-          <PageCard
+          /* One bad page is one bad page (G22). The app had a single boundary at
+             the locale segment, so a detection with a shape nobody anticipated
+             threw away all thirty pages of a class's corrected work and replaced
+             them with a generic apology. Wrapped per page, the other
+             twenty-nine stay correctable and this one can be discarded or
+             retaken — which is a problem a teacher can actually work around. */
+          <ErrorBoundary
             key={page.id}
-            scanId={scanId}
-            page={page}
-            confirmed={confirmed}
-            processing={processing}
-            // Resolved per page rather than passed whole. `selected` changes on
-            // every `N` and every click, and handing the raw value to all thirty
-            // cards re-rendered all thirty of them — roughly a thousand overlay
-            // buttons — to move one highlight. Twenty-nine of the thirty now get
-            // the same `null` they had before and the memo holds (G11).
-            selectedOnThisPage={
-              selected !== null && page.detections.some((d) => d.id === selected) ? selected : null
-            }
-            onSelect={setSelected}
-            registerRow={registerRow}
-            onCorrect={submitCorrection}
-            pendingCorrections={pendingCorrections}
-            unsavedCorrections={unsavedCorrections}
-            students={students}
-          />
+            label={`ScanPageCard:${page.id}`}
+            fallback={(reset) => (
+              <Card>
+                <p className="text-body-s font-bold text-danger-600">
+                  {t('pageBroken.title', { page: page.page_index + 1 })}
+                </p>
+                <p className="mt-1 text-body-s text-ink-700">{t('pageBroken.body')}</p>
+                {/* Refetch first, THEN reset: the cause is almost always the data
+                    this card was handed, so clearing the boundary without new
+                    data just throws again. */}
+                <Button
+                  className="mt-2"
+                  size="sm"
+                  onClick={() => {
+                    void scan.refetch().finally(reset);
+                  }}
+                >
+                  {tc('retry')}
+                </Button>
+              </Card>
+            )}
+          >
+            <PageCard
+              scanId={scanId}
+              page={page}
+              confirmed={confirmed}
+              processing={processing}
+              // Resolved per page rather than passed whole. `selected` changes on
+              // every `N` and every click, and handing the raw value to all thirty
+              // cards re-rendered all thirty of them — roughly a thousand overlay
+              // buttons — to move one highlight. Twenty-nine of the thirty now get
+              // the same `null` they had before and the memo holds (G11).
+              selectedOnThisPage={
+                selected !== null && page.detections.some((d) => d.id === selected)
+                  ? selected
+                  : null
+              }
+              onSelect={setSelected}
+              registerRow={registerRow}
+              onCorrect={submitCorrection}
+              pendingCorrections={pendingCorrections}
+              unsavedCorrections={unsavedCorrections}
+              students={students}
+            />
+          </ErrorBoundary>
         ))}
       </div>
     </div>

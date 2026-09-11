@@ -20,6 +20,7 @@ import { useAddStudents, useClass, useStudents } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { Uuid } from '@/lib/api/types';
 import { useDiscretion } from '@/lib/discreet';
+import { takeRoster } from '@/lib/roster-handoff';
 
 /**
  * Paste more pupils into a class that already exists.
@@ -30,11 +31,7 @@ import { useDiscretion } from '@/lib/discreet';
  * silent renumber — student numbers are printed on paper that may already be
  * on the desk.
  */
-export default function RosterPage({
-  params,
-}: {
-  params: Promise<{ classId: string }>;
-}) {
+export default function RosterPage({ params }: { params: Promise<{ classId: string }> }) {
   const { classId } = use(params);
   const t = useTranslations('classes');
   const { hideNames } = useDiscretion();
@@ -48,7 +45,14 @@ export default function RosterPage({
   const existing = useStudents(classId);
   const addStudents = useAddStudents();
 
-  const [roster, setRoster] = useState('');
+  // Pre-filled when the create-class screen got the class in but not the roster
+  // (G16). Read in the initialiser rather than an effect, so the textarea is
+  // never briefly empty and nothing overwrites what the teacher has started
+  // typing. `takeRoster` clears it, so a reload does not resurrect a list already
+  // dealt with.
+  const [roster, setRoster] = useState(() => takeRoster(classId) ?? '');
+  /** True when this screen was reached by that handoff, so it can say why. */
+  const [handedOff] = useState(() => roster !== '');
   const [editing, setEditing] = useState<string | null>(null);
   const [oneFirst, setOneFirst] = useState('');
   const [oneLast, setOneLast] = useState('');
@@ -102,9 +106,20 @@ export default function RosterPage({
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-1">{tstud('heading', { code: klass.data?.code ?? '' })}</h1>
-      <p className="mb-6 text-ink-500">
-        {tstud('count', { count: existing.data?.length ?? 0 })}
-      </p>
+      <p className="mb-2 text-ink-500">{tstud('count', { count: existing.data?.length ?? 0 })}</p>
+
+      {/* Arrived here because the class was created and the roster post was not
+          (G16). Said plainly: the class exists, nothing was lost, and the list is
+          already in the box below waiting to be sent again. Without this the
+          teacher lands on an unfamiliar screen with their names mysteriously
+          pre-filled and no idea which half succeeded. */}
+      {handedOff ? (
+        <p className="mb-6 rounded-sm bg-warn-100 p-3 text-body-s text-warn-700" role="status">
+          {tstud('rosterHandoff')}
+        </p>
+      ) : (
+        <div className="mb-6" />
+      )}
 
       {/* The roster is also where a teacher fixes a misspelt name or removes a
           pupil who left. Both were unreachable: the paste screen could only
@@ -229,7 +244,6 @@ export default function RosterPage({
           <Link href={`/classes/${classId}`}>{t('cancel')}</Link>
         </div>
       </form>
-
     </div>
   );
 }

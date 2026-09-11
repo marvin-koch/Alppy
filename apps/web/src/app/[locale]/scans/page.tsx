@@ -1,15 +1,9 @@
 'use client';
 
-import {
-  Badge,
-  Button,
-  Card,
-  EmptyState,
-  ErrorState,
-  IlloTray,
-  LoadingState,
-} from '@alppy/ui';
+import { Badge, Button, Card, EmptyState, ErrorState, IlloTray, LoadingState } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
+
+import { requestIdOf } from '@/lib/api/error-message';
 
 import { Link } from '@/i18n/navigation';
 import { useScans, useSheets } from '@/lib/api/queries';
@@ -34,7 +28,7 @@ export default function ScansIndexPage() {
   const fmt = useFormatters();
   const { classId, subjectId } = useScope();
 
-  const { data, isLoading, isError, refetch } = useScans();
+  const { data, isLoading, isError, error, refetch } = useScans();
   // Scans carry a sheet, and a sheet carries a class AND a Branch; scoping the
   // list means resolving that hop here.
   //
@@ -50,6 +44,7 @@ export default function ScansIndexPage() {
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(error)}
         action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
       />
     );

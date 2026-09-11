@@ -6,6 +6,19 @@ export interface ErrorStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 't
   title: ReactNode;
   description?: ReactNode;
   /**
+   * The failing request's id, for a teacher to read out when they report this.
+   *
+   * `ApiError.requestId` was parsed off every failed response and displayed
+   * nowhere except the `global-error` boundary, which is the least likely of all
+   * of them to fire (G18). A support conversation that starts with an id is a
+   * different conversation from one that starts with "it said it did not work".
+   *
+   * Rendered small, monospace and last: it is the only string on this component
+   * that is not addressed to the teacher, so it must not compete with the sentence
+   * that is.
+   */
+  requestId?: string | null;
+  /**
    * Technical detail the teacher can quote in a support message. Rendered as
    * data (`[data-transcription]` → mono) because that is what it is.
    */
@@ -18,7 +31,18 @@ export interface ErrorStateProps extends Omit<HTMLAttributes<HTMLDivElement>, 't
 
 /** Every screen ships one. Colour is never the message: the icon and the text are. */
 export const ErrorState = forwardRef<HTMLDivElement, ErrorStateProps>(function ErrorState(
-  { title, description, details, action, secondaryAction, announce = true, className, children, ...rest },
+  {
+    title,
+    description,
+    details,
+    requestId,
+    action,
+    secondaryAction,
+    announce = true,
+    className,
+    children,
+    ...rest
+  },
   ref,
 ) {
   return (
@@ -43,6 +67,11 @@ export const ErrorState = forwardRef<HTMLDivElement, ErrorStateProps>(function E
         >
           {details}
         </pre>
+      ) : null}
+      {requestId ? (
+        <p className="mono text-body-s text-ink-500" data-request-id={requestId}>
+          {requestId}
+        </p>
       ) : null}
       {children}
       {action || secondaryAction ? (

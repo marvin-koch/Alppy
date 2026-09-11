@@ -7,6 +7,7 @@ import { useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
 import { useAddStudents, useCreateClass } from '@/lib/api/queries';
+import { stashRoster } from '@/lib/roster-handoff';
 import { apiErrorMessage } from '@/lib/api/error-message';
 
 /**
@@ -32,6 +33,17 @@ export default function NewClassPage() {
   const [label, setLabel] = useState('');
   const [roster, setRoster] = useState('');
   const [error, setError] = useState<string | null>(null);
+  /**
+   * Whether the code field has been left once.
+   *
+   * Validation fired and cleared on every keystroke, so typing `7B` flashed
+   * "code invalide" at `7` and withdrew it at `B` — the form told the teacher
+   * they were wrong while they were still halfway through being right (G20).
+   * The standard pattern: validate on blur and on submit, and only keep
+   * validating on change once the field has been left. So a first attempt is
+   * judged when it is finished, and a correction gets live feedback.
+   */
+  const [codeTouched, setCodeTouched] = useState(false);
 
   const createClass = useCreateClass();
   const addStudents = useAddStudents();
@@ -51,6 +63,10 @@ export default function NewClassPage() {
     event.preventDefault();
     setError(null);
     if (!codeValid) {
+      // Submitting counts as leaving it: the field has to show its own error too,
+      // not only the form-level one, or the teacher is told something is wrong
+      // without being told WHICH box.
+      setCodeTouched(true);
       setError(t('codeInvalid'));
       return;
     }
@@ -60,18 +76,30 @@ export default function NewClassPage() {
         label: label.trim() || null,
       });
       if (parsed.length > 0) {
-        await addStudents.mutateAsync({
-          classId: created.id,
-          body: {
-            students: parsed.map((s) => ({
-              first_name: s.firstName,
-              last_name: s.lastName,
-            })),
-          },
-        });
+        try {
+          await addStudents.mutateAsync({
+            classId: created.id,
+            body: {
+              students: parsed.map((s) => ({
+                first_name: s.firstName,
+                last_name: s.lastName,
+              })),
+            },
+          });
+        } catch {
+          // The class EXISTS now, so this screen is the wrong place to recover:
+          // resubmitting it would 409 on the code, and the only copy of the
+          // pasted roster is in a textarea the teacher is about to lose (G16).
+          // The roster screen handles a failed post properly, because there the
+          // class already exists — so go there, carrying the text.
+          stashRoster(created.id, roster);
+          router.push(`/classes/${created.id}/roster`);
+          return;
+        }
       }
       router.push(`/classes/${created.id}`);
     } catch (cause) {
+      // Only the class create can reach here now, and that one IS safe to retry.
       setError(apiErrorMessage(cause, tcode));
     }
   }
@@ -86,11 +114,12 @@ export default function NewClassPage() {
             <Field
               label={t('code')}
               help={t('createHelp')}
-              error={code !== '' && !codeValid ? t('codeInvalid') : undefined}
+              error={codeTouched && code !== '' && !codeValid ? t('codeInvalid') : undefined}
             >
               <Input
                 value={code}
                 onChange={(event) => setCode(event.currentTarget.value)}
+                onBlur={() => setCodeTouched(true)}
                 placeholder="7B"
                 autoComplete="off"
                 aria-invalid={code !== '' && !codeValid}

@@ -16,6 +16,7 @@ import { useLocale, useTranslations } from 'next-intl';
 
 import { Link } from '@/i18n/navigation';
 import { useHome } from '@/lib/api/queries';
+import { requestIdOf } from '@/lib/api/error-message';
 import { useFormatters } from '@/lib/format';
 import { useBandLabels } from '@/lib/bands';
 
@@ -27,7 +28,7 @@ export default function HomePage() {
   const bandLabels = useBandLabels();
   const tstud = useTranslations('students');
   const fmt = useFormatters();
-  const { data, isLoading, isError, refetch } = useHome();
+  const { data, isLoading, isError, error, refetch } = useHome();
 
   if (isLoading) {
     return <LoadingState shape="cards" label={tc('loading')} rows={4} />;
@@ -38,6 +39,7 @@ export default function HomePage() {
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(error)}
         action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
       />
     );
@@ -51,9 +53,7 @@ export default function HomePage() {
       <header className="mb-6">
         <h1>{t('title')}</h1>
         {data?.teacher ? (
-          <p className="mt-1 text-ink-500">
-            {t('greeting', { name: data.teacher.first_name })}
-          </p>
+          <p className="mt-1 text-ink-500">{t('greeting', { name: data.teacher.first_name })}</p>
         ) : null}
 
         {/* The subjects the teacher teaches. The API has always returned these

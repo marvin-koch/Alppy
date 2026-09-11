@@ -413,7 +413,11 @@
     "retakeHelp": "La nouvelle photo remplace celle-ci dans la même pile.",
     "retakeCamera": "Photographier la page",
     "retakeWait": "Attendez la fin de la lecture de la pile avant de reprendre une page.",
-    "reopenConfirm": "Confirmer : retirer les résultats de {count, plural, one {# élève} other {# élèves}}"
+    "reopenConfirm": "Confirmer : retirer les résultats de {count, plural, one {# élève} other {# élèves}}",
+    "pageBroken": {
+      "title": "La page {page} n'a pas pu s'afficher.",
+      "body": "Les autres pages de cette pile restent corrigeables. Rechargez, ou reprenez cette page en photo."
+    }
   },
   "adaptive": {
     "addExercise": "Ajouter un exercice",
@@ -452,6 +456,9 @@
     },
     "exporting": "Export…",
     "failureHint": "Ces élèves ont une fiche plus courte. Tout le reste a été exporté normalement.",
+    "retryStudent": "Réessayer pour cet élève",
+    "retryingStudent": "Nouvelle tentative…",
+    "retryStudentFailed": "La nouvelle tentative a échoué. Réessayez, ou préparez à nouveau toute la classe.",
     "failureIncomplete": "{uid} : {produced} exercices générés sur {requested} demandés.",
     "failurePiiGate": "{uid} : la requête a été bloquée avant de quitter Alppy, rien n'a été généré.",
     "failureProvider": "{uid} : le fournisseur d'IA est injoignable.",
@@ -930,7 +937,8 @@
     "delete": "Supprimer",
     "uid": "Identifiant",
     "addOne": "Ajouter un élève",
-    "addOneHelp": "Un seul élève, sans coller de liste. Son numéro suit le dernier attribué."
+    "addOneHelp": "Un seul élève, sans coller de liste. Son numéro suit le dernier attribué.",
+    "rosterHandoff": "La classe a bien été créée, mais la liste n'a pas pu être enregistrée. Rien n'est perdu : elle est ci-dessous, renvoyez-la."
   },
   "teaching": {
     "title": "Qui enseigne quoi",

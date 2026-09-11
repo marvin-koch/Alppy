@@ -413,7 +413,11 @@
     "retakeHelp": "Das neue Foto ersetzt dieses im selben Stapel.",
     "retakeCamera": "Seite fotografieren",
     "retakeWait": "Warten Sie, bis der Stapel fertig gelesen ist, bevor Sie eine Seite neu aufnehmen.",
-    "reopenConfirm": "Bestätigen: Ergebnisse von {count, plural, one {# Lernenden} other {# Lernenden}} zurückziehen"
+    "reopenConfirm": "Bestätigen: Ergebnisse von {count, plural, one {# Lernenden} other {# Lernenden}} zurückziehen",
+    "pageBroken": {
+      "title": "Seite {page} konnte nicht angezeigt werden.",
+      "body": "Die übrigen Seiten dieses Stapels bleiben korrigierbar. Laden Sie neu oder fotografieren Sie diese Seite erneut."
+    }
   },
   "adaptive": {
     "addExercise": "Aufgabe hinzufügen",
@@ -452,6 +456,9 @@
     },
     "exporting": "Export läuft…",
     "failureHint": "Diese Lernenden erhalten ein kürzeres Blatt. Alles Übrige wurde normal exportiert.",
+    "retryStudent": "Für diese Schülerin/diesen Schüler erneut versuchen",
+    "retryingStudent": "Neuer Versuch …",
+    "retryStudentFailed": "Der neue Versuch ist fehlgeschlagen. Versuchen Sie es erneut oder bereiten Sie die ganze Klasse neu vor.",
     "failureIncomplete": "{uid}: {produced} von {requested} erzeugten Aufgaben wurden geliefert.",
     "failurePiiGate": "{uid}: Die Anfrage wurde vor dem Verlassen von Alppy blockiert, es wurde nichts erzeugt.",
     "failureProvider": "{uid}: Der KI-Anbieter war nicht erreichbar.",
@@ -930,7 +937,8 @@
     "delete": "Löschen",
     "uid": "Kennung",
     "addOne": "Eine Schülerin hinzufügen",
-    "addOneHelp": "Nur eine Person, ohne Liste. Die Nummer folgt auf die zuletzt vergebene."
+    "addOneHelp": "Nur eine Person, ohne Liste. Die Nummer folgt auf die zuletzt vergebene.",
+    "rosterHandoff": "Die Klasse wurde erstellt, die Liste konnte aber nicht gespeichert werden. Nichts ist verloren – sie steht unten, senden Sie sie erneut."
   },
   "teaching": {
     "title": "Wer unterrichtet was",
