@@ -1024,6 +1024,7 @@
     "revealedWarning": "Names are visible. They will be hidden again when you leave this page.",
     "toggled": "Discreet mode on.",
     "untoggled": "Discreet mode off.",
-    "shortcutHint": "Shift + D"
+    "shortcutHint": "Shift + D",
+    "nameHidden": "Name hidden"
   }
 }

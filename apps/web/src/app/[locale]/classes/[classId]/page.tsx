@@ -22,13 +22,9 @@ import { use, useEffect, useMemo, useState } from 'react';
 import { CellDrillDown } from '@/components/CellDrillDown';
 import { CurriculumTree } from '@/components/CurriculumTree';
 import { Link, useRouter } from '@/i18n/navigation';
+import { isNotFound, requestIdOf } from '@/lib/api/error-message';
 import type { MatrixSort, Uuid } from '@/lib/api/types';
-import {
-  useClass,
-  useClassMastery,
-  useCurriculumTree,
-  useStudents,
-} from '@/lib/api/queries';
+import { useClass, useClassMastery, useCurriculumTree, useStudents } from '@/lib/api/queries';
 import { useScope } from '@/lib/scope';
 import { useClassSubject } from '@/lib/use-class-subject';
 import { useBandLabels, useBandHelp } from '@/lib/bands';
@@ -36,17 +32,15 @@ import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentNameParts } from '@/lib/studentName';
 
-export default function ClassPage({
-  params,
-}: {
-  params: Promise<{ classId: string }>;
-}) {
+export default function ClassPage({ params }: { params: Promise<{ classId: string }> }) {
   const { classId } = use(params);
   const t = useTranslations('classes');
   const { hideNames } = useDiscretion();
   const tm = useTranslations('mastery');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
+  const tcode = useTranslations('errors.code');
+  const tnav = useTranslations('nav');
   const ta = useTranslations('a11y');
   const tstud = useTranslations('students');
   const tteach = useTranslations('teaching');
@@ -74,8 +68,7 @@ export default function ClassPage({
   // resolved to "the first one" the way class and subject are — see scope.tsx.
   const { competencyId, chapterId, setCompetency, setChapter } = scope;
   const tree = useCurriculumTree(classId, subjectId ? { subjectId } : {});
-  const branch =
-    tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
+  const branch = tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
 
   // A stale id from the URL degrades to "everything", never to an arbitrary
   // node. `scope` deliberately does not validate these — it has no tree — so
@@ -120,14 +113,30 @@ export default function ClassPage({
 
   const isLoading = klass.isLoading || students.isLoading || mastery.isLoading;
   const isError = klass.isError || students.isError || mastery.isError;
+  // A class a teacher no longer teaches, or one that was deleted, answers 404 —
+  // and "réessayez" re-asks a question already answered (G26). The catalogue has
+  // carried the sentence all along; nothing switched on the status.
+  const gone = isNotFound(klass.error) || isNotFound(students.error) || isNotFound(mastery.error);
 
   if (isLoading) return <LoadingState shape="matrix" label={tc('loading')} rows={8} columns={7} />;
 
   if (isError) {
-    return (
+    return gone ? (
+      // No retry: the way forward is the class list, not this address again.
+      <ErrorState
+        title={te('title')}
+        description={tcode('not_found')}
+        action={
+          <Link href="/classes" className="ard-btn" data-variant="primary">
+            {tnav('classes')}
+          </Link>
+        }
+      />
+    ) : (
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(klass.error ?? students.error ?? mastery.error)}
         action={
           <Button
             onClick={() => {
@@ -154,9 +163,7 @@ export default function ClassPage({
 
   const crumbLabel = (labels: Record<string, string> | undefined, fallback: string) =>
     labels?.[locale] ?? labels?.fr ?? fallback;
-  const crumbCompetence = branch?.competences.find(
-    (c) => c.competency_id === competencyId,
-  );
+  const crumbCompetence = branch?.competences.find((c) => c.competency_id === competencyId);
   const crumbTheme = (branch?.competences ?? [])
     .flatMap((c) => c.themes)
     .find((t) => t.chapter_id === chapterId);
@@ -165,13 +172,9 @@ export default function ClassPage({
   // navigating. The last crumb is where you already are and carries no href.
   const crumbs: BreadcrumbItem[] = [
     { label: klass.data?.code ?? '', key: 'class' },
-    ...(branch
-      ? [{ label: crumbLabel(branch.labels, branch.subject_key), key: 'branch' }]
-      : []),
+    ...(branch ? [{ label: crumbLabel(branch.labels, branch.subject_key), key: 'branch' }] : []),
     ...(crumbCompetence ? [{ label: crumbCompetence.code, key: 'competence' }] : []),
-    ...(crumbTheme
-      ? [{ label: crumbLabel(crumbTheme.labels, crumbTheme.key), key: 'theme' }]
-      : []),
+    ...(crumbTheme ? [{ label: crumbLabel(crumbTheme.labels, crumbTheme.key), key: 'theme' }] : []),
   ];
 
   return (
@@ -312,72 +315,72 @@ export default function ClassPage({
               />
             </div>
             <div className="min-w-0 flex-1">
-          {competencies.length > 0 ? (
-            <Card flush>
-              <MasteryMatrix
-                students={rows.map((s) => ({
-                  id: s.id,
-                  ...studentNameParts(s),
-                }))}
-                // Projector mode: the matrix is the screen most likely to be on
-                // a wall, and it puts every name beside a band saying how that
-                // child is doing. The UID keeps it readable for the teacher —
-                // it is the code on that pupil's own paper — and meaningless to
-                // the rest of the room. `formatStudentName` existed for name
-                // order; this is the same seam.
-                formatStudentName={(student) =>
-                  hideNames
-                    ? (uidOf.get(student.id) ?? '—')
-                    : `${student.firstName} ${student.lastName}`.trim()
-                }
-                competencies={competencies.map((c) => ({
-                  id: c.id,
-                  code: c.code,
-                  // Curriculum wording is authoritative in its own language;
-                  // fall back to French (the default locale) and then the code.
-                  label: c.labels?.[locale] ?? c.labels?.fr ?? c.code,
-                }))}
-                valueFor={(studentId, competencyId) =>
-                  cellIndex.get(`${studentId}:${competencyId}`)
-                }
-                bandLabels={bandLabels}
-                // The accessible name is a translated sentence, not a list
-                // joined with punctuation: the library's fallback hard-codes
-                // " · " and a French-spaced " %", which is wrong in English.
-                formatLabel={({ studentName, competencyLabel, bandLabel, score, hasScore }) =>
-                  hasScore && score !== null
-                    ? tm('cellLabel', {
-                        student: studentName,
-                        competency: competencyLabel,
-                        band: bandLabel,
-                        percent: Math.round(score * 100),
-                      })
-                    : tm('cellLabelNotAssessed', {
-                        student: studentName,
-                        competency: competencyLabel,
-                        band: bandLabel,
-                      })
-                }
-                caption={t('matrix')}
-                studentColumnLabel={t('roster')}
-                // A coloured cell must not be the only way to reach a profile:
-                // a class with nothing assessed yet has no cells at all.
-                renderStudentName={(student, name) => (
-                  <Link
-                    href={`/classes/${classId}/students/${student.id}`}
-                    className="text-ink-900 no-underline hover:underline"
-                  >
-                    {name}
-                  </Link>
-                )}
-                selectedCellId={drill ? `${drill.studentId}:${drill.competencyId}` : undefined}
-                onCellSelect={({ studentId, competencyId }) =>
-                  setDrill({ studentId: studentId as Uuid, competencyId: competencyId as Uuid })
-                }
-                bleed
-              />
-            </Card>
-          ) : null}
+              {competencies.length > 0 ? (
+                <Card flush>
+                  <MasteryMatrix
+                    students={rows.map((s) => ({
+                      id: s.id,
+                      ...studentNameParts(s),
+                    }))}
+                    // Projector mode: the matrix is the screen most likely to be on
+                    // a wall, and it puts every name beside a band saying how that
+                    // child is doing. The UID keeps it readable for the teacher —
+                    // it is the code on that pupil's own paper — and meaningless to
+                    // the rest of the room. `formatStudentName` existed for name
+                    // order; this is the same seam.
+                    formatStudentName={(student) =>
+                      hideNames
+                        ? (uidOf.get(student.id) ?? '—')
+                        : `${student.firstName} ${student.lastName}`.trim()
+                    }
+                    competencies={competencies.map((c) => ({
+                      id: c.id,
+                      code: c.code,
+                      // Curriculum wording is authoritative in its own language;
+                      // fall back to French (the default locale) and then the code.
+                      label: c.labels?.[locale] ?? c.labels?.fr ?? c.code,
+                    }))}
+                    valueFor={(studentId, competencyId) =>
+                      cellIndex.get(`${studentId}:${competencyId}`)
+                    }
+                    bandLabels={bandLabels}
+                    // The accessible name is a translated sentence, not a list
+                    // joined with punctuation: the library's fallback hard-codes
+                    // " · " and a French-spaced " %", which is wrong in English.
+                    formatLabel={({ studentName, competencyLabel, bandLabel, score, hasScore }) =>
+                      hasScore && score !== null
+                        ? tm('cellLabel', {
+                            student: studentName,
+                            competency: competencyLabel,
+                            band: bandLabel,
+                            percent: Math.round(score * 100),
+                          })
+                        : tm('cellLabelNotAssessed', {
+                            student: studentName,
+                            competency: competencyLabel,
+                            band: bandLabel,
+                          })
+                    }
+                    caption={t('matrix')}
+                    studentColumnLabel={t('roster')}
+                    // A coloured cell must not be the only way to reach a profile:
+                    // a class with nothing assessed yet has no cells at all.
+                    renderStudentName={(student, name) => (
+                      <Link
+                        href={`/classes/${classId}/students/${student.id}`}
+                        className="text-ink-900 no-underline hover:underline"
+                      >
+                        {name}
+                      </Link>
+                    )}
+                    selectedCellId={drill ? `${drill.studentId}:${drill.competencyId}` : undefined}
+                    onCellSelect={({ studentId, competencyId }) =>
+                      setDrill({ studentId: studentId as Uuid, competencyId: competencyId as Uuid })
+                    }
+                    bleed
+                  />
+                </Card>
+              ) : null}
             </div>
           </div>
 

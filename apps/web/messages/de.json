@@ -1024,6 +1024,7 @@
     "revealedWarning": "Die Namen sind sichtbar. Beim Verlassen dieser Seite werden sie wieder ausgeblendet.",
     "toggled": "Diskreter Modus aktiviert.",
     "untoggled": "Diskreter Modus deaktiviert.",
-    "shortcutHint": "Umschalt + D"
+    "shortcutHint": "Umschalt + D",
+    "nameHidden": "Name ausgeblendet"
   }
 }

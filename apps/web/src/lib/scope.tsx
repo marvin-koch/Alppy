@@ -11,6 +11,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   type ReactNode,
 } from 'react';
 
@@ -138,16 +139,17 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
   // `/classes/[classId]` names its class in the path. That is more specific
   // than a query string, so it wins — otherwise opening a class from the home
   // screen would show one class while the switcher claimed another.
-  const pathClassId =
-    typeof routeParams?.classId === 'string' ? routeParams.classId : undefined;
+  const pathClassId = typeof routeParams?.classId === 'string' ? routeParams.classId : undefined;
 
-  const stored = readStored();
-  const currentClass = resolve(
-    classes,
-    pathClassId,
-    searchParams.get('class'),
-    stored.classId,
-  );
+  // Read once, not on every render of the component wrapping the whole app (G28).
+  // `localStorage.getItem` plus a `JSON.parse` on every render of every screen is
+  // synchronous main-thread work for a value that cannot change without this
+  // component having written it — and it is the render-phase side effect that
+  // makes `scope.tsx` the first suspect whenever a hydration mismatch appears.
+  // A lazy initialiser runs it exactly once, on the client, after hydration has
+  // already agreed with the server that there was nothing stored.
+  const [stored] = useState(readStored);
+  const currentClass = resolve(classes, pathClassId, searchParams.get('class'), stored.classId);
   // The Branches this teacher takes IN THE SELECTED CLASS, in the class's own
   // order — not every Branch the school has.
   //
@@ -166,11 +168,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
       .map((id) => subjects.find((subject) => subject.id === id))
       .filter((subject): subject is SubjectOut => subject !== undefined);
   }, [currentClass, subjects]);
-  const currentSubject = resolve(
-    classSubjects,
-    searchParams.get('subject'),
-    stored.subjectId,
-  );
+  const currentSubject = resolve(classSubjects, searchParams.get('subject'), stored.subjectId);
   // The tenant, for anything that needs to key a cache or a link by it. It is
   // NOT resolved the way class and subject are: the server decides it, and a
   // `?school=` that disagreed with the cookie would be a lie the client told
@@ -258,10 +256,7 @@ export function ScopeProvider({ children }: { children: ReactNode }) {
     [pathname, router, searchParams],
   );
 
-  const setCompetency = useCallback(
-    (id: Uuid | null) => setParam('competency', id),
-    [setParam],
-  );
+  const setCompetency = useCallback((id: Uuid | null) => setParam('competency', id), [setParam]);
   const setChapter = useCallback((id: Uuid | null) => setParam('chapter', id), [setParam]);
 
   const value = useMemo<ScopeValue>(

@@ -217,8 +217,15 @@ export default function NewScanPage() {
                       they actually have while waiting. */}
                   {sending.length > 0 ? (
                     <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
-                      {sending.map((name) => (
-                        <li key={name} className="truncate text-body-s text-ink-500">
+                      {/* Keyed by position, not by name (G29). Two photographs of
+                          the same copy taken seconds apart arrive as
+                          `IMG_0042.jpg` twice from some cameras, and a duplicate
+                          key makes React drop one of the two rows — so the list
+                          that exists to reassure a teacher that all 28 files went
+                          would quietly show 27. The list is append-only within one
+                          upload and never reorders, so the index is stable. */}
+                      {sending.map((name, index) => (
+                        <li key={`${index}-${name}`} className="truncate text-body-s text-ink-500">
                           {name}
                         </li>
                       ))}

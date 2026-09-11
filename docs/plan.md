@@ -147,6 +147,14 @@ Two more exist and are not screens: a catch-all that raises `notFound()` so an
 unmatched path is answered in the teacher's own language, and `/_gallery`, the
 component workbench, which is gated on fixture mode.
 
+**`pnpm screens:check` fails if this list and the route tree disagree.** Unlike §4
+this section is not generated, and deliberately: each line says what a screen is
+*for*, which no generator can produce and which is the only reason to read the
+section. So the prose stays written and the check guards the half that drifts
+silently — the set of paths. This list had gone stale at eleven of twenty-four, and
+two audits in a row asked whether it was still the record (audit 05 open question
+7). It is; this is what keeps it so.
+
 **Entry**
 
 1. `/login`

@@ -67,3 +67,15 @@ function translate(
 export function requestIdOf(error: unknown): string | null {
   return error instanceof ApiError ? error.requestId : null;
 }
+
+/**
+ * True when the failure is a 404.
+ *
+ * A 404 on a class, a sheet or a pile is not "something went wrong, try again" —
+ * the thing is gone, or was never this teacher's, and a retry button re-asks a
+ * question that has already been answered (G26). The catalogue has carried a
+ * `not_found` sentence all along and no screen switched on it.
+ */
+export function isNotFound(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 404;
+}

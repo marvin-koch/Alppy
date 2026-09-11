@@ -71,6 +71,23 @@ test.describe('discreet mode', () => {
     await expect(page.getByText(NAME)).toHaveCount(0);
   });
 
+  /**
+   * The scan review names the pupil beside the code when the room is not watching
+   * (G24) — so it is now an identity-bearing screen and has to hide it like the
+   * rest. The code stays either way: it is what is printed on the paper.
+   */
+  test('the scan review shows the code alone, never the name', async ({ page }) => {
+    await project(page);
+    await gotoStable(page, '/fr/scans/00000000-0000-4000-8000-000000000800');
+
+    // The page card's own heading, not any text on the screen: the copy filter is
+    // a `select` whose options carry the UID too, and an `<option>` is never
+    // "visible" to Playwright.
+    const heading = page.getByRole('heading', { level: 2 }).first();
+    await expect(heading).toContainText(UID);
+    await expect(page.getByText(NAME)).toHaveCount(0);
+  });
+
   test('the results screen shows codes instead of names', async ({ page }) => {
     await project(page);
     await gotoStable(page, '/fr/results');

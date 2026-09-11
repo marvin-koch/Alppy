@@ -16,6 +16,7 @@
     "preview:cf": "turbo run preview:cf",
     "deploy:cf": "turbo run deploy:cf",
     "i18n:check": "node scripts/check-i18n.mjs",
+    "screens:check": "node scripts/check-screens.mjs",
     "format": "prettier --write \"**/*.{ts,tsx,css,json,md}\""
   },
   "devDependencies": {

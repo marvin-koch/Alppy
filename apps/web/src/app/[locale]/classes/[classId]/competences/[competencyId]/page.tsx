@@ -20,6 +20,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery, useCurriculumTree } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useClassSubject } from '@/lib/use-class-subject';
+import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
 
@@ -57,8 +58,7 @@ export default function CompetencePage({
   const students = matrix.data?.students;
 
   const branch = tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
-  const competence =
-    branch?.competences.find((c) => c.competency_id === competencyId) ?? null;
+  const competence = branch?.competences.find((c) => c.competency_id === competencyId) ?? null;
 
   const label = (labels: Record<string, string> | undefined, fallback: string) =>
     labels?.[locale] ?? labels?.fr ?? fallback;
@@ -83,7 +83,13 @@ export default function CompetencePage({
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },
     ...(branch
-      ? [{ label: label(branch.labels, branch.subject_key), href: `/classes/${classId}`, key: 'branch' }]
+      ? [
+          {
+            label: label(branch.labels, branch.subject_key),
+            href: `/classes/${classId}`,
+            key: 'branch',
+          },
+        ]
       : []),
     { label: competence?.code ?? '', key: 'competence' },
   ];
@@ -139,7 +145,11 @@ export default function CompetencePage({
           width of the page. */}
       <header className="mb-6 flex flex-col items-start gap-3">
         <ConceptTag code={competence.code} />
-        <h1>{label(competence.labels, competence.code)}</h1>
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <h1>{label(competence.labels, competence.code)}</h1>
+          {/* Only rendered when projector mode is on (G27). */}
+          <RevealNames />
+        </div>
         <div className="flex flex-wrap items-center gap-3">
           <MasteryBandTag
             band={competence.mastery.band as MasteryBand}

@@ -867,6 +867,14 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     }
     throw new ApiError(404, 'not_found', 'detection not found');
   }
+  m = match(path, /^\/scans\/([^/]+)\/students$/);
+  if (m && method === 'GET') {
+    // Who a page may be attributed to: the sheet's class, nobody else. This route
+    // had no handler at all, so in fixture mode the list came back empty — which
+    // left the page-assignment picker with no options and, once the review screen
+    // started naming the pupil beside the code (G24), nothing to name them from.
+    return fx.students;
+  }
   m = match(path, /^\/scans\/([^/]+)\/detections$/);
   if (m && method === 'GET') {
     const target = state.scans[m[1] ?? ''] ?? state.scans[fx.scan.id];

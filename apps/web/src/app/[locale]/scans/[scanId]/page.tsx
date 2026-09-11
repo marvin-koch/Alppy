@@ -48,10 +48,12 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
+import { RevealNames } from '@/components/RevealNames';
 import { badgeVariant } from '@/lib/detectionOutcome';
 import { useFormatters } from '@/lib/format';
 import { useDiscretion } from '@/lib/discreet';
 import { studentName } from '@/lib/studentName';
+import { pupilLabel } from '@/lib/pupil-label';
 
 /**
  * Below this the pipeline stops trusting itself and the item goes to the top of
@@ -344,6 +346,16 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   // "N" for the next uncertain item. Reviewing a 28-page pile means hundreds of
   // Tab presses otherwise, and the machine already knows which items are worth
   // the teacher's attention.
+  //
+  // A known conflict, deliberately left (G25): `n` is a browse-mode quick-nav key
+  // in NVDA and JAWS, so a screen-reader user in browse mode never reaches this
+  // handler — the reader consumes the keystroke first, and no amount of
+  // JavaScript can tell that it did. The remedy is not a different letter, which
+  // would only move the collision; it is that the function has a real control in
+  // the tab order. It does: the "Élément suivant" button above calls exactly this
+  // `goToNext`, and the `KeyboardHint` beside it is a hint rather than the only
+  // route. Changing the binding would cost sighted keyboard users a good shortcut
+  // and buy screen-reader users nothing they do not already have.
   useEffect(() => {
     function onKey(event: KeyboardEvent) {
       if (event.key !== 'n' && event.key !== 'N') return;
@@ -440,6 +452,11 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
             </Badge>
           </div>
           <p className="text-body-s text-ink-500">{t('reviewHelp')}</p>
+          {/* Only rendered when projector mode is on. This screen now names the
+              pupil beside the code (G24), so it needs the same local reveal every
+              other identity-bearing screen has rather than the global Shift+D
+              (G27). */}
+          <RevealNames className="mt-2" />
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {queue.length > 0 && !confirmed ? (
@@ -754,12 +771,38 @@ const PageCard = memo(function PageCard({
 
   const marks = useMemo(() => toScanMarks(page.detections), [page.detections]);
 
+  /**
+   * `7B_15 · Léa Aebischer`, or `7B_15` alone when names are hidden.
+   *
+   * The code leads because it is what is printed on the paper and what the teacher
+   * matches against the pile; the name follows as the human check. Falls back to
+   * the detected uid when the page has not been attributed to a roster row yet —
+   * the machine read a code off the paper that may not correspond to a pupil.
+   */
+  const pageStudent = page.student_id
+    ? students.find((student) => student.id === page.student_id)
+    : undefined;
+  const pageLabel =
+    pageStudent && !hideNames
+      ? `${page.detected_uid} · ${pupilLabel(pageStudent, false)}`
+      : (page.detected_uid ?? '');
+
   return (
     <Card data-discarded={page.discarded ? 'true' : undefined}>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 className="min-w-0 break-words text-h3">
           {page.detected_uid ? (
-            t('identifiedAs', { uid: page.detected_uid })
+            /* The name beside the code, when the room is not watching (G24).
+               This is the screen where a paper gets attributed to a child, and the
+               UID is the MACHINE's channel: a teacher holding the copy cannot
+               check `7B_15` against anything, but they can check "Léa Aebischer".
+               It is the one misattribution check a machine cannot make, and a
+               misread UID putting one child's marks on another's record is the
+               worst thing this screen can do.
+
+               `pupilLabel` handles the other half: in projector mode the name
+               disappears and the code stands alone, unchanged. */
+            t('identifiedAs', { uid: pageLabel })
           ) : (
             <span className="text-danger-600">{t('notIdentified')}</span>
           )}

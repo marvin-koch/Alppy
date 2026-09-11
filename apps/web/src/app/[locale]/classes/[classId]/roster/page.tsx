@@ -15,12 +15,14 @@ import { useTranslations } from 'next-intl';
 import { use, useState } from 'react';
 
 import { Link, useRouter } from '@/i18n/navigation';
+import { RevealNames } from '@/components/RevealNames';
 import { StudentEditor } from '@/components/StudentEditor';
 import { useAddStudents, useClass, useStudents } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { Uuid } from '@/lib/api/types';
 import { useDiscretion } from '@/lib/discreet';
 import { takeRoster } from '@/lib/roster-handoff';
+import { studentName } from '@/lib/studentName';
 
 /**
  * Paste more pupils into a class that already exists.
@@ -35,6 +37,7 @@ export default function RosterPage({ params }: { params: Promise<{ classId: stri
   const { classId } = use(params);
   const t = useTranslations('classes');
   const { hideNames } = useDiscretion();
+  const tdiscreet = useTranslations('discreet');
   const tc = useTranslations('common');
   const tcode = useTranslations('errors.code');
   const te = useTranslations('errors.generic');
@@ -105,7 +108,13 @@ export default function RosterPage({ params }: { params: Promise<{ classId: stri
 
   return (
     <div className="mx-auto max-w-2xl">
-      <h1 className="mb-1">{tstud('heading', { code: klass.data?.code ?? '' })}</h1>
+      <div className="mb-1 flex flex-wrap items-start justify-between gap-2">
+        <h1>{tstud('heading', { code: klass.data?.code ?? '' })}</h1>
+        {/* Only rendered when projector mode is on. The roster is the screen a
+            teacher most often needs a name on, and the global Shift+D changes the
+            mode everywhere rather than just here (G27). */}
+        <RevealNames />
+      </div>
       <p className="mb-2 text-ink-500">{tstud('count', { count: existing.data?.length ?? 0 })}</p>
 
       {/* Arrived here because the class was created and the roster post was not
@@ -154,11 +163,28 @@ export default function RosterPage({ params }: { params: Promise<{ classId: stri
                   <span className="w-20 shrink-0 font-mono text-label text-ink-500">
                     {student.uid}
                   </span>
-                  {/* The UID column to the left is always there, so in
-                      projector mode this becomes an em dash rather than a
-                      second copy of it. */}
+                  {/* The UID column to the left is always there, so in projector
+                      mode this becomes an em dash rather than a second copy of it.
+
+                      Audit 05 G30 asked for the UID here, for consistency with
+                      every other screen — but every other screen has nowhere else
+                      to put it, and this row already shows it immediately to the
+                      left. Printing it twice would be noise on the one screen a
+                      teacher scans down looking for a particular pupil.
+
+                      What the dash did get wrong is what it says to a screen
+                      reader: "7B_04, em dash" reads as a missing value rather than
+                      a withheld one. The dash is decoration now and the sentence
+                      carries the meaning. */}
                   <span className="min-w-0 flex-1 truncate font-semibold">
-                    {hideNames ? '—' : `${student.first_name} ${student.last_name}`}
+                    {hideNames ? (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span className="visually-hidden">{tdiscreet('nameHidden')}</span>
+                      </>
+                    ) : (
+                      studentName(student)
+                    )}
                   </span>
                   <Button variant="ghost" onClick={() => setEditing(student.id)}>
                     {tstud('edit')}

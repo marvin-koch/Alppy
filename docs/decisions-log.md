@@ -3159,3 +3159,54 @@ Worth naming: `Source.error` is **not** the same case and was left alone.
 docstring saying passing an exception's text through it is not allowed, so that
 field is prose written for a teacher. Its remaining fault is that the prose is
 English, which is a schema change and not a rendering one.
+
+---
+
+### D104 · Three findings answered by disagreeing with them
+
+Most of audit 05's low-severity list was straightforward. Three were not, and the
+reasoning matters more than the diffs.
+
+**The review screen names the pupil (G24).** A dignity call, and it went the way
+the audit leaned. This is the screen where a paper is attributed to a child, and
+the UID is the MACHINE's channel: a teacher holding the copy cannot check `7B_04`
+against anything, but they can check "Liam Dubois". It is the one misattribution
+check a machine cannot make, and a misread UID putting one child's marks on
+another's record is the worst thing this screen can do. The code still leads,
+because the code is what is printed on the paper; the name follows. Projector mode
+takes the name away and leaves the code, unchanged.
+
+Adding it exposed that `GET /scans/{id}/students` had no fixture handler at all, so
+the list came back empty — which also meant the page-assignment picker had never
+had any options in fixture mode, and no test had noticed.
+
+**The roster keeps its em dash (G30).** The audit asked for the UID here, for
+consistency with every other screen. Declined: every other screen has nowhere else
+to put the UID, and this row already shows it in the column immediately to the
+left. Printing it twice is noise on the one screen a teacher scans down looking for
+a particular pupil, and the existing comment had already made that argument.
+
+What the dash *did* get wrong is what it says to a screen reader — "7B_04, em dash"
+reads as a missing value rather than a withheld one. The dash is decoration now and
+a visually-hidden "Nom masqué" carries the meaning. The finding pointed at a real
+defect; its proposed remedy was the wrong one.
+
+**The `n` shortcut keeps its binding (G25).** `n` and `Shift+D` are browse-mode
+quick-nav keys in NVDA and JAWS, so a screen-reader user in browse mode never
+reaches the handler — the reader consumes the keystroke and nothing in JavaScript
+can tell that it did. A different letter only moves the collision. What makes the
+function equitable is a real control in the tab order, and there is one: the
+"Élément suivant" button calls the same `goToNext`, with the `KeyboardHint` beside
+it as a hint rather than the only route. Changing the binding would cost sighted
+keyboard users a good shortcut and buy screen-reader users nothing. Documented at
+the handler instead.
+
+**And one answered by reading it.** Open question 7 asked, for the second audit
+running, whether `docs/plan.md` §5 is the screen inventory of record. It is, and it
+is accurate — someone had already brought it from eleven screens to twenty-four.
+What it lacked was anything stopping it going stale again, which is why the question
+kept coming back. `pnpm screens:check` compares §5's paths against the route tree in
+both directions. Not generated, unlike §4's route list: each line of §5 says what a
+screen is *for*, which is the only reason to read it and which no generator can
+produce. The prose stays written; the check guards the set of paths, which is the
+half that drifts silently.

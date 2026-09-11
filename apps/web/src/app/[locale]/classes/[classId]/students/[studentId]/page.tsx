@@ -24,6 +24,7 @@ import { useClass, useCurriculumTree, useStudentMastery } from '@/lib/api/querie
 import type { SheetTaken, Uuid } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
+import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 
 /** The same thresholds as docs/mastery-model.md §2, for the overall ring. */
@@ -58,7 +59,6 @@ export default function StudentPage({
   // headings carry their own bands rather than the class's.
   const tree = useCurriculumTree(classId, { studentId });
 
-
   // Group the history by the Theme each sheet is filed under. The tree is
   // already fetched for the gaps/strengths headings, so the labels cost
   // nothing extra; a sheet whose Theme is not in this Branch — or which sits
@@ -69,10 +69,7 @@ export default function StudentPage({
     for (const b of tree.data?.branches ?? []) {
       for (const competence of b.competences) {
         for (const theme of competence.themes) {
-          themeLabel.set(
-            theme.chapter_id,
-            theme.labels?.[locale] ?? theme.labels?.fr ?? theme.key,
-          );
+          themeLabel.set(theme.chapter_id, theme.labels?.[locale] ?? theme.labels?.fr ?? theme.key);
         }
       }
     }
@@ -155,11 +152,7 @@ export default function StudentPage({
     return [...out.values()];
   };
 
-  const section = (
-    titleText: string,
-    items: typeof data.strengths,
-    emptyText: string,
-  ) => (
+  const section = (titleText: string, items: typeof data.strengths, emptyText: string) => (
     <Card>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
         <h2 className="text-h3">{titleText}</h2>
@@ -180,35 +173,33 @@ export default function StudentPage({
                 {group.competence}
               </h3>
             ) : null}
-            {group.theme ? (
-              <h4 className="text-label text-ink-500">{group.theme}</h4>
-            ) : null}
-        <ul className="flex list-none flex-col gap-3 p-0">
-          {group.items.map((item) => (
-            <li key={item.competency.id} className="flex flex-col gap-1">
-              <div className="flex flex-wrap items-center gap-2">
-                <ConceptTag code={item.competency.code} />
-                <span className="text-body-s">
-                  {item.competency.labels?.[locale] ?? item.competency.labels?.fr ?? ''}
-                </span>
-              </div>
-              <MasteryMeter
-                band={item.band as MasteryBand}
-                score={item.band === 'none' ? null : item.score}
-                bandLabel={bandLabels[item.band as MasteryBand]}
-                caption={
-                  item.provisional
-                    ? tm('provisionalHelp')
-                    : item.days_until_review === null
-                      ? tm('attempts', { count: item.attempts_count })
-                      : item.days_until_review === 0
-                        ? tm('reviewOverdue')
-                        : tm('reviewDue', { days: item.days_until_review })
-                }
-              />
-            </li>
-          ))}
-        </ul>
+            {group.theme ? <h4 className="text-label text-ink-500">{group.theme}</h4> : null}
+            <ul className="flex list-none flex-col gap-3 p-0">
+              {group.items.map((item) => (
+                <li key={item.competency.id} className="flex flex-col gap-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <ConceptTag code={item.competency.code} />
+                    <span className="text-body-s">
+                      {item.competency.labels?.[locale] ?? item.competency.labels?.fr ?? ''}
+                    </span>
+                  </div>
+                  <MasteryMeter
+                    band={item.band as MasteryBand}
+                    score={item.band === 'none' ? null : item.score}
+                    bandLabel={bandLabels[item.band as MasteryBand]}
+                    caption={
+                      item.provisional
+                        ? tm('provisionalHelp')
+                        : item.days_until_review === null
+                          ? tm('attempts', { count: item.attempts_count })
+                          : item.days_until_review === 0
+                            ? tm('reviewOverdue')
+                            : tm('reviewDue', { days: item.days_until_review })
+                    }
+                  />
+                </li>
+              ))}
+            </ul>
           </section>
         ))
       )}
@@ -263,6 +254,10 @@ export default function StudentPage({
         </div>
         <div>
           <h1>{pupilName}</h1>
+          {/* Only rendered when projector mode is on (G27). A pupil's own profile
+              is the screen where a name matters most and where a class watching
+              must not see it. */}
+          <RevealNames className="mt-1" />
           {/* The uid is what appears on paper and in every prompt; the teacher
               needs to be able to match a sheet to this page.
 
@@ -281,9 +276,7 @@ export default function StudentPage({
                     key={code}
                     variant={code === data.student.home_class_code ? 'primary' : 'neutral'}
                   >
-                    {code === data.student.home_class_code
-                      ? tstud('homeClass', { code })
-                      : code}
+                    {code === data.student.home_class_code ? tstud('homeClass', { code }) : code}
                   </Chip>
                 ))
               : null}
@@ -392,9 +385,7 @@ export default function StudentPage({
                                 })}
                               </span>
                               {sheet.scan_id ? (
-                                <Link href={`/scans/${sheet.scan_id}`}>
-                                  {t('openScan')}
-                                </Link>
+                                <Link href={`/scans/${sheet.scan_id}`}>{t('openScan')}</Link>
                               ) : (
                                 <span>{t('notScanned')}</span>
                               )}

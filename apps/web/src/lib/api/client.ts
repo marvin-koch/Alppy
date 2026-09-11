@@ -38,9 +38,26 @@ export class ApiError extends Error {
 
 export const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL ?? '/api/v1';
 
-/** Fixture mode: the screens render without a backend (tests, design review). */
+/**
+ * Fixture mode: the screens render without a backend (tests, design review).
+ *
+ * Two switches, and they are not equals. The build-time flag is the real one and
+ * it is what CI and the screenshot suite set. The `localStorage` key is a
+ * convenience for driving fixture mode inside an already-running dev or staging
+ * build — the e2e suite seeds it, and it is how `/_gallery` is reached by hand.
+ *
+ * The runtime key is gated on the build NOT being production (G31). Before, anyone
+ * could flip a production deployment into fixture mode from devtools and reach
+ * `/_gallery`. No real data was ever exposed — the fixtures are invented, and a
+ * browser in fixture mode simply stops talking to the API — but a teacher who did
+ * it by accident would be looking at a demo class, believing it was theirs, on a
+ * screen that shows bands and marks. That is a worse failure than a missing
+ * feature, and the gate costs nothing: the dev and staging builds where the key is
+ * useful are not production builds.
+ */
 export function isMockEnabled(): boolean {
   if (process.env.NEXT_PUBLIC_ALPPY_MOCK === '1') return true;
+  if (process.env.NODE_ENV === 'production') return false;
   if (typeof window === 'undefined') return false;
   try {
     return window.localStorage.getItem('alppy.mock') === '1';

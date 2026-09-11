@@ -1024,6 +1024,7 @@
     "revealedWarning": "Les noms sont visibles. Ils seront masqués à nouveau en quittant cette page.",
     "toggled": "Mode discret activé.",
     "untoggled": "Mode discret désactivé.",
-    "shortcutHint": "Maj + D"
+    "shortcutHint": "Maj + D",
+    "nameHidden": "Nom masqué"
   }
 }
