@@ -40,8 +40,8 @@ from alppy.core.security import hash_password
 from alppy.db.base import Base
 from alppy.models import (
     Class,
-    Scan,
     Person,
+    Scan,
     School,
     SchoolYear,
     Student,
@@ -1483,7 +1483,7 @@ def test_one_pile_cannot_be_confirmed_twice_at_once(
             result = "confirmed"
         except ApiError as exc:
             result = exc.code or "api_error"
-        except Exception as exc:  # noqa: BLE001 - reported, never swallowed
+        except Exception as exc:
             result = f"{type(exc).__name__}"
         finally:
             session.rollback()

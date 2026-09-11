@@ -45,6 +45,14 @@ dev = [
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",
   "pytest-cov>=6.0.0",
+  # Shuffles the order of every run and prints the seed (T20). Order
+  # independence was previously unverified rather than known-good: 71 files,
+  # module-scoped fixtures, module-level constants and a session-wide
+  # environment, with nothing shuffling any of it. Verified over three seeds
+  # when this was added, all green — which is a fact worth having rather than
+  # an assumption. A failure here reproduces with `-p randomly
+  # --randomly-seed=<seed>` from the run's own header.
+  "pytest-randomly>=3.15.0",
   "mypy>=1.13.0",
   "ruff>=0.8.0",
   "types-boto3",

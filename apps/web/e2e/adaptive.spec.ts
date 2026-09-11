@@ -136,7 +136,12 @@ test.describe('reviewing generated items', () => {
 
     const generated = page.getByTestId('adaptive-item').filter({ has: page.locator('[data-ai-generated]') });
     const before = await generated.count();
-    if (before === 0) test.skip(true, 'this fixture student has no generated item');
+    // An assertion, not a skip. `test.skip(before === 0)` meant this test
+    // vanished if the fixture's first student stopped having a generated item:
+    // the run reported green with two fewer tests and no signal anywhere that
+    // the thing under test had stopped being tested (T13). A fixture
+    // regression should be loud — it is a regression.
+    expect(before, 'the fixture student has no generated item to act on').toBeGreaterThan(0);
 
     const original = (await generated.first().innerText()).trim();
     await generated.first().getByRole('button', { name: /Régénérer/i }).click();
@@ -154,7 +159,12 @@ test.describe('reviewing generated items', () => {
 
     const generated = page.getByTestId('adaptive-item').filter({ has: page.locator('[data-ai-generated]') });
     const before = await generated.count();
-    if (before === 0) test.skip(true, 'this fixture student has no generated item');
+    // An assertion, not a skip. `test.skip(before === 0)` meant this test
+    // vanished if the fixture's first student stopped having a generated item:
+    // the run reported green with two fewer tests and no signal anywhere that
+    // the thing under test had stopped being tested (T13). A fixture
+    // regression should be loud — it is a regression.
+    expect(before, 'the fixture student has no generated item to act on').toBeGreaterThan(0);
 
     await generated.first().getByRole('button', { name: /Écarter/i }).click();
     await expect(generated).toHaveCount(before - 1);

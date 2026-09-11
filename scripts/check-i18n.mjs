@@ -7,8 +7,15 @@
 // French (or nothing) where a translation was forgotten.
 //
 // Usage: node scripts/check-i18n.mjs
-// Exit code: 0 if the files are absent (nothing to check yet) or in sync,
-//            1 if any key is present in one locale and missing in another.
+// Exit code: 0 if the catalogues are in sync, 1 otherwise — including when
+//            they are ABSENT. A gate that reports success when its input is
+//            missing has the wrong default: the one arrangement it cannot
+//            distinguish from "perfectly in sync" is "there is nothing here",
+//            and a build that deleted or moved the catalogues is exactly when
+//            you want to hear about it (T26).
+//
+// ALPPY_I18N_DIR overrides where the catalogues are read from. It exists so the
+// absent case is testable without deleting the real ones.
 
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
@@ -17,7 +24,7 @@ import { fileURLToPath } from 'node:url';
 const LOCALES = ['fr', 'de', 'en'];
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = resolve(__dirname, '..');
-const MESSAGES_DIR = join(REPO_ROOT, 'apps', 'web', 'messages');
+const MESSAGES_DIR = process.env.ALPPY_I18N_DIR ?? join(REPO_ROOT, 'apps', 'web', 'messages');
 
 /** Recursively flattens a nested messages object into dotted keys, e.g.
  * {"nav": {"home": "Accueil"}} -> Set(["nav.home"]). */
@@ -77,10 +84,17 @@ function main() {
   const present = locales.filter((l) => l.exists);
 
   if (present.length === 0) {
-    console.log(
-      `i18n check: skipped — none of ${LOCALES.map((l) => `messages/${l}.json`).join(', ')} exist yet in ${MESSAGES_DIR}.`,
+    // Not "nothing to check yet". The web app cannot render a single screen
+    // without these files, so their absence is never the innocent state — it
+    // is a moved directory, a bad merge, or a build that ran somewhere
+    // unexpected. Reporting success here is the one answer that guarantees
+    // nobody finds out until a teacher sees an untranslated page.
+    console.error(
+      `✗ none of ${LOCALES.map((l) => `${l}.json`).join(', ')} exist in ${MESSAGES_DIR}. ` +
+        `The catalogues are required, not optional: next-intl reads them for every ` +
+        `screen. If they have moved, point ALPPY_I18N_DIR at them.`,
     );
-    return 0;
+    return 1;
   }
 
   const missingFiles = locales.filter((l) => !l.exists);

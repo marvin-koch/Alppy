@@ -1,0 +1,49 @@
+# Dependency updates, because nothing else was watching (T17).
+#
+# Before this the repository's only supply-chain check was gitleaks, which
+# looks for secrets *we* committed and says nothing about a vulnerability in
+# something we installed. The product handles children's names, so the answer
+# to "are we running a version with a known CVE" should not be "nobody has
+# looked".
+#
+# Weekly rather than daily, and grouped rather than one PR per package: a
+# security tool that produces more noise than anyone reads is turned off within
+# a month, and the grouped PR is the one a person actually reviews. Security
+# updates are deliberately NOT grouped with the rest — those want to arrive on
+# their own and be read on their own.
+version: 2
+updates:
+  - package-ecosystem: "pip"
+    directory: "/apps/api"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    groups:
+      python-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      python-minor:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+        patterns: ["*"]
+    commit-message: { prefix: "chore(deps)", prefix-development: "chore(deps-dev)" }
+
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule: { interval: "weekly", day: "monday" }
+    open-pull-requests-limit: 5
+    groups:
+      node-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      node-minor:
+        applies-to: version-updates
+        update-types: ["minor", "patch"]
+        patterns: ["*"]
+    commit-message: { prefix: "chore(deps)", prefix-development: "chore(deps-dev)" }
+
+  # The runners themselves. A pinned action with a known problem is the same
+  # class of risk and is the one people forget exists.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule: { interval: "monthly" }
+    commit-message: { prefix: "chore(ci)" }

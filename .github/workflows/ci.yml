@@ -85,12 +85,50 @@ jobs:
           PYTHONPATH=apps/api pytest apps/api/tests -q \
             --cov=alppy --cov-report=term-missing:skip-covered \
             --cov-report=xml:coverage.xml --cov-fail-under=85
+      # One number over the whole package hides its own distribution: the audit
+      # measured worker/tasks.py at 69%, db/tenancy.py at 77% and
+      # api/v1/adaptive.py at 77%, each well under the average and each
+      # invisible behind a green 85 (T19). tenancy.py is the only writer of the
+      # RLS GUC, so a gap there is a gap in the tenant boundary itself.
+      - name: Per-module coverage floors
+        run: python scripts/check-coverage-floors.py coverage.xml
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: api-coverage
           path: coverage.xml
           retention-days: 7
+
+  vulnerabilities:
+    name: Dependencies with known problems
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with: { node-version: "22", cache: pnpm }
+      # gitleaks looks for secrets WE committed. Nothing looked for a
+      # vulnerability in something we installed, which is the other half and the
+      # half nobody notices (T17). The product holds children's names; "nobody
+      # has looked" is not an answer a school should accept.
+      - name: Install
+        run: |
+          pip install pip-audit
+          pip install -e "apps/api[dev]"
+      # `pip-audit` resolves the installed environment rather than the manifest,
+      # so it sees transitive pins too — which is where these actually live.
+      - name: pip-audit
+        run: pip-audit --strict --progress-spinner off
+      - run: pnpm install --frozen-lockfile
+      # `--audit-level high` rather than everything: a gate nobody can keep
+      # green gets disabled, and the low-severity advisory noise in a frontend
+      # dependency tree is what does that. High and critical are the ones worth
+      # stopping a merge for.
+      - name: pnpm audit
+        run: pnpm audit --audit-level high
 
   secrets:
     name: Secret scan — full history
@@ -372,13 +410,22 @@ jobs:
       - name: Run Playwright (behaviour)
         run: pnpm --filter @alppy/web exec playwright test --grep-invert "renders in"
 
-      # Screenshots are platform-specific: Playwright files baselines per OS, and
-      # the committed ones are -darwin. Until Linux baselines are generated and
-      # committed (see CONTRIBUTING), this step reports rather than fails, so the
-      # suite is honest about what it is actually comparing.
-      - name: Run Playwright (screenshots)
-        continue-on-error: true
-        run: pnpm --filter @alppy/web exec playwright test --grep "renders in"
+      # The 42 screenshot tests are NOT run here, and that is the honest shape
+      # rather than an omission (T13).
+      #
+      # Playwright files baselines per platform. All 42 committed baselines are
+      # `-darwin`; there are no `-linux` ones. On this runner the comparison
+      # therefore had nothing to compare against, and the step carried
+      # `continue-on-error: true` so it could not fail the build either. What
+      # it could do was report 42 passing tests into the run summary — the
+      # worst of the three outcomes, because a number that large reads as
+      # coverage. It was 42 tests occupying the slot of 42 tests.
+      #
+      # Two honest options: commit Linux baselines, or do not claim to check.
+      # Until someone generates the baselines on Linux — `playwright test
+      # --grep "renders in" --update-snapshots` on an ubuntu container, then
+      # commit the `-linux` files — this is the second. `pnpm test:e2e` still
+      # runs them locally on macOS, where the baselines are real.
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

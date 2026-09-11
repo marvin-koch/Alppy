@@ -5,7 +5,6 @@ from __future__ import annotations
 import uuid
 from typing import Any
 
-import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
@@ -48,10 +47,10 @@ def test_proposing_returns_a_job_rather_than_blocking_on_the_model(
             "items_per_student": 4,
         },
     )
-    assert response.status_code in (202, 503)
-    if response.status_code == 503:
-        assert response.json()["error"]["code"] == "service_unavailable"
-        return
+    # 202, not "202 or 503". A deployment without adaptive planning is a real
+    # shape, but it is not THIS one: the feature is installed here and in CI, so
+    # accepting 503 meant accepting the answer that proves nothing (T13).
+    assert response.status_code == 202, response.text
     body = response.json()
     assert body["kind"] == "propose_adaptive"
     assert body["status"] == "queued"
@@ -71,7 +70,14 @@ def test_a_second_propose_while_one_is_running_does_not_start_a_second_run(
     }
     first = client.post("/api/v1/adaptive/propose", json=body)
     if first.status_code == 503:
-        pytest.skip("adaptive planning is not installed in this build")
+        # Not a skip. Adaptive planning IS installed in this build and in CI,
+        # so this branch never ran — it was an escape hatch that would have
+        # deleted five tests from the run, silently and green, on the day the
+        # optional import broke. Which is the day you want them (T13).
+        raise AssertionError(
+            "adaptive planning answered 503: the optional import is broken, "
+            f"so this test and four others would have vanished. {first.text}"
+        )
     second = client.post("/api/v1/adaptive/propose", json=body)
 
     assert second.status_code == 202
@@ -93,7 +99,14 @@ def test_a_proposal_that_was_never_built_is_a_404_not_an_empty_plan(
         },
     )
     if response.status_code == 503:
-        pytest.skip("adaptive planning is not installed in this build")
+        # Not a skip. Adaptive planning IS installed in this build and in CI,
+        # so this branch never ran — it was an escape hatch that would have
+        # deleted five tests from the run, silently and green, on the day the
+        # optional import broke. Which is the day you want them (T13).
+        raise AssertionError(
+            "adaptive planning answered 503: the optional import is broken, "
+            f"so this test and four others would have vanished. {response.text}"
+        )
     job_id = response.json()["id"]
 
     assert client.get(f"/api/v1/adaptive/proposal/{job_id}").status_code == 404
@@ -112,7 +125,14 @@ def test_another_schools_proposal_is_not_readable(
         },
     )
     if mine.status_code == 503:
-        pytest.skip("adaptive planning is not installed in this build")
+        # Not a skip. Adaptive planning IS installed in this build and in CI,
+        # so this branch never ran — it was an escape hatch that would have
+        # deleted five tests from the run, silently and green, on the day the
+        # optional import broke. Which is the day you want them (T13).
+        raise AssertionError(
+            "adaptive planning answered 503: the optional import is broken, "
+            f"so this test and four others would have vanished. {mine.text}"
+        )
     job_id = mine.json()["id"]
 
     login(client, other_tenant.teacher.email)
@@ -142,7 +162,14 @@ def test_a_colleagues_run_does_not_answer_my_click(
         },
     )
     if mine.status_code == 503:
-        pytest.skip("adaptive planning is not installed in this build")
+        # Not a skip. Adaptive planning IS installed in this build and in CI,
+        # so this branch never ran — it was an escape hatch that would have
+        # deleted five tests from the run, silently and green, on the day the
+        # optional import broke. Which is the day you want them (T13).
+        raise AssertionError(
+            "adaptive planning answered 503: the optional import is broken, "
+            f"so this test and four others would have vanished. {mine.text}"
+        )
 
     login(client, colleague.teacher.email)
     theirs = client.post(
@@ -176,7 +203,14 @@ def test_a_colleague_cannot_read_my_classs_proposal(
         },
     )
     if mine.status_code == 503:
-        pytest.skip("adaptive planning is not installed in this build")
+        # Not a skip. Adaptive planning IS installed in this build and in CI,
+        # so this branch never ran — it was an escape hatch that would have
+        # deleted five tests from the run, silently and green, on the day the
+        # optional import broke. Which is the day you want them (T13).
+        raise AssertionError(
+            "adaptive planning answered 503: the optional import is broken, "
+            f"so this test and four others would have vanished. {mine.text}"
+        )
     job_id = uuid.UUID(mine.json()["id"])
 
     db.add(
