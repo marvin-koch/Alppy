@@ -118,8 +118,10 @@ export const updateStudent = (
 ) => apiRequest<StudentOut>(`/students/${id}`, { method: 'PATCH', body });
 
 /** Takes the pupil's own uid, typed back — see `ConfirmDestructive`. */
+/** The pupil's uid goes in the BODY: in the query string it lands in every
+ *  access log, proxy log and browser history between here and the server. */
 export const deleteStudent = (id: Uuid, confirm: string) =>
-  apiRequest<void>(`/students/${id}`, { method: 'DELETE', query: { confirm } });
+  apiRequest<void>(`/students/${id}`, { method: 'DELETE', body: { confirm } });
 
 export const updateChapter = (
   id: Uuid,
@@ -210,7 +212,7 @@ export const exportStudent = (studentId: Uuid) =>
 export const anonymiseStudent = (studentId: Uuid, confirmUid: string) =>
   apiRequest<StudentOut>(`/students/${studentId}/anonymise`, {
     method: 'POST',
-    query: { confirm: confirmUid },
+    body: { confirm: confirmUid },
   });
 
 /** Seat an existing pupil in another of this teacher's classes. Idempotent,

@@ -218,13 +218,17 @@ def test_deleting_a_pupil_needs_their_identifier_typed_back(
 ) -> None:
     """Not a boolean flag.
 
-    A caller firing `?confirm=true` at the wrong row deletes the wrong child.
+    A caller sending `{"confirm": true}` at the wrong row deletes the wrong
+    child. The uid also has to BE a uid now (`validate_uid`), so nonsense is a
+    422 rather than a mismatch reported as if the pupil were simply wrong.
     The UID is the one string that is unambiguous and already in front of the
     teacher, on the paper.
     """
     student = tenant.students[0]
     login(client, tenant.teacher.email)
-    wrong = client.delete(f"/api/v1/students/{student.id}?confirm=nonsense")
+    wrong = client.request(
+        "DELETE", f"/api/v1/students/{student.id}", json={"confirm": "7B_99"}
+    )
     assert wrong.status_code == 422
     assert wrong.json()["error"]["details"]["expected"] == student.uid
 
@@ -269,7 +273,9 @@ def test_deleting_a_pupil_destroys_their_evidence(
     # expired, and reloading an expired instance whose row was deleted raises
     # rather than returning the id the query still needs.
     student_id = student.id
-    response = client.delete(f"/api/v1/students/{student_id}?confirm={student.uid}")
+    response = client.request(
+        "DELETE", f"/api/v1/students/{student_id}", json={"confirm": student.uid}
+    )
     assert response.status_code == 204
 
     # The handler committed on its own session; drop this one's identity map
@@ -296,7 +302,9 @@ def test_a_co_teacher_cannot_delete_another_teachers_pupil(
 
     login(client, colleague.teacher.email)
     assert client.get(f"/api/v1/students/{student.id}/mastery").status_code == 200
-    response = client.delete(f"/api/v1/students/{student.id}?confirm={student.uid}")
+    response = client.request(
+        "DELETE", f"/api/v1/students/{student.id}", json={"confirm": student.uid}
+    )
     assert response.status_code == 404
     db.expire_all()
     assert db.execute(

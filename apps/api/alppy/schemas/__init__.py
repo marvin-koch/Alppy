@@ -10,7 +10,15 @@ import uuid
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+from pydantic import (
+    AfterValidator,
+    BaseModel,
+    ConfigDict,
+    EmailStr,
+    Field,
+    field_validator,
+    model_validator,
+)
 
 from alppy.core.uid import InvalidUidError, parse_uid
 from alppy.models.enums import (
@@ -1623,7 +1631,35 @@ class LivenessOut(BaseModel):
 
 
 def validate_uid(value: str) -> str:
+    """A pupil identifier as the client typed it, normalised or refused.
+
+    `7b_1` becomes `7B_01`; anything that is not a uid at all is a 422 rather
+    than a mismatch three layers down. Forgiving about case and padding
+    because a teacher types this by hand off a printed sheet, and strict about
+    everything else for the reason `parse_uid` gives: a uid that does not
+    parse must fail loudly rather than quietly name the wrong child.
+    """
     try:
         return parse_uid(value).uid
     except InvalidUidError as exc:
         raise ValueError(str(exc)) from exc
+
+
+class StudentConfirmation(BaseModel):
+    """The pupil's own identifier, typed back, for an irreversible act.
+
+    A BODY, not a query string. `DELETE /students/{id}?confirm=7B_15` put a
+    pupil's identifier in the URL — the one place it is certain to be written
+    down: access logs, proxy logs, browser history, and an address bar on a
+    screen that is regularly projected onto a classroom wall. It was the only
+    student identifier anywhere in this API's URLs (audit 02, M9).
+
+    Not a boolean: a caller firing at the wrong row must fail rather than
+    destroy or anonymise the wrong child, and the uid is the one string that
+    is unambiguous and in front of the teacher on the paper.
+
+    `validate_uid` is what checks it, and had been defined and wired into
+    nothing since it was written (M8).
+    """
+
+    confirm: Annotated[str, AfterValidator(validate_uid)]

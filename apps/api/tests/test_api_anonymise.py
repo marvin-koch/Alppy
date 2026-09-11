@@ -42,7 +42,8 @@ def test_the_names_go_and_the_evidence_stays(
 
     login(client, tenant.teacher.email)
     response = client.post(
-        f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}"
+        f"/api/v1/students/{student.id}/anonymise",
+        json={"confirm": student.uid},
     )
     assert response.status_code == 200, response.text
     body = response.json()
@@ -74,7 +75,8 @@ def test_the_name_goes_from_every_year_not_just_this_one(
     login(client, tenant.teacher.email)
     assert (
         client.post(
-            f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}"
+            f"/api/v1/students/{student.id}/anonymise",
+            json={"confirm": student.uid},
         ).status_code
         == 200
     )
@@ -94,7 +96,7 @@ def test_the_wrong_uid_anonymises_nobody(
     student = tenant.students[0]
     login(client, tenant.teacher.email)
     response = client.post(
-        f"/api/v1/students/{student.id}/anonymise?confirm=7B_99"
+        f"/api/v1/students/{student.id}/anonymise", json={"confirm": "7B_99"}
     )
     assert response.status_code == 422
     person = reread().get(Person, student.person_id)
@@ -108,8 +110,9 @@ def test_anonymising_twice_does_not_move_the_date(
     may already have been shown to somebody."""
     student = tenant.students[0]
     login(client, tenant.teacher.email)
-    first = client.post(f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}")
-    again = client.post(f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}")
+    body = {"confirm": student.uid}
+    first = client.post(f"/api/v1/students/{student.id}/anonymise", json=body)
+    again = client.post(f"/api/v1/students/{student.id}/anonymise", json=body)
     assert again.status_code == 200
     assert again.json()["anonymised_at"] == first.json()["anonymised_at"]
 
@@ -122,7 +125,8 @@ def test_a_co_teacher_cannot_anonymise_another_teachers_pupil(
     student = tenant.students[0]
     login(client, colleague.teacher.email)
     response = client.post(
-        f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}"
+        f"/api/v1/students/{student.id}/anonymise",
+        json={"confirm": student.uid},
     )
     assert response.status_code == 404
     person = reread().get(Person, student.person_id)
@@ -136,7 +140,9 @@ def test_an_anonymised_pupil_still_appears_on_the_roster(
     counted, and still addressable by the identifier on their paper."""
     student = tenant.students[0]
     login(client, tenant.teacher.email)
-    client.post(f"/api/v1/students/{student.id}/anonymise?confirm={student.uid}")
+    client.post(
+        f"/api/v1/students/{student.id}/anonymise", json={"confirm": student.uid}
+    )
 
     roster = client.get(f"/api/v1/classes/{tenant.school_class.id}/students").json()
     row = next(s for s in roster if s["uid"] == student.uid)

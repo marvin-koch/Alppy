@@ -1066,6 +1066,26 @@ export interface SourceUpdate {
   url?: string | null;
 }
 
+/**
+ * The pupil's own identifier, typed back, for an irreversible act.
+ *
+ * A BODY, not a query string. `DELETE /students/{id}?confirm=7B_15` put a
+ * pupil's identifier in the URL — the one place it is certain to be written
+ * down: access logs, proxy logs, browser history, and an address bar on a
+ * screen that is regularly projected onto a classroom wall. It was the only
+ * student identifier anywhere in this API's URLs (audit 02, M9).
+ *
+ * Not a boolean: a caller firing at the wrong row must fail rather than
+ * destroy or anonymise the wrong child, and the uid is the one string that
+ * is unambiguous and in front of the teacher on the paper.
+ *
+ * `validate_uid` is what checks it, and had been defined and wired into
+ * nothing since it was written (M8).
+ */
+export interface StudentConfirmation {
+  confirm: string;
+}
+
 export interface StudentCreate {
   first_name: string;
   last_name: string;

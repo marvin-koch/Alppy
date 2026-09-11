@@ -25,6 +25,7 @@ from alppy.schemas import (
     SchoolOut,
     SchoolUpdate,
     SchoolYearOut,
+    StudentConfirmation,
     StudentExportOut,
     StudentOut,
     StudentUpdate,
@@ -413,9 +414,9 @@ def export_student(student_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> Student
 @router.post("/students/{student_id}/anonymise", response_model=StudentOut)
 def anonymise_student(
     student_id: uuid.UUID,
+    payload: StudentConfirmation,
     scope: ScopeDep,
     db: DbDep,
-    confirm: Annotated[str, Query(description="the pupil's own uid, typed back")],
 ) -> StudentOut:
     """Answer a parent's erasure request without destroying the evidence.
 
@@ -434,7 +435,7 @@ def anonymise_student(
     been shown.
     """
     student = svc.get_student(db, scope, student_id)
-    nouns.anonymise_student(db, scope, student, confirm_uid=confirm)
+    nouns.anonymise_student(db, scope, student, confirm_uid=payload.confirm)
     db.commit()
     db.refresh(student)
     return student_out(student)
@@ -443,17 +444,19 @@ def anonymise_student(
 @router.delete("/students/{student_id}", status_code=status.HTTP_204_NO_CONTENT)
 def delete_student(
     student_id: uuid.UUID,
+    payload: StudentConfirmation,
     scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
-    confirm: Annotated[str, Query(description="the pupil's own uid, typed back")],
 ) -> None:
     """Destroy a pupil and every attempt, snapshot and printed copy of theirs.
 
-    The only endpoint in Alppy that destroys evidence. `confirm` is the pupil's
-    UID rather than a boolean, so a caller firing at the wrong row fails
-    instead of deleting the wrong child. Unenrolling is `DELETE
-    .../enrollment` and is what almost every caller actually wants.
+    The only endpoint in Alppy that destroys evidence. The confirmation is the
+    pupil's UID rather than a boolean, so a caller firing at the wrong row
+    fails instead of deleting the wrong child — and it travels in the BODY,
+    because a uid in the URL is written to every log between here and the
+    browser. Unenrolling is `DELETE .../enrollment` and is what almost every
+    caller actually wants.
 
     The storage handle is here because erasure now means erasure: the page
     images and the answer-box crops go too. Until B14 the rows cascaded and
@@ -462,7 +465,9 @@ def delete_student(
     and not what a parent asking for erasure was told had happened.
     """
     student = svc.get_student(db, scope, student_id)
-    nouns.delete_student(db, scope, student, confirm_uid=confirm, storage=storage)
+    nouns.delete_student(
+        db, scope, student, confirm_uid=payload.confirm, storage=storage
+    )
     db.commit()
 
 
