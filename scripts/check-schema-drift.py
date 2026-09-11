@@ -72,7 +72,22 @@ def main() -> int:
     command.upgrade(config, "head")
 
     with engine.connect() as conn:
-        context = MigrationContext.configure(conn, opts={"compare_type": True})
+        # `compare_server_default` is OFF in Alembic by default, and leaving it
+        # off made this check structurally blind to the one class of drift it
+        # had already been bitten by: 0025 exists because three tables reached
+        # production without the `server_default` their models declared, and
+        # this script watched them go (database audit H4). It compares the
+        # shape a migration ends with, and a DEFAULT is not part of a column's
+        # shape unless you ask.
+        #
+        # The comparator is the noisy one — it round-trips the rendered SQL
+        # through the dialect, so a default written `now()` in one place and
+        # `CURRENT_TIMESTAMP` in another reads as a difference. That noise is
+        # the price: a false positive is a line in this output, and a false
+        # negative is a NOT NULL violation on a live insert.
+        context = MigrationContext.configure(
+            conn, opts={"compare_type": True, "compare_server_default": True}
+        )
         diff = compare_metadata(context, Base.metadata)
 
     # Alembic's own bookkeeping table is not in the models, by design.

@@ -7,7 +7,7 @@ from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, MetaData, func
 from sqlalchemy.dialects.postgresql import UUID as PgUUID
-from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
+from sqlalchemy.orm import DeclarativeBase, Mapped, declared_attr, mapped_column
 
 # Explicit naming so Alembic autogenerate produces stable constraint names.
 NAMING_CONVENTION = {
@@ -49,13 +49,29 @@ class SchoolScopedMixin:
     accidentally read across tenants.
     """
 
+    #: Whether this table needs a standalone index on ``school_id``.
+    #:
+    #: True everywhere by default, because a scoped read filters on it and
+    #: `0024`'s RLS policy compares it on every single statement — an unindexed
+    #: `school_id` is a sequential scan per policy evaluation, which is the
+    #: worst possible place to find one.
+    #:
+    #: Set False on a model whose `school_id` is already the LEADING column of
+    #: a composite index, where the standalone one is dead weight a btree
+    #: prefix already answers: it is maintained on every insert and chosen by
+    #: the planner never (database audit M2). The model that sets it says which
+    #: index covers it, so the claim can be checked by reading.
+    __school_id_index__: bool = True
+
     @property
     def _school_fk(self) -> str:  # pragma: no cover - documentation helper
         return "school.id"
 
-    school_id: Mapped[uuid.UUID] = mapped_column(
-        PgUUID(as_uuid=True),
-        ForeignKey("school.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+    @declared_attr
+    def school_id(cls) -> Mapped[uuid.UUID]:  # noqa: N805 - declared_attr takes the class
+        return mapped_column(
+            PgUUID(as_uuid=True),
+            ForeignKey("school.id", ondelete="CASCADE"),
+            nullable=False,
+            index=cls.__school_id_index__,
+        )

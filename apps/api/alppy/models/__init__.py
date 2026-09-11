@@ -65,12 +65,24 @@ def _pk() -> Mapped[uuid.UUID]:
     return mapped_column(PgUUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
 
 
-def _fk(target: str, *, nullable: bool = False, ondelete: str = "CASCADE") -> Any:
+def _fk(
+    target: str, *, nullable: bool = False, ondelete: str = "CASCADE", index: bool = True
+) -> Any:
+    """A foreign key, indexed unless the caller says a composite already is.
+
+    ``index=True`` is the default and stays it: an unindexed FK makes the
+    referenced side's DELETE scan the whole child table, and finding that out
+    in production is expensive. ``index=False`` is for the columns that LEAD a
+    composite index declared on the same model — the btree prefix answers the
+    same lookup, so the standalone index is written on every insert and read
+    never (database audit M2). Every caller passing it names the covering
+    index, so the claim is checkable without a database.
+    """
     return mapped_column(
         PgUUID(as_uuid=True),
         ForeignKey(target, ondelete=ondelete),
         nullable=nullable,
-        index=True,
+        index=index,
     )
 
 
@@ -219,6 +231,8 @@ class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
 
 class Subject(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "subject"
+    # Covered by `uq_subject_key (school_id, key)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     # Until subjects could only arrive from the seed this never mattered.
     # A create endpoint makes duplicates reachable, and `Competency.subject_key`
     # matches `Subject.key` BY STRING — two subjects keyed "mathematics" in one
@@ -236,6 +250,9 @@ class_subject = Table(
     Base.metadata,
     Column("class_id", PgUUID(as_uuid=True), ForeignKey("class.id", ondelete="CASCADE"), primary_key=True),
     Column("subject_id", PgUUID(as_uuid=True), ForeignKey("subject.id", ondelete="CASCADE"), primary_key=True),
+    # "Which classes study this branch" — the reverse of the composite PK's
+    # btree, and the direction a subject delete has to take (M1).
+    Index("ix_class_subject_subject_id", "subject_id"),
     # Display order in the class's Branch nav: the order the class STARTED
     # studying each subject, not alphabetical. No column default — every write
     # path goes through ``class_service.declare_subject``, which computes the
@@ -375,6 +392,8 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     """A teaching group. ``code`` is the Swiss short form, e.g. "7B"."""
 
     __tablename__ = "class"
+    # Covered by `uq_class_code (school_id, school_year_id, code)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         UniqueConstraint("school_id", "school_year_id", "code", name="uq_class_code"),
     )
@@ -497,6 +516,8 @@ class Student(Base, TimestampMixin, SchoolScopedMixin):
     """
 
     __tablename__ = "student"
+    # Covered by `uq_student_uid (school_id, school_year_id, uid)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         UniqueConstraint("school_id", "school_year_id", "uid", name="uq_student_uid"),
         CheckConstraint("number > 0", name="number_positive"),
@@ -568,8 +589,11 @@ class Competency(Base, TimestampMixin):
         Enum(CurriculumKind, name="curriculum_kind"), nullable=False
     )
     code: Mapped[str] = mapped_column(String(40), nullable=False)
+    # Indexed: the tree walks children-of-a-node, and `ondelete="SET NULL"`
+    # makes Postgres find every child of a deleted competency — both of which
+    # scan the table without this (M1).
     parent_id: Mapped[uuid.UUID | None] = mapped_column(
-        PgUUID(as_uuid=True), ForeignKey("competency.id", ondelete="SET NULL")
+        PgUUID(as_uuid=True), ForeignKey("competency.id", ondelete="SET NULL"), index=True
     )
     subject_key: Mapped[str] = mapped_column(String(50), nullable=False)
     cycle: Mapped[int] = mapped_column(Integer, nullable=False)
@@ -584,6 +608,13 @@ chapter_competency = Table(
     Base.metadata,
     Column("chapter_id", PgUUID(as_uuid=True), ForeignKey("chapter.id", ondelete="CASCADE"), primary_key=True),
     Column("competency_id", PgUUID(as_uuid=True), ForeignKey("competency.id", ondelete="CASCADE"), primary_key=True),
+    # The other direction, for the same reason 0039 added it to
+    # `exercise_competency`: the composite PK indexes
+    # `(chapter_id, competency_id)` and answers only "what does this Theme
+    # credit". "Which Themes credit this competency" — which is what deleting
+    # a competency has to ask, and what a curriculum-first read asks — cannot
+    # use an index whose leading column is the other one (M1).
+    Index("ix_chapter_competency_competency_id", "competency_id"),
 )
 
 exercise_competency = Table(
@@ -619,6 +650,8 @@ class Chapter(Base, TimestampMixin, SchoolScopedMixin):
     """The teacher's textbook-oriented grouping, mapped to competencies."""
 
     __tablename__ = "chapter"
+    # Covered by `uq_chapter_key (school_id, subject_id, key)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         # A subject has ONE chapter per key, and in particular one `unfiled`
         # bucket. Without this, two concurrent "new sheet" calls in a subject
@@ -754,7 +787,10 @@ class SourceSection(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    source_id: Mapped[uuid.UUID] = _fk("source.id")
+    source_id: Mapped[uuid.UUID] = _fk(
+        "source.id",
+        index=False,  # covered by `ix_source_section_source`
+    )
     title: Mapped[str] = mapped_column(String(300), nullable=False)
     # The number the book prints ("4"), when one was found. Not the position:
     # a preface or an un-numbered appendix has a position but no label.
@@ -778,10 +814,32 @@ class SourceSection(Base, TimestampMixin, SchoolScopedMixin):
 
 class SourceChunk(Base, TimestampMixin, SchoolScopedMixin):
     __tablename__ = "source_chunk"
-    __table_args__ = (Index("ix_source_chunk_source_page", "source_id", "page"),)
+    __table_args__ = (
+        Index("ix_source_chunk_source_page", "source_id", "page"),
+        # The index retrieval actually rides on (0042). `vector_cosine_ops`
+        # because `retrieval.py` ranks with `cosine_distance` — an index built
+        # for another operator class is not a slower index, it is an unused
+        # one, and an unused index looks exactly like no index at all from the
+        # outside.
+        #
+        # Declared here as well as in the migration so `check-schema-drift.py`
+        # sees the two agree. The dialect kwargs are ignored off Postgres, so
+        # the SQLite suite gets a plain index over the TEXT column its
+        # test-only `@compiles` spells `embedding` as, which costs nothing and
+        # keeps `create_all` honest about the index existing.
+        Index(
+            "ix_source_chunk_embedding_hnsw",
+            "embedding",
+            postgresql_using="hnsw",
+            postgresql_ops={"embedding": "vector_cosine_ops"},
+        ),
+    )
 
     id: Mapped[uuid.UUID] = _pk()
-    source_id: Mapped[uuid.UUID] = _fk("source.id")
+    source_id: Mapped[uuid.UUID] = _fk(
+        "source.id",
+        index=False,  # covered by `ix_source_chunk_source_page`
+    )
     page: Mapped[int] = mapped_column(Integer, nullable=False)
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -811,7 +869,10 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    subject_id: Mapped[uuid.UUID] = _fk(
+        "subject.id",
+        index=False,  # covered by `ix_exercise_subject_origin`
+    )
     chapter_id: Mapped[uuid.UUID | None] = _fk("chapter.id", nullable=True, ondelete="SET NULL")
     source_id: Mapped[uuid.UUID | None] = _fk("source.id", nullable=True, ondelete="SET NULL")
     source_chunk_id: Mapped[uuid.UUID | None] = _fk(
@@ -821,7 +882,10 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
     # unrecognised tail of a document gets a catch-all section rather than a
     # NULL, so no exercise is invisible to the builder's primary filter.
     source_section_id: Mapped[uuid.UUID | None] = _fk(
-        "source_section.id", nullable=True, ondelete="SET NULL"
+        "source_section.id",
+        nullable=True,
+        ondelete="SET NULL",
+        index=False,  # covered by `ix_exercise_source_section`
     )
     source_page: Mapped[int | None] = mapped_column(Integer)
     # The book's own code and title for the exercise ("NO64", "Les quatre
@@ -984,8 +1048,12 @@ class Sheet(Base, TimestampMixin, SchoolScopedMixin):
     # fall back to — a sheet item's own columns are the nullable ones. The
     # penalty is a MAGNITUDE; `scan.grading.score_for` applies the sign, so
     # "0.25" here always means a quarter point off, never a quarter point on.
-    default_points_correct: Mapped[float] = mapped_column(Float, default=1.0, nullable=False)
-    default_points_penalty: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    default_points_correct: Mapped[float] = mapped_column(
+        Float, default=1.0, nullable=False, server_default=text("1")
+    )
+    default_points_penalty: Mapped[float] = mapped_column(
+        Float, default=0.0, nullable=False, server_default=text("0")
+    )
 
     blank_pdf_key: Mapped[str | None] = mapped_column(String(500))
     answer_key_pdf_key: Mapped[str | None] = mapped_column(String(500))
@@ -1065,7 +1133,10 @@ class SheetItem(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
+    sheet_id: Mapped[uuid.UUID] = _fk(
+        "sheet.id",
+        index=False,  # covered by `uq_sheet_item_position`
+    )
     exercise_id: Mapped[uuid.UUID] = _fk("exercise.id", ondelete="RESTRICT")
     position: Mapped[int] = mapped_column(Integer, nullable=False)
     # The teacher may edit the printed wording without mutating the corpus.
@@ -1114,7 +1185,10 @@ class SheetInstance(Base, TimestampMixin, SchoolScopedMixin):
     __table_args__ = (UniqueConstraint("sheet_id", "student_id", name="uq_instance_student"),)
 
     id: Mapped[uuid.UUID] = _pk()
-    sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
+    sheet_id: Mapped[uuid.UUID] = _fk(
+        "sheet.id",
+        index=False,  # covered by `uq_instance_student`
+    )
     student_id: Mapped[uuid.UUID] = _fk("student.id")
     student_uid: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
     # [{exercise_id, variant_id|null, position}] — resolved at render time.
@@ -1203,7 +1277,10 @@ class AnswerBoxPlacement(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    sheet_id: Mapped[uuid.UUID] = _fk("sheet.id")
+    sheet_id: Mapped[uuid.UUID] = _fk(
+        "sheet.id",
+        index=False,  # covered by `uq_answer_box_placement_slot`
+    )
     #: Which render of the sheet measured this rectangle (B7). NULL is every
     #: row written before generations existed, and is matched only by a scan
     #: that also predates them — never by a later render's crops.
@@ -1251,7 +1328,10 @@ class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    person_id: Mapped[uuid.UUID] = _fk("person.id")
+    person_id: Mapped[uuid.UUID] = _fk(
+        "person.id",
+        index=False,  # covered by `ix_misconception_note_person_sheet`
+    )
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
     # The common sheet the wrong answers came from. SET NULL rather than
     # CASCADE: deleting the sheet must not silently delete the explanation of
@@ -1262,7 +1342,14 @@ class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
     language: Mapped[str] = mapped_column(String(5), nullable=False)
     # ["...", "..."] — one sentence group per misconception, printed in order.
     notes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    competency_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
+    # `'[]'` without the `::jsonb` cast the database stores it as. Postgres
+    # coerces an untyped literal to the column's type and records the same
+    # default either way; SQLite, where the suite builds its schema with
+    # `create_all` (D18), renders whatever is written here verbatim into a
+    # CREATE TABLE and chokes on the cast.
+    competency_ids: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'")
+    )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
@@ -1296,6 +1383,8 @@ class Event(Base, TimestampMixin, SchoolScopedMixin):
     """
 
     __tablename__ = "event"
+    # Covered by `ix_event_school_occurred (school_id, occurred_at)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         # The agenda's only query: this school, newest first.
         Index("ix_event_school_occurred", "school_id", "occurred_at"),
@@ -1321,7 +1410,16 @@ class Event(Base, TimestampMixin, SchoolScopedMixin):
     )
     #: What to show when the subject row no longer exists. Never PII: a sheet
     #: title, a filename, a chapter — never a student name.
-    summary: Mapped[str] = mapped_column(String(200), nullable=False, default="")
+    # `server_default` as well as `default`, and the pair is not redundant:
+    # `default` is Python's, applied by the ORM on an INSERT it builds, and
+    # says nothing to a write that does not go through it — a migration's
+    # backfill, a seed, a psql console. The database's own DEFAULT is the one
+    # that covers those, and 0025 is the migration that exists because three
+    # columns had only the first. Declared here so `check-schema-drift.py`,
+    # which compares server defaults since audit H4, can see them agree.
+    summary: Mapped[str] = mapped_column(
+        String(200), nullable=False, default="", server_default=text("''")
+    )
     #: Counts the agenda shows inline (pages, copies, exercises). No free text.
     detail: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
@@ -1370,7 +1468,9 @@ class Scan(Base, TimestampMixin, SchoolScopedMixin):
     This is what orders "the newest other scan still confirmed" when a reopen
     has to decide which reading a freed item falls back to."""
     reopened_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    confirmation_count: Mapped[int] = mapped_column(Integer, default=0, nullable=False)
+    confirmation_count: Mapped[int] = mapped_column(
+        Integer, default=0, nullable=False, server_default=text("0")
+    )
 
     pages: Mapped[list[ScanPage]] = relationship(
         back_populates="scan", cascade="all, delete-orphan", order_by="ScanPage.page_index"
@@ -1396,11 +1496,15 @@ class ScanPage(Base, TimestampMixin, SchoolScopedMixin):
     # The UID decoded to a real student who is not in this sheet's class: last
     # week's pile got shuffled into this one. Not an error, but never silently
     # part of this sheet either.
-    wrong_class: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    wrong_class: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false")
+    )
     # A cover sheet, a lens-cap frame, a page re-shot later. Discarded pages are
     # kept for audit and ignored by confirmation, so one bad photo cannot hold
     # a whole class set hostage.
-    discarded: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    discarded: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False, server_default=text("false")
+    )
     # Which page of that student's copy this is, resolved from the decoded UID.
     page_in_copy: Mapped[int | None] = mapped_column(Integer)
 
@@ -1506,7 +1610,10 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    person_id: Mapped[uuid.UUID] = _fk("person.id")
+    person_id: Mapped[uuid.UUID] = _fk(
+        "person.id",
+        index=False,  # covered by `ix_attempt_person_answered`
+    )
     exercise_id: Mapped[uuid.UUID] = _fk("exercise.id", ondelete="RESTRICT")
     sheet_id: Mapped[uuid.UUID | None] = _fk("sheet.id", nullable=True, ondelete="SET NULL")
     sheet_instance_id: Mapped[uuid.UUID | None] = _fk(
@@ -1547,7 +1654,10 @@ class MasterySnapshot(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    person_id: Mapped[uuid.UUID] = _fk("person.id")
+    person_id: Mapped[uuid.UUID] = _fk(
+        "person.id",
+        index=False,  # covered by `ix_mastery_person_competency`
+    )
     competency_id: Mapped[uuid.UUID] = _fk("competency.id")
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
@@ -1598,7 +1708,10 @@ class MasteryBranchSnapshot(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    person_id: Mapped[uuid.UUID] = _fk("person.id")
+    person_id: Mapped[uuid.UUID] = _fk(
+        "person.id",
+        index=False,  # covered by `ix_mastery_branch_person`
+    )
     subject_id: Mapped[uuid.UUID] = _fk("subject.id")
     computed_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     score: Mapped[float] = mapped_column(Float, nullable=False)
@@ -1688,6 +1801,8 @@ class PromptLog(Base, TimestampMixin, SchoolScopedMixin):
     """
 
     __tablename__ = "prompt_log"
+    # Covered by `ix_prompt_log_school_created (school_id, created_at)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         Index("ix_prompt_log_school_created", "school_id", "created_at"),
         Index("ix_prompt_log_purpose_created", "purpose", "created_at"),
@@ -1791,6 +1906,8 @@ class IdempotencyKey(Base, TimestampMixin, SchoolScopedMixin):
     """
 
     __tablename__ = "idempotency_key"
+    # Covered by `uq_idempotency_key (school_id, ...)` — see `SchoolScopedMixin` (M2).
+    __school_id_index__ = False
     __table_args__ = (
         UniqueConstraint("school_id", "endpoint", "key", name="uq_idempotency_key"),
         Index("ix_idempotency_key_created", "created_at"),
