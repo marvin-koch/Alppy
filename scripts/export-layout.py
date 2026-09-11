@@ -61,6 +61,7 @@ def render_ts(
     *,
     source: str,
     layout_version: str,
+    class_code_pattern: str,
 ) -> str:
     body = json.dumps(data, indent=2, ensure_ascii=False, sort_keys=False)
     detection = json.dumps(thresholds, indent=2, ensure_ascii=False, sort_keys=False)
@@ -81,6 +82,24 @@ def render_ts(
         "/** The detector's own decision thresholds, so the review UI can draw\n"
         " *  the same line the pipeline draws rather than a copy of it. */\n"
         f"export const SCAN_THRESHOLDS = {detection} as const;\n"
+        "\n"
+        "/**\n"
+        " * What a class code may look like, from the one place that decides.\n"
+        " *\n"
+        " * `alppy/core/uid.py` is the authority: a class code is half of every\n"
+        " * student UID, and a UID is printed as a 32-bit grid on every copy. The\n"
+        " * form used to carry its own copy of this pattern, and the copy had\n"
+        " * already drifted once — `{1,3}` against the server's `{1,2}`, so `11ABC`\n"
+        " * passed the form and 422'd at the API, leaving the teacher to decode a\n"
+        " * validation error for a field that had just accepted their input. It was\n"
+        " * caught by a human reading two files side by side\n"
+        " * (`docs/reviews/F7-fixes.md`), which is not a mechanism.\n"
+        " */\n"
+        f"export const CLASS_CODE_PATTERN = {json.dumps(class_code_pattern)};\n"
+        "\n"
+        "/** Fresh per call: a `RegExp` literal is stateless only if nobody sets\n"
+        " *  a flag on it, and a shared one is a shared `lastIndex`. */\n"
+        "export const classCodeRe = (): RegExp => new RegExp(CLASS_CODE_PATTERN);\n"
     )
 
 
@@ -102,11 +121,14 @@ def main() -> int:
         "minQuality": detector.MIN_QUALITY,
     }
 
+    from alppy.core import uid as uid_module
+
     ts = render_ts(
         data,
         thresholds,
-        source="apps/api/alppy/sheets/layout.py + alppy/scan/detector.py",
+        source="apps/api/alppy/sheets/layout.py + alppy/scan/detector.py + alppy/core/uid.py",
         layout_version=layout.LAYOUT_VERSION,
+        class_code_pattern=uid_module._CLASS_RE.pattern,
     )
 
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)

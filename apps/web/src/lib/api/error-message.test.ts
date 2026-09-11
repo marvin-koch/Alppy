@@ -52,3 +52,25 @@ describe('apiErrorMessage', () => {
     expect(apiErrorMessage(new ApiError(500, 'x', 'y'), empty)).toBe('');
   });
 });
+
+describe('a rate limit says how long to wait', () => {
+  /** The envelope has carried `retry_after_s` since it was written, and the
+   *  screen said "réessayez" — which is not an instruction (F14). */
+  const t = (key: string, values?: Record<string, string | number>) =>
+    key === 'rate_limited' ? `Attendez ${values?.seconds} secondes.` : 'fallback';
+
+  it('reads the number out of the envelope', () => {
+    const error = new ApiError(429, 'rate_limited', 'slow down', { retry_after_s: 42 });
+    expect(apiErrorMessage(error, t)).toBe('Attendez 42 secondes.');
+  });
+
+  it('rounds up, because "wait 0 seconds" is worse than saying nothing', () => {
+    const error = new ApiError(429, 'rate_limited', 'slow down', { retry_after_s: 0.2 });
+    expect(apiErrorMessage(error, t)).toBe('Attendez 1 secondes.');
+  });
+
+  it('falls back to a minute when the server did not say', () => {
+    const error = new ApiError(429, 'rate_limited', 'slow down');
+    expect(apiErrorMessage(error, t)).toBe('Attendez 60 secondes.');
+  });
+});

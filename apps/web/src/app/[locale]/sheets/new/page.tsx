@@ -90,7 +90,9 @@ export default function SheetBuilderPage() {
     tree.data?.branches.find((b) => b.subject_id === activeSubject)
       ?.unfiled_exercise_count ?? 0;
 
-  const draft = useDraftSheet();
+  // Keyed on the pair the draft belongs to: coming back to a different class
+  // must not hand the teacher the other one's exercises (F19).
+  const draft = useDraftSheet(activeClass && activeSubject ? `${activeClass}:${activeSubject}` : null);
   const create = useCreateSheet();
   const composer = useRef<HTMLDivElement | null>(null);
 
@@ -377,7 +379,7 @@ export default function SheetBuilderPage() {
           never over them. */}
       {draft.count > 0 ? (
         <div
-          className="fixed inset-x-0 bottom-14 z-20 flex items-center gap-3 border-t border-line bg-surface px-4 py-3 shadow-[0_-10px_30px_-12px_rgb(27_23_53_/_18%)] lg:hidden"
+          className="fixed inset-x-0 bottom-14 z-20 flex items-center gap-3 border-t border-line bg-surface px-4 py-3 shadow-ambient-up lg:hidden"
           role="status"
         >
           <div className="min-w-0 flex-grow">

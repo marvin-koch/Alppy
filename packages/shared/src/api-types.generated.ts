@@ -165,6 +165,11 @@ export interface AttemptOut {
   corrected: boolean;
 }
 
+export interface Body_add_scan_pages_api_v1_scans__scan_id__pages_post {
+  files: string[];
+  supersedes_page_id?: Uuid | null;
+}
+
 export interface Body_upload_scan_api_v1_scans_post {
   files: string[];
   sheet_id: Uuid;
@@ -383,10 +388,10 @@ export type DetectionOutcome = 'detected' | 'low_confidence' | 'blank' | 'multip
  * The names are what a teacher would say happened, because they are read back
  * as a sentence in the agenda, not as a status field.
  */
-export type EventKind = 'source_imported' | 'chapter_read' | 'sheet_created' | 'sheet_rendered' | 'sheet_printed' | 'scan_uploaded' | 'scan_confirmed' | 'scan_reopened' | 'adaptive_proposed' | 'adaptive_exported' | 'feedback_written' | 'feedback_approved';
+export type EventKind = 'source_imported' | 'chapter_read' | 'sheet_created' | 'sheet_rendered' | 'sheet_printed' | 'scan_uploaded' | 'scan_confirmed' | 'scan_reopened' | 'adaptive_proposed' | 'adaptive_exported' | 'feedback_written' | 'feedback_approved' | 'teacher_joined' | 'teacher_left' | 'exercise_approved' | 'exercise_edited';
 
 /** Which row the event is about, so the agenda can link back to it. */
-export type EventSubject = 'source' | 'sheet' | 'scan' | 'class';
+export type EventSubject = 'source' | 'sheet' | 'scan' | 'class' | 'teacher' | 'exercise';
 
 /**
  * An exercise the teacher wrote in the sheet builder.
@@ -525,6 +530,12 @@ export interface HTTPValidationError {
   detail: ValidationError[];
 }
 
+/**
+ * READINESS: should this instance be sent traffic?
+ *
+ * Three connections, and a `degraded` answer when any of them is down. See
+ * `LivenessOut` for why the two are different questions.
+ */
 export interface HealthOut {
   status: 'ok' | 'degraded';
   version: string;
@@ -566,6 +577,18 @@ export interface JobOut {
 }
 
 export type JobStatus = 'queued' | 'running' | 'succeeded' | 'failed';
+
+/**
+ * LIVENESS: is this process running?
+ *
+ * Deliberately smaller than `HealthOut`, because it must not be able to grow
+ * a dependency check. A liveness probe that touches Redis turns a Redis
+ * outage into a restart loop across every API pod (audit 03, B29).
+ */
+export interface LivenessOut {
+  status: string;
+  version: string;
+}
 
 export interface LoginRequest {
   email: string;
@@ -677,7 +700,9 @@ export interface ScanPageOut {
   discarded: boolean;
   page_in_copy: number | null;
   registration_error: string | null;
+  flags: string[];
   detections: DetectionOut[];
+  corrections_dropped: number[];
 }
 
 export type ScanStatus = 'uploaded' | 'processing' | 'needs_review' | 'confirmed' | 'failed';
@@ -1054,8 +1079,8 @@ export interface TeacherOut {
 }
 
 /**
- * The four display switches. None is a real value: "not chosen" differs
- * from "light", because not chosen means follow the system.
+ * The display switches. None is a real value: "not chosen" differs from
+ * "light", because not chosen means follow the system.
  */
 export interface TeacherPreferences {
   locale: 'fr' | 'de' | 'en';
@@ -1063,6 +1088,7 @@ export interface TeacherPreferences {
   contrast: string | null;
   motion: string | null;
   calm: string | null;
+  discreet: string | null;
 }
 
 /**

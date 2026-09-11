@@ -6,6 +6,8 @@ import { useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { useRouter } from '@/i18n/navigation';
+import { ApiError } from '@/lib/api/client';
+import { apiErrorMessage } from '@/lib/api/error-message';
 import { useLogin } from '@/lib/api/queries';
 import { locales, type AppLocale } from '@/i18n/routing';
 
@@ -20,6 +22,7 @@ function stripLocale(path: string): string {
 
 export default function LoginPage() {
   const t = useTranslations('auth');
+  const tcode = useTranslations('errors.code');
   const router = useRouter();
   const login = useLogin();
   const searchParams = useSearchParams();
@@ -70,7 +73,20 @@ export default function LoginPage() {
             requiredLabel={t('password')}
             // The error lives on the password field but describes the pair:
             // never say which half was wrong.
-            error={login.isError ? t('invalidCredentials') : undefined}
+            //
+            // The vagueness is deliberate for 401 and ONLY for 401 (F15).
+            // Everything else was wearing it too: a rate limit, a dead API and
+            // a 500 all told the teacher their password was wrong, so the
+            // honest response — wait, or come back — was the one thing the
+            // screen never suggested. `apiErrorMessage` has the sentences,
+            // including how many seconds to wait.
+            error={
+              login.isError
+                ? login.error instanceof ApiError && login.error.status === 401
+                  ? t('invalidCredentials')
+                  : apiErrorMessage(login.error, tcode)
+                : undefined
+            }
           >
             <Input
               type="password"

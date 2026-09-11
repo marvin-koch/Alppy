@@ -129,7 +129,18 @@ export const ScanReviewOverlay = forwardRef<HTMLDivElement, ScanReviewOverlayPro
         className={cx('relative w-full overflow-hidden rounded-lg border border-line bg-surface-2', className)}
         {...rest}
       >
-        <img src={imageSrc} alt={imageAlt} className="block h-auto w-full select-none" draggable={false} />
+        {/* A pile is thirty registered pages at full resolution, and the
+            teacher reads them one at a time down a single column. Loading the
+            twenty-ninth before it is anywhere near the viewport is the
+            difference between a review screen that opens and one that stalls
+            on a school connection (F23). */}
+        <img
+          src={imageSrc}
+          alt={imageAlt}
+          loading="lazy"
+          className="block h-auto w-full select-none"
+          draggable={false}
+        />
 
         <div role="group" aria-label={regionLabel} className="absolute inset-0">
           {marks.map((mark) => {

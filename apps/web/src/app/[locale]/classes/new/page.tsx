@@ -1,6 +1,7 @@
 'use client';
 
 import { Button, Card, Field, Input, RosterInput, parseRoster } from '@alppy/ui';
+import { classCodeRe } from '@alppy/shared';
 import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -40,7 +41,10 @@ export default function NewClassPage() {
   // two letters. It has to be exact: looser here (this accepted `11ABC`) and
   // the form green-lights a code the server then rejects with a 422 the teacher
   // has to decode; stricter, and it refuses a code that would have worked.
-  const codeValid = /^\d{1,2}[A-Za-z]{1,2}$/.test(code.trim());
+  // The pattern comes from `alppy/core/uid.py` through the generated
+  // contract, not from a copy typed here (F21). The copy had already drifted
+  // once, and the drift was found by a person reading two files side by side.
+  const codeValid = classCodeRe().test(code.trim());
   const parsed = parseRoster(roster);
 
   async function submit(event: React.FormEvent) {

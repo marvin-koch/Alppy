@@ -164,6 +164,13 @@
   /* The ambient half of the card shadow, split out so a tinted card can keep
      its own solid edge and still reuse the blur without writing a colour. */
   --shadow-ambient: 0 10px 30px -12px rgb(27 23 53 / 18%);
+  /* The same ambient shadow cast upwards, for a bar fixed to the bottom of
+     the viewport: the sheet builder's mobile action bar has to lift off the
+     content it covers, and content is above it rather than below. Declared
+     here because this file is where a colour is allowed to exist — it used
+     to be an arbitrary Tailwind value with the rgb typed into a component,
+     which is exactly what the design rule forbids and CI greps for. */
+  --shadow-ambient-up: 0 -10px 30px -12px rgb(27 23 53 / 18%);
   --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(27 23 53 / 24%);
   --shadow-pop: 0 20px 50px -12px rgb(27 23 53 / 28%);
@@ -292,6 +299,7 @@
     --c-selection-ink: var(--c-ink-900);
 
     --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+    --shadow-ambient-up: 0 -10px 30px -12px rgb(0 0 0 / 55%);
     --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
     --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
     --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
@@ -373,6 +381,7 @@
   --c-selection-ink: var(--c-ink-900);
 
   --shadow-ambient: 0 10px 30px -12px rgb(0 0 0 / 55%);
+  --shadow-ambient-up: 0 -10px 30px -12px rgb(0 0 0 / 55%);
   --shadow-card: 0 2px 0 0 var(--c-line), var(--shadow-ambient);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong), 0 14px 34px -14px rgb(0 0 0 / 65%);
   --shadow-pop: 0 20px 50px -12px rgb(0 0 0 / 70%);
@@ -453,6 +462,7 @@
      mode that must not lose an edge. A fully transparent shadow paints nothing
      and stays a valid <shadow>. */
   --shadow-ambient: 0 0 0 0 transparent;
+  --shadow-ambient-up: 0 0 0 0 transparent;
   --shadow-card: 0 2px 0 0 var(--c-line);
   --shadow-raised: 0 3px 0 0 var(--c-line-strong);
   --shadow-pop: 0 4px 0 0 var(--c-line);
@@ -668,6 +678,7 @@
   --radius-xl: var(--r-xl);
   --radius-pill: var(--r-pill);
 
+  --shadow-ambient-up: var(--shadow-ambient-up);
   --shadow-card: var(--shadow-card);
   --shadow-raised: var(--shadow-raised);
   --shadow-pop: var(--shadow-pop);

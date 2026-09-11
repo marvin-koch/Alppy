@@ -10,7 +10,8 @@
     ".": "./src/index.ts",
     "./api-types": "./src/api-types.generated.ts",
     "./api-routes": "./src/api-routes.generated.ts",
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./api-constants": "./src/api-constants.generated.ts"
   },
   "files": [
     "src"

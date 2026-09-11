@@ -51,6 +51,7 @@ import type {
   SheetProposeRequest,
   SheetProposeResponse,
   SheetUpdate,
+  SchoolCreate,
   SchoolOut,
   LocalisedText,
   SourceOut,
@@ -327,6 +328,37 @@ export const uploadScan = (files: File[], sheetId: Uuid) => {
   formData.append('sheet_id', sheetId);
   return apiRequest<ScanOut>('/scans', { method: 'POST', formData });
 };
+
+/**
+ * A retake, into the pile it belongs to.
+ *
+ * A page whose fiducials were not found used to have advice and nowhere to act
+ * on it: `POST /scans` would have made a SECOND pile against the same sheet,
+ * with its own review and its own confirmation. `supersedesPageId` discards the
+ * photograph being replaced in the same transaction, so the copy never briefly
+ * has more pages than were printed for it.
+ */
+export const addScanPages = (
+  scanId: Uuid,
+  files: File[],
+  supersedesPageId?: Uuid | null,
+) => {
+  const formData = new FormData();
+  for (const file of files) formData.append('files', file);
+  if (supersedesPageId) formData.append('supersedes_page_id', supersedesPageId);
+  return apiRequest<ScanOut>(`/scans/${scanId}/pages`, { method: 'POST', formData });
+};
+
+/**
+ * A second establishment, joined in the same breath.
+ *
+ * `POST /schools` has existed with no client caller (F27): a teacher who
+ * moves, or teaches at two, had no way to make the second one. It does NOT
+ * switch the session — creating a school and acting for it are two decisions,
+ * and `switchSchool` is the deliberate second one.
+ */
+export const createSchool = (body: SchoolCreate) =>
+  apiRequest<SchoolOut>('/schools', { method: 'POST', body });
 
 export const getScan = (scanId: Uuid) => apiRequest<ScanOut>(`/scans/${scanId}`);
 
