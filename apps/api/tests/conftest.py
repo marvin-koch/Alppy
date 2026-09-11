@@ -89,3 +89,16 @@ def _reset_rate_limiters() -> Iterator[None]:
     yield
     for limiter in limiters:
         limiter.reset()
+
+
+def printed_body(html: str) -> str:
+    """The document minus its ``<head>``.
+
+    The print document inlines ``fonts.css`` — 242 KiB of base64 — so the
+    ``<head>`` now contains, by pure chance, most short strings. Any assertion
+    of the form ``html.count("7/8") == 1`` ("this prints once on the page") is
+    really an assertion about the *page*, and the head is not the page. Reach
+    for this whenever the token being counted is short enough to collide.
+    """
+    _, _, body = html.partition("</head>")
+    return body or html

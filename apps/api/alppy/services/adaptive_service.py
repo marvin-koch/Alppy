@@ -412,6 +412,20 @@ def propose_adaptive(
     # request. `seen` is shared across the whole run: rebuilt per call, it let
     # two groups in the same proposal generate the identical statement.
     if collector.asks:
+        # Retrieval is finished and every row it wrote is durable before the
+        # first model call goes out (audit 03, B11). Without this commit the
+        # whole proposal — targeting, retrieval, every plan — sits in one open
+        # transaction across up to three batched generation calls, each of
+        # which can take a minute. A worker holding a write transaction open
+        # for three minutes is a connection nobody else can have and a lock
+        # nobody else can take, and if the provider hangs, the rollback throws
+        # away work that had nothing to do with the provider.
+        #
+        # It is safe precisely because the batching design already separates
+        # the phases: `collector.resolve` below writes the generated rows in
+        # its own transaction, and a proposal whose generation fails is meant
+        # to keep its retrieved items — that is what `failures` reports.
+        db.commit()
         seen = _rejected_statements(db, school_id=school_id, subject_id=subject_id)
         collector.resolve(
             generate_for_asks(
@@ -1152,7 +1166,7 @@ def _plan_for_groups(
 def _group_label(
     index: int, plan: AdaptiveGroupPlan, *, language: str, db: Session
 ) -> str:
-    """"Groupe 2 · Fractions équivalentes" — the number and what it is for.
+    """"Série 2 · Fractions équivalentes" — the number and what it is for.
 
     The number alone is a bucket; the competency alone does not survive two
     groups chasing the same one after a split. Truncated to the column the
@@ -1166,10 +1180,23 @@ def _group_label(
     return full[:60]
 
 
+# "Groupe" is spent elsewhere. A Cycle 3 class IS a teaching group — that is
+# what the word means to a teacher in Sion — and using it here as well for "the
+# cohort of pupils receiving this variant" left the product with one word for
+# two containers. This is the differentiation cohort, so it is named after the
+# thing it actually is: the SERIES of exercises that copy carries.
+#
+# `lot` was taken (the exported batch, and a scan pile) and `niveau` collides
+# with an exercise's difficulty ("Niveau 3 sur 5"), so `série` is the word left
+# standing — and it already appeared in this namespace for a diagnostic series.
+#
+# This is printed. `sheet_instance.group_label` stores the label as it stood,
+# so sheets already made keep the word they were made with; only new proposals
+# are labelled this way.
 _GROUP_WORDS: dict[str, dict[str, str]] = {
-    "fr": {"group": "Groupe"},
-    "de": {"group": "Gruppe"},
-    "en": {"group": "Group"},
+    "fr": {"group": "Série"},
+    "de": {"group": "Serie"},
+    "en": {"group": "Set"},
 }
 
 
@@ -1686,6 +1713,11 @@ def _ask_batch(
         student_names=roster_names,
         temperature=GENERATION_TEMPERATURE,
         max_tokens=budget,
+        # A batch of up to eight plans is not a vision call over one crop, and
+        # the two must not share a budget: the default ceiling would strangle
+        # this, and this one applied everywhere would let a single crop hang for
+        # three minutes (audit 03, B10).
+        timeout_s=settings.provider_batch_timeout_s,
     )
     # Audited before parsing: a call that was made and then failed to parse
     # still cost tokens and still happened.
@@ -1911,10 +1943,21 @@ def regenerate_exercise(
     )
     style = [c.exercise.statement for c in candidates[:STYLE_EXAMPLE_COUNT]]
 
-    # Discard first, inside the same transaction. The replacement must not be
-    # allowed to come back as a copy of what we are replacing, and
-    # `_rejected_statements` is what stops it.
-    discard_exercises(db, school_id=school_id, exercise_ids=[exercise.id])
+    # The outgoing statement, remembered BEFORE anything is written, because
+    # the discard has moved (audit 03, B11).
+    #
+    # It used to be discarded here, first, so that `_rejected_statements` would
+    # already contain it by the time generation ran and the model could not
+    # hand back the item the teacher had just rejected. That worked, and it
+    # held a write transaction open across a retrieval pass and a model call —
+    # seconds of provider latency with a row locked behind it, on the one
+    # database connection this request owns.
+    #
+    # So the discard moves below the generation, and what the discard used to
+    # provide is passed in explicitly: `seen` is seeded with the outgoing
+    # statement. Same guarantee, no transaction spanning the network.
+    seen = _rejected_statements(db, school_id=school_id, subject_id=exercise.subject_id)
+    seen.add(_normalise(exercise.statement))
 
     refs = [str(r) for r in meta.get("student_refs", [])] or _refs_from_legacy_meta(meta)
     proposals, failure = _generate(
@@ -1932,12 +1975,17 @@ def regenerate_exercise(
         chapter_id=exercise.chapter_id,
         roster_names=roster_names,
         ai=client,
+        seen=seen,
     )
     if not proposals:
         db.rollback()
         detail = failure.detail if failure else "no replacement was produced"
         raise AdaptiveGenerationError(detail)
 
+    # Only now, with a replacement in hand, is anything taken away. The old
+    # behaviour discarded first and rolled back on failure, which is the same
+    # outcome by a longer road — except that the road ran through a model call.
+    discard_exercises(db, school_id=school_id, exercise_ids=[exercise.id])
     db.commit()
     log.info(
         "adaptive.regenerate",

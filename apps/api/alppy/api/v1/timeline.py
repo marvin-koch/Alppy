@@ -31,11 +31,21 @@ from alppy.services.event_service import list_events
 router = APIRouter(tags=["timeline"])
 
 
-def _titles(db: DbDep, events: list[Event]) -> dict[tuple[EventSubject, uuid.UUID], str]:
+def _titles(
+    db: DbDep, school_id: uuid.UUID, events: list[Event]
+) -> dict[tuple[EventSubject, uuid.UUID], str]:
     """Current titles for everything the page points at, in three queries.
 
     Batched rather than per row: an agenda page is twenty events and a naive
     resolve would be twenty round trips for a screen a teacher opens daily.
+
+    Every lookup carries `school_id` explicitly (audit 03, B20). All five used
+    to select by primary key alone, on the reasoning that the ids came from
+    events already filtered by tenant — true, and it is an *inference* rather
+    than a line, which stops being true the moment somebody widens the query
+    above. RLS covers these on Postgres (D84), and the codebase's own rule is
+    that the service-layer filter is not dropped because the database backstop
+    exists: the suite runs on SQLite, where there is no backstop at all.
     """
     wanted: dict[EventSubject, set[uuid.UUID]] = {}
     for event in events:
@@ -48,11 +58,23 @@ def _titles(db: DbDep, events: list[Event]) -> dict[tuple[EventSubject, uuid.UUI
             out[(kind, row.id)] = str(getattr(row, attr, "") or "")
 
     if ids := wanted.get(EventSubject.SHEET):
-        resolve(EventSubject.SHEET, db.scalars(select(Sheet).where(Sheet.id.in_(list(ids)))), "title")
+        resolve(
+            EventSubject.SHEET,
+            db.scalars(
+                select(Sheet)
+                .where(Sheet.id.in_(list(ids)))
+                .where(Sheet.school_id == school_id)
+            ),
+            "title",
+        )
     if ids := wanted.get(EventSubject.SOURCE):
         resolve(
             EventSubject.SOURCE,
-            db.scalars(select(Source).where(Source.id.in_(list(ids)))),
+            db.scalars(
+                select(Source)
+                .where(Source.id.in_(list(ids)))
+                .where(Source.school_id == school_id)
+            ),
             "filename",
         )
         # A chapter-read event points at the SECTION, not the document: one
@@ -61,17 +83,33 @@ def _titles(db: DbDep, events: list[Event]) -> dict[tuple[EventSubject, uuid.UUI
         # identity. So the same subject type resolves against both tables.
         resolve(
             EventSubject.SOURCE,
-            db.scalars(select(SourceSection).where(SourceSection.id.in_(list(ids)))),
+            db.scalars(
+                select(SourceSection)
+                .where(SourceSection.id.in_(list(ids)))
+                .where(SourceSection.school_id == school_id)
+            ),
             "title",
         )
     if ids := wanted.get(EventSubject.SCAN):
         resolve(
             EventSubject.SCAN,
-            db.scalars(select(Scan).where(Scan.id.in_(list(ids)))),
+            db.scalars(
+                select(Scan)
+                .where(Scan.id.in_(list(ids)))
+                .where(Scan.school_id == school_id)
+            ),
             "original_filename",
         )
     if ids := wanted.get(EventSubject.CLASS):
-        resolve(EventSubject.CLASS, db.scalars(select(Class).where(Class.id.in_(list(ids)))), "code")
+        resolve(
+            EventSubject.CLASS,
+            db.scalars(
+                select(Class)
+                .where(Class.id.in_(list(ids)))
+                .where(Class.school_id == school_id)
+            ),
+            "code",
+        )
     return out
 
 
@@ -126,11 +164,18 @@ def get_timeline(
         limit=limit,
     )
 
-    titles = _titles(db, events)
+    titles = _titles(db, scope.school_id, events)
     codes = {
         c.id: c.code
         for c in db.scalars(
-            select(Class).where(Class.id.in_([e.class_id for e in events if e.class_id] or [uuid.UUID(int=0)]))
+            select(Class)
+            .where(
+                Class.id.in_(
+                    [e.class_id for e in events if e.class_id] or [uuid.UUID(int=0)]
+                )
+            )
+            # The sixth lookup, and the same rule as the five in `_titles`.
+            .where(Class.school_id == scope.school_id)
         )
     }
 

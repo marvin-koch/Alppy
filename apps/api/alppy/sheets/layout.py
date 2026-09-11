@@ -53,6 +53,107 @@ HEADER_H_MM: Final = 18.0
 
 # The UID is printed twice: as human-readable text, and as a pre-filled digit
 # grid the detector reads directly. That is why the happy path needs no OCR.
+class UnknownLayoutError(ValueError):
+    """A page printed under a layout this build has no geometry for."""
+
+
+#: The UID grid, **per layout version**, because a printed page keeps the
+#: geometry it was printed with forever (B4).
+#:
+#: Before this, the detector read every page against the constants as they
+#: existed *today* and refused outright when `Sheet.layout_version` did not
+#: match — which was the only honest answer available, and it meant the first
+#: version bump would make every already-printed sheet unreadable. A pile
+#: photographed in March from a sheet printed in January is the ordinary case,
+#: not an edge one, so the geometry has to be selectable rather than current.
+@dataclass(frozen=True, slots=True)
+class UidGrid:
+    """Where the machine-readable UID cells sit, and how many bits they carry."""
+
+    origin_mm: tuple[float, float]
+    cell_mm: float
+    gap_mm: float
+    cells: int
+    rows: int
+    payload_bits: int
+    checksum_bits: int
+
+    @property
+    def pitch_mm(self) -> float:
+        return self.cell_mm + self.gap_mm
+
+    @property
+    def total_bits(self) -> int:
+        return self.cells * self.rows
+
+    @property
+    def width_mm(self) -> float:
+        return self.cells * self.cell_mm + (self.cells - 1) * self.gap_mm
+
+    @property
+    def height_mm(self) -> float:
+        return self.rows * self.cell_mm + (self.rows - 1) * self.gap_mm
+
+    def cell_centre_mm(self, slot: int, row: int) -> tuple[float, float]:
+        ox, oy = self.origin_mm
+        return (
+            ox + slot * self.pitch_mm + self.cell_mm / 2.0,
+            oy + row * self.pitch_mm + self.cell_mm / 2.0,
+        )
+
+
+UID_GRIDS: Final[dict[str, UidGrid]] = {
+    # 8 x 4 = 32 bits: 24 payload + CRC-8. Frozen forever — every sheet printed
+    # before v2 is read against exactly this.
+    "v1": UidGrid(
+        origin_mm=(120.0, 30.0),
+        cell_mm=4.0,
+        gap_mm=1.0,
+        cells=8,
+        rows=4,
+        payload_bits=24,
+        checksum_bits=8,
+    ),
+    # 12 x 6 = 72 bits: 57 payload (+1 spare) + CRC-16.
+    #
+    # **Wider, and moved UP rather than down.** Six rows at the v1 origin would
+    # span y 30..60 and print over the first exercise: `ITEMS_TOP_MM` is 48.
+    # Pushing the items region down instead was the obvious alternative and is
+    # the wrong one — `ANSWER_BOX_MAX_LINES` is calibrated to the millimetre
+    # against that region ("14 lines is 133.3 mm of the 134 mm a page has"), so
+    # moving it silently costs a teacher the tallest box they can ask for.
+    #
+    # At y=18 the grid ends at 47, one millimetre clear of the items. It
+    # overlaps the fiducial band vertically (14..22) and that is harmless: the
+    # fiducials sit at x 14..22 and 188..196, and this grid spans x 120..179.
+    # CRC-16 rather than CRC-8 because the payload more than doubled, and an
+    # 8-bit checksum over 57 bits on a creased photocopy is no longer the
+    # "fails rather than resolves to a different real student" guarantee that
+    # makes the whole scheme safe.
+    "v2": UidGrid(
+        origin_mm=(120.0, 18.0),
+        cell_mm=4.0,
+        gap_mm=1.0,
+        cells=12,
+        rows=6,
+        payload_bits=56,
+        checksum_bits=16,
+    ),
+}
+
+
+def uid_grid(version: str | None = None) -> UidGrid:
+    """The grid for one layout version. Raises for a version we cannot read."""
+    key = version or LAYOUT_VERSION
+    try:
+        return UID_GRIDS[key]
+    except KeyError:
+        raise UnknownLayoutError(f"no geometry for layout {key!r}") from None
+
+
+# v1 names, kept so nothing that only ever needs the current grid has to know
+# about versions. They are the CURRENT layout's values, not v1's, the moment
+# LAYOUT_VERSION moves.
 UID_GRID_ORIGIN_MM: Final = (120.0, 30.0)
 UID_GRID_CELL_MM: Final = 4.0
 UID_GRID_GAP_MM: Final = 1.0
@@ -205,14 +306,11 @@ def page_slots(page_index: int, option_counts: list[int]) -> list[BubbleSlot]:
     return slots
 
 
-def uid_cell_centre_mm(slot: int, row: int) -> tuple[float, float]:
-    """Centre of one cell of the pre-filled UID grid."""
-    ox, oy = UID_GRID_ORIGIN_MM
-    pitch = UID_GRID_CELL_MM + UID_GRID_GAP_MM
-    return (
-        ox + slot * pitch + UID_GRID_CELL_MM / 2.0,
-        oy + row * pitch + UID_GRID_CELL_MM / 2.0,
-    )
+def uid_cell_centre_mm(
+    slot: int, row: int, *, version: str | None = None
+) -> tuple[float, float]:
+    """Centre of one cell of the pre-filled UID grid, for one layout version."""
+    return uid_grid(version).cell_centre_mm(slot, row)
 
 
 def as_dict() -> dict[str, object]:

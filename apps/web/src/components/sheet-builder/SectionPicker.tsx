@@ -12,6 +12,8 @@ import {
   Panel,
 } from '@alppy/ui';
 import { useTranslations } from 'next-intl';
+
+import { useFormatters } from '@/lib/format';
 import { useEffect, useState } from 'react';
 
 import { useExtractSection, useJob, useSourceSections } from '@/lib/api/queries';
@@ -39,6 +41,7 @@ interface Props {
 export function SectionPicker({ sourceId, section, onSelect }: Props) {
   const t = useTranslations('builder');
   const tc = useTranslations('common');
+  const fmt = useFormatters();
   const [open, setOpen] = useState(false);
 
   const sections = useSourceSections(sourceId);
@@ -216,9 +219,19 @@ export function SectionPicker({ sourceId, section, onSelect }: Props) {
                             style={{ width: `${Math.round((job.data.progress ?? 0) * 100)}%` }}
                           />
                         </div>
-                        {job.data.message ? (
-                          <p className="text-body-s text-ink-500">{job.data.message}</p>
-                        ) : null}
+                        {/* The job's own `message` is a log line, in English,
+                            written for the console — `api/client.ts` says so,
+                            and the scan review screen already drives its words
+                            off the stage rather than off the string. Same
+                            `JobOut`, same rule: what a teacher reads here is
+                            the stage and how far it has got (F12). */}
+                        <p className="text-body-s text-ink-500" role="status">
+                          {job.data.status === 'queued'
+                            ? t('extracting')
+                            : t('extractingProgress', {
+                                percent: fmt.percent(job.data.progress ?? 0),
+                              })}
+                        </p>
                       </div>
                     ) : null}
 

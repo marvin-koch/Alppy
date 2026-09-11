@@ -14,7 +14,7 @@ import {
   Select,
 } from '@alppy/ui';
 import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 
 import { useSourceExercises, useSources, useSubjects, useUploadSource } from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
@@ -33,15 +33,10 @@ export default function SourcesPage() {
   const [subjectId, setSubjectId] = useState('');
 
   // A source is only "done" once ingestion finishes, and that happens in the
-  // worker. Poll while anything is still moving, then stop — a page that never
-  // refreshes leaves the teacher looking at "indexing…" forever.
+  // worker, so the list polls while anything is still moving. The poll lives
+  // in `useSources` now (F25): a `setInterval` here was
+  // the only hand-rolled one left, and it kept asking on a hidden tab.
   const { data, isLoading, isError, refetch } = useSources();
-  const pending = (data ?? []).some((s) => s.status === 'queued' || s.status === 'running');
-  useEffect(() => {
-    if (!pending) return;
-    const id = setInterval(() => void refetch(), 2000);
-    return () => clearInterval(id);
-  }, [pending, refetch]);
 
   const activeSubject = subjectId || subjects.data?.[0]?.id || '';
 

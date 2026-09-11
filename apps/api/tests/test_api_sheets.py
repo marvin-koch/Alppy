@@ -6,12 +6,19 @@ import uuid
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import Tenant, login, make_chapter, make_exercise
+from test_api_fixtures import Tenant, login, make_chapter, make_colleague, make_exercise
 
-from alppy.models import UNFILED_CHAPTER_KEY, Chapter, Subject, class_subject
+from alppy.db.validity import today
+from alppy.models import (
+    UNFILED_CHAPTER_KEY,
+    Chapter,
+    Subject,
+    class_subject,
+    class_teacher_subject,
+)
 from alppy.sheets.layout import LAYOUT_VERSION
 
 
@@ -551,3 +558,95 @@ def test_a_sheet_band_ignores_the_bareme(
     assert theirs["mastery"]["band"] == "solid"
     assert theirs["mastery"]["assessed_count"] == 1
     assert db.get(Sheet, sheet_id) is not None
+
+
+# --------------------------------------------------------------------------
+# A teacher who has left the group keeps what they marked, and may not act
+# --------------------------------------------------------------------------
+def _end_assignment(db: Session, tenant: Tenant) -> None:
+    """Close this teacher's assignment to (class, subject) as of today.
+
+    Half-open, so `valid_from <= today < valid_to` is already false the moment
+    it is written: the substitute stops teaching the group now, not at
+    midnight (`db/validity.valid_on`).
+    """
+    db.execute(
+        update(class_teacher_subject)
+        .where(class_teacher_subject.c.class_id == tenant.school_class.id)
+        .where(class_teacher_subject.c.teacher_id == tenant.teacher.id)
+        .where(class_teacher_subject.c.subject_id == tenant.subject.id)
+        .values(valid_to=today())
+    )
+    db.commit()
+
+
+def test_a_departed_teacher_still_reads_the_sheet_they_marked(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """M. Rossier's June problem (D88).
+
+    He took niveau-2 maths from September to February and marked this sheet. In
+    June a parent contests the orientation decision it fed. Under the
+    current-only gate every read 404s — including `sheet_report`, whose student
+    lookup had already been widened to overlap for exactly this case and could
+    never be reached because `get_sheet` refused one line earlier.
+    """
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+
+    _end_assignment(db, tenant)
+
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 200
+    assert client.get(f"/api/v1/sheets/{sheet_id}/mastery").status_code == 200
+
+    # Browsing is the CURRENT teacher's surface: the group he no longer takes
+    # leaves his list, even though the sheet stays reachable by id.
+    listed = client.get(f"/api/v1/sheets?class_id={tenant.school_class.id}").json()
+    assert listed == []
+
+
+def test_a_departed_teacher_may_no_longer_act_on_that_sheet(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Reading is widened; writing is not. That asymmetry IS the decision.
+
+    A teacher who has left the group may reconstruct what they marked, and may
+    not print into it, edit it or bill a generation against it.
+    """
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+
+    _end_assignment(db, tenant)
+
+    assert client.post(f"/api/v1/sheets/{sheet_id}/render").status_code == 404
+    assert client.post(f"/api/v1/sheets/{sheet_id}/printed").status_code == 404
+    assert client.patch(f"/api/v1/sheets/{sheet_id}", json={"title": "hop"}).status_code == 404
+
+
+def test_widening_the_read_gate_does_not_reach_a_colleague(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """"Ever taught this pair", not "is in this school".
+
+    The widening is keyed on an assignment row that once existed. A colleague
+    who never took this branch in this class has none, so the D23 boundary is
+    exactly where it was.
+    """
+    exercise = make_exercise(db, tenant, statement="3 + 4 x 2 = ?")
+    login(client, tenant.teacher.email)
+    sheet_id = client.post(
+        "/api/v1/sheets", json=_sheet_payload(tenant, [str(exercise.id)])
+    ).json()["id"]
+
+    other = make_colleague(db, tenant)
+    db.commit()
+    login(client, other.teacher.email)
+
+    assert client.get(f"/api/v1/sheets/{sheet_id}").status_code == 404
+    assert client.get(f"/api/v1/sheets/{sheet_id}/mastery").status_code == 404

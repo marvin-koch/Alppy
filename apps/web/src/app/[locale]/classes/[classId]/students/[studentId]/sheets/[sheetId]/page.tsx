@@ -21,6 +21,7 @@ import { useStudentSheet } from '@/lib/api/queries';
 import type { StudentSheetItemOut, Uuid } from '@/lib/api/types';
 import { useFormatters } from '@/lib/format';
 import { pointsRatio } from '@/lib/points';
+import { useDiscretion } from '@/lib/discreet';
 
 /**
  * One pupil's copy, question by question.
@@ -40,6 +41,7 @@ export default function StudentSheetPage({
 }) {
   const { classId, studentId, sheetId } = use(params);
   const t = useTranslations('studentSheet');
+  const { hideNames } = useDiscretion();
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
   const a11y = useTranslations('a11y');
@@ -57,7 +59,12 @@ export default function StudentSheetPage({
     );
   }
 
-  const name = `${data.student.first_name} ${data.student.last_name}`.trim();
+  // Even here, where the teacher arrived by choosing this pupil: the screen
+  // can still be projected, and the point of the mode is that it holds
+  // everywhere rather than on the screens someone remembered.
+  const name = hideNames
+    ? data.student.uid
+    : `${data.student.first_name} ${data.student.last_name}`.trim();
   const ratio = pointsRatio({ earned: data.points_earned, possible: data.points_possible });
 
   return (

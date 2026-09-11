@@ -15,13 +15,17 @@ import {
   IconTrend,
   Sheet,
 } from '@alppy/ui';
-import { useTranslations } from 'next-intl';
-import { useState, type ReactNode } from 'react';
+import { useLocale, useTranslations } from 'next-intl';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 // next-intl's usePathname already has the locale prefix stripped, so route
 // matching below never has to know which locale it is in.
 import { Link, usePathname } from '@/i18n/navigation';
 import { ScopeSwitcher } from '@/components/ScopeSwitcher';
+import { useConnection } from '@/lib/connection';
+import { applyDisplay, readDisplay } from '@/lib/display';
+import { useUpdatePreferences } from '@/lib/api/queries';
+import { type AppLocale } from '@/i18n/routing';
 
 interface Destination {
   href: string;
@@ -68,8 +72,64 @@ function isActive(pathname: string, href: string): boolean {
  */
 export function AppShell({ children }: { children: ReactNode }) {
   const t = useTranslations('nav');
+  const tconn = useTranslations('connection');
   const pathname = usePathname();
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const connection = useConnection();
+  const tdiscreet = useTranslations('discreet');
+  const locale = useLocale() as AppLocale;
+  const updatePrefs = useUpdatePreferences();
+  /** What the shortcut just did, for the live region below. */
+  const [shortcutSaid, setShortcutSaid] = useState<string | null>(null);
+  const offline = !connection.online || !connection.reachable;
+
+  // Focus follows the route (F20). A client-side navigation replaces the page
+  // under a screen reader without telling it anything: the announcement never
+  // happens, and the keyboard caret is left on the link in a rail that is now
+  // describing somewhere else. `#main` already carried `tabIndex={-1}` for
+  // exactly this and nothing ever focused it.
+  //
+  // Guarded on the first render: focusing the main region on load would move
+  // the caret past the skip link, which is the one control that exists to be
+  // reached first.
+  const mounted = useRef(false);
+  useEffect(() => {
+    if (!mounted.current) {
+      mounted.current = true;
+      return;
+    }
+    document.getElementById('main')?.focus({ preventScroll: true });
+  }, [pathname]);
+
+  // Projector mode, from anywhere, without a trip to the settings screen
+  // (Phase 5). The realistic trigger is realising you need it while the
+  // projector is already on and the class is already looking — which is the
+  // one moment a teacher cannot go hunting through Réglages.
+  //
+  // Shift+D, and only when the focus is not in a field: a bare letter would
+  // fire while someone types a sheet title, and a modifier combination the
+  // browser already owns (Ctrl/Cmd+D is bookmark) would be taken from us.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!event.shiftKey || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (event.key !== 'D' && event.key !== 'd') return;
+      const target = event.target as HTMLElement | null;
+      if (target?.isContentEditable) return;
+      if (target && /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName)) return;
+      event.preventDefault();
+
+      const prefs = readDisplay();
+      const next = { ...prefs, discreet: prefs.discreet === 'on' ? null : ('on' as const) };
+      applyDisplay(next);
+      // Announced, because the whole point is that the screen just changed
+      // under an audience and the teacher needs to know which way.
+      setShortcutSaid(next.discreet === 'on' ? tdiscreet('toggled') : tdiscreet('untoggled'));
+      // And persisted, so the choice survives the lesson it was made in.
+      updatePrefs.mutate({ locale, ...next });
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [locale, tdiscreet, updatePrefs]);
 
   // The login screen is chromeless.
   if (pathname === '/login') {
@@ -103,6 +163,29 @@ export function AppShell({ children }: { children: ReactNode }) {
       >
         {t('skipToContent')}
       </a>
+
+      {/* What the keyboard shortcut just did. A live region rather than a
+          toast: it is the screen changing under an audience, and it has to be
+          announced without anything to dismiss. */}
+      <p className="visually-hidden" role="status" aria-live="polite">
+        {shortcutSaid ?? ''}
+      </p>
+
+      {/* One bar, and it stays until a request succeeds (F24). The product is
+          used on a phone in a classroom — the worst wifi in the building — and
+          nothing told a teacher that the reason a verdict would not save was
+          the connection: every failure read as "L'envoi a échoué. Réessayez."
+
+          Never colour alone (DC-colour-08): the word says it too. */}
+      {offline ? (
+        <p
+          role="status"
+          aria-live="polite"
+          className="flex min-h-11 items-center justify-center gap-2 bg-warn-100 px-4 py-2 text-center text-body-s font-bold text-warn-700"
+        >
+          {tconn('offline')}
+        </p>
+      ) : null}
 
       {/* Mobile header */}
       <header

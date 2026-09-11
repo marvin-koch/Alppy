@@ -23,7 +23,7 @@ from collections.abc import Generator, Sequence
 from dataclasses import dataclass, field
 from typing import Annotated, Any, Final, TypeVar
 
-from fastapi import Depends, Request, UploadFile
+from fastapi import Depends, Header, Request, UploadFile
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -586,11 +586,42 @@ async def read_upload(
             f"file contents do not look like {declared}", declared=declared
         )
 
+    # Last, because both of these need the whole file: refuse a raster too big
+    # to decode, and drop the metadata a phone stamped on it (audit 03, B15).
+    # A photograph of a pile is taken in a classroom, so its EXIF GPS is a
+    # school building — data this product never uses and would otherwise keep
+    # in object storage forever.
+    from alppy.media import ImageTooLargeError, guard_and_strip
+
+    try:
+        data = guard_and_strip(data, declared, max_pixels=settings.max_image_pixels)
+    except ImageTooLargeError as exc:
+        raise errors.payload_too_large(
+            "this image is too large to process",
+            max_pixels=settings.max_image_pixels,
+        ) from exc
+
     # The filename is kept for display only; storage keys are built by
     # alppy.storage.storage_key, which sanitises it into a single segment.
     return UploadPayload(
         filename=upload.filename or "upload", content_type=declared, data=data
     )
+
+
+def idempotency_key(
+    idempotency_key: Annotated[str | None, Header(alias="Idempotency-Key")] = None,
+) -> str | None:
+    """The client's own name for this request, if it gave one (audit 03, B17).
+
+    Opt-in per request: absent means "behave exactly as before", so no existing
+    client changes and a caller that wants the guarantee asks for it. See
+    ``services/idempotency.py`` for why the key is claimed before the work runs
+    rather than recorded after it.
+    """
+    return idempotency_key
+
+
+IdempotencyKeyDep = Annotated[str | None, Depends(idempotency_key)]
 
 
 def start_job(db: Session, job: Any) -> None:

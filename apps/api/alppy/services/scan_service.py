@@ -136,8 +136,7 @@ def list_scans(
 
 def create_scan(
     db: Session,
-    school_id: uuid.UUID,
-    teacher_id: uuid.UUID,
+    scope: Scope,
     storage: Storage,
     payloads: list[UploadPayload],
     *,
@@ -152,13 +151,21 @@ def create_scan(
     if not payloads:
         raise errors.unprocessable("no file was uploaded")
 
+    school_id = scope.school_id
+    teacher_id = scope.teacher_id
+
     sheet: Sheet | None = None
     if sheet_id is not None:
-        sheet = db.execute(
-            select(Sheet).where(Sheet.id == sheet_id).where(Sheet.school_id == school_id)
-        ).scalar_one_or_none()
-        if sheet is None:
-            raise errors.not_found("sheet", id=str(sheet_id))
+        # Pair-grained, not tenant-grained (audit 03, B27). Validating on
+        # `school_id` alone accepted a pile against a sheet in a branch this
+        # teacher does not take — `_owned_scan` then hid the scan from them the
+        # moment it had a sheet, so the upload succeeded, the worker processed
+        # it, and the teacher had no route to the review screen. A 404 at upload
+        # is the honest answer, and it is the same gate every other sheet read
+        # goes through.
+        from alppy.services.sheet_service import get_sheet
+
+        sheet = get_sheet(db, scope, sheet_id)
 
     scan_id = uuid.uuid4()
     keys: list[str] = []
@@ -178,6 +185,11 @@ def create_scan(
         # Pin the layout the paper was printed with, now, so a later sheet
         # re-render cannot change how an already-scanned pile is read.
         layout_version=sheet.layout_version if sheet is not None else None,
+        # And which render of it, for the same reason and by the same means:
+        # the answer-box rectangles this pile must be cropped at belong to the
+        # render it was printed from, not to whichever one is newest when the
+        # photographs are finally uploaded (B7).
+        render_generation=sheet.render_generation if sheet is not None else None,
         status=ScanStatus.UPLOADED,
     )
     db.add(scan)
@@ -189,6 +201,7 @@ def create_scan(
         status=JobStatus.QUEUED,
         progress=0.0,
         message="queued for registration and detection",
+        scan_id=scan_id,
         payload={"scan_id": str(scan_id), "sheet_id": str(sheet_id) if sheet_id else None},
     )
     db.add(job)
@@ -206,6 +219,124 @@ def create_scan(
         class_id=sheet.class_id if sheet else None,
         subject_area_id=sheet.subject_id if sheet else None,
         detail={"pages": len(payloads)},
+    )
+    return scan, job
+
+
+def append_pages(
+    db: Session,
+    scope: Scope,
+    teacher_id: uuid.UUID,
+    storage: Storage,
+    payloads: list[UploadPayload],
+    *,
+    scan_id: uuid.UUID,
+    supersedes_page_id: uuid.UUID | None = None,
+) -> tuple[Scan, Job]:
+    """More photographs into a pile that already exists.
+
+    Three of thirty copies were shot at an angle that lost a corner, so their
+    fiducials were not found and the pages carry advice — *"reprenez la photo en
+    cadrant les quatre coins"* — that there was nowhere to act on. Uploading the
+    retakes made a SECOND scan against the same sheet: a second review, a second
+    confirmation, and one class's work split across two records for no reason
+    but a missing route. The likelier alternative was worse — discard the three,
+    confirm the twenty-seven, and three pupils are silently unassessed.
+
+    The job processes only what was added (``from_file``). Nothing deletes the
+    pages already read, and that is the point: the teacher's corrections hang
+    off those rows, and re-reading the pile would either duplicate every page or
+    throw that work away.
+
+    ``supersedes_page_id`` marks the failed page discarded in the same
+    transaction — "this photograph is not one of this copy's pages", which is
+    exactly what makes the pile ordinary again once the retake lands.
+    """
+    if not payloads:
+        raise errors.unprocessable("no file was uploaded")
+
+    scan = get_scan(db, scope, scan_id)
+    # A confirmed pile is read-only: its grades were computed from the readings
+    # as they stood. Adding a page underneath them would leave a grade
+    # disagreeing with its own evidence.
+    _refuse_when_confirmed(scan)
+
+    # One reader at a time, per pile. Both the page numbers and the stored
+    # image keys (`page-003.png`) continue from the rows already written, and
+    # the worker runs four jobs at once (`WorkerSettings.max_jobs`), so two
+    # runs over one scan would count the same rows, write colliding
+    # `page_index` values and overwrite each other's registered images in the
+    # bucket. Reachable in practice: pages appear as they are read, so a
+    # teacher can see page 1 fail while page 20 is still being processed.
+    #
+    # Refused rather than queued behind it: "the pile is still being read" is
+    # a sentence a teacher can act on, and the retake is one tap to repeat.
+    in_flight = db.execute(
+        select(Job.id)
+        .where(Job.scan_id == scan.id)
+        .where(Job.kind == JobKind.PROCESS_SCAN)
+        .where(Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]))
+        .limit(1)
+    ).scalar_one_or_none()
+    if in_flight is not None:
+        raise errors.conflict(
+            "this pile is still being read; wait for it to finish",
+            code="scan_processing",
+            scan_id=str(scan.id),
+        )
+
+    existing = list(scan.storage_keys or [scan.storage_key])
+    keys: list[str] = []
+    for offset, payload in enumerate(payloads, start=len(existing)):
+        key = storage_key("scans", scan.school_id, scan.id, f"{offset:03d}-{payload.filename}")
+        storage.put_bytes(key, payload.data, payload.content_type)
+        keys.append(key)
+
+    # Reassigned rather than appended in place: the column is JSON, and a list
+    # mutated under SQLAlchemy is a list the session never hears about.
+    scan.storage_keys = [*existing, *keys]
+    names = [p.strip() for p in (scan.original_filename or "").split(",") if p.strip()]
+    scan.original_filename = ", ".join([*names, *(p.filename for p in payloads)])[:255]
+    scan.status = ScanStatus.UPLOADED
+
+    if supersedes_page_id is not None:
+        superseded = db.execute(
+            select(ScanPage)
+            .where(ScanPage.id == supersedes_page_id)
+            .where(ScanPage.scan_id == scan.id)
+        ).scalar_one_or_none()
+        if superseded is None:
+            raise errors.not_found("scan page", id=str(supersedes_page_id))
+        superseded.discarded = True
+
+    job = Job(
+        id=uuid.uuid4(),
+        school_id=scan.school_id,
+        kind=JobKind.PROCESS_SCAN,
+        status=JobStatus.QUEUED,
+        progress=0.0,
+        message="queued for registration and detection",
+        scan_id=scan.id,
+        payload={
+            "scan_id": str(scan.id),
+            "sheet_id": str(scan.sheet_id) if scan.sheet_id else None,
+            # Where this run starts. Everything before it has been read, and
+            # may since have been corrected by hand.
+            "from_file": len(existing),
+        },
+    )
+    db.add(job)
+    db.flush()
+
+    event_service.record(
+        db,
+        school_id=scan.school_id,
+        kind=EventKind.SCAN_UPLOADED,
+        subject_type=EventSubject.SCAN,
+        subject_id=scan.id,
+        summary=scan.original_filename or "",
+        actor_id=teacher_id,
+        detail={"pages": len(payloads), "added_to_existing": True},
     )
     return scan, job
 
@@ -708,6 +839,22 @@ def confirm_scan(
     if scan.status is ScanStatus.FAILED:
         raise errors.conflict("scan failed processing and cannot be confirmed")
 
+    # A pile with no sheet behind it, said before anything else, because it is
+    # the one refusal here the teacher cannot act on. There is no route that
+    # attaches a sheet to an existing scan, and `assignable_students` answers
+    # nobody without one — so the "assign every page first" message below would
+    # be asking for something the product cannot do. Since B3 this arrives more
+    # often: a UID is only resolved within the school year the sheet's class
+    # sits in, so a sheetless pile now identifies nobody rather than guessing
+    # across years, and its pages stay unassigned by design.
+    if scan.sheet_id is None:
+        raise errors.conflict(
+            "this pile is not linked to the sheet it was printed from, "
+            "so there is nothing to grade",
+            code="scan_no_sheet",
+            scan_id=str(scan_id),
+        )
+
     # A discarded page (a cover sheet, a lens-cap frame, a re-shot copy) is not
     # part of the pile, and a page from another class belongs to another sheet.
     # Neither has to be assigned for the other 27 copies to be gradeable.
@@ -746,6 +893,7 @@ def confirm_scan(
     attempts_superseded = 0
     items_skipped = 0
     people: set[uuid.UUID] = set()
+    confirmed_students: set[uuid.UUID] = set()
 
     # Fetched once, before the loop: it carries the sheet's default barème, so
     # every item on every page resolves against the same row. It is also what
@@ -819,6 +967,9 @@ def confirm_scan(
                 )
                 attempts_created += 1
             people.add(student.person_id)
+            # The year-bound row too: `points_possible` is frozen onto the COPY,
+            # and a copy belongs to one year's `student` (audit 03, B18).
+            confirmed_students.add(student.id)
 
     if not people and any(p.detections for p in pending):
         # Marks were read and not one of them could be matched to a question:
@@ -843,6 +994,8 @@ def confirm_scan(
     scan.confirmed_at = at
     scan.confirmation_count += 1
     db.flush()
+
+    _freeze_points_possible(db, sheet, confirmed_students)
 
     competencies_updated = recompute_for_people(db, school_id, sorted(people), now=at)
 
@@ -877,6 +1030,36 @@ def confirm_scan(
         students_affected=len(people),
         competencies_updated=competencies_updated,
     )
+
+
+def _freeze_points_possible(
+    db: Session, sheet: Sheet | None, student_ids: set[uuid.UUID]
+) -> None:
+    """Record what each confirmed copy was worth, once (audit 03, B18).
+
+    Confirmation is the moment the number becomes a promise: the paper goes
+    back to the child with a mark on it. Until this, `points_possible` was
+    recomputed live on every read, so editing the barème afterwards rewrote the
+    denominator of every paper already handed back.
+
+    Written **only for the copies in this pile**, and only for those that were
+    actually confirmed — a classmate whose copy is still in the drawer keeps a
+    live total, because theirs has not been promised to anyone yet.
+
+    Overwritten on re-confirmation rather than left alone. Re-confirming
+    supersedes what the previous run wrote, attempts included; a frozen
+    denominator that survived a re-confirmation would be the one number in the
+    fraction still describing the older run.
+    """
+    if sheet is None or not student_ids:
+        return
+    from alppy.services.sheet_service import _possible_by_student
+
+    possible = _possible_by_student(sheet, live=True)
+    for instance in sheet.instances:
+        if instance.student_id in student_ids:
+            instance.points_possible = possible.get(instance.student_id)
+    db.flush()
 
 
 def _get_page(
@@ -940,7 +1123,7 @@ def assign_page_student(
     student_id: uuid.UUID,
     *,
     storage: Storage | None = None,
-) -> ScanPage:
+) -> tuple[ScanPage, tuple[int, ...]]:
     """Manual fallback when the printed UID grid could not be read.
 
     Assigning does not only name the student: until the copy was known the page
@@ -948,9 +1131,20 @@ def assign_page_student(
     because "item 3" means nothing without a copy. Naming the student settles
     that, so the page is read again against their own paper — otherwise the
     fallback hands back a screen full of detections that grade nothing.
+
+    Which is exactly why it is a **write**, and why the confirmed guard below
+    is not boilerplate. Its three siblings — ``correct_detection``,
+    ``revert_detection`` and ``set_page_discarded`` — have refused a confirmed
+    pile since the beginning; this one did not, and it is the most destructive
+    of the four. It re-reads the page, so on a confirmed pile it rewrites the
+    very detections the attempts were graded from, leaving a grade that no
+    longer matches its own evidence and no record that anything moved.
     """
     school_id = scope.school_id
     page = _get_page(db, school_id, scan_id, page_id)
+    # Before anything is resolved or re-read: a confirmed pile is read-only
+    # until it is reopened (audit 03, B6).
+    _refuse_when_confirmed(get_scan(db, scope, scan_id))
     candidates = {s.id: s for s in assignable_students(db, scope, scan_id)}
     student = candidates.get(student_id)
     if student is None:
@@ -959,6 +1153,7 @@ def assign_page_student(
             student_id=str(student_id),
         )
 
+    dropped: tuple[int, ...] = ()
     page.student_id = student.id
     # Assigning by hand settles the question the UID could not: this page is
     # this student's, and it is part of this sheet.
@@ -980,11 +1175,22 @@ def assign_page_student(
     db.flush()
 
     if storage is not None:
-        from alppy.services.scan_processing import redetect_page
+        from alppy.services.scan_processing import _flag_duplicate_slots, redetect_page
 
-        redetect_page(db, storage, page=page, student=student)
+        outcome = redetect_page(db, storage, page=page, student=student)
         db.flush()
-    return page
+        # Assigning is what actually produces a duplicate slot: the re-shot page
+        # the detector left unpaired gets slot 0 here, while the blurred
+        # original still holds it (B5). Flag, never block — discarding the bad
+        # photo is one click.
+        _flag_duplicate_slots(db, get_scan(db, scope, scan_id))
+        db.flush()
+        # Corrections the new reading had nowhere to put. Carried out to the
+        # caller so the review screen can name them: a teacher who fixed a
+        # bubble by hand and then re-assigned the page must not have to
+        # discover the loss by re-reading every answer (audit 03, B6).
+        dropped = outcome.corrections_dropped
+    return page, dropped
 
 
 def queue_grading_if_pending(db: Session, scope: Scope, scan_id: uuid.UUID) -> Job | None:
@@ -1065,9 +1271,12 @@ def confidence_by_item(db: Session, scope: Scope, sheet_id: uuid.UUID) -> list[I
     A `corrected` item is not also counted as low-confidence: the teacher has
     already dealt with it. A high corrected count is itself the signal.
     """
-    from alppy.services.sheet_service import get_sheet
+    from alppy.services.sheet_service import get_sheet_for_read
 
-    sheet = get_sheet(db, scope, sheet_id)
+    # REPORT: per-item confidence over a pile already scanned. It names a
+    # piece of paper, never a child, so the teacher who printed and marked
+    # it keeps it after the group moves on (D88).
+    sheet = get_sheet_for_read(db, scope, sheet_id)
     school_id = scope.school_id
 
     rows = db.execute(

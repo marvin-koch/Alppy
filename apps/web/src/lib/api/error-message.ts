@@ -18,14 +18,40 @@ import { ApiError } from './client';
  * that was already showing a handled failure crashed instead of reporting it,
  * which is the worst possible moment to throw.
  */
-export function apiErrorMessage(error: unknown, t: (key: string) => string): string {
+/** The `errors.code` namespace, as next-intl hands it over. */
+type Translate = (key: string, values?: Record<string, string | number>) => string;
+
+export function apiErrorMessage(error: unknown, t: Translate): string {
   const code = error instanceof ApiError ? error.code : null;
-  return (code === null ? null : translate(t, code)) ?? translate(t, 'fallback') ?? '';
+  return (
+    (code === null ? null : translate(t, code, valuesFor(error))) ??
+    translate(t, 'fallback') ??
+    ''
+  );
 }
 
-function translate(t: (key: string) => string, key: string): string | null {
+/**
+ * What a sentence needs beyond its code.
+ *
+ * Only one so far, and it is the one that most needed it: "réessayez plus
+ * tard" is not an instruction, and the envelope has been carrying the actual
+ * number of seconds in `details.retry_after_s` all along (`api/errors.py`,
+ * which also puts it in `Retry-After`). Rounded up, because telling someone to
+ * wait 0 seconds after refusing them is worse than saying nothing.
+ */
+function valuesFor(error: unknown): Record<string, string | number> | undefined {
+  if (!(error instanceof ApiError) || error.code !== 'rate_limited') return undefined;
+  const seconds = error.details?.['retry_after_s'];
+  return { seconds: Math.max(1, Math.ceil(Number(seconds) || 60)) };
+}
+
+function translate(
+  t: Translate,
+  key: string,
+  values?: Record<string, string | number>,
+): string | null {
   try {
-    return t(key);
+    return t(key, values);
   } catch {
     return null;
   }

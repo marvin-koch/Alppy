@@ -13,6 +13,7 @@ Two deliberately small primitives:
 
 from __future__ import annotations
 
+import hashlib
 import uuid
 from dataclasses import dataclass
 from typing import Any, Final
@@ -57,7 +58,16 @@ class SessionData:
 
 def _serializer(settings: Settings | None = None) -> URLSafeTimedSerializer:
     s = settings or get_settings()
-    return URLSafeTimedSerializer(s.secret_key, salt=SESSION_SALT)
+    # SHA-256 named explicitly (audit 03, B28). itsdangerous defaults to SHA-1
+    # for backward compatibility, and while HMAC-SHA1 is not broken for this
+    # use, "the library's default" is not a thing to leave implicit on the one
+    # line standing between a cookie and a school's roster. Naming it also means
+    # a future default change cannot silently invalidate every live session.
+    return URLSafeTimedSerializer(
+        s.secret_key,
+        salt=SESSION_SALT,
+        signer_kwargs={"digest_method": hashlib.sha256},
+    )
 
 
 def issue_session(

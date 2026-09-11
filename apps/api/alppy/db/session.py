@@ -55,6 +55,16 @@ engine = create_engine(
     pool_pre_ping=True,
     future=True,
     echo=False,
+    # Sized, rather than left at SQLAlchemy's 5 + 10 (audit 03, B30). The worker
+    # is the process that decides this: `WorkerSettings.max_jobs` is 4 and each
+    # job holds a session for its whole life — a scan pipeline is minutes — so
+    # the default pool is a handful of connections away from a worker blocking
+    # on its own pool while Postgres sits idle. Settings-backed so a deployment
+    # running more workers can raise it without a code change, and so the number
+    # is visible next to `max_jobs` rather than buried in a default.
+    pool_size=_settings.db_pool_size,
+    max_overflow=_settings.db_max_overflow,
+    pool_timeout=_settings.db_pool_timeout_s,
     connect_args=_connect_args(
         str(_settings.database_url), _settings.db_statement_timeout_ms
     ),

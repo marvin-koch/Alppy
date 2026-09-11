@@ -32,6 +32,8 @@ import {
 import { useScope } from '@/lib/scope';
 import { useClassSubject } from '@/lib/use-class-subject';
 import { useBandLabels, useBandHelp } from '@/lib/bands';
+import { RevealNames } from '@/components/RevealNames';
+import { useDiscretion } from '@/lib/discreet';
 import { studentNameParts } from '@/lib/studentName';
 
 export default function ClassPage({
@@ -41,6 +43,7 @@ export default function ClassPage({
 }) {
   const { classId } = use(params);
   const t = useTranslations('classes');
+  const { hideNames } = useDiscretion();
   const tm = useTranslations('mastery');
   const tc = useTranslations('common');
   const te = useTranslations('errors.generic');
@@ -146,6 +149,7 @@ export default function ClassPage({
   // The server owns the row order (roster or weakest-first); fall back to the
   // roster only before the first matrix response has landed.
   const rows = matrixStudents.length > 0 ? matrixStudents : roster;
+  const uidOf = new Map(rows.map((s) => [s.id, s.uid]));
   const isFiltered = chapterId !== null || competencyId !== null;
 
   const crumbLabel = (labels: Record<string, string> | undefined, fallback: string) =>
@@ -178,6 +182,8 @@ export default function ClassPage({
 
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h1>{t('title', { code: klass.data?.code ?? '' })}</h1>
+        {/* The matrix is the screen most likely to be on a wall. */}
+        <RevealNames className="mt-2" />
         <div className="flex flex-wrap items-center gap-2">
           <Link href={`/classes/${classId}/students`}>
             <Button variant="secondary">{tstud('title')}</Button>
@@ -313,6 +319,17 @@ export default function ClassPage({
                   id: s.id,
                   ...studentNameParts(s),
                 }))}
+                // Projector mode: the matrix is the screen most likely to be on
+                // a wall, and it puts every name beside a band saying how that
+                // child is doing. The UID keeps it readable for the teacher —
+                // it is the code on that pupil's own paper — and meaningless to
+                // the rest of the room. `formatStudentName` existed for name
+                // order; this is the same seam.
+                formatStudentName={(student) =>
+                  hideNames
+                    ? (uidOf.get(student.id) ?? '—')
+                    : `${student.firstName} ${student.lastName}`.trim()
+                }
                 competencies={competencies.map((c) => ({
                   id: c.id,
                   code: c.code,

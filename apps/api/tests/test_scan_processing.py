@@ -31,11 +31,18 @@ from alppy.models import (
     Sheet,
     SheetInstance,
     SheetItem,
+    Student,
 )
 from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus, SheetTarget
 from alppy.scan.synthetic import render_page
 from alppy.schemas import DetectionCorrection
 from alppy.services import scan_processing, scan_service, sheet_service
+from alppy.services.scan_processing import (
+    FLAG_DUPLICATE_PAGE,
+    FLAG_EXTRA_PAGE,
+    FLAG_PRINTED_AFTER_PHOTO,
+    FLAG_SHORT_COPY,
+)
 from alppy.sheets.pagination import paginate
 from alppy.sheets.render import build_sheet_data
 from alppy.storage import LocalStorage
@@ -750,19 +757,49 @@ def test_a_scan_that_can_grade_nothing_is_refused_at_confirm(
 # --------------------------------------------------------------------------
 # P1-4 · a page printed under another layout is refused, not misread
 # --------------------------------------------------------------------------
-def test_a_page_printed_under_another_layout_is_not_read(
+def test_a_page_printed_under_an_unknown_layout_is_not_read(
     db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """A layout this build has no geometry for is refused, never sampled.
+
+    This used to be spelled with "v2" as a stand-in for "some other layout".
+    Since B4 gave the detector real v2 geometry, v2 is readable and the stand-in
+    had to become a version that genuinely does not exist — otherwise the test
+    would quietly stop testing anything the day v2 shipped.
+    """
     sheet, _ = _sheet(db, tenant, answers=[0, 1])
     images = _render_copy(db, sheet, tenant.students[0].uid)
-    sheet.layout_version = "v2"
+    sheet.layout_version = "v9"
     db.commit()
 
     scan = _run(db, storage, tenant, sheet, images, monkeypatch)
     pages = db.query(ScanPage).filter(ScanPage.scan_id == scan.id).all()
     assert all(not p.registered for p in pages)
-    assert all("layout v2" in (p.registration_meta or {}).get("error", "") for p in pages)
+    assert all("layout v9" in (p.registration_meta or {}).get("error", "") for p in pages)
     assert db.query(Detection).join(ScanPage).filter(ScanPage.scan_id == scan.id).count() == 0
+
+
+def test_a_v1_page_read_against_v2_geometry_names_nobody(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The risk B4 actually carries, as a test.
+
+    Two live layouts means two ways to sample the same paper, and the dangerous
+    outcome is not a crash — it is a v1 page read against v2's twelve columns
+    decoding *something plausible* out of the white space where v2 prints and
+    v1 does not. The CRC is what must stop that, and this asserts it does:
+    nobody is named, so the page goes to the teacher for manual assignment.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = _render_copy(db, sheet, tenant.students[0].uid)  # printed as v1
+    sheet.layout_version = "v2"  # ...and read as v2
+    db.commit()
+
+    scan = _run(db, storage, tenant, sheet, images, monkeypatch)
+    pages = db.query(ScanPage).filter(ScanPage.scan_id == scan.id).all()
+    assert pages, "the page should still register — the fiducials are unchanged"
+    assert all(p.detected_uid is None for p in pages), "a v1 grid decoded as v2"
+    assert all(p.student_id is None for p in pages)
 
 
 # --------------------------------------------------------------------------
@@ -1103,10 +1140,14 @@ def test_confirmation_waits_for_a_live_grader_and_settles_an_abandoned_one(
     uid = tenant.students[0].uid
     scan = _run(db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch)
     assert _open_detection(db, scan).outcome is DetectionOutcome.PENDING
-
     live = Job(
         id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.GRADE_OPEN_ANSWERS,
-        status=JobStatus.RUNNING, progress=0.2, payload={"scan_id": str(scan.id)},
+        # The COLUMN, not just the payload (0031). `grading_in_progress` used to
+        # load every live job in the deployment and match the payload in Python;
+        # a fixture that writes only the payload now builds a state the product
+        # cannot produce.
+        status=JobStatus.RUNNING, progress=0.2, scan_id=scan.id,
+        payload={"scan_id": str(scan.id)},
     )
     db.add(live)
     db.commit()
@@ -1843,3 +1884,511 @@ def test_a_pile_that_lost_its_sheet_is_never_graded_with_the_gate_disarmed(
     assert provider.calls == 0
     assert result == {"pending": 1, "graded": 0, "blank": 0, "ungradeable": 1}
     assert _open_detection(db, scan).outcome is DetectionOutcome.NOT_GRADEABLE
+
+
+# --------------------------------------------------------------------------
+# B3 · a decoded UID is read inside ONE school year
+# --------------------------------------------------------------------------
+def _next_year_twin(db: Session, tenant: Tenant, uid: str) -> Student:
+    """The same UID, minted again in a second school year.
+
+    This is not a contrived state. `uq_student_uid` is
+    `(school_id, school_year_id, uid)`, and a school starts preparing next
+    year's classes in June while this year is still running and marking — so
+    two `Student` rows carrying `7B_01` coexist for a whole term, long before
+    anything anyone would call a rollover.
+    """
+    from datetime import datetime
+
+    from alppy.models import Class, SchoolYear
+
+    year = SchoolYear(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        label="2027/28",
+        starts_on=datetime(2027, 8, 1).date(),
+        ends_on=datetime(2028, 7, 31).date(),
+        is_current=False,
+    )
+    next_class = Class(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        school_year_id=year.id,
+        code=tenant.school_class.code,
+        head_teacher_id=tenant.teacher.id,
+    )
+    person = Person(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        first_name="Autre",
+        last_name="Eleve",
+    )
+    db.add_all([year, next_class, person])
+    db.flush()
+    twin = Student(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        person_id=person.id,
+        home_class_id=next_class.id,
+        school_year_id=year.id,
+        uid=uid,
+        number=1,
+        first_name="Autre",
+        last_name="Eleve",
+    )
+    db.add(twin)
+    db.flush()
+    return twin
+
+
+def test_a_uid_resolves_within_the_year_the_sheet_was_printed_for(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The June problem (B3).
+
+    Matching on `(school_id, uid)` alone had no unique index under it and only
+    ever worked because every school had exactly one `SchoolYear`. With two,
+    the read raises `MultipleResultsFound` in the middle of a scan job — and
+    the tempting "fix", relaxing it to `.first()`, would silently file one
+    child's answers under another child's name.
+    """
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = _render_copy(db, sheet, student.uid)
+    twin = _next_year_twin(db, tenant, student.uid)
+    db.commit()
+
+    scan = _run(db, storage, tenant, sheet, images, monkeypatch)
+
+    page = scan.pages[0]
+    assert page.student_id == student.id, "this year's pupil, not next year's twin"
+    assert page.student_id != twin.id
+
+
+def test_a_pile_with_no_sheet_identifies_nobody_rather_than_guessing(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """No sheet means no class, so no year, so no safe way to read a UID.
+
+    `assignable_students` already answers nobody for this case; the detector
+    now agrees with it instead of resolving across every year in the school.
+    The page is left for manual assignment rather than guessed at.
+    """
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = _render_copy(db, sheet, student.uid)
+    _next_year_twin(db, tenant, student.uid)
+    db.commit()
+
+    scan = _run(db, storage, tenant, None, images, monkeypatch)
+
+    assert scan.pages[0].student_id is None
+    # And the refusal the teacher gets names the cause they can act on.
+    with pytest.raises(ApiError, match="nothing to grade"):
+        scan_service.confirm_scan(db, tenant.scope, scan.id)
+
+
+# --------------------------------------------------------------------------
+# B6 · re-assigning a page is a write, and it must not eat a correction
+# --------------------------------------------------------------------------
+def test_a_confirmed_pile_refuses_a_page_re_assignment(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The fourth sibling, which had no guard (audit 03, B6).
+
+    `correct_detection`, `revert_detection` and `set_page_discarded` have all
+    refused a confirmed pile since the beginning. `assign_page_student` did
+    not, and it is the most destructive of the four: it re-reads the page, so
+    on a confirmed pile it rewrites the very detections the attempts were
+    graded from — leaving a grade that no longer matches its own evidence, and
+    no record anywhere that anything moved.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    student = tenant.students[0]
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, student.uid), monkeypatch)
+    page = scan.pages[0]
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    with pytest.raises(ApiError, match="confirmed"):
+        scan_service.assign_page_student(
+            db, tenant.scope, scan.id, page.id, tenant.students[1].id, storage=storage
+        )
+
+    # ...and after reopening it is allowed again, like its three siblings.
+    scan_service.unvalidate_scan(db, tenant.scope, scan.id)
+    db.commit()
+    scan_service.assign_page_student(
+        db, tenant.scope, scan.id, page.id, tenant.students[1].id, storage=storage
+    )
+    db.commit()
+    assert page.student_id == tenant.students[1].id
+
+
+def test_a_correction_survives_a_round_trip_re_assignment(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Assign away and back; the teacher's own reading is still there.
+
+    A correction is a fact about the ink on the paper — the teacher looked at
+    the mark and said what it is — so it survives the page being read again.
+    What it is filed under matters: keyed by slot, re-pagination moves the
+    exercise and the correction is dropped on the floor.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    first, second = tenant.students[0], tenant.students[1]
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, first.uid), monkeypatch)
+    page = scan.pages[0]
+    detection = sorted(page.detections, key=lambda d: d.item_index)[0]
+    exercise_id = detection.exercise_id
+
+    scan_service.correct_detection(
+        db,
+        tenant.school.id,
+        tenant.teacher.id,
+        scan.id,
+        detection.id,
+        DetectionCorrection(detected_index=1),
+    )
+    db.commit()
+
+    scan_service.assign_page_student(
+        db, tenant.scope, scan.id, page.id, second.id, storage=storage
+    )
+    db.commit()
+    _page, dropped = scan_service.assign_page_student(
+        db, tenant.scope, scan.id, page.id, first.id, storage=storage
+    )
+    db.commit()
+    db.refresh(page)
+
+    survivor = next(
+        (d for d in page.detections if d.exercise_id == exercise_id and d.corrected_at), None
+    )
+    assert survivor is not None, "the teacher's correction was destroyed by re-assignment"
+    assert survivor.detected_index == 1
+    assert survivor.outcome is DetectionOutcome.CORRECTED
+    # Nothing was silently discarded on the way back.
+    assert dropped == ()
+
+
+def test_a_correction_that_cannot_be_carried_over_is_reported_not_dropped(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """When the new reading has nowhere to put it, the teacher is told.
+
+    Deleting it is right — a verdict about a question this copy does not have
+    is not about the paper in front of us — but doing it silently is how
+    eleven fixed bubbles disappear with no error anywhere. The number reported
+    is the one printed on the paper, because that is what the teacher is
+    looking at.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    student = tenant.students[0]
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, student.uid), monkeypatch)
+    page = scan.pages[0]
+    detection = sorted(page.detections, key=lambda d: d.item_index)[0]
+
+    scan_service.correct_detection(
+        db,
+        tenant.school.id,
+        tenant.teacher.id,
+        scan.id,
+        detection.id,
+        DetectionCorrection(detected_index=1),
+    )
+    db.commit()
+
+    # The correction now points at an exercise this copy no longer contains.
+    detection.exercise_id = uuid.uuid4()
+    detection.item_index = 99
+    db.commit()
+
+    _page, dropped = scan_service.assign_page_student(
+        db, tenant.scope, scan.id, page.id, student.id, storage=storage
+    )
+    db.commit()
+    assert dropped, "an unplaceable correction must be reported, not silently deleted"
+
+
+# --------------------------------------------------------------------------
+# B5 · which page of whose copy, without the modulo that guessed
+# --------------------------------------------------------------------------
+def _flags(page: ScanPage) -> list[str]:
+    return list((page.registration_meta or {}).get("flags") or [])
+
+
+def test_an_extra_page_is_left_unpaired_rather_than_wrapped_onto_page_one(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The modulo was the bug (B5).
+
+    A two-page copy photographed three times — one page re-shot, the blurred
+    original still in the pile — used to wrap the third photo round to slot 0
+    with `seen[uid] % len(printed_pages)` and read it against page 1's option
+    counts. A page of answers graded against the wrong questions, with nothing
+    on the screen saying so.
+    """
+    student = tenant.students[0]
+    # Pagination is by vertical space, not by the bubble grid's capacity:
+    # four items is what actually spans two physical pages here.
+    sheet, _ = _sheet(db, tenant, answers=[0, 1, 2, 3])
+    pages = _render_copy(db, sheet, student.uid)
+    assert len(pages) == 2, "this test needs a copy that really does span two pages"
+
+    scan = _run(db, storage, tenant, sheet, [*pages, pages[0]], monkeypatch)
+
+    ordered = sorted(scan.pages, key=lambda p: p.page_index)
+    assert [p.page_in_copy for p in ordered] == [0, 1, None], "the third page was placed"
+    assert FLAG_EXTRA_PAGE in _flags(ordered[2])
+    # And it is a flag, not a block: the two real pages are untouched.
+    assert ordered[0].detections and ordered[1].detections
+
+
+def test_a_copy_that_came_back_short_is_flagged(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Two pages printed, one photographed.
+
+    The page that arrived is left paired — they arrive in order almost every
+    time — but if the missing one is page 1 then everything behind it has
+    shifted, so the teacher is told rather than the pile quietly grading short.
+    """
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1, 2, 3])
+    pages = _render_copy(db, sheet, student.uid)
+    assert len(pages) == 2
+
+    scan = _run(db, storage, tenant, sheet, [pages[0]], monkeypatch)
+
+    assert FLAG_SHORT_COPY in _flags(scan.pages[0])
+
+
+def test_a_complete_pile_carries_no_flags(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary, beside the two widenings above.
+
+    Without this, flagging every page unconditionally would satisfy both tests
+    and turn a warning nobody can dismiss into wallpaper.
+    """
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1, 2, 3])
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, student.uid), monkeypatch)
+
+    assert all(_flags(p) == [] for p in scan.pages)
+
+
+def test_a_re_shot_page_assigned_by_hand_flags_the_slot_it_now_shares(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """How a duplicate slot actually happens, end to end.
+
+    The detector leaves the extra photo unpaired; the teacher names the pupil
+    anyway; `redetect_page` gives it slot 0 — which the blurred original still
+    holds. Both pages are flagged, and neither is blocked, because discarding
+    the bad one is a click.
+    """
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    page_images = _render_copy(db, sheet, student.uid)
+    scan = _run(db, storage, tenant, sheet, [*page_images, page_images[0]], monkeypatch)
+
+    extra = sorted(scan.pages, key=lambda p: p.page_index)[-1]
+    assert extra.page_in_copy is None
+
+    scan_service.assign_page_student(
+        db, tenant.scope, scan.id, extra.id, student.id, storage=storage
+    )
+    db.commit()
+
+    flagged = [p for p in scan.pages if FLAG_DUPLICATE_PAGE in _flags(p)]
+    assert len(flagged) == 2, "both pages claiming slot 0 should say so"
+
+
+def test_a_sheet_re_rendered_after_the_photo_flags_the_pile(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """B7's interim mitigation.
+
+    Print on Tuesday, edit and re-render on Wednesday for an absentee,
+    photograph Tuesday's copies on Thursday: every page is cropped at
+    Wednesday's geometry because `_persist_answer_box_placements` deleted
+    Tuesday's rectangles. Nothing here repairs that — the real fix pins
+    placements to a render generation — but the pile where it could have
+    happened says so.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    images = _render_copy(db, sheet, student.uid)
+    # The sheet was rendered again after this pile was photographed.
+    sheet.rendered_at = datetime.now(UTC) + timedelta(days=1)
+    db.commit()
+
+    scan = _run(db, storage, tenant, sheet, images, monkeypatch)
+
+    assert FLAG_PRINTED_AFTER_PHOTO in _flags(scan.pages[0])
+
+
+# --------------------------------------------------------------------------
+# B9 · a job that stopped reporting stops holding the pile hostage
+# --------------------------------------------------------------------------
+def test_a_dead_grading_job_no_longer_blocks_confirmation_forever(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The stuck-RUNNING trap (audit 03, B9).
+
+    `_run_job` records a failure itself, so arq's retry never fires; a job
+    killed outright — the worker evicted, the 600s ceiling cancelling the task
+    while its `asyncio.to_thread` thread runs on — leaves a RUNNING row nothing
+    will ever finish. `grading_in_progress` read exactly that row and refused
+    the confirmation indefinitely, with no cancel route: twenty-seven good
+    copies held by a job that ended hours ago.
+
+    A RUNNING job whose heartbeat stopped past `job_stale_after_s` is presumed
+    dead, so the pending rows settle honestly as NOT_GRADEABLE and count as
+    skipped — which the pipeline already handles.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from alppy.core.config import get_settings
+    from alppy.models import Job
+    from alppy.models.enums import JobKind, JobStatus
+
+    sheet, _, rect = _open_sheet(db, tenant)
+    uid = tenant.students[0].uid
+    scan = _run(
+        db, storage, tenant, sheet, _written_copy(db, sheet, uid, rect, ink=True), monkeypatch
+    )
+    assert _open_detection(db, scan).outcome is DetectionOutcome.PENDING
+
+    stale_by = get_settings().job_stale_after_s + 60
+    dead = Job(
+        id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.GRADE_OPEN_ANSWERS,
+        status=JobStatus.RUNNING, progress=0.2, scan_id=scan.id,
+        payload={"scan_id": str(scan.id)},
+        started_at=datetime.now(UTC) - timedelta(seconds=stale_by),
+    )
+    db.add(dead)
+    db.commit()
+    # `updated_at` has `onupdate=func.now()`, so it has to be pushed back after
+    # the insert — this is the heartbeat the staleness test actually reads.
+    dead.updated_at = datetime.now(UTC) - timedelta(seconds=stale_by)
+    db.commit()
+
+    response = scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+    assert response.items_skipped == 1
+    assert _open_detection(db, scan).outcome is DetectionOutcome.NOT_GRADEABLE
+
+
+def test_a_job_that_is_still_reporting_is_not_reaped(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The boundary beside it: a slow job is not a dead one.
+
+    Without this, treating every RUNNING row as stale would satisfy the test
+    above and cut the legs off a grading job that is simply taking its time —
+    settling a child's answer as ungradeable while the model is mid-sentence.
+    """
+    from datetime import UTC, datetime, timedelta
+
+    from alppy.models import Job
+    from alppy.models.enums import JobKind, JobStatus
+    from alppy.services.open_answer_grading import is_job_stale
+
+    fresh = Job(
+        id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.GRADE_OPEN_ANSWERS,
+        status=JobStatus.RUNNING, progress=0.2,
+        started_at=datetime.now(UTC) - timedelta(days=1),
+    )
+    db.add(fresh)
+    db.commit()
+    # Beat a second ago, having started yesterday: alive, and the reason
+    # staleness reads the heartbeat rather than `started_at`.
+    fresh.updated_at = datetime.now(UTC) - timedelta(seconds=1)
+    db.commit()
+    assert is_job_stale(fresh) is False
+
+    # A QUEUED job has no heartbeat to miss — arq may simply not have got to it.
+    queued = Job(
+        id=uuid.uuid4(), school_id=tenant.school.id, kind=JobKind.GRADE_OPEN_ANSWERS,
+        status=JobStatus.QUEUED, progress=0.0,
+    )
+    db.add(queued)
+    db.commit()
+    queued.updated_at = datetime.now(UTC) - timedelta(days=7)
+    db.commit()
+    assert is_job_stale(queued) is False
+
+
+# --------------------------------------------------------------------------
+# B18 · a returned paper's total stops moving
+# --------------------------------------------------------------------------
+def test_editing_the_bareme_does_not_rewrite_a_returned_papers_total(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """14/20 must not quietly become 14/25 (audit 03, B18).
+
+    `points_earned` is the sum of `Attempt.score`, frozen at confirmation.
+    `points_possible` was recomputed live on every read, so the two halves of
+    one fraction came from different moments — and raising the barème after a
+    pile came back rewrote the denominator of every paper already handed out,
+    on a sheet a parent may have signed.
+    """
+    from alppy.services import sheet_service
+
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_correct = 10.0
+    db.commit()
+
+    scan = _run(db, storage, tenant, sheet, _render_copy(db, sheet, student.uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, scan.id)
+    db.commit()
+
+    at_confirmation = sheet_service.points_totals_for_sheet(
+        db, tenant.school.id, sheet
+    )[student.id]
+    assert at_confirmation.possible == 20.0, "two items at ten points each"
+
+    # The teacher edits the barème a week later.
+    # 15, not 25: the barème is bounded 0..20 so the printed "(N pts)" label
+    # has a known widest form (`pagination.POINTS_LABEL_W_MM`).
+    sheet.default_points_correct = 15.0
+    db.commit()
+    db.refresh(sheet)
+
+    after_edit = sheet_service.points_totals_for_sheet(db, tenant.school.id, sheet)[student.id]
+    assert after_edit.possible == 20.0, "the returned paper's denominator moved"
+    assert after_edit.earned == at_confirmation.earned
+
+
+def test_an_unconfirmed_copy_still_tracks_the_bareme(
+    db: Session, tenant: Tenant
+) -> None:
+    """The boundary, and the reason this is not simply frozen at render.
+
+    A sheet still being built must show the barème as it stands now — freezing
+    everything would leave the builder showing a total the teacher had just
+    changed.
+    """
+    from alppy.services import sheet_service
+
+    student = tenant.students[0]
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    sheet.default_points_correct = 10.0
+    db.commit()
+    db.refresh(sheet)
+    assert sheet_service.points_totals_for_sheet(db, tenant.school.id, sheet)[
+        student.id
+    ].possible == 20.0
+
+    sheet.default_points_correct = 15.0
+    db.commit()
+    db.refresh(sheet)
+    assert sheet_service.points_totals_for_sheet(db, tenant.school.id, sheet)[
+        student.id
+    ].possible == 30.0, "an unconfirmed copy must follow the barème"

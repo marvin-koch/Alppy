@@ -13,7 +13,6 @@ prefix, never anywhere near ``/etc``.
 
 from __future__ import annotations
 
-import os
 import re
 import shutil
 import tempfile
@@ -65,6 +64,25 @@ class Storage(Protocol):
 
     def exists(self, key: str) -> bool: ...
 
+    def delete(self, key: str) -> bool: ...
+    """Remove one object. True if it was there, False if it was already gone.
+
+    **Never call this from a request handler, and never from a cascade**
+    (audit 03, B14). It exists for two callers and no others: the
+    `purge-scan-images` command, which enforces a retention window an operator
+    set, and `delete_student`, which is a parent exercising erasure. Both are
+    deliberate acts by a person who meant them.
+
+    The reason is that an image is evidence. A crop is what a written answer
+    was graded from, and a registered page is what a contested mark can be
+    checked against — so anything that reaches this method by accident, on the
+    way to doing something else, destroys the only copy of the thing a grade
+    rests on. `delete_source` already argues the same case in its own
+    docstring; this is that argument given a method.
+
+    Missing is not an error: purging is idempotent by nature, and a key that
+    has already gone is the outcome the caller wanted."""
+
     def url_for(self, key: str) -> str: ...
 
     def healthy(self) -> bool: ...
@@ -104,6 +122,17 @@ class LocalStorage:
         except StorageError:
             return False
 
+    def delete(self, key: str) -> bool:
+        # Through `_path`, so the traversal guard applies to deletion exactly as
+        # it applies to reads. A key like `../../etc/something` raising here is
+        # the entire point: this is the one method where following it would be
+        # unrecoverable.
+        path = self._path(key)
+        if not path.is_file():
+            return False
+        path.unlink()
+        return True
+
     def url_for(self, key: str) -> str:
         return f"/api/v1/files/{key}"
 
@@ -124,12 +153,26 @@ class S3Storage:
 
     def __init__(self, settings: Settings) -> None:
         import boto3  # imported lazily: the local backend must not need it
+        from botocore.config import Config
 
         self._bucket = settings.s3_bucket
+        # Explicit budgets for the same reason the providers have them: botocore
+        # defaults to a 60 s read timeout with retries on top, and a worker
+        # thread blocked on a wedged object store is indistinguishable from one
+        # doing work — it just stops reporting, and the job sits RUNNING
+        # (audit 03, B10). More retries than a model call gets, and a much
+        # shorter ceiling: a GET of a page image either answers quickly or is
+        # not going to.
+        boto_config = Config(
+            connect_timeout=settings.storage_connect_timeout_s,
+            read_timeout=settings.storage_read_timeout_s,
+            retries={"max_attempts": settings.storage_max_retries, "mode": "standard"},
+        )
         creds = {
             "region_name": settings.s3_region,
             "aws_access_key_id": settings.s3_access_key,
             "aws_secret_access_key": settings.s3_secret_key,
+            "config": boto_config,
         }
         # Reads and writes go over the internal endpoint.
         self._client = boto3.client("s3", endpoint_url=settings.s3_endpoint_url, **creds)
@@ -164,6 +207,22 @@ class S3Storage:
             return False
         return True
 
+    def delete(self, key: str) -> bool:
+        """Remove one object, reporting whether it was there.
+
+        `delete_object` answers 204 for a key that never existed, so existence
+        is checked first — a purge that cannot tell the difference between
+        "removed 400 images" and "removed nothing" cannot be trusted to report
+        what it did.
+        """
+        if not self.exists(key):
+            return False
+        try:
+            self._client.delete_object(Bucket=self._bucket, Key=key)
+        except Exception as exc:
+            raise StorageError(f"could not delete: {key!r}") from exc
+        return True
+
     def url_for(self, key: str) -> str:
         """A time-limited download URL the teacher's browser can actually fetch.
 
@@ -184,24 +243,31 @@ class S3Storage:
         return True
 
 
-def default_local_root() -> Path:
-    configured = os.getenv("ALPPY_STORAGE_DIR")
-    if configured:
-        return Path(configured)
+def default_local_root(settings: Settings | None = None) -> Path:
+    s = settings or get_settings()
+    if s.storage_dir:
+        return Path(s.storage_dir)
     return Path(tempfile.gettempdir()) / "alppy-storage"
 
 
 def build_storage(settings: Settings | None = None) -> Storage:
-    """Pick a backend. ``ALPPY_STORAGE_BACKEND`` wins; CI defaults to local."""
+    """Pick a backend, from settings rather than from the environment.
+
+    Both of these were `os.getenv` calls, which put them outside every check
+    `Settings` performs (audit 03, B25). `ALPPY_STORAGE_BACKEND` in particular
+    was invisible to `_refuse_unsafe_deployment`, so a production deployment
+    that never set it — or misspelled it — silently wrote scanned answer sheets
+    to a temporary directory. It worked until the container restarted.
+    """
     s = settings or get_settings()
-    backend = os.getenv("ALPPY_STORAGE_BACKEND", "local" if s.env == "ci" else "s3").lower()
+    backend = s.resolved_storage_backend
     if backend == "local":
-        return LocalStorage(default_local_root())
+        return LocalStorage(default_local_root(s))
     try:
         return S3Storage(s)
     except ImportError:  # pragma: no cover - boto3 is a declared dependency
         log.warning("storage.s3_unavailable", fallback="local")
-        return LocalStorage(default_local_root())
+        return LocalStorage(default_local_root(s))
 
 
 @lru_cache

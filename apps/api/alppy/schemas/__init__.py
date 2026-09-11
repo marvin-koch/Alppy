@@ -50,14 +50,20 @@ class LoginRequest(BaseModel):
 
 
 class TeacherPreferences(ApiModel):
-    """The four display switches. None is a real value: "not chosen" differs
-    from "light", because not chosen means follow the system."""
+    """The display switches. None is a real value: "not chosen" differs from
+    "light", because not chosen means follow the system."""
 
     locale: Locale = "fr"
     theme: Literal["light", "dark"] | None = None
     contrast: Literal["high"] | None = None
     motion: Literal["off"] | None = None
     calm: Literal["on"] | None = None
+    #: Projector mode. Names collapse to UIDs wherever pupils are listed, and a
+    #: teacher reveals them deliberately. Stored on the teacher rather than only
+    #: in the browser for the same reason the others are: the classroom machine
+    #: and the laptop at home are the same person, and this is the setting they
+    #: would be most annoyed to have to find twice.
+    discreet: Literal["on"] | None = None
 
 
 class SchoolOut(ApiModel):
@@ -268,6 +274,41 @@ class ClassUpdate(BaseModel):
     code: Annotated[str, Field(min_length=2, max_length=10)] | None = None
 
 
+#: The 26 Swiss cantons, as the two-letter codes used on number plates and in
+#: every cantonal curriculum document (audit 03, B24). The brief names the
+#: canton as a domain concept and the column has always been a free
+#: `String(2)` — so "XX", "ZZ" or a typo for "ZH" was accepted and stored, and
+#: `School.canton` is what a curriculum mapping keys on.
+#:
+#: All 26 rather than the pilot pair: the product is for Swiss compulsory
+#: school, and a school in a canton nobody has piloted yet should be refused for
+#: being wrong, never for being unexpected.
+SWISS_CANTONS: frozenset[str] = frozenset(
+    {
+        "AG", "AI", "AR", "BE", "BL", "BS", "FR", "GE", "GL", "GR", "JU",
+        "LU", "NE", "NW", "OW", "SG", "SH", "SO", "SZ", "TG", "TI", "UR",
+        "VD", "VS", "ZG", "ZH",
+    }
+)
+
+
+def _validate_canton(value: str | None) -> str | None:
+    """Uppercase it, and refuse anything that is not a canton.
+
+    Uppercased rather than rejected for case: a teacher typing "vs" means Valais
+    and telling them so is pedantry. A code that is not a canton at all is a
+    different matter — it is stored, and the curriculum mapping keys on it.
+    """
+    if value is None:
+        return None
+    code = value.strip().upper()
+    if not code:
+        return None
+    if code not in SWISS_CANTONS:
+        raise ValueError(f"{value!r} is not a Swiss canton code")
+    return code
+
+
 class SchoolCreate(BaseModel):
     """A second establishment, created from the product rather than the seed.
 
@@ -280,10 +321,14 @@ class SchoolCreate(BaseModel):
     canton: Annotated[str, Field(max_length=2)] | None = None
     default_curriculum: CurriculumKind = CurriculumKind.PER
 
+    _canton = field_validator("canton")(_validate_canton)
+
 
 class SchoolUpdate(BaseModel):
     name: Annotated[str, Field(min_length=2, max_length=200)] | None = None
     canton: Annotated[str, Field(max_length=2)] | None = None
+
+    _canton = field_validator("canton")(_validate_canton)
 
 
 class StudentUpdate(BaseModel):
@@ -866,7 +911,18 @@ class ScanPageOut(ApiModel):
     discarded: bool = False
     page_in_copy: int | None = None
     registration_error: str | None = None
+    # Page-level warnings, as codes — the client owns the sentence (D86). Each
+    # one is dismissible by looking: none of them blocks confirmation, because
+    # a teacher with 28 copies must not be stopped by a re-shot photo. See
+    # `scan_processing.FLAG_*`.
+    flags: list[str] = []
     detections: list[DetectionOut] = []
+    # Corrections the teacher made by hand that re-reading this page had
+    # nowhere to put — they belonged to items this copy turns out not to have.
+    # By the number printed on the paper. Empty on every read; only assigning
+    # a page can produce them, and only the response to that call carries them
+    # (audit 03, B6). The client owns the sentence, as always.
+    corrections_dropped: list[int] = []
 
 
 class ScanPageDiscard(BaseModel):
@@ -1543,11 +1599,27 @@ class HomeOut(ApiModel):
 
 
 class HealthOut(BaseModel):
+    """READINESS: should this instance be sent traffic?
+
+    Three connections, and a `degraded` answer when any of them is down. See
+    `LivenessOut` for why the two are different questions."""
+
     status: Literal["ok", "degraded"]
     version: str
     database: bool
     redis: bool
     storage: bool
+
+
+class LivenessOut(BaseModel):
+    """LIVENESS: is this process running?
+
+    Deliberately smaller than `HealthOut`, because it must not be able to grow
+    a dependency check. A liveness probe that touches Redis turns a Redis
+    outage into a restart loop across every API pod (audit 03, B29)."""
+
+    status: Literal["ok"]
+    version: str
 
 
 def validate_uid(value: str) -> str:

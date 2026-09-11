@@ -79,6 +79,12 @@ def assert_no_pii(text: str, *, names: list[str] | None = None) -> None:
     a leak here is a bug in the caller and must not be papered over."""
     if _EMAIL_RE.search(text):
         raise PiiLeakError("prompt contains an email address")
+    if _PHONE_RE.search(text):
+        # `scrub()` has redacted this pattern since the beginning and the gate
+        # never checked it, so the one number a parent's phone call gets typed
+        # into a note as passed straight through (audit 03, B22). The two halves
+        # of this module are meant to know about the same things.
+        raise PiiLeakError("prompt contains a phone number")
     if _AHV_RE.search(text):
         raise PiiLeakError("prompt contains an AHV number")
     for name in names or []:

@@ -147,20 +147,65 @@ assumptions.
 
 ## 5. Screens
 
+The 24 teacher-facing routes, as `apps/web/src/app/[locale]/` registers them.
+Two more exist and are not screens: a catch-all that raises `notFound()` so an
+unmatched path is answered in the teacher's own language, and `/_gallery`, the
+component workbench, which is gated on fixture mode.
+
+**Entry**
+
 1. `/login`
-2. `/` teacher home — classes, subjects, quick stats (last sheet, pending corrections, students needing attention)
-3. `/classes/[classId]` — roster + mastery matrix (five bands)
-4. `/classes/[classId]/students/[studentId]` — profile: rings, curve, history
-5. `/sources` — upload + ingestion status + extracted exercises
-6. `/sheets/new` — builder, document-first: source + chapter of that book, the exercises it holds
-   (filtered and paged server-side), tick / reorder / edit / add your own, with the A4 preview
-   behind a toggle. A second tab keeps the RAG path (intent, ranked proposals, provenance).
-7. `/sheets/[id]` — print preview (blank + answer key), download
-8. `/scans/new` + `/scans/[id]` — upload, then review overlay with confidence bars
-9. `/adaptive` — gap targeting, accent-marked AI items, batch export
-10. `/settings` — locale, theme, contrast, motion, calm
-11. `/timeline` — the agenda: every event in order, grouped by day, filterable
+2. `/` — teacher home: classes, disciplines, quick stats (last sheet, pending
+   corrections, pupils needing attention)
+
+**Classes and pupils**
+
+3. `/classes` — the class index
+4. `/classes/new` — create a class and paste its roster in one screen
+5. `/classes/[classId]` — the class dashboard: programme beside the mastery
+   matrix (five bands)
+6. `/classes/[classId]/students` — the roster, with what each pupil needs
+   attention on
+7. `/classes/[classId]/roster` — paste more pupils, fix a name, remove a leaver
+8. `/classes/[classId]/students/[studentId]` — profile: rings, curve, history
+9. `/classes/[classId]/students/[studentId]/sheets/[sheetId]` — one pupil on
+   one sheet, item by item
+10. `/classes/[classId]/competences/[competencyId]` — one competency down the
+    whole class
+11. `/classes/[classId]/themes/[chapterId]` — one Theme: its sheets and what
+    they showed
+12. `/classes/[classId]/teaching` — who teaches which discipline here, and what
+    the class studies
+
+**Documents and sheets**
+
+13. `/sources` — upload + ingestion status + extracted exercises
+14. `/sheets` — every sheet for the class and discipline in scope
+15. `/sheets/new` — the builder, document-first: source + chapter of that book,
+    the exercises it holds (filtered and paged server-side), tick / reorder /
+    edit / add your own, with the A4 preview behind a toggle. A second tab keeps
+    the RAG path (intent, ranked proposals, provenance).
+16. `/sheets/[sheetId]` — preview (blank + answer key), render, print
+
+**Correction**
+
+17. `/scans` — the piles, and which are still to review
+18. `/scans/new` — photograph or upload a pile against the sheet it answers
+19. `/scans/[scanId]` — the review overlay: the registered page beside the
+    machine's reading, least-confident first
+
+**Across the class**
+
+20. `/results` — points per pupil per sheet
+21. `/adaptive` — gap targeting, accent-marked AI items, batch export
+22. `/timeline` — the agenda: every event in order, grouped by day, filterable
     by kind and searchable by title
+
+**Settings**
+
+23. `/settings` — language, theme, contrast, motion, calm, discreet; the
+    establishment and its disciplines
+24. `/settings/branches/[subjectId]` — one discipline's themes and competencies
 
 ## 6. Mastery model (documented fully in `docs/mastery-model.md`)
 
@@ -192,6 +237,49 @@ and the "fading" band would never fade (decisions-log D4).
 ## 7. Open assumptions
 
 Tracked in `docs/decisions-log.md`; the ten most consequential are repeated in `docs/handover.md`.
+
+### 7.1 Decisions that were correct by accident until somebody wrote them down
+
+Each of these was already true in the code and true for a reason, and none of them was recorded as
+a *decision* — so each read as a gap to whoever found it next, and the third audit found them all
+again (2026-09-10).
+
+**A Swiss 1–6 note is planned scope, not the current output.** Alppy reports points and mastery
+bands, and converting those into a report-card note is today the teacher's act. That stays true for
+now, but the answer to "will it ever?" is **yes, eventually** — so the mastery model and the barème
+are to be designed with it in mind rather than around it. Two things it will need and does not have:
+a per-school rounding convention (cantons differ, and half-points are not universal), and a stated
+position on whether a note comes from the barème (points earned over points possible on one sheet)
+or from mastery (a decayed estimate across competencies). They are not the same number and the
+difference will be argued about, so it should be argued about before anything prints a `4.5`.
+
+**`ClassKind` (migration 0026) is a placeholder, and nothing reads it.** It is a nullable
+discriminator recording whether a class is a homeroom or a teaching group; NULL means "not
+declared" and is explicitly **not** a synonym for `homeroom`, because every row predating the
+column predates the question. It stays unread until the homeroom/teaching-group distinction is
+actually needed by a screen — at which point the alternative (splitting the entity) should be
+revisited rather than assumed away by the column already existing.
+
+**A substitute teacher keeps what they marked** (D88). Reading a sheet is widened to anyone who has
+ever taught that (class, branch); acting on one — printing, editing, billing a model call — stays
+current-only. Two functions used to disagree about this in the same call stack.
+
+**Anyone in the staffroom may approve an AI-generated exercise for print.** The flat staffroom is
+deliberate (D85): membership *is* the permission model and there is no admin tier. Approval is not
+an exception to that, and it is not intended to become one — but it is the single act that stands
+between something a model wrote and something a child is handed, so since B21 it is *recorded* with
+its author (`EventKind.EXERCISE_APPROVED`), as is editing an answer key after a sheet has been
+printed (`EXERCISE_EDITED`). The permission model did not change; the acts became answerable.
+
+**Cantonal scope is all 26 cantons.** `School.canton` is validated against the full list rather
+than a pilot pair: a school in a canton nobody has piloted should be refused for being *wrong*,
+never for being unexpected. This also sets the bit budget for any layout-v2 UID redesign — a canton
+needs five bits there, which competes directly with the per-render nonce width, and that trade-off
+is unresolved.
+
+**Still genuinely open**, and each blocking something concrete: how long scan images may be kept
+(the purge command refuses to run without a number — `docs/privacy.md` §4), and whether a
+photograph of a child's handwriting may be processed outside CH/EU (`docs/privacy.md` §3).
 
 ## 8. Workstreams
 

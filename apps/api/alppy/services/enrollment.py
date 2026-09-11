@@ -132,6 +132,57 @@ def taught_here(
     )
 
 
+def taught_here_ever(
+    class_col: ColumnExpr,
+    subject_col: ColumnExpr,
+    scope: Scope,
+) -> ColumnElement[bool]:
+    """Did this teacher EVER take this branch in this class — PAIR-GRAINED.
+
+    ``taught_here`` with the interval dropped, and the deliberate counterpart
+    to it (D88). It is the gate for **reading a teaching artefact**, where
+    ``taught_here`` stays the gate for touching one.
+
+    The split exists because the two answers genuinely differ. M. Rossier takes
+    niveau-2 maths from September to February and marks eleven sheets. In June
+    a parent contests an orientation decision. Under a current-only gate he can
+    open the pupil's profile — ``ever_shared_student_ids`` was widened for
+    exactly that in 0027 — and then 404s on every sheet the profile links to,
+    which is to say on all of the evidence. The widening was real but it
+    stopped one join short of being usable: ``results_service.sheet_report``
+    resolved the sheet through the current-only gate *before* reaching its own
+    overlap-widened student lookup, so that lookup could not run in the one
+    case its comment describes.
+
+    **"Ever", not "overlap", and the asymmetry with ``ever_shared_student_ids``
+    is the point.** A pupil is a person, so linking two people who never shared
+    a room is a leak and the interval intersection is what prevents it. A sheet
+    is not a person; it is the teaching material of a (class, branch), and a
+    teacher who takes that pair over in March inheriting October's sheets is
+    the correct answer rather than a tolerated one — they are teaching the same
+    children the same branch.
+
+    That is safe because it does not stand alone. Where a sheet-grained read
+    names a child — ``sheet_report`` — the student is gated *separately* by
+    ``ever_shared_student_ids``, and the two compose: Mme Dupont, arriving in
+    March, opens the October sheet and reads the report only for the pupils
+    whose time overlapped hers. Widening this predicate does not widen that
+    one, and a caller that reaches a child through a sheet still owes its own
+    student gate.
+
+    Never use it for a write. Renders, edits, approvals and anything that bills
+    a model call take ``taught_here(..., on=today())``: a teacher who has left
+    the group may reconstruct what they marked, and may not print into it.
+    """
+    return (
+        select(class_teacher_subject.c.class_id)
+        .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
+        .where(class_teacher_subject.c.class_id == class_col)
+        .where(class_teacher_subject.c.subject_id == subject_col)
+        .exists()
+    )
+
+
 def taught_subject_ids(scope: Scope, class_id: uuid.UUID, *, on: date) -> Select[tuple[uuid.UUID]]:
     """The branches this teacher takes in ONE class, as a subquery.
 

@@ -1,6 +1,16 @@
 'use client';
 
-import { Button, Card, Field, Input, RosterInput, parseRoster } from '@alppy/ui';
+import {
+  Button,
+  Card,
+  EmptyState,
+  ErrorState,
+  Field,
+  Input,
+  LoadingState,
+  RosterInput,
+  parseRoster,
+} from '@alppy/ui';
 import { useTranslations } from 'next-intl';
 import { use, useState } from 'react';
 
@@ -9,6 +19,7 @@ import { StudentEditor } from '@/components/StudentEditor';
 import { useAddStudents, useClass, useStudents } from '@/lib/api/queries';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import type { Uuid } from '@/lib/api/types';
+import { useDiscretion } from '@/lib/discreet';
 
 /**
  * Paste more pupils into a class that already exists.
@@ -26,8 +37,10 @@ export default function RosterPage({
 }) {
   const { classId } = use(params);
   const t = useTranslations('classes');
+  const { hideNames } = useDiscretion();
   const tc = useTranslations('common');
   const tcode = useTranslations('errors.code');
+  const te = useTranslations('errors.generic');
   const tstud = useTranslations('students');
   const router = useRouter();
 
@@ -59,6 +72,33 @@ export default function RosterPage({
     }
   }
 
+  // The three branches every sibling screen already ships (F22). This one had
+  // none: a slow roster rendered "0 élèves" over an empty list, and a failed
+  // one rendered the same thing — so "this class has nobody in it" and "we
+  // could not find out" looked identical on the screen whose whole job is to
+  // tell you who is in the class.
+  if (klass.isLoading || existing.isLoading) {
+    return <LoadingState shape="list" label={tc('loading')} rows={5} />;
+  }
+  if (klass.isError || existing.isError) {
+    return (
+      <ErrorState
+        title={te('title')}
+        description={te('body')}
+        action={
+          <Button
+            onClick={() => {
+              void klass.refetch();
+              void existing.refetch();
+            }}
+          >
+            {tc('retry')}
+          </Button>
+        }
+      />
+    );
+  }
+
   return (
     <div className="mx-auto max-w-2xl">
       <h1 className="mb-1">{tstud('heading', { code: klass.data?.code ?? '' })}</h1>
@@ -70,9 +110,17 @@ export default function RosterPage({
           pupil who left. Both were unreachable: the paste screen could only
           ever ADD. Editing opens one pupil at a time — a list of live inputs
           invites the wrong row being changed. */}
+      {(existing.data ?? []).length === 0 ? (
+        <EmptyState
+          className="mt-6"
+          size="sm"
+          title={tstud('empty.title')}
+          description={tstud('empty.body')}
+        />
+      ) : null}
+
       {(existing.data ?? []).length > 0 ? (
         <section className="mt-10">
-          
           <ul className="flex flex-col gap-2">
             {(existing.data ?? []).map((student) =>
               editing === student.id ? (
@@ -91,8 +139,11 @@ export default function RosterPage({
                   <span className="w-20 shrink-0 font-mono text-label text-ink-500">
                     {student.uid}
                   </span>
+                  {/* The UID column to the left is always there, so in
+                      projector mode this becomes an em dash rather than a
+                      second copy of it. */}
                   <span className="min-w-0 flex-1 truncate font-semibold">
-                    {student.first_name} {student.last_name}
+                    {hideNames ? '—' : `${student.first_name} ${student.last_name}`}
                   </span>
                   <Button variant="ghost" onClick={() => setEditing(student.id)}>
                     {tstud('edit')}

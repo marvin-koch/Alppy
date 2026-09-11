@@ -22,8 +22,8 @@
     "switchSubject": "Switch subject",
     "timeline": "Agenda",
     "results": "Results",
-    "switchSchool": "Switch school",
-    "currentSchool": "Current school"
+    "switchSchool": "Switch establishment",
+    "currentSchool": "Current establishment"
   },
   "auth": {
     "signIn": "Sign in",
@@ -257,7 +257,10 @@
     "unfiledThemeHelp": "Sheets made before themes existed. Open one to file it — nothing was guessed on your behalf.",
     "groupGeneral": "General sheets",
     "groupPersonalized": "Personalised sheets",
-    "fileIt": "File it"
+    "fileIt": "File it",
+    "printNeedsPdf": "Printing goes through the PDF: that is the document whose exact layout Alppy knows. Generate it, then print it.",
+    "printNeedsPdfOpen": "This sheet has written-answer items. Alppy measures where each box sits while generating the PDF, and crops there when grading: printed any other way, no written answer can be graded automatically.",
+    "previewBlocked": "The browser blocked the preview. There is nothing wrong with the sheet itself: generate the PDF to check it."
   },
   "scans": {
     "title": "Corrections",
@@ -384,7 +387,12 @@
     "processingLabel": "Analysis progress",
     "processingHelp": "Alppy finds the corner marks, reads the student code, then the boxes. You can leave this page open.",
     "scopedScans": "Your corrections",
-    "scopedScansHint": "Piles from branches you do not teach are not shown here."
+    "scopedScansHint": "Piles from branches you do not teach are not shown here.",
+    "retakeLabel": "Retake this page",
+    "retakeHelp": "The new photo replaces this one in the same pile.",
+    "retakeCamera": "Photograph the page",
+    "retakeWait": "Wait until the pile has finished being read before retaking a page.",
+    "reopenConfirm": "Confirm: withdraw {count, plural, one {# student's} other {# students'}} results"
   },
   "adaptive": {
     "addExercise": "Add an exercise",
@@ -442,20 +450,20 @@
     "feedbackPending": "{count, plural, one {# note is waiting for your review.} other {# notes are waiting for your review.}} Nothing prints until then.",
     "feedbackTitle": "Personal feedback",
     "forStudents": "For: {uids}",
-    "groupCount": "Number of groups",
+    "groupCount": "Number of sets",
     "groupCountHelp": "1: one shared sheet for the whole class. As many as there are students: one sheet each.",
-    "groupCountMany": "{count, plural, one {# group formed} other {# groups formed}} — students with the same principal gap are put together.",
+    "groupCountMany": "{count, plural, one {# set formed} other {# sets formed}} — students with the same principal gap are put together.",
     "groupCountOne": "One shared sheet for the whole class.",
     "groupCountPerStudent": "One sheet per student.",
     "groupFor": "For {count} of {total} students",
     "groupMembers": "{count, plural, one {# student} other {# students}}",
     "groupTitle": "Shared sheet",
-    "groupedByModel": "Grouping proposed by the AI, starting from the computed groups.",
-    "groupedByRule": "Groups formed by principal gap.",
-    "groupsTitle": "Personalised groups",
+    "groupedByModel": "Split proposed by the AI, starting from the computed sets.",
+    "groupedByRule": "Sets formed by principal gap.",
+    "groupsTitle": "Personalised sets",
     "hideItems": "Hide the exercises",
     "itemsPerStudent": "Exercises per student",
-    "llmGrouping": "Let the AI propose the grouping",
+    "llmGrouping": "Let the AI propose the split",
     "llmGroupingHelp": "The automatic rule stays the basis and takes over again if the proposal is incomplete.",
     "loadError": {
       "title": "This screen could not load",
@@ -467,8 +475,8 @@
     "modePerStudent": "One per student",
     "moveCancel": "Cancel",
     "moveHere": "Move {uid} here",
-    "moveHint": "Select a student to move them to another group. You know things the model does not.",
-    "moveSelected": "{uid} selected — choose the group that suits them.",
+    "moveHint": "Select a student to move them to another set. You know things the model does not.",
+    "moveSelected": "{uid} selected — choose the set that suits them.",
     "needsApproval": "{count, plural, one {# exercise to approve} other {# exercises to approve}}",
     "notApprovedWarning": "Generated exercises must be approved before they can be printed.",
     "preparing": "Preparing…",
@@ -490,7 +498,14 @@
     "subtitle": "One sheet per student, targeted at their gaps",
     "targeting": "Targeted competencies",
     "title": "Adaptive sheets",
-    "trueLabel": "True"
+    "trueLabel": "True",
+    "recent": {
+      "title": "Recent runs",
+      "body": "A proposal started from this browser. It stays available even if the tab was closed."
+    },
+    "preparingQueued": "Waiting for a free worker…",
+    "preparingHelp": "One model call per student. You can close the tab: the proposal stays reachable.",
+    "discarded": "Exercise discarded."
   },
   "settings": {
     "title": "Settings",
@@ -508,7 +523,7 @@
     "calm": "Reading mode",
     "calmHelp": "Hides decorative illustrations.",
     "saved": "Saved",
-    "school": "School",
+    "school": "Establishment",
     "schoolName": "Name",
     "canton": "Canton",
     "curriculum": "Curriculum",
@@ -533,7 +548,10 @@
     "bookTitle": "Title",
     "publisher": "Publisher",
     "isbn": "ISBN",
-    "sourceUrl": "Link"
+    "sourceUrl": "Link",
+    "newSchoolTitle": "New establishment",
+    "newSchoolHelp": "You become a member immediately. Your session stays on the current establishment: switch from the rail when you are ready.",
+    "newSchoolAction": "Create establishment"
   },
   "exercise": {
     "type": {
@@ -570,7 +588,10 @@
     "save": "Save",
     "search": "Search",
     "showAll": "Show all",
-    "yes": "Yes"
+    "yes": "Yes",
+    "none": "None",
+    "undo": "Undo",
+    "saving": "Saving…"
   },
   "errors": {
     "generic": {
@@ -586,31 +607,37 @@
     "offline": "You appear to be offline.",
     "unauthorized": "Your session has expired. Please sign in again.",
     "code": {
-      "unsupported_media_type": "That format is not accepted. Use a PDF, a JPEG or a PNG.",
-      "payload_too_large": "The file is too large. Scan it in more than one batch.",
-      "unprocessable": "The file could not be read. Check that it is not empty or damaged.",
-      "validation_error": "The request is incomplete. Check the fields and try again.",
+      "bad_request": "The request could not be processed. Reload the page and try again.",
+      "branch_holds_sheets": "This discipline still holds sheets. Move or delete them first.",
       "conflict": "That is no longer possible in the current state.",
-      "not_found": "That item does not exist, or is no longer available.",
-      "network_error": "The app could not reach the server.",
+      "detection_not_corrected": "This reading was not corrected: there is nothing to restore.",
       "fallback": "The upload failed. Try again.",
-      "scan_pages_unassigned": "Some pages belong to nobody. Assign them or set them aside, then confirm.",
-      "scan_matches_no_sheet": "None of these pages belong to the sheet you chose. Check that it is the right one.",
-      "scan_already_confirmed": "These results have already been saved.",
-      "scan_open_grading_pending": "Written answers are still being read. Confirm once the reading is finished.",
-      "sheet_not_renderable": "This sheet cannot be laid out as it stands. Check that it has students and exercises, and that no statement is taller than a page.",
-      "unauthorized": "Your session has expired. Sign in again.",
-      "forbidden": "You do not have access to that.",
-      "bad_request": "The request could not be handled. Try again.",
+      "forbidden": "You do not have access to this item.",
+      "http_error": "The server answered unexpectedly. Try again.",
+      "idempotency_in_flight": "This request is already running. Wait for it to finish rather than starting it again.",
+      "idempotency_key_too_long": "The request is malformed. Reload the page and try again.",
+      "internal_error": "Something unexpected went wrong. Nothing was saved; try again.",
       "method_not_allowed": "That action is not possible here.",
-      "rate_limited": "Too many requests in quick succession. Wait a moment, then try again.",
-      "service_unavailable": "This feature is temporarily unavailable. Try again later.",
-      "internal_error": "Something went wrong on our side. Try again; if it persists, report it.",
-      "http_error": "The request failed. Try again.",
-      "branch_holds_sheets": "This branch still has sheets in this class. Move or delete them first.",
-      "detection_not_corrected": "This reading was never corrected, so there is nothing to revert.",
+      "network_error": "The app could not reach the server.",
+      "not_found": "That item does not exist, or is no longer available.",
+      "payload_too_large": "The file is too large. Scan it in more than one batch.",
+      "rate_limited": "Too many requests in a row. Try again in {seconds} seconds.",
+      "scan_already_confirmed": "These results have already been saved.",
       "scan_confirmed": "This pile is confirmed. Reopen it before changing a reading.",
-      "scan_not_confirmed": "This pile is not confirmed, so there is nothing to reopen."
+      "scan_matches_no_sheet": "None of these pages belong to the sheet you chose. Check that it is the right one.",
+      "scan_no_sheet": "This pile is not attached to a sheet. Choose the sheet these are copies of.",
+      "scan_not_confirmed": "This pile has not been confirmed yet.",
+      "scan_open_grading_pending": "Written answers are still being read. Confirm once the reading is finished.",
+      "scan_pages_unassigned": "Some pages belong to nobody. Assign them or set them aside, then confirm.",
+      "scan_processing": "The pile is still being read. Try again in a moment.",
+      "school_last_teacher": "You are the last teacher at this school: it cannot be left with nobody.",
+      "service_unavailable": "This service is temporarily unavailable. Try again in a few minutes.",
+      "sheet_not_renderable": "This sheet cannot be laid out as it stands. Check that it has students and exercises, and that no statement is taller than a page.",
+      "teacher_still_head": "This teacher is still a class's head teacher. Hand the class over first.",
+      "unauthorized": "Your session has expired. Sign in again to continue.",
+      "unprocessable": "The file could not be read. Check that it is not empty or damaged.",
+      "unsupported_media_type": "That format is not accepted. Use a PDF, a JPEG or a PNG.",
+      "validation_error": "The request is incomplete. Check the fields and try again."
     },
     "unavailableTitle": "Data unavailable"
   },
@@ -734,7 +761,8 @@
     "themeModalTitle": "Choose a theme",
     "unfiledBucket": "No theme ({count})",
     "unfiledBucketHelp": "Exercises the textbook did not attach to a theme",
-    "unfiledCannotFile": "“No theme” is for finding these exercises, not for filing a sheet."
+    "unfiledCannotFile": "“No theme” is for finding these exercises, not for filing a sheet.",
+    "extractingProgress": "Reading the chapter… {percent}"
   },
   "newExercise": {
     "title": "Add an exercise",
@@ -952,5 +980,18 @@
     "scanRevised": "Pile revised",
     "scanPending": "Pile to review",
     "classBand": "The class on this sheet"
+  },
+  "connection": {
+    "offline": "Offline — Alppy is not responding. Corrections already sent are saved."
+  },
+  "discreet": {
+    "title": "Discreet mode",
+    "help": "Replaces pupils' names with their code (7B_04) wherever they are listed. For projecting the class without showing who is who.",
+    "showNames": "Show names",
+    "hideNames": "Hide names",
+    "revealedWarning": "Names are visible. They will be hidden again when you leave this page.",
+    "toggled": "Discreet mode on.",
+    "untoggled": "Discreet mode off.",
+    "shortcutHint": "Shift + D"
   }
 }

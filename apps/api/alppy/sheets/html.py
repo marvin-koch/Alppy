@@ -2,9 +2,14 @@
 
 `render_sheet_html` produces the exact document the browser print preview shows
 and the exact document headless Chromium turns into a PDF. There is one renderer,
-not two, and it inlines ``packages/ui/src/design/{tokens,base,print}.css`` by
-*reading those files at render time*. Nothing about the design system is copied
-into this package, so the preview and the PDF cannot drift from it.
+not two, and it inlines ``packages/ui/src/design/{fonts,tokens,base,print}.css``
+by *reading those files at render time*. Nothing about the design system is
+copied into this package, so the preview and the PDF cannot drift from it.
+
+``fonts.css`` is generated (``scripts/embed-fonts.mjs``) and carries the four
+faces as data: URIs, because a standalone document that only *names* its
+families leaves every renderer to pick its own — and a statement that wraps
+differently is an answer box measured at a row the scan job will not crop.
 
 Three rules from DESIGN.md §9 are structural here, not stylistic:
 
@@ -24,7 +29,6 @@ Three rules from DESIGN.md §9 are structural here, not stylistic:
 
 from __future__ import annotations
 
-import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Final
@@ -47,7 +51,11 @@ from alppy.sheets.pagination import (
 from alppy.sheets.uid_code import bits_to_cells, encode_uid
 
 TEMPLATE_DIR: Final = Path(__file__).resolve().parent / "templates"
-DESIGN_CSS_SHEETS: Final = ("tokens", "base", "print")
+# `fonts` first: the faces have to be declared before anything asks for them,
+# and its absence is fatal rather than a fallback (see DesignSystemNotFoundError
+# below). A sheet typeset in whatever the renderer happened to have is a sheet
+# whose answer boxes were measured against a different text flow.
+DESIGN_CSS_SHEETS: Final = ("fonts", "tokens", "base", "print")
 DESIGN_CSS_ENV_VAR: Final = "ALPPY_DESIGN_CSS_DIR"
 DESIGN_CSS_RELATIVE: Final = Path("packages/ui/src/design")
 
@@ -240,7 +248,10 @@ def design_css_dir() -> Path:
     ``ALPPY_DESIGN_CSS_DIR`` wins, so a container image that ships the CSS
     somewhere else needs no code change. Otherwise we walk up from this file
     looking for the monorepo root."""
-    override = os.environ.get(DESIGN_CSS_ENV_VAR)
+    # From settings, not `os.environ` (audit 03, B25).
+    from alppy.core.config import get_settings
+
+    override = get_settings().design_css_dir
     if override:
         candidate = Path(override).expanduser().resolve()
         if (candidate / "print.css").is_file():
@@ -585,6 +596,7 @@ def render_sheet_html(sheet_data: SheetData, *, kind: str | SheetKind = SheetKin
         "show_legend": sheet_data.show_legend,
         "bands": band_legend(sheet_data.language) if sheet_data.show_legend else [],
         "css": {
+            "fonts": Markup(css["fonts"]),
             "tokens": Markup(css["tokens"]),
             "base": Markup(css["base"]),
             "print": Markup(css["print"]),
@@ -659,6 +671,30 @@ class FeedbackData:
     source_title: str | None = None
 
 
+def _without_group_number(label: str) -> str:
+    """"Série 3 · Fractions" -> "Fractions", for the page a pupil is handed.
+
+    The two halves of the label disclose very different things, and only on
+    paper does the difference matter. The competency is informative: a pupil
+    reading "Fractions" learns what their sheet is about, which is the point of
+    printing it. The NUMBER is relative-ranking information and nothing else —
+    where a large group was split by how badly, "Série 3" against a neighbour's
+    "Série 1" says who is further behind, to anyone who can see both desks.
+
+    So the number goes from the student-facing feedback page and stays
+    everywhere the teacher reads it: the screen, and the sheet header where it
+    is how a teacher tells one pile of copies from another while handing them
+    out.
+
+    Split on the separator this module wrote itself (`_group_label`), and
+    returns the label unchanged when it does not find one — a label from before
+    this existed, or a group with no competency to name, is still correct as it
+    stands.
+    """
+    _, separator, rest = label.partition(" · ")
+    return rest.strip() if separator and rest.strip() else label
+
+
 def _feedback_page_context(copy: FeedbackCopy, data: FeedbackData, *, number: int, count: int
                            ) -> dict[str, Any]:
     t = strings(data.language)
@@ -668,7 +704,7 @@ def _feedback_page_context(copy: FeedbackCopy, data: FeedbackData, *, number: in
     if data.date_label:
         meta_parts.append(data.date_label)
     if copy.group_label:
-        meta_parts.append(copy.group_label)
+        meta_parts.append(_without_group_number(copy.group_label))
     return {
         "copy_uid": copy.uid,
         "title": t["feedback_title"],
@@ -699,6 +735,7 @@ def render_feedback_html(data: FeedbackData) -> str:
         "doc_title": f"{data.title} — {t['feedback_suffix']}",
         "t": t,
         "css": {
+            "fonts": Markup(css["fonts"]),
             "tokens": Markup(css["tokens"]),
             "base": Markup(css["base"]),
             "print": Markup(css["print"]),

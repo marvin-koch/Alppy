@@ -71,6 +71,13 @@ repos:
         files: ^apps/web/messages/.*\.json$
         pass_filenames: false
 
+      - id: embed-fonts
+        name: fonts.css matches the installed font packages
+        entry: bash -c 'node scripts/embed-fonts.mjs >/dev/null && git diff --exit-code packages/ui/src/design/fonts.css'
+        language: system
+        files: ^(apps/web/package\.json|scripts/embed-fonts\.mjs)$
+        pass_filenames: false
+
       - id: export-layout
         name: layout.generated.ts is up to date
         entry: bash -c 'PYTHONPATH=apps/api .venv/bin/python scripts/export-layout.py && git diff --exit-code packages/shared/src/layout.generated.ts'

@@ -36,7 +36,7 @@ from alppy.models import (
     class_teacher_subject,
     teacher_school,
 )
-from alppy.models.enums import ScanStatus
+from alppy.models.enums import BAND_ORDER, ScanStatus
 from alppy.schemas import (
     ClassCreate,
     ClassOut,
@@ -85,7 +85,7 @@ __all__ = [
     "undeclare_subject",
     "unenroll",
 ]
-from alppy.services.mastery_service import band_summary
+from alppy.services.mastery_service import band_summary, band_summary_by_group
 
 PENDING_SCAN_STATUSES = (
     ScanStatus.UPLOADED,
@@ -463,6 +463,78 @@ def join_school(db: Session, teacher_id: uuid.UUID, school_id: uuid.UUID) -> Non
     )
 
 
+def leave_school(db: Session, teacher_id: uuid.UUID, school_id: uuid.UUID) -> None:
+    """End this teacher's membership of this staffroom, as of today.
+
+    The counterpart `join_school` never had (audit 03, B16). `teacher_school`
+    has carried `valid_to` since 0027 and `get_membership` has checked it since
+    the same day, so the mechanism was in place for two migrations with no route
+    to reach it — a colleague added by a mistyped uuid could see every class in
+    the school until somebody wrote SQL.
+
+    **Ending, not deleting.** The row stays, which is the whole argument of
+    D87: "they were here from August to February" is a fact worth keeping, and
+    it is what makes `ever_shared_student_ids` able to say a substitute and a
+    pupil once shared a room. A DELETE would erase the justification for every
+    grade that teacher recorded.
+
+    Two refusals, and both are about not creating a state the product cannot
+    get out of:
+
+    * **The last member.** A school with nobody in it has no one who can add
+      anyone — membership is the only permission there is (D85) — so it is
+      unreachable forever, roster and all.
+    * **A head teacher of any class.** `Class.head_teacher_id` is NOT NULL, so
+      the class would keep naming somebody who can no longer open it, and
+      `owned_class_ids`'s head-teacher arm — the one that keeps a brand-new
+      class visible to its own teacher — would point at a person who is gone.
+      Hand the classes over first; that is a deliberate act, not a side effect
+      of removing a colleague.
+
+    Idempotent: ending a membership that has already ended does nothing.
+    """
+    on = today()
+    live = db.execute(
+        select(teacher_school.c.valid_from)
+        .where(teacher_school.c.teacher_id == teacher_id)
+        .where(teacher_school.c.school_id == school_id)
+        .where(valid_on(teacher_school, on))
+    ).first()
+    if live is None:
+        return
+
+    remaining = [t for t in list_colleagues(db, school_id) if t.id != teacher_id]
+    if not remaining:
+        raise errors.conflict(
+            "this is the last teacher in the school; a staffroom cannot be emptied",
+            code="school_last_teacher",
+            school_id=str(school_id),
+        )
+
+    heads = list(
+        db.execute(
+            select(Class.code)
+            .where(Class.school_id == school_id)
+            .where(Class.head_teacher_id == teacher_id)
+            .order_by(Class.code.asc())
+        ).scalars()
+    )
+    if heads:
+        raise errors.conflict(
+            "this teacher is still the head teacher of a class; reassign it first",
+            code="teacher_still_head",
+            classes=heads,
+        )
+
+    db.execute(
+        teacher_school.update()
+        .where(teacher_school.c.teacher_id == teacher_id)
+        .where(teacher_school.c.school_id == school_id)
+        .where(valid_on(teacher_school, on))
+        .values(valid_to=on)
+    )
+
+
 def create_class(db: Session, scope: Scope, teacher: Teacher, payload: ClassCreate) -> Class:
     if payload.school_year_id is not None:
         year = db.execute(
@@ -734,6 +806,54 @@ def _last_sheets(db: Session, scope: Scope) -> dict[uuid.UUID, Sheet]:
     return {sheet.class_id: sheet for sheet in rows}  # last write per class wins
 
 
+def _person_ids_by_class(db: Session, scope: Scope) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """class_id -> the people currently enrolled, for every class this teacher
+    has a footing in, in one query (audit 03, B23).
+
+    The home screen called `list_students` once per class purely to hand the
+    person ids to `band_summary`. Same rows, same tenancy predicate, one trip.
+    """
+    on = today()
+    rows = db.execute(
+        select(class_student.c.class_id, Student.person_id)
+        .join(Student, Student.id == class_student.c.student_id)
+        .where(Student.school_id == scope.school_id)
+        .where(class_student.c.class_id.in_(owned_class_ids(scope, on=on)))
+        .where(valid_on(class_student, on))
+    ).all()
+    out: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for class_id, person_id in rows:
+        out.setdefault(class_id, []).append(person_id)
+    return out
+
+
+def taught_subject_ids_by_class(db: Session, scope: Scope) -> dict[uuid.UUID, list[uuid.UUID]]:
+    """`taught_subject_ids_for_class` for every class at once (audit 03, B23).
+
+    `GET /classes` asked per class, so the branch nav cost one query per card.
+    The ordering rule is the one `_branch_ids` states and must stay identical:
+    `class_subject.position`, with `subject_id` breaking a tie so a list whose
+    order wobbles between requests cannot happen.
+    """
+    on = today()
+    rows = db.execute(
+        select(class_subject.c.class_id, class_subject.c.subject_id)
+        .join(
+            class_teacher_subject,
+            (class_teacher_subject.c.class_id == class_subject.c.class_id)
+            & (class_teacher_subject.c.subject_id == class_subject.c.subject_id),
+        )
+        .where(class_subject.c.class_id.in_(owned_class_ids(scope, on=on)))
+        .where(class_teacher_subject.c.teacher_id == scope.teacher_id)
+        .where(valid_on(class_teacher_subject, on))
+        .order_by(class_subject.c.position.asc(), class_subject.c.subject_id.asc())
+    ).all()
+    out: dict[uuid.UUID, list[uuid.UUID]] = {}
+    for class_id, subject_id in rows:
+        out.setdefault(class_id, []).append(subject_id)
+    return out
+
+
 def class_summary(
     db: Session,
     scope: Scope,
@@ -742,13 +862,21 @@ def class_summary(
     counts: dict[uuid.UUID, int] | None = None,
     pending: dict[uuid.UUID, int] | None = None,
     last_sheets: dict[uuid.UUID, Sheet] | None = None,
+    bands_by_class: dict[uuid.UUID, tuple[dict[str, int], int]] | None = None,
 ) -> ClassSummary:
     counts = counts if counts is not None else student_counts(db, scope)
     pending = pending if pending is not None else _pending_scan_counts(db, scope)
     last_sheets = last_sheets if last_sheets is not None else _last_sheets(db, scope)
 
-    person_ids = [s.person_id for s in list_students(db, scope, school_class.id)]
-    bands, needing = band_summary(db, scope.school_id, person_ids)
+    if bands_by_class is None:
+        person_ids = [s.person_id for s in list_students(db, scope, school_class.id)]
+        bands, needing = band_summary(db, scope.school_id, person_ids)
+    else:
+        # Precomputed over every class at once by `home` (audit 03, B23). The
+        # single-class path stays for callers that really do want one card.
+        bands, needing = bands_by_class.get(
+            school_class.id, ({band.value: 0 for band in BAND_ORDER}, 0)
+        )
     last = last_sheets.get(school_class.id)
 
     return ClassSummary(
@@ -774,6 +902,12 @@ def home(
     counts = student_counts(db, scope)
     pending = _pending_scan_counts(db, scope)
     last_sheets = _last_sheets(db, scope)
+    # Every card's band breakdown in two queries rather than two per class
+    # (audit 03, B23). This is the screen a teacher opens every morning, and it
+    # used to cost a roster read and a snapshot read per class.
+    bands_by_class = band_summary_by_group(
+        db, scope.school_id, _person_ids_by_class(db, scope)
+    )
     return HomeOut(
         teacher=teacher_out(teacher, scope.school_id),
         subjects=[subject_out(s) for s in list_subjects(db, scope.school_id)],
@@ -785,6 +919,7 @@ def home(
                 counts=counts,
                 pending=pending,
                 last_sheets=last_sheets,
+                bands_by_class=bands_by_class,
             )
             for c in list_classes(db, scope, school_year_id=school_year_id)
         ],

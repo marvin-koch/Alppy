@@ -1,6 +1,6 @@
 'use client';
 
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 import { SHEET_LAYOUT } from '@alppy/shared';
 
@@ -173,12 +173,89 @@ export interface DraftSheet {
  * an item stays on the sheet, renderable, after its page of the picker is long
  * gone.
  */
-export function useDraftSheet(): DraftSheet {
+/**
+ * Where a draft is kept between visits (F19).
+ *
+ * A sheet is built by reading a chapter and ticking exercises — twenty minutes
+ * of choosing, held in `useState` and nowhere else. A reload, a misclicked
+ * link, a phone that reclaimed the tab: gone, with no warning that it would be.
+ *
+ * `sessionStorage`, keyed on class and subject: a draft belongs to the pair it
+ * was built for, and coming back to a different class must not hand you the
+ * other one's exercises. It is per-tab, which is right — two tabs open on two
+ * classes is a real thing a teacher does in a free period.
+ */
+const DRAFT_PREFIX = 'alppy.draft.';
+
+interface StoredDraft {
+  items: DraftItem[];
+  bareme: Bareme;
+}
+
+function readDraft(key: string | null): StoredDraft | null {
+  if (!key) return null;
+  try {
+    const raw = window.sessionStorage.getItem(DRAFT_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<StoredDraft>;
+    // A stored shape is a shape from an older build. Anything that is not what
+    // this version expects is dropped rather than rendered: a half-understood
+    // draft is worse than an empty one, because the teacher would print it.
+    if (!Array.isArray(parsed.items)) return null;
+    if (!parsed.items.every((item) => item?.exercise?.id)) return null;
+    return {
+      items: parsed.items,
+      bareme:
+        parsed.bareme && typeof parsed.bareme.correct === 'number'
+          ? parsed.bareme
+          : { correct: DEFAULT_POINTS_CORRECT, penalty: DEFAULT_POINTS_PENALTY },
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function useDraftSheet(scopeKey: string | null = null): DraftSheet {
   const [items, setItems] = useState<DraftItem[]>([]);
   const [bareme, setBaremeState] = useState<Bareme>({
     correct: DEFAULT_POINTS_CORRECT,
     penalty: DEFAULT_POINTS_PENALTY,
   });
+
+  // Restored after mount, never during render: `sessionStorage` does not exist
+  // on the server, and reading it while rendering would make the two disagree.
+  useEffect(() => {
+    const stored = readDraft(scopeKey);
+    setItems(stored?.items ?? []);
+    if (stored?.bareme) setBaremeState(stored.bareme);
+  }, [scopeKey]);
+
+  useEffect(() => {
+    if (!scopeKey) return;
+    try {
+      // An empty draft is removed rather than stored: leaving `{items: []}`
+      // behind would make "nothing here" indistinguishable from "never
+      // started", and the beforeunload guard below reads the same emptiness.
+      if (items.length === 0) window.sessionStorage.removeItem(DRAFT_PREFIX + scopeKey);
+      else
+        window.sessionStorage.setItem(
+          DRAFT_PREFIX + scopeKey,
+          JSON.stringify({ items, bareme } satisfies StoredDraft),
+        );
+    } catch {
+      /* Full, or blocked. A lost draft is bad; a screen that will not render
+         because it could not save one is worse. */
+    }
+  }, [scopeKey, items, bareme]);
+
+  // The browser's own warning, which is the only one that can interrupt a
+  // navigation the app never sees — closing the tab, or the back button.
+  useEffect(() => {
+    if (items.length === 0) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener('beforeunload', warn);
+    return () => window.removeEventListener('beforeunload', warn);
+  }, [items.length]);
 
   const ids = useMemo(() => new Set(items.map((i) => i.exercise.id)), [items]);
 
@@ -286,7 +363,17 @@ export function useDraftSheet(): DraftSheet {
     [items, bareme],
   );
 
-  const clear = useCallback(() => setItems([]), []);
+  const clear = useCallback(() => {
+    setItems([]);
+    // The persisted copy goes with it: `clear` is called on a successful
+    // creation, and a draft that outlived the sheet it became would be offered
+    // back the next time this class's builder opened.
+    try {
+      if (scopeKey) window.sessionStorage.removeItem(DRAFT_PREFIX + scopeKey);
+    } catch {
+      /* nothing to clean up if there was nowhere to write */
+    }
+  }, [scopeKey]);
 
   return {
     items,

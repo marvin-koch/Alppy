@@ -69,7 +69,14 @@ def test_preferences_round_trip(client: TestClient, tenant: Tenant) -> None:
     login(client, tenant.teacher.email)
     response = client.patch(
         "/api/v1/teachers/me/preferences",
-        json={"locale": "de", "theme": "dark", "contrast": "high", "motion": None, "calm": "on"},
+        json={
+            "locale": "de",
+            "theme": "dark",
+            "contrast": "high",
+            "motion": None,
+            "calm": "on",
+            "discreet": "on",
+        },
     )
     assert response.status_code == 200
     prefs = response.json()["preferences"]
@@ -79,6 +86,9 @@ def test_preferences_round_trip(client: TestClient, tenant: Tenant) -> None:
         "contrast": "high",
         "motion": None,
         "calm": "on",
+        # Projector mode follows the teacher to the staffroom machine, which is
+        # the whole reason it is stored here and not only in the browser.
+        "discreet": "on",
     }
     # "not chosen" is a real value and must survive a round trip as null.
     assert client.get("/api/v1/auth/me").json()["preferences"]["motion"] is None

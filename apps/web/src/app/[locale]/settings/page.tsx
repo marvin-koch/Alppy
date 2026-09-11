@@ -8,11 +8,12 @@ import { useEffect, useState } from 'react';
 
 import { useRouter, usePathname } from '@/i18n/navigation';
 import { useUpdatePreferences } from '@/lib/api/queries';
-import { applyDisplay, readDisplay, type DisplayPrefs } from '@/lib/display';
+import { applyDisplay, defaultDisplay, readDisplay, type DisplayPrefs } from '@/lib/display';
 import { locales, type AppLocale } from '@/i18n/routing';
 
 export default function SettingsPage() {
   const t = useTranslations('settings');
+  const td = useTranslations('discreet');
   const router = useRouter();
   const pathname = usePathname();
   const locale = useLocale() as AppLocale;
@@ -34,7 +35,7 @@ export default function SettingsPage() {
     updatePrefs.mutate({ locale, ...next });
   }
 
-  const current = prefs ?? { theme: null, contrast: null, motion: null, calm: null };
+  const current = prefs ?? defaultDisplay;
 
   return (
     <div className="mx-auto max-w-2xl">
@@ -108,6 +109,16 @@ export default function SettingsPage() {
             description={t('calmHelp')}
             checked={current.calm === 'on'}
             onCheckedChange={(on) => update({ calm: on ? 'on' : null })}
+          />
+
+          {/* The one display switch that is about the room rather than the
+              reader. The shortcut is named here because the moment you need
+              this setting is the moment you cannot go looking for it. */}
+          <Toggle
+            label={td('title')}
+            description={`${td('help')} (${td('shortcutHint')})`}
+            checked={current.discreet === 'on'}
+            onCheckedChange={(on) => update({ discreet: on ? 'on' : null })}
           />
         </div>
 

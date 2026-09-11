@@ -20,6 +20,8 @@ import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
 import { useClass, useClassMastery } from '@/lib/api/queries';
 import type { MasteryCell, Uuid } from '@/lib/api/types';
+import { RevealNames } from '@/components/RevealNames';
+import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
 
 /**
@@ -61,6 +63,7 @@ export default function StudentsPage({
 }) {
   const { classId } = use(params);
   const t = useTranslations('students');
+  const { hideNames } = useDiscretion();
   const tc = useTranslations('classes');
   const te = useTranslations('errors.generic');
   const a11y = useTranslations('a11y');
@@ -103,14 +106,21 @@ export default function StudentsPage({
         classCodes: s.class_codes,
         homeClassCode: s.home_class_code,
         number: s.number,
-        name: studentSortName(s),
+        // Projector mode replaces the name with the code already printed on
+        // that pupil's own paper: the teacher can still resolve it, the room
+        // cannot. `studentSortName` falls back to the same code for a pupil
+        // who HAS no name, because their record was anonymised.
+        name: hideNames ? s.uid : studentSortName(s),
         uid: s.uid,
         weakest,
         assessed: assessed.length,
         total,
       };
     });
-  }, [students, matrix.data]);
+    // `hideNames` belongs here: without it the rows keep the labels they
+    // were memoised with, and toggling projector mode changes nothing on
+    // screen until something else happens to invalidate them.
+  }, [students, matrix.data, hideNames]);
 
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },
@@ -132,9 +142,12 @@ export default function StudentsPage({
             {t('count', { count: rows.length })}
           </p>
         </div>
-        <Link href={`/classes/${classId}/roster`}>
-          <Button variant="primary">{tc('addStudents')}</Button>
-        </Link>
+        <div className="flex flex-wrap items-center gap-3">
+          <RevealNames />
+          <Link href={`/classes/${classId}/roster`}>
+            <Button variant="primary">{tc('addStudents')}</Button>
+          </Link>
+        </div>
       </header>
     </>
   );

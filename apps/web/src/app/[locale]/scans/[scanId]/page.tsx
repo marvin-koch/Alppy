@@ -11,6 +11,7 @@ import {
   EmptyState,
   ErrorState,
   Field,
+  FileDrop,
   IlloTray,
   KeyboardHint,
   LoadingState,
@@ -29,6 +30,7 @@ import { useSearchParams } from 'next/navigation';
 import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
+  useAddScanPages,
   useAssignScanPage,
   useConfirmScan,
   useCorrectDetection,
@@ -45,6 +47,7 @@ import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { badgeVariant } from '@/lib/detectionOutcome';
 import { useFormatters } from '@/lib/format';
+import { useDiscretion } from '@/lib/discreet';
 import { studentName } from '@/lib/studentName';
 
 /**
@@ -106,6 +109,8 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const confirm = useConfirmScan(scanId);
   const reopen = useReopenScan(scanId);
   const [selected, setSelected] = useState<Uuid | null>(null);
+  /** First click arms, second reopens. Disarms itself on the way out. */
+  const [reopenArmed, setReopenArmed] = useState(false);
   const rowRefs = useRef(new Map<Uuid, HTMLLIElement>());
 
   const status = scan.data?.status;
@@ -252,6 +257,15 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   }
 
   const confirmed = scan.data.status === 'confirmed';
+  // How many pupils' results reopening would withdraw. Counted from the pages
+  // that were actually attributed: `students_affected` is only on the response
+  // to an action that has already happened, and a confirmation has to say the
+  // number BEFORE the click.
+  const gradedStudents = new Set(
+    scan.data.pages
+      .filter((page) => !page.discarded && page.student_id)
+      .map((page) => page.student_id),
+  ).size;
   // Driven by the job, not by its prose: `message` is a log line, in English.
   const progress = job.data?.progress ?? 0;
   const queued = (job.data?.status ?? 'queued') === 'queued';
@@ -308,13 +322,27 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
             </Button>
           ) : null}
           {confirmed ? (
+            // Two clicks, and the second one says what it costs (F18).
+            // Reopening withdraws every attempt this pile wrote and recomputes
+            // the mastery behind them; confirming — the action that CREATES
+            // those results — asks nothing, so the asymmetry ran the wrong
+            // way. Not `ConfirmDestructive`: that one is for destroying
+            // evidence and makes you type an identifier, and this is
+            // reversible by confirming again.
             <Button
-              variant="secondary"
+              variant={reopenArmed ? 'danger' : 'secondary'}
               loading={reopen.isPending}
               busyLabel={t('reopening')}
-              onClick={() => reopen.mutate()}
+              onClick={() => {
+                if (!reopenArmed) {
+                  setReopenArmed(true);
+                  return;
+                }
+                setReopenArmed(false);
+                reopen.mutate();
+              }}
             >
-              {t('reopen')}
+              {reopenArmed ? t('reopenConfirm', { count: gradedStudents }) : t('reopen')}
             </Button>
           ) : (
             <Button
@@ -476,6 +504,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
             scanId={scanId}
             page={page}
             confirmed={confirmed}
+            processing={processing}
             selected={selected}
             onSelect={setSelected}
             registerRow={(id, el) => {
@@ -497,6 +526,7 @@ function PageCard({
   scanId,
   page,
   confirmed,
+  processing,
   selected,
   onSelect,
   onCorrect,
@@ -506,6 +536,8 @@ function PageCard({
   scanId: Uuid;
   page: ScanPageOut;
   confirmed: boolean;
+  /** A run is already reading this pile. One at a time: see `append_pages`. */
+  processing: boolean;
   selected: Uuid | null;
   onSelect: (id: Uuid) => void;
   onCorrect: (detectionId: Uuid, body: DetectionCorrection) => void;
@@ -514,6 +546,12 @@ function PageCard({
 }) {
   const t = useTranslations('scans');
   const tc = useTranslations('common');
+  const tcode = useTranslations('errors.code');
+  const { hideNames } = useDiscretion();
+  // The review screen already polls the scan while the worker reads it, and the
+  // mutation invalidates it — so the new page appears the same way every other
+  // page did, with no second polling mechanism.
+  const retake = useAddScanPages(scanId);
   const assign = useAssignScanPage(scanId);
   const discard = useDiscardScanPage(scanId);
   const [choice, setChoice] = useState<Uuid | ''>('');
@@ -557,6 +595,38 @@ function PageCard({
           {page.registration_error ? (
             <p className="mt-1 text-body-s text-ink-500">{page.registration_error}</p>
           ) : null}
+          {/* Somewhere to act on the advice. Without this the only route was
+              `/scans/new`, which makes a SECOND pile against the same sheet —
+              one class's submission split across two reviews and two
+              confirmations, with nothing saying they belong together. The
+              retake supersedes this photograph in the same request, so the
+              copy is never briefly longer than it was printed. */}
+          {!confirmed ? (
+            <Panel className="mt-3">
+              <FileDrop
+                accept="image/*,application/pdf"
+                multiple={false}
+                // One run at a time per pile: page numbers and stored image
+                // keys both continue from the rows already written, so a
+                // second run would collide with the first. The server refuses
+                // it; saying so here means the teacher never meets that.
+                disabled={retake.isPending || processing}
+                label={t('retakeLabel')}
+                description={processing ? t('retakeWait') : t('retakeHelp')}
+                camera
+                cameraLabel={t('retakeCamera')}
+                onFiles={(files) => {
+                  if (files.length === 0) return;
+                  retake.mutate({ files, supersedesPageId: page.id });
+                }}
+              />
+              {retake.isError ? (
+                <p className="mt-2 text-body-s text-danger-600" role="alert">
+                  {apiErrorMessage(retake.error, tcode)}
+                </p>
+              ) : null}
+            </Panel>
+          ) : null}
         </>
       ) : null}
 
@@ -575,7 +645,7 @@ function PageCard({
                 <option value="">{t('chooseStudent')}</option>
                 {students.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.uid} — {studentName(s)}
+                    {hideNames ? s.uid : `${s.uid} — ${studentName(s)}`}
                   </option>
                 ))}
               </Select>

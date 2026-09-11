@@ -148,6 +148,7 @@ def update_preferences(
     teacher.contrast = payload.contrast
     teacher.motion = payload.motion
     teacher.calm = payload.calm
+    teacher.discreet = payload.discreet
     db.commit()
     db.refresh(teacher)
     return teacher_out(

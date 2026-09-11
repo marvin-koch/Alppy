@@ -1,5 +1,5 @@
 // AUTO-GENERATED — DO NOT EDIT.
-// Source of truth: apps/api/alppy/sheets/layout.py + alppy/scan/detector.py (as_dict()).
+// Source of truth: apps/api/alppy/sheets/layout.py + alppy/scan/detector.py + alppy/core/uid.py (as_dict()).
 // Regenerate with: PYTHONPATH=apps/api python scripts/export-layout.py
 // CI fails if this file is stale (see .github/workflows/ci.yml) --
 // the print markup, the server-side PDF renderer and the scan
@@ -99,3 +99,21 @@ export const SCAN_THRESHOLDS = {
   "crossBlank": 0.2,
   "minQuality": 0.55
 } as const;
+
+/**
+ * What a class code may look like, from the one place that decides.
+ *
+ * `alppy/core/uid.py` is the authority: a class code is half of every
+ * student UID, and a UID is printed as a 32-bit grid on every copy. The
+ * form used to carry its own copy of this pattern, and the copy had
+ * already drifted once — `{1,3}` against the server's `{1,2}`, so `11ABC`
+ * passed the form and 422'd at the API, leaving the teacher to decode a
+ * validation error for a field that had just accepted their input. It was
+ * caught by a human reading two files side by side
+ * (`docs/reviews/F7-fixes.md`), which is not a mechanism.
+ */
+export const CLASS_CODE_PATTERN = "^\\d{1,2}[A-Za-z]{1,2}$";
+
+/** Fresh per call: a `RegExp` literal is stateless only if nobody sets
+ *  a flag on it, and a shared one is a shared `lastIndex`. */
+export const classCodeRe = (): RegExp => new RegExp(CLASS_CODE_PATTERN);

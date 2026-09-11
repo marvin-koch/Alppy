@@ -27,13 +27,19 @@ describe('display preferences', () => {
   });
 
   it('round-trips a full set of choices', () => {
-    const prefs: DisplayPrefs = { theme: 'dark', contrast: 'high', motion: 'off', calm: 'on' };
+    const prefs: DisplayPrefs = {
+      theme: 'dark',
+      contrast: 'high',
+      motion: 'off',
+      calm: 'on',
+      discreet: 'on',
+    };
     applyDisplay(prefs);
     expect(readDisplay()).toEqual(prefs);
   });
 
   it('writes an attribute for a choice and REMOVES it for "not chosen"', () => {
-    applyDisplay({ theme: 'dark', contrast: 'high', motion: 'off', calm: 'on' });
+    applyDisplay({ theme: 'dark', contrast: 'high', motion: 'off', calm: 'on', discreet: 'on' });
     expect(document.documentElement.getAttribute('data-theme')).toBe('dark');
 
     applyDisplay(defaultDisplay);
@@ -41,6 +47,7 @@ describe('display preferences', () => {
     // matches [data-theme], which is how a system-default user gets stuck.
     expect(document.documentElement.hasAttribute('data-theme')).toBe(false);
     expect(document.documentElement.hasAttribute('data-contrast')).toBe(false);
+    expect(document.documentElement.hasAttribute('data-discreet')).toBe(false);
   });
 
   it('fills in missing keys from a partial stored object', () => {

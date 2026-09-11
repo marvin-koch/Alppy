@@ -21,6 +21,7 @@ from collections.abc import Callable
 from datetime import UTC, datetime
 
 from fastapi.testclient import TestClient
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import Tenant, assign_branch, login, make_subject
@@ -545,6 +546,83 @@ def test_a_colleague_can_be_added_to_a_staffroom_you_work_in(
     assert client.post(f"/api/v1/auth/school/{new_id}").status_code == 200
 
 
+def test_a_colleague_can_be_removed_again(
+    client: TestClient, tenant: Tenant, colleague: Tenant, db: Session
+) -> None:
+    """The counterpart `add` never had (audit 03, B16).
+
+    A membership has been revocable since 0027 gave `teacher_school` a
+    `valid_to`, and `get_membership` has checked it since the same day — so for
+    two migrations a colleague added by a mistyped uuid could see every class in
+    the school until somebody wrote SQL.
+    """
+    login(client, tenant.teacher.email)
+    new_id = client.post("/api/v1/schools", json={"name": "Oberstufe Chur"}).json()["id"]
+    client.post(f"/api/v1/schools/{new_id}/teachers/{colleague.teacher.id}")
+
+    login(client, colleague.teacher.email)
+    assert client.post(f"/api/v1/auth/school/{new_id}").status_code == 200
+
+    login(client, tenant.teacher.email)
+    removed = client.delete(f"/api/v1/schools/{new_id}/teachers/{colleague.teacher.id}")
+    assert removed.status_code == 200
+    assert str(colleague.teacher.id) not in {row["id"] for row in removed.json()}
+
+    # And the door is actually shut, not merely the list shortened.
+    login(client, colleague.teacher.email)
+    assert client.post(f"/api/v1/auth/school/{new_id}").status_code == 404
+
+    # Ended, never deleted: the row is what justifies the grades they recorded
+    # while they were here, and what `ever_shared_student_ids` reads (D87).
+    from alppy.models import teacher_school
+
+    row = db.execute(
+        select(teacher_school)
+        .where(teacher_school.c.school_id == uuid.UUID(new_id))
+        .where(teacher_school.c.teacher_id == colleague.teacher.id)
+    ).first()
+    assert row is not None, "the membership was deleted rather than ended"
+    assert row.valid_to is not None
+
+
+def test_a_staffroom_cannot_be_emptied(
+    client: TestClient, tenant: Tenant
+) -> None:
+    """The unreachable-school refusal.
+
+    Membership is the only permission there is (D85), so a school with nobody
+    in it has nobody who can add anybody — it is gone forever, roster and all.
+    """
+    login(client, tenant.teacher.email)
+    new_id = client.post("/api/v1/schools", json={"name": "Seule"}).json()["id"]
+
+    refused = client.delete(f"/api/v1/schools/{new_id}/teachers/{tenant.teacher.id}")
+    assert refused.status_code == 409
+    assert refused.json()["error"]["code"] == "school_last_teacher"
+
+
+def test_a_head_teacher_must_hand_their_classes_over_first(
+    client: TestClient, tenant: Tenant, colleague: Tenant
+) -> None:
+    """`Class.head_teacher_id` is NOT NULL.
+
+    Removing a head teacher would leave the class naming someone who can no
+    longer open it, and `owned_class_ids`'s head-teacher arm — the thing that
+    keeps a brand-new class visible to its own teacher — pointing at a person
+    who is gone.
+    """
+    login(client, colleague.teacher.email)
+    refused = client.delete(
+        f"/api/v1/schools/{tenant.school.id}/teachers/{tenant.teacher.id}"
+    )
+    assert refused.status_code == 409
+    body = refused.json()["error"]
+    assert body["code"] == "teacher_still_head"
+    # Which classes, so the teacher can go and hand them over rather than
+    # guessing which of theirs is blocking it.
+    assert tenant.school_class.code in body["details"]["classes"]
+
+
 def test_you_cannot_add_a_colleague_to_a_school_you_do_not_work_in(
     client: TestClient, tenant: Tenant, other_tenant: Tenant
 ) -> None:
@@ -583,3 +661,50 @@ def test_a_textbook_carries_the_facts_that_identify_it(
     assert body["publisher"] == "Éditions LEP"
     assert body["isbn"] == "978-2-606-01234-5", "stored as typed, not normalised"
     assert body["url"] == "https://example.ch/algebre"
+
+
+def test_erasing_a_pupil_takes_their_photographs_too(
+    client: TestClient, tenant: Tenant, db: Session, storage
+) -> None:
+    """Erasure that leaves the images behind is not erasure (audit 03, B14).
+
+    The rows cascaded and every page image and answer-box crop of the child's
+    handwriting stayed in object storage — unreachable through the product,
+    which is not the same as gone, and not what a parent asking for erasure was
+    told had happened.
+    """
+    from alppy.models import Detection, Scan, ScanPage
+    from alppy.models.enums import DetectionOutcome, ScanStatus
+    from alppy.services import nouns_service
+
+    student = tenant.students[0]
+    storage.put_bytes("scan-pages/p.png", b"page", "image/png")
+    storage.put_bytes("crops/c.png", b"crop", "image/png")
+
+    scan = Scan(
+        id=uuid.uuid4(), school_id=tenant.school.id, uploaded_by_id=tenant.teacher.id,
+        original_filename="p.png", storage_key="p.png", storage_keys=["p.png"],
+        status=ScanStatus.CONFIRMED,
+    )
+    db.add(scan)
+    db.flush()
+    page = ScanPage(
+        id=uuid.uuid4(), school_id=tenant.school.id, scan_id=scan.id, page_index=0,
+        image_key="scan-pages/p.png", registered=True, student_id=student.id,
+    )
+    db.add(page)
+    db.flush()
+    db.add(Detection(
+        id=uuid.uuid4(), school_id=tenant.school.id, scan_page_id=page.id,
+        item_index=0, outcome=DetectionOutcome.DETECTED, confidence=0.9,
+        crop_key="crops/c.png",
+    ))
+    db.commit()
+
+    nouns_service.delete_student(
+        db, tenant.scope, student, confirm_uid=student.uid, storage=storage
+    )
+    db.commit()
+
+    assert not storage.exists("scan-pages/p.png"), "the page image survived erasure"
+    assert not storage.exists("crops/c.png"), "the handwriting crop survived erasure"

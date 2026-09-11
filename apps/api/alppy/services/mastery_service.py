@@ -897,6 +897,45 @@ def band_summary(
     return counts, len(needing)
 
 
+def band_summary_by_group(
+    db: Session, school_id: uuid.UUID, groups: dict[uuid.UUID, list[uuid.UUID]]
+) -> dict[uuid.UUID, tuple[dict[str, int], int]]:
+    """``band_summary`` for several groups at once, in ONE snapshot query.
+
+    The home screen shows a card per class and each card carries a band
+    breakdown, so the per-class version fanned out a snapshot query per class —
+    a teacher with six classes paid six round trips for one screen they open
+    every morning (audit 03, B23).
+
+    The snapshots are loaded once over the union of everybody and bucketed in
+    Python. Buckets, not a GROUP BY: `latest_snapshots` already does the
+    "most recent per (person, competency)" work, and re-expressing that as a
+    grouped aggregate would be a second implementation of the rule that decides
+    which snapshot counts.
+
+    A pupil in two of the teacher's classes is counted in both, which is correct
+    — the card describes the group, not the school.
+    """
+    everyone = sorted({pid for ids in groups.values() for pid in ids})
+    snapshots = latest_snapshots(db, school_id, everyone)
+
+    by_person: dict[uuid.UUID, list[MasterySnapshot]] = {}
+    for (person_id, _competency_id), snap in snapshots.items():
+        by_person.setdefault(person_id, []).append(snap)
+
+    out: dict[uuid.UUID, tuple[dict[str, int], int]] = {}
+    for group_id, person_ids in groups.items():
+        counts: dict[str, int] = {band.value: 0 for band in BAND_ORDER}
+        needing: set[uuid.UUID] = set()
+        for person_id in person_ids:
+            for snap in by_person.get(person_id, ()):
+                counts[snap.band.value] = counts.get(snap.band.value, 0) + 1
+                if snap.band in ATTENTION_BANDS:
+                    needing.add(person_id)
+        out[group_id] = (counts, len(needing))
+    return out
+
+
 def sheet_mastery(
     db: Session,
     school_id: uuid.UUID,

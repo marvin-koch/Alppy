@@ -1,0 +1,4 @@
+# Generated, and 242 KiB of base64 — prettier would reflow the data: URIs on
+# every run and the generator would put them back. Regenerate it with
+# `node scripts/embed-fonts.mjs`; CI diffs it.
+packages/ui/src/design/fonts.css

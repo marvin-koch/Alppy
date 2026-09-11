@@ -20,7 +20,6 @@ that installs it. It is a distinct, catchable type precisely so a caller can tel
 from __future__ import annotations
 
 import base64
-import os
 import uuid
 from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
@@ -96,6 +95,14 @@ def _printed_page(html: str, *, timeout_ms: int) -> Iterator[Any]:
             page.set_default_timeout(timeout_ms)
             page.emulate_media(media="print", color_scheme="light")
             page.set_content(html, wait_until="load")
+            # The faces arrive as data: URIs inside the document (fonts.css),
+            # so there is no network to wait for — but decoding and applying
+            # them is still asynchronous, and a page measured before they apply
+            # is a page measured in the fallback. `measure_answer_boxes` records
+            # millimetres the scan job later crops at, so measuring one text
+            # flow and printing another is exactly the silent miscrop the
+            # embedded faces exist to prevent.
+            page.evaluate("document.fonts.ready")
             yield page
         finally:
             browser.close()
@@ -255,7 +262,11 @@ def browser_available() -> bool:
 # --------------------------------------------------------------------------
 def render_dir() -> Path:
     """Where PDFs land when there is no object store yet."""
-    return Path(os.environ.get(RENDER_DIR_ENV, DEFAULT_RENDER_DIR)).expanduser()
+    # From settings, not `os.environ` (audit 03, B25): a value the config module
+    # cannot see is a value no startup check can validate.
+    from alppy.core.config import get_settings
+
+    return Path(get_settings().render_dir or DEFAULT_RENDER_DIR).expanduser()
 
 
 def store_pdf(payload: bytes, key: str) -> str:
@@ -654,18 +665,38 @@ def _stamp(sheet: Any, data: SheetData) -> None:
 def _persist_answer_box_placements(
     db: Any, sheet: Any, data: SheetData, boxes: Sequence[MeasuredBox]
 ) -> int:
-    """Record where every box printed, replacing whatever an earlier render
-    recorded for this sheet.
+    """Record where every box printed, as a new generation of this sheet.
 
-    Delete-then-insert by sheet, never upsert by student: a re-render after a
-    roster change must lose the rows of a child who left as surely as it gains
-    the rows of one who arrived. Returns how many were written.
+    Delete-then-insert, never upsert by student: a re-render after a roster
+    change must lose the rows of a child who left as surely as it gains the
+    rows of one who arrived. That reasoning is correct and is kept — but it is
+    kept **inside one generation** (B7).
+
+    Before, the delete was by sheet, so every re-render destroyed the
+    rectangles that already-printed copies had been measured at. Print on
+    Tuesday, re-render on Wednesday for an absentee, photograph Tuesday's
+    copies on Thursday, and all of them are cropped at Wednesday's geometry.
+    The row that would have said so had been deleted on Wednesday.
+
+    So the generation is bumped first and the rows are written under it. The
+    delete then matches only rows of the generation being written, which is a
+    no-op except when a render is retried after a partial write — the case it
+    still needs to cover. Earlier generations stay exactly where they are,
+    because a pile printed from them may not have been photographed yet.
+
+    Returns how many were written.
     """
     from sqlalchemy import delete
 
     from alppy.models import AnswerBoxPlacement
 
-    db.execute(delete(AnswerBoxPlacement).where(AnswerBoxPlacement.sheet_id == sheet.id))
+    sheet.render_generation = (sheet.render_generation or 0) + 1
+    generation = sheet.render_generation
+    db.execute(
+        delete(AnswerBoxPlacement)
+        .where(AnswerBoxPlacement.sheet_id == sheet.id)
+        .where(AnswerBoxPlacement.render_generation == generation)
+    )
     pages = physical_pages(data)
     written = 0
     for box in boxes:
@@ -680,6 +711,7 @@ def _persist_answer_box_placements(
                 id=uuid.uuid4(),
                 school_id=sheet.school_id,
                 sheet_id=sheet.id,
+                render_generation=generation,
                 exercise_id=exercise_id,
                 student_uid=physical.copy.uid,
                 copy_page=physical.copy_page,

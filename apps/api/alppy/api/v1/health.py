@@ -10,7 +10,7 @@ from sqlalchemy import text
 from alppy.api import errors
 from alppy.api.deps import SettingsDep, StorageDep, TenantDep, get_db
 from alppy.core.logging import get_logger
-from alppy.schemas import HealthOut
+from alppy.schemas import HealthOut, LivenessOut
 from alppy.storage import StorageError
 
 log = get_logger(__name__)
@@ -50,6 +50,25 @@ def _redis_ok(url: str) -> bool:
             client.close()
     except Exception:
         return False
+
+
+@router.get("/health/live", response_model=LivenessOut)
+def liveness() -> LivenessOut:
+    """Is this process running? No I/O, ever (audit 03, B29).
+
+    A liveness probe answers one question — should the orchestrator restart
+    this container — and `/health` answered a different one: it opens a
+    connection to Postgres, Redis and object storage. So a Redis outage made
+    every API pod fail its liveness probe and get killed and restarted, in a
+    loop, while the API itself was perfectly capable of serving every request
+    that does not touch Redis. An outage in a dependency became an outage in
+    the thing that depends on it.
+
+    `/health` keeps its shape and its meaning: it is the READINESS probe, and
+    checking three connections is exactly right for deciding whether to send
+    this instance traffic.
+    """
+    return LivenessOut(status="ok", version=_app_version())
 
 
 @router.get("/health", response_model=HealthOut)

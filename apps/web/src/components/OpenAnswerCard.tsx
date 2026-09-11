@@ -98,6 +98,9 @@ export function OpenAnswerCard({
           <img
             src={detection.crop_url}
             alt={to('cropAlt', { number: detection.number ?? detection.item_index + 1 })}
+            // Six written answers per copy, thirty copies: the crops outnumber
+            // the pages (F23).
+            loading="lazy"
             className="mt-1 block w-full rounded-sm border border-line bg-surface"
           />
         </figure>

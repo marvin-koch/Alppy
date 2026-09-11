@@ -56,6 +56,7 @@ import type {
   SheetProposeRequest,
   SheetProposeResponse,
   LocalisedText,
+  SchoolCreate,
   SchoolOut,
   SourceOut,
   SourceSectionOut,
@@ -124,6 +125,10 @@ export const queryKeys = {
     ] as const,
   classTree: (id: Uuid, options: { subjectId?: Uuid; studentId?: Uuid } = {}) =>
     ['classes', id, 'tree', options.subjectId ?? null, options.studentId ?? null] as const,
+  /** Every filter variant of one class's tree. Invalidation wants the prefix,
+   *  never the full key: a key built with `{}` would miss the variant a screen
+   *  actually asked for. */
+  classTreePrefix: (id: Uuid) => ['classes', id, 'tree'] as const,
   sheetMastery: (sheetId: Uuid) => ['sheet-mastery', sheetId] as const,
   studentMastery: (id: Uuid) => ['students', id, 'mastery'] as const,
   competencyAttempts: (studentId: Uuid, competencyId: Uuid) =>
@@ -159,6 +164,28 @@ export const queryKeys = {
   job: (id: Uuid) => ['jobs', id] as const,
 };
 
+/**
+ * Every class's curriculum tree, whichever class it belongs to.
+ *
+ * A predicate rather than a key, because renaming or deleting a Theme changes
+ * the tree of every class that studies it and the mutation knows only the
+ * chapter. `queryKeys.classTree` needs a class id and a filter variant; there
+ * is no key that means "all of them".
+ *
+ * This replaces `invalidateQueries({ queryKey: ['classTree'] })`, which was in
+ * `useUpdateChapter` and `useDeleteChapter` and **matched nothing**: no query
+ * in the app is registered under that key — the real prefix is
+ * `['classes', id, 'tree']`. So renaming a Theme wrote to the server, the
+ * chapter list refreshed, and the programme beside it went on showing the old
+ * name until something else happened to refetch it. A literal array is the one
+ * shape nothing checks; that is why this is a function here rather than an
+ * array spelled at the call site.
+ */
+export const everyClassTree = {
+  predicate: (query: { queryKey: readonly unknown[] }) =>
+    query.queryKey[0] === 'classes' && query.queryKey[2] === 'tree',
+} as const;
+
 /* --------------------------------------------------------------- auth --- */
 export function useMe(enabled = true): UseQueryResult<TeacherOut> {
   // `enabled` because the scope provider reads this too, and the login screen
@@ -186,6 +213,21 @@ export function useLogin(): UseMutationResult<TeacherOut, Error, { email: string
 export function useLogout(): UseMutationResult<void, Error, void> {
   const client = useQueryClient();
   return useMutation({ mutationFn: api.logout, onSuccess: () => client.clear() });
+}
+
+/**
+ * Create an establishment and join it.
+ *
+ * Invalidates `me`: the teacher's `schools` list is what the switcher renders,
+ * and a school they just made must appear in it. Not a switch — the session
+ * stays where it was, which is what the route itself decided.
+ */
+export function useCreateSchool(): UseMutationResult<SchoolOut, Error, SchoolCreate> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: api.createSchool,
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.me }),
+  });
 }
 
 export function useUpdatePreferences(): UseMutationResult<
@@ -276,7 +318,7 @@ function invalidateTeaching(client: ReturnType<typeof useQueryClient>, classId: 
   void client.invalidateQueries({ queryKey: queryKeys.classTeachers(classId) });
   void client.invalidateQueries({ queryKey: queryKeys.klass(classId) });
   void client.invalidateQueries({ queryKey: queryKeys.classes });
-  void client.invalidateQueries({ queryKey: ['classes', classId, 'tree'] });
+  void client.invalidateQueries({ queryKey: queryKeys.classTreePrefix(classId) });
 }
 
 export function useClassTeachers(classId?: Uuid): UseQueryResult<ClassTeacherOut[]> {
@@ -440,8 +482,9 @@ export function useUpdateChapter(): UseMutationResult<
     mutationFn: ({ chapterId, body }) => api.updateChapter(chapterId, body),
     onSuccess: (_data, { subjectId }) => {
       void client.invalidateQueries({ queryKey: queryKeys.chapters(subjectId) });
-      // A Theme's name shows on the tree, which is keyed per class.
-      void client.invalidateQueries({ queryKey: ['classTree'] });
+      // A Theme's name shows on the tree, which is keyed per class — and this
+      // chapter may sit in several.
+      void client.invalidateQueries(everyClassTree);
     },
   });
 }
@@ -456,7 +499,7 @@ export function useDeleteChapter(): UseMutationResult<
     mutationFn: ({ chapterId }) => api.deleteChapter(chapterId),
     onSuccess: (_data, { subjectId }) => {
       void client.invalidateQueries({ queryKey: queryKeys.chapters(subjectId) });
-      void client.invalidateQueries({ queryKey: ['classTree'] });
+      void client.invalidateQueries(everyClassTree);
     },
   });
 }
@@ -651,8 +694,24 @@ export function useUnenrollStudent(classId: Uuid | null) {
 }
 
 /* ------------------------------------------------------------ sources --- */
+/**
+ * The documents, polled while any of them is still being read.
+ *
+ * The interval lives here rather than in a `setInterval` on the screen — which
+ * is where it used to be, and the one hand-rolled poll left in the app (F25).
+ * A query-layer `refetchInterval` inherits what every other poll already gets
+ * for free: it pauses on a hidden tab, so a laptop closed on this screen stops
+ * asking, and it cannot outlive the component that started it.
+ */
 export function useSources(): UseQueryResult<SourceOut[]> {
-  return useQuery({ queryKey: queryKeys.sources, queryFn: api.listSources });
+  return useQuery({
+    queryKey: queryKeys.sources,
+    queryFn: api.listSources,
+    refetchInterval: (query) =>
+      (query.state.data ?? []).some((s) => s.status === 'queued' || s.status === 'running')
+        ? 2000
+        : false,
+  });
 }
 
 export function useSourceSections(sourceId: Uuid | null): UseQueryResult<SourceSectionOut[]> {
@@ -826,6 +885,23 @@ export function useUploadScan(): UseMutationResult<
   { files: File[]; sheetId: Uuid }
 > {
   return useMutation({ mutationFn: ({ files, sheetId }) => api.uploadScan(files, sheetId) });
+}
+
+/**
+ * Retake a page into an existing pile.
+ *
+ * Invalidates the scan: the worker adds a page and may discard the one it
+ * replaces, and the review screen is looking at both.
+ */
+export function useAddScanPages(
+  scanId: Uuid | null,
+): UseMutationResult<ScanOut, Error, { files: File[]; supersedesPageId?: Uuid | null }> {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ files, supersedesPageId }) =>
+      api.addScanPages(scanId as Uuid, files, supersedesPageId),
+    onSuccess: () => client.invalidateQueries({ queryKey: queryKeys.scan(scanId ?? '') }),
+  });
 }
 
 export function useCorrectDetection(

@@ -117,8 +117,9 @@ def test_the_measured_rectangle_is_the_border_the_paper_shows() -> None:
 def test_rendering_a_sheet_records_one_placement_per_box_per_copy(
     db: Session, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Keyed the way the scanner looks them up: UID, page of the copy, item
-    index. Re-rendering replaces the rows rather than adding to them."""
+    """Keyed the way the scanner looks them up: generation, UID, page of the
+    copy, item index. Re-rendering opens a new generation rather than
+    overwriting the one already on paper (B7)."""
     _skip_without_browser()
     mcq = make_exercise(db, tenant, statement="Combien font 3 x 7 ?")
     free = make_exercise(db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None)
@@ -164,6 +165,151 @@ def test_rendering_a_sheet_records_one_placement_per_box_per_copy(
     pages = physical_pages(render.build_sheet_data(db, sheet))
     assert all(p.copy_pages == 1 for p in pages)
 
+    # A second render is a second GENERATION, not a rewrite of the first (B7).
+    # This used to assert the total was unchanged, which was the delete-and-
+    # rewrite that destroyed the rectangles already-printed copies had been
+    # measured at: print Tuesday, re-render Wednesday for an absentee, upload
+    # Tuesday's photographs on Thursday, and every crop lands at Wednesday's
+    # geometry. The old rows now stay put, because a pile printed from them may
+    # not have been photographed yet.
+    first_generation = sheet.render_generation
     render.render_sheet_pdfs(db, sheet_id=sheet.id)
     db.commit()
-    assert db.query(AnswerBoxPlacement).filter_by(sheet_id=sheet.id).count() == len(tenant.students)
+    assert sheet.render_generation == first_generation + 1
+    per_generation = db.query(AnswerBoxPlacement).filter_by(
+        sheet_id=sheet.id, render_generation=sheet.render_generation
+    )
+    assert per_generation.count() == len(tenant.students)
+    # ...and the generation the printed copies were measured at is still there.
+    assert (
+        db.query(AnswerBoxPlacement)
+        .filter_by(sheet_id=sheet.id, render_generation=first_generation)
+        .count()
+        == len(tenant.students)
+    )
+
+
+def test_the_box_moves_when_the_font_stack_does() -> None:
+    """Why the faces are embedded (`fonts.css`), stated as a measurement.
+
+    An item is in normal flow, so its answer box sits under a statement whose
+    wrapping only the browser knows. Give the same document a font with
+    different metrics and the statement wraps to a different number of lines,
+    which moves the box by a line pitch — and `_check_box_inside_statement_region`
+    does not fire, because the box is still comfortably inside the region. The
+    scan job then crops a rectangle that is a line off: part of the answer
+    missing, part of the next thing included, at a confidence high enough to
+    auto-apply.
+
+    Before `fonts.css`, which font the document got was a property of the
+    machine rendering it — the API's Debian Chromium, the teacher's macOS
+    browser, that browser's print dialog. This test does not assert *how far*
+    the box moves; it asserts that it moves at all, which is the whole argument
+    for carrying the faces inside the document.
+    """
+    _skip_without_browser()
+    data = SheetData(
+        title="Angles", class_code="7B", subject="Maths", language="fr",
+        copies=(Copy(uid="7B_01", items=(
+            Item(
+                key="e1", type=ExerciseType.OPEN, language="fr", open_lines=3,
+                statement=(
+                    "Explique, en rédigeant ta démarche complète, pourquoi la somme "
+                    "des angles d'un triangle vaut toujours 180 degrés, puis "
+                    "vérifie-le sur le triangle ci-dessous."
+                ),
+            ),
+        )),),
+    )
+    html = render_sheet_html(data, kind=SheetKind.BLANK)
+
+    # The same document, typeset in a face with different metrics — standing in
+    # for a renderer that never had the design system's type.
+    start = html.index("<style>/* packages/ui/src/design/fonts.css")
+    end = html.index("</style>", start) + len("</style>\n")
+    other = (html[:start] + html[end:]).replace(
+        "--font-sans: 'Nunito Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;",
+        "--font-sans: 'Times New Roman', serif;",
+    )
+    assert "@font-face" not in other
+
+    [ours] = render.measure_answer_boxes(html)
+    [theirs] = render.measure_answer_boxes(other)
+
+    # Both pass the region guard: this is invisible to every check that exists.
+    assert abs(ours.y_mm - theirs.y_mm) > 2.0, (
+        "the fallback happened to wrap identically here — pick a statement whose "
+        "wrapping differs, the point of the test is that it can"
+    )
+
+
+def test_a_pile_is_cropped_at_the_render_it_was_printed_from(
+    db: Session, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The Tuesday/Wednesday/Thursday bug, as a test (B7).
+
+    Print on Tuesday. Edit and re-render on Wednesday to run off a copy for an
+    absentee. Upload Tuesday's photographs on Thursday. Every one of them used
+    to be cropped at Wednesday's geometry, because the Wednesday render had
+    deleted Tuesday's rectangles and written its own — and a written answer cut
+    at the wrong rows is graded on whatever ink the crop happened to contain.
+
+    The pile is pinned to the render it was printed from, the way
+    `layout_version` has always been pinned, so it keeps finding Tuesday's rows.
+    """
+    from alppy.services.scan_processing import _placements_by_uid
+
+    _skip_without_browser()
+    free = make_exercise(
+        db, tenant, statement="Explique.", kind=ExerciseType.OPEN, answer_index=None
+    )
+    sheet = Sheet(
+        id=uuid.uuid4(), school_id=tenant.school.id, class_id=tenant.school_class.id,
+        subject_id=tenant.subject.id, chapter_id=tenant.unfiled_chapter_id,
+        created_by_id=tenant.teacher.id, title="Contrôle",
+        target=SheetTarget.CLASS, language="fr", layout_version="v1",
+    )
+    db.add(sheet)
+    db.flush()
+    db.add(SheetItem(
+        id=uuid.uuid4(), school_id=tenant.school.id, sheet_id=sheet.id,
+        exercise_id=free.id, position=1,
+        answer_box_lines=8, answer_box_fill=AnswerBoxFill.GRID,
+    ))
+    for student in tenant.students:
+        db.add(SheetInstance(
+            id=uuid.uuid4(), school_id=tenant.school.id, sheet_id=sheet.id,
+            student_id=student.id, student_uid=student.uid, item_plan=[],
+        ))
+    db.commit()
+    db.refresh(sheet)
+    monkeypatch.setattr(render, "store_pdf", lambda payload, key: key)
+
+    # Tuesday.
+    render.render_sheet_pdfs(db, sheet_id=sheet.id)
+    db.commit()
+    printed_generation = sheet.render_generation
+    uid = tenant.students[0].uid
+
+    def only_box(generation: int) -> tuple[int, float]:
+        """(copy_page, y_mm) of this copy's single box, wherever it printed."""
+        by_page = _placements_by_uid(db, sheet, generation=generation)[uid]
+        (page,) = by_page
+        (index,) = by_page[page]
+        return page, by_page[page][index].y_mm
+
+    tuesday_page, tuesday_y = only_box(printed_generation)
+
+    # Wednesday: the statement grows by several lines, which moves the box.
+    free.statement = "Explique ta démarche. " * 40
+    db.commit()
+    render.render_sheet_pdfs(db, sheet_id=sheet.id)
+    db.commit()
+    assert sheet.render_generation != printed_generation
+
+    assert only_box(sheet.render_generation) != (tuesday_page, tuesday_y), (
+        "the edit has to actually move the box, or this test proves nothing"
+    )
+
+    # Thursday: Tuesday's pile still crops at Tuesday's rows.
+    assert only_box(printed_generation) == (tuesday_page, tuesday_y)

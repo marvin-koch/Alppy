@@ -2135,3 +2135,798 @@ been designed for it); or if a teacher-facing "as of" control appears, at which
 point the `on` already threaded through `enrollment` is the parameter it binds
 to; or if `undeclare_subject`'s cascade is fixed, at which point ending the
 staffing rows and dropping the `class_subject` row become two steps.
+
+### D88 · A teacher who has left the group keeps what they marked, and may not act on it
+
+D87 widened *who* a teacher may name — `ever_shared_student_ids` hands a
+departed teacher the pupil profiles whose enrolment overlapped their own — and
+stopped one join short of being usable. The sheets that profile links to were
+still resolved through `get_sheet`, which gates on `taught_here(..., on=today())`.
+So M. Rossier, asked in June to justify the orientation decision his eleven
+niveau-2 sheets fed, could open Léa's profile and 404 on every piece of evidence
+behind it.
+
+`results_service.sheet_report` is where the two met and where the shape of the
+mistake is clearest: it resolved the sheet through the current-only gate on one
+line, then applied its own overlap-widened student lookup on the next — a lookup
+whose comment describes the June case exactly, and which could not run in it.
+That is what "two functions disagreeing about the same question" looks like once
+it reaches a single call stack. The audit that found it counted it as one of
+fifteen stale `on=` call sites; it is not, it is a policy that was never decided.
+
+**Decided: reading is widened, acting is not.** `taught_here_ever` — the pair
+predicate with the interval dropped — gates the six read paths (the sheet, its
+preview, its mastery, its per-item confidence, its report, the notes already
+written from it). Render, mark-printed, edit, batch-source resolution and
+anything that bills a model call stay on `taught_here(..., on=today())`.
+
+**"Ever", not "overlap", and the asymmetry with D87 is the point.** A pupil is a
+person, so linking two people who never shared a room is a leak and the interval
+intersection is what prevents it. A sheet is not a person: it is the teaching
+material of a (class, branch), and a teacher taking that pair over in March
+inheriting October's sheets is correct rather than merely tolerated — same
+children, same branch. Where a sheet-grained read *names* a child, the student is
+gated separately and still by overlap, and the two compose: Mme Dupont, arriving
+in March, opens the October sheet and reads the report only for the pupils whose
+time overlapped hers. Widening one did not widen the other.
+
+**`list_sheets` deliberately stays current-only.** Browsing is the current
+teacher's working surface; a group taken over in March must not open onto its
+predecessor's back catalogue. A departed teacher reaches these sheets by
+following a pupil's profile, which is the path the case is actually about.
+
+`test_co_teaching.py::test_unassigning_takes_the_branch_away_without_touching_the_sheets`
+asserted the 404 this reverses. Its load-bearing half — unassigning is not
+deleting — is unchanged and now proves the stronger statement: the row survives,
+its author still reads it, and what they lost is the ability to print into it.
+
+**Revisit if** a school asks for a "left the school" state distinct from "left
+this group" — `teacher_school.valid_to` already exists (0027) and is checked in
+`get_membership`, so a departed *colleague* is already refused at the door
+regardless of what this predicate says; but a school that wants a leaver's reads
+cut off before their membership formally ends would need this gate to consult it.
+
+---
+
+### D89 · One door to paper, and the paper carries its own type
+
+The Phase 4 frontend audit's two Critical findings are both on the printed
+sheet, and they compound: F1, that there were two ways to print and only one of
+them produced the coordinates the grading pipeline reads; F2, that the printed
+document declared no `@font-face` at all, so each renderer typeset it in
+whatever it happened to have.
+
+**The browser-print path is gone rather than gated.** `Imprimer` called
+`print()` on the preview iframe and then `POST /sheets/{id}/printed`. The
+preview handler says of itself that it "renders the sheet's own stored rows and
+writes nothing"; `AnswerBoxPlacement` — the rectangles `crop_answer_box` cuts a
+written answer from — is written only by `render_sheet`. So a fiche with four
+open items could be printed, sat by twenty-four pupils, photographed, and come
+back with all ninety-six written answers `NOT_GRADEABLE`, counted as skipped,
+with nothing anywhere connecting that to a button not pressed two days earlier.
+
+It was offered as a fast path for bubble-only sheets, where the placements do
+not matter. **Decided: it goes anyway.** The second half of the finding is that
+even *with* placements the browser print is not the measured document — those
+millimetres were measured in the API's Chromium at `@page { margin: 14mm }`,
+while the paper comes off the teacher's browser at the printer's margins and
+whatever "Fit to page" the school printer was left set to. Bubbles survive that,
+because registration is fiducial-relative and a uniform scale cancels; answer
+boxes do not, because they are stored as page millimetres. A fast path that is
+correct for some sheets and silently wrong for others is a path a teacher has to
+know the rule for. There is now one door: render, then print the PDF. The cost
+is a worker round-trip on a bubble-only sheet, and it is worth it.
+
+`lib/print.ts` is the gate. It reads **`rendered_at`** and nothing else, because
+that field is already the server's own verdict: `update_sheet` nulls it —
+together with both PDF keys — on any edit that changes the paper, a barème edit
+included, "otherwise the teacher downloads a PDF whose (1 pt) disagrees with how
+it will grade". A client-side `rendered_at < updated_at` comparison would have
+been a second, weaker copy of a rule that already exists. And `markPrinted` now
+fires only behind a link to a real PDF, so the agenda can no longer record a
+print that produced paper nothing could grade.
+
+**The faces travel inside the document.** `tokens.css` named four families and
+nothing outside the Next bundle loaded any of them, because `@fontsource-variable`
+is imported by the web app's layout and the print document is served by the API.
+`scripts/embed-fonts.mjs` generates `packages/ui/src/design/fonts.css` — the
+latin subset of each face as a `data:` URI, 242 KiB — and `html.py` inlines it as
+a fifth stylesheet, first, with `fonts` in `DESIGN_CSS_SHEETS` so its absence is
+fatal exactly as a missing `print.css` is. The output is committed because the
+API image has no `node_modules`: `apps/api/Dockerfile` copies
+`packages/ui/src/design/` and nothing else from the workspace.
+
+This is measured, not assumed. An item is in normal flow, so its answer box sits
+under a statement whose wrapping only the browser knows: with the faces stripped
+and a different family substituted, a three-line statement becomes two and the
+box moves **7.6 mm** — most of a written line, and comfortably inside
+`_check_box_inside_statement_region`, which is why nothing ever raised.
+`test_the_box_moves_when_the_font_stack_does` is that measurement. On a
+developer's Mac the bug was invisible for a second reason worth recording:
+Chromium resolved `'Nunito Variable'` to a *locally installed* Nunito, so the
+fallback happened to be the right font there and nowhere else.
+
+`_printed_page` now awaits `document.fonts.ready` before yielding. The PDF and
+the measurement come from that one context, and its docstring already promised
+"same media, same colour scheme, same fonts"; with real faces to load, that
+promise needed a line of code behind it.
+
+**`frame-src` names the API origin**, for the same reason `connect-src` already
+did. Without it the preview was blocked in the compose default — and silently,
+because the preview's error check is a `fetch`, which `connect-src` permits, so
+the check passed while the frame stayed blank. The screen now also treats "the
+frame never displayed anything" as a failure in its own right: a
+`securitypolicyviolation` listener and a load timeout, rather than an empty A4
+on a projector.
+
+**Revisit if** the payload becomes a problem: Caveat is 73 KiB of the 180 and no
+print template uses `--font-hand` today, so it is carried on the argument that
+the *silent* failure is the one being fixed and a family named in the tokens but
+missing from the document is exactly that. Dropping it is one line in
+`PACKAGES`, and `test_tokens_still_name_four_families` is what would then need
+to change with it.
+
+### D90 · Work survives the tab, the session, and a bad photograph
+
+Phase 4's four High findings about recoverability, taken together, because they
+are one shape: something the app did silently discarded work or hid the true
+state of a request.
+
+**A differentiation run lives in the URL** (F4). The proposal was always durable
+— `GET /adaptive/proposal/{job_id}`, with `staleTime: Infinity` because it costs
+twenty-four provider calls to rebuild — but the id that addresses it lived in one
+component's `useState`. Closing the laptop between **Proposer** and the result
+lost a plan that was sitting finished in the database. It is now
+`/adaptive?job={id}`, written with `replace` (a proposal is not a place in the
+history), which is what the scan flow has always done.
+
+`lib/adaptive-session.ts` holds the two things the URL cannot: the group moves,
+and the ids of an export already started, keyed by job id in `sessionStorage`.
+**Not `approvedIds`** — the line declaring it says approval is a fact about the
+database and the export gate reads it, so restoring it from a tab's storage
+could open that gate on nobody's authority. A recovered run therefore shows its
+generated exercises as unapproved until the server says otherwise: one click to
+put right, and the safe direction to be wrong in. Making it *true* on recovery
+needs a read the API does not have — the stored proposal is a payload snapshot,
+so the `approved_at` inside it is frozen at proposal time.
+
+The recent-runs list is deliberately local. `GET /jobs?kind=propose_adaptive`
+exists and has no caller, but it is scoped to the **school** and `JobOut` carries
+no `class_id`, so a server-side list would tell a teacher that a colleague
+started a run at 10:15 and could offer a row that 404s when opened. Reading the
+ids out of this browser answers the case the finding is about. The gap, stated:
+a run started on the classroom desktop is not listed on the laptop at home.
+Closing it is one field.
+
+**A 401 redirects** (F5). `docs/reviews/F7-review.md:178-196` offered two
+directions on 2026-09-06 — a middleware guard, *or* a client boundary on
+`isUnauthorized`. Only the first shipped, and it covers a visitor who is not
+signed in, which is the other case. The one below is a teacher whose 12-hour
+cookie expires mid-review: the cache still serves the pile, every verdict
+answers 401, and `apiErrorMessage` says "L'envoi a échoué. Réessayez." Nothing
+navigates, so the middleware never fires. `apiRequest` now dispatches to a
+handler that clears the query cache and redirects — not on `/auth/me`, which is
+the app *asking* whether a session exists, nor on `/auth/login`, where a 401 is
+bad credentials and the login screen owns the sentence.
+
+**Two boundaries, and a catch-all that makes one of them reachable** (F6). There
+was no `error.tsx` or `not-found.tsx` at any level, while `notFound()` is called
+and `errors.notFound.*` had been translated three times for nobody. Two things
+were learned building it. First: an unmatched path never enters the `[locale]`
+segment at all — Next 404s at the root, outside the intl provider — so a German
+teacher typing `/de/klassn` got a French page. `[locale]/[...rest]/page.tsx`
+claims the path so the miss is raised *inside* the layout. Second, and measured:
+the root boundaries render outside the `force-dynamic` locale layout, so their
+`__next_f.push` blocks carried no CSP nonce, `script-src` refused them, and the
+browser showed an **empty body** where the server had sent "Page introuvable" —
+`curl` returned the heading and Playwright saw nothing. `dynamic` on the root
+layout, for the reason D86 gives for the locale layout. The status stays 200: a
+`notFound()` inside a streamed dynamic render lands after the shell has gone
+out. That is Next's behaviour, recorded rather than papered over.
+
+**A retake joins its own pile** (F11). An unregistered page carried advice —
+"reprenez la photo" — and nowhere to act on it; `/scans/new` makes a second pile
+with its own review and its own confirmation. `POST /scans/{id}/pages` appends,
+and this is the part worth writing down: **nothing deletes the pages already
+read**, because the teacher's corrections hang off those rows. So the job
+carries `from_file` and processes only what arrived. Two things had to move with
+it. The per-UID `seen` counter is seeded from the rows already written — starting
+from zero would place a re-shot page 2 into slot 0 and read it against page 1's
+option counts, which is B5's misgrading arriving by another door. And the loop's
+index is both `page_index` and the storage key (`page-003.png`), so a partial
+run that restarted at zero would collide with existing rows and overwrite their
+registered images in the bucket. `supersedes_page_id` discards the photograph
+being replaced in the same transaction, so a copy is never briefly longer than
+it was printed.
+
+The model already expected this: `ScanPage.discarded` is documented as "a cover
+sheet, a lens-cap frame, **a page re-shot later**", and `_place_page` says that
+discarding the blurred original is what makes an overflowed pile ordinary again.
+The route is what was missing, not the idea.
+
+### D91 · The word "groupe" belongs to the class, not to the cohort
+
+In Cycle 3 a "class" often *is* a teaching group — `10-MAT-N2`, the niveau-2
+maths group — and Alppy was already spending the word on something else: the
+adaptive differentiation cohort, seven times in the catalogue and once on the
+printed page. One word for two containers, with the product's own worked example
+unable to use it.
+
+**Decided: `série`** (de `Serie`, en `set`). `lot` was taken and load-bearing —
+the exported batch, and a scan pile ("Remettre dans le lot") — and `niveau`
+collides with an exercise's difficulty ("Niveau 3 sur 5"). `série` was already
+in this namespace for a diagnostic series, so it arrives with a compatible
+sense rather than as a new coinage.
+
+**`_GROUP_WORDS` moved with the catalogue, and that is paper.** Renaming only
+the UI would have left the screen showing both words for one thing, because the
+label the server composes — `"Groupe 2 · Fractions"` — is rendered in the app
+*and* printed on the copy. Sheets already made keep the word they were made
+with: `sheet_instance.group_label` stores the label as it stood, so this changes
+new proposals only. A pile of old sheets and new ones will use two words; each
+sheet is internally consistent, which is the half that matters to a pupil
+holding one.
+
+**What is NOT fixed, and should not read as fixed.** The class-code validation
+is still `/^\d{1,2}[A-Za-z]{1,2}$/` and still rejects `10-MAT-N2`. Freeing the
+word is not the same as being able to represent the thing; that needs the
+teaching-group entity, and this pass deliberately stopped short of it.
+
+---
+
+### D92 · One reader at a time, per pile
+
+Found while building F10 on top of D90's append route, and it is a defect that
+route introduced. `page_index` and the stored image key (`page-003.png`) both
+continue from the rows already written, counted at the start of a run. The
+worker runs four jobs at once (`WorkerSettings.max_jobs`), so two runs over one
+scan count the same rows, write colliding page numbers, and overwrite each
+other's registered images in the bucket.
+
+Not theoretical: pages appear as they are read, so a teacher can be looking at
+page 1's registration failure while page 20 is still being processed, and the
+retake control was right there under it.
+
+`append_pages` refuses while a `PROCESS_SCAN` job for that scan is queued or
+running (`scan_processing`), and the retake control is disabled with a sentence
+saying why. Refused rather than queued behind it: "the pile is still being read"
+is something a teacher can act on, and the retake is one tap to repeat.
+
+**This is also why F10's batched upload is not built.** The mitigation the audit
+asks for — create the scan, then send the photographs in batches so a dropped
+connection costs one batch rather than the pile — would issue one append per
+batch, which is exactly the concurrency this refuses. Doing it properly needs
+the API to accept pages *without* starting a run, or the resumable upload the
+audit puts in the API layer. What is built is the half the client owns: the
+upload now names the files it is sending, so a teacher can tell a slow upload
+from a stalled one and can see that the right photographs were picked.
+
+### D93 · The catalogue answers for every code the API can raise
+
+Phase 4's medium band, and the three entries here are the ones that were
+decisions rather than chores.
+
+**Error sentences are generated against, not maintained.** The catalogue covered
+thirteen codes; the API can raise thirty-one. Everything else fell through to
+`errors.code.fallback`, so a rate limit, a permission refusal, a dead service
+and a 500 all told the teacher *"L'envoi a échoué. Réessayez."* Cross-locale
+sync could never see it — the thirteen were consistent in all three languages.
+
+So the list is generated from the API itself (`scripts/generate-api-types.py`
+scans `_STATUS_CODES` and every `code="..."` under `alppy/`) and
+`check-i18n.mjs` asserts a sentence in all three languages for each. A new
+`code="..."` now fails the gate rather than silently joining the fallback. The
+same generated file carries `SWISS_CANTONS`, for the same reason one layer
+down: the settings screen was a free two-character box writing the field a
+curriculum mapping keys on, so "XX" was storable, and the picker now cannot
+offer what the API would refuse.
+
+`rate_limited` reads `details.retry_after_s`, which the envelope has always
+carried and nothing has ever read. "Réessayez plus tard" is not an instruction;
+"réessayez dans 42 secondes" is.
+
+**A discard gets an undo by preceding the call, not by reversing it.** The
+server's discard is final — "never proposed or printed again" — and there is no
+route that restores one, so the toast defers the request rather than undoing it.
+Nothing is inconsistent in the window: the export builds from the local plan,
+which has already dropped the item, so a teacher who exports inside those eight
+seconds gets exactly what they see. What the deferred call decides is only
+whether the exercise can be proposed again later. Leaving the screen sends the
+pending ones, because a discard nobody undid is a discard they meant.
+
+**One word for the object, and it is `discipline`.** `settings.*` keeps
+*branche* — that is the screen where the object is administered, and it is what
+a Swiss staffroom says — and everything else that labelled a `Subject` now says
+*discipline*, the PER's own term. *Matière* is the France-French word and was
+the one that would read as foreign. `École` became `Établissement`: in Suisse
+romande the Sek I administrative unit is the *établissement scolaire*, and
+*école* reads as *école primaire*.
+
+**The class-code pattern is generated too.** It had drifted once already —
+`{1,3}` against the server's `{1,2}`, so `11ABC` passed the form and 422'd at
+the API — and was caught by a person reading two files side by side, which is
+not a mechanism. `export-layout.py` now emits `CLASS_CODE_PATTERN` from
+`alppy/core/uid.py` beside the print geometry it already exports. The pattern
+itself is unchanged, and still rejects `10-MAT-N2` (D91).
+
+**What F13 and F18 could not reach.** A *failed* student has no exercise to
+regenerate — `AdaptiveRegenerateRequest` takes an `exercise_id` and the whole
+point of the failure is that generation produced none — so the per-student
+retry the audit asks for needs `POST /adaptive/regenerate` to accept a student
+and merge into the stored proposal. The progress half shipped: `useJob` has
+always fetched `progress` and the scan screen has always drawn it.
+
+---
+
+### D94 · Projector mode: identity is hidden, data is not
+
+Alppy's screens get projected. The class matrix goes up so the class can see
+what the week looked like; the roster is left open while the room fills. Every
+one of them put a pupil's name beside a band saying how that child is doing, and
+the product had nothing to say about it — it is careful in the other direction,
+where no name ever reaches a model provider (`alppy/ai/scrub.py`), and the
+audience actually in the room got no consideration at all.
+
+**`discreet` is a display switch**, not a screen option: `data-discreet`,
+applied before paint by the same script as the other four, persisted both in
+`localStorage` and on the teacher record. It is on the teacher because the
+classroom machine and the laptop at home are the same person, and this is the
+setting they would least enjoy having to find twice — usually while thirty
+pupils watch them find it.
+
+**Names collapse to the UID, and nothing else changes.** Not initials, not a
+blur, not a redaction block: the UID is the code already printed on that child's
+own paper, so the teacher resolves it from the pile in their hand and the room
+cannot. The screen stays exactly as usable as it was, which is what makes the
+mode something a teacher will actually leave on.
+
+**Deliberate deviation from the brief.** It also asked for per-pupil bands and
+points to sit behind a reveal. They do not. Once the rows are UIDs, a band beside
+`7B_04` discloses nothing to the room — a pupil knows their own code and nobody
+else's — and hiding the numbers as well would empty the matrix of the reason it
+was projected. The disclosure was the *name*, and that is what is gone. Hiding
+the data too would have produced a mode nobody switches on.
+
+**Reveal is temporary by construction.** React state in one provider, reset on
+every navigation, never written to storage or to the teacher record. A reveal
+that persisted would be a projector mode that quietly turns itself off between
+lessons, which is worse than not having one. While it is on, the screen keeps
+saying so.
+
+**The keyboard reaches it.** Shift+D, from any screen, ignored while the focus
+is in a field — a bare letter would fire while a teacher typed a class code. The
+realistic trigger for this whole feature is realising you need it when the
+projector is already on and the class is already looking, which is the one
+moment nobody can go hunting through Réglages.
+
+**F29, the same idea on paper.** A group label is two facts and only one of them
+belongs to the pupil holding the page. "Fractions" says what their sheet is
+about. "Série 3", against the neighbour's "Série 1", says who is further behind
+— and where a large group was split by severity, that is precisely what the
+number encodes. `_without_group_number` drops it from the student-facing
+feedback page and leaves it everywhere the teacher reads it, including the sheet
+header, where it is how one pile of copies is told from another while they are
+handed out.
+
+Verified rather than assumed: `e2e/discreet.spec.ts` asserts the name is
+**absent from the DOM** — not hidden by CSS, which is a screenshot away from
+being readable — on the roster, the matrix, the results screen and a pupil's own
+profile, plus the reveal, its reset on navigation, the shortcut, and the
+shortcut declining to fire inside a text field.
+
+### D95 · A grade's evidence belongs to the paper it was printed on
+
+Four faults in the path where a child's answers become a child's grade, found by
+the phase-3 audit and fixed together because they are one mistake wearing four
+faces: **something about the paper was inferred from the present rather than
+recorded when it was printed.**
+
+**A decoded UID is read inside one school year (B3).** `_resolve_student`
+matched `(school_id, uid)`, but `uq_student_uid` is
+`(school_id, school_year_id, uid)` — so the read had no unique index under it
+and only ever resolved because every school had exactly one `SchoolYear`. The
+second one does not arrive at rollover; it arrives in June, when a school
+prepares next year's classes while this year is still marking. From that day the
+read raises `MultipleResultsFound` inside a scan job. The year now comes from
+the paper — `Sheet → Class → school_year_id` — and `scalar_one_or_none` **stays**:
+the loud failure is the good outcome, and `.first()` would turn a visible outage
+into one child's answers filed silently under another child's name. With no
+sheet there is no year, so no student is resolved and the page waits for manual
+assignment, which is the answer `assignable_students` already gave.
+
+**Which page of whose copy stops being a guess (B5).** `page_in_copy` was
+`seen[uid] % len(printed_pages)`, and the modulo was the bug: a two-page copy
+photographed three times — one page re-shot, the blurred original still in the
+pile — wrapped the third photo onto slot 0 and read it against page 1's option
+counts. An extra page is now left *unpaired* and flagged rather than placed
+somewhere it does not belong. The real fix is a page number printed on the
+paper, which is layout v2 (B4) and not this.
+
+**Re-assigning a page is a write (B6).** `assign_page_student` had no
+confirmed-pile guard, unlike its three siblings, and is the most destructive of
+the four because it re-reads the page — on a confirmed pile it rewrote the very
+detections the attempts were graded from. It now refuses. Separately, a teacher's
+correction is filed by **exercise**, not by slot: keyed by slot, re-pagination
+moves the question and the correction is dropped on the floor. What genuinely
+cannot be carried over is deleted *and reported*, by the number printed on the
+paper.
+
+**An answer box belongs to one render (B7).** `AnswerBoxPlacement` was deleted
+and rewritten wholesale on every render, under a docstring claiming this made it
+impossible for a later edit to move the rectangle the scanner crops. It was
+exactly how the rectangle moved: print Tuesday, re-render Wednesday for an
+absentee, photograph Tuesday's copies on Thursday, and every crop lands at
+Wednesday's geometry. `sheet.render_generation` counts renders,
+`scan.render_generation` pins the one a pile was printed from — the same job
+`layout_version` has always done for the layout — and the slot constraint grows
+to include it (0030). Delete-and-rewrite is kept **within** a generation, so the
+roster reasoning stays true while earlier generations stay put.
+
+**Warnings are flags, never blocks.** `extra_page`, `short_copy`,
+`duplicate_page` and `printed_after_photo` ride on `registration_meta` as codes,
+and the client owns the sentence (D86). A teacher with 28 copies must be able to
+look and dismiss; being unable to confirm 27 good copies because of one re-shot
+photo is the failure `set_page_discarded` was written to end.
+
+**One trap worth naming.** The first version of the warning sweep walked
+`scan.pages` and `page.detections`. Both are `delete-orphan` collections and
+`_persist_detections` attaches its rows by foreign key, so touching the
+relationship materialised it as *empty* and the next flush deleted every
+detection on the page as an orphan — a whole pile of readings destroyed by a
+function whose only job was to add a warning. The sweep queries rows, and
+`_live_pages` says why.
+
+**Still open.** B4 (layout v2: a per-render nonce, a page number and the school
+year printed into the grid) is the real fix for B5 and defence in depth for B3,
+and is not started — it needs a bit-width design, the cantonal-scope answer, and
+dual-decoder support for every already-printed v1 sheet. `printed_after_photo`
+is explicitly a stopgap for piles printed *before* 0030, whose placements carry
+NULL: if such a sheet is re-rendered, nothing matches and its open items stay
+`NOT_GRADEABLE` — no crop, no verdict, counted as skipped, which is the safe
+direction. And old generations are never swept, which B14's retention work
+should pick up.
+
+---
+
+### D96 · A job that dies says so, a call has a deadline, and a retry does the work once
+
+The reliability layer, which is what turns a transient failure into a stuck
+class or an unbounded bill. Nine findings, one shape: **the product assumed
+everything it started would finish.**
+
+**A dead job stops holding a pile hostage (B9).** `_run_job` catches every
+exception and records `FAILED` itself, so arq's retry never fires — and a job
+killed outright (worker evicted, the 600 s ceiling cancelling the task while its
+`asyncio.to_thread` thread runs on) left `RUNNING` with nothing to finish it.
+`grading_in_progress` reads exactly those rows, so one dead job refused a
+confirmation *indefinitely*, with no cancel route: twenty-seven good copies held
+by work that ended hours ago. Progress ticks now stamp a heartbeat explicitly —
+not relying on `onupdate`, because a tick reporting the same fraction leaves the
+row clean and the heartbeat silently stops — and a `RUNNING` job quiet for longer
+than `job_stale_after_s` is presumed dead. `python -m alppy.cli reap-jobs` closes
+the rows; `is_job_stale` is shared by both so they cannot disagree about who is
+alive.
+
+**Retry policy is per kind, and deliberately not uniform.** `RETRYABLE_JOB_KINDS`
+holds `PROCESS_SCAN` and `GRADE_OPEN_ANSWERS` — both rewrite what they already
+wrote, so a second run costs time. `PROPOSE_ADAPTIVE` and `GENERATE_FEEDBACK` are
+the opposite and are why a blanket retry would be a mistake: each writes a second
+set of unapproved exercises, or a second note per pupil, and bills the school
+again. Nothing consumes the constant yet, on purpose — requeuing is its own
+change with its own failure mode, and this is what it has to read.
+
+**Every client has a deadline (B10).** Neither SDK nor boto3 was given one, so
+the defaults (600 s, 2 retries) meant a single logical call could hold for half
+an hour inside a job whose own ceiling is 600 s — the job was cancelled long
+before the HTTP call gave up, which is precisely how a provider blip became a
+stuck `RUNNING` row rather than a visible failure. Budgets are settings, and a
+batched generation gets its own: a vision call over one crop and a call over
+eight plans are not comparable work.
+
+**No transaction spans a provider call (B11).** `regenerate_exercise` discarded
+first so `_rejected_statements` would already hold the outgoing item — correct,
+and it held a write transaction open across retrieval and a model call. The
+discard moves below the generation and what it provided is passed in explicitly:
+`seen` is seeded with the outgoing statement. Same guarantee, no lock over the
+network. The propose worker commits its retrieval before the generation pass.
+
+**The vision grader is told where instructions come from (B8), and the prompt has
+not been switched.** v3 states that everything in the image is the pupil's work
+and is data, never instruction, and adds `instruction_like` — routed to
+`LOW_CONFIDENCE` whatever confidence the model reports, because a model can be
+confident and wrong in exactly the case that matters and `DETECTED` rows are not
+what the review screen shows first. A missing field reads as false, so an older
+deployment degrades to v2 rather than flagging a whole pile.
+`PROMPT_VERSION` **stays v2**: the precondition for moving it is a verdict diff
+against real handwriting, and the fixtures for that did not exist — nothing
+called `grade_one` at all. `test_open_grading_prompt.py` is that missing net, and
+it says in its own docstring what it can and cannot prove.
+
+**An upload is bounded and anonymous (B15).** A phone stamps GPS onto every JPEG,
+so a pile photographed in a classroom carried the school's coordinates to object
+storage forever, for data the pipeline never reads. And `cv2.imdecode` allocates
+the *decoded* raster, so a 40 KB PNG declaring 60000×60000 asks for ~10 GB — the
+byte cap cannot see it, because compression is the attack. Metadata is stripped
+by **segment surgery, not by re-saving**: a test of this module measured Pillow's
+`quality="keep"` moving pixels by ±1, and these are the images a bubble detector
+compares against fixed thresholds. Tidiness must not edit evidence.
+
+**A membership can be revoked (B16).** `teacher_school.valid_to` existed since
+0027 and `get_membership` checked it from the same day, so a membership was
+revocable for two migrations with no route to reach it. Ending, never deleting
+(D87). Two refusals: the last member — a staffroom nobody can re-enter, since
+membership *is* the permission model (D85) — and a teacher still named as a
+class's head, since `Class.head_teacher_id` is NOT NULL.
+
+**A retry does the work once (B17).** The key is **claimed and committed before
+the work runs**, which is the whole design: a row written afterwards lets two
+simultaneous retries both run and remembers only whichever finished last. A
+failed attempt releases its claim, or the first 500 poisons that key forever and
+the retry the teacher will certainly make is refused. Per tenant, so one school
+cannot probe another's keyspace. `POST /scans/{id}/confirm` is deliberately
+untouched: it is already idempotent the better way, by superseding.
+
+**One trap named, because it nearly shipped.** The first version of B5's warning
+sweep walked `scan.pages` and `page.detections`. Both are `delete-orphan`
+collections and `_persist_detections` attaches rows by foreign key, so touching
+the relationship materialised it as *empty* and the next flush deleted every
+detection on the page as an orphan — a whole pile of readings destroyed by a
+function whose only job was to add a warning. Twenty-five tests caught it. Walk
+rows, not relationships, in that module.
+
+**Still open.** The scan-image retention *window* (B14) is a policy decision, not
+a technical one: `Storage.delete`, `purge-scan-images` and erasure-deletes-images
+have all shipped, and the command **refuses to run** rather than guess a number —
+a window a developer invented would destroy the evidence behind a mark the week
+before a parent asks about it. Old answer-box generations are swept by nothing
+either, and belong in the same pass.
+
+---
+
+### D97 · A number stops moving, a query stops fanning out, and a setting stops hiding
+
+The medium and low findings, cleared in one pass. Individually small; two of them
+change what a teacher is shown.
+
+**A returned paper's total stops moving (B18).** `points_earned` was the sum of
+`Attempt.score`, frozen at confirmation. `points_possible` was recomputed live on
+every read. So the two halves of one fraction came from different moments, and
+editing the barème after a pile came back rewrote the denominator of every paper
+already handed out — 14/20 became 14/25, silently, on a sheet a parent may have
+signed. Frozen onto `SheetInstance`, **per copy rather than per attempt**, and
+that departure from the obvious place is the interesting part: an item the grader
+could not read produces no `Attempt` at all, so a sum over attempts would leave
+those items out of what the paper was worth. NULL until confirmation, so a sheet
+still being built keeps tracking the barème.
+
+**A grade names the model that actually answered (B19).** Both providers returned
+the *configured* model id. An alias resolves to a dated build that changes
+underneath it, so a disputed grade traced back to the configured string named a
+model that may never have seen the paper. And the model alone does not identify
+the judgement: `Detection.vision_prompt_version` records which prompt produced
+the verdict, because the same model under `grade_open_answer.v2` and `.v3` is
+told different things about what counts.
+
+**Six tenant filters that were inferences become lines (B20).** `timeline._titles`
+selected by primary key alone, reasoning that the ids came from events already
+filtered by tenant. True — and true by inference, which stops being true the
+moment someone widens the query above. RLS covers these on Postgres; the suite
+runs on SQLite, where there is no backstop at all. The comment in `adaptive.py`
+claiming to be the only such site is retired rather than corrected: a comment
+that counts sites is a comment that goes stale.
+
+**Approval and answer-key edits become legible (B21).** No permission changed —
+the flat staffroom stays (D85) — but the two acts that most deserve an author now
+have one: approving a generated exercise for print, and editing a sheet after it
+has been rendered, which changes what the grader judges against on a paper the
+class has already sat.
+
+**The PII gate checks the pattern its own sibling redacts (B22).** `scrub()` had
+redacted phone numbers since the beginning; `assert_no_pii` never checked them.
+The two halves of one module are meant to know about the same things.
+
+**The home screen stops fanning out (B23).** A band breakdown per class meant a
+roster read and a snapshot read per card, on the screen a teacher opens every
+morning; `GET /classes` resolved the branch nav per card the same way. Both are
+batched, and a test asserts the batched answers equal the per-class ones —
+a performance fix that changes an answer is not a performance fix.
+
+**Two domain rules from the brief start existing (B24).** `School.canton` was a
+free `String(2)` that accepted "XX", and it is what a curriculum mapping keys on;
+it is now validated against **all 26 cantons** — a school in a canton nobody has
+piloted should be refused for being wrong, never for being unexpected.
+`SheetYear.label` gets a shape constraint, because `current_school_year` looks a
+year up BY LABEL: `2026/2027` and `2026/27` would be two years for one school,
+two rosters, two sets of UIDs.
+
+**Four settings stop hiding from the config module (B25).** `ALPPY_STORAGE_BACKEND`
+was the dangerous one: read straight off `os.environ`, it was invisible to
+`_refuse_unsafe_deployment`, so a production deployment that never set it — or
+misspelled it — silently wrote scanned answer sheets to a container's temporary
+directory. It worked until the container restarted. All four are `Settings`
+fields under their existing names, so no deployment changes, and the storage
+backend is now one of the things a real deployment is refused for.
+
+**A pile is refused at upload if its sheet is unreachable (B27).** `create_scan`
+validated `sheet_id` on tenant alone, and `_owned_scan` then hid the scan the
+moment it had a sheet: the upload succeeded, the worker processed it, and the
+teacher had no route to the review screen.
+
+**And four small ones (B28–B31).** The session signer names SHA-256 rather than
+inheriting itsdangerous' SHA-1 default — not broken, but not a thing to leave
+implicit on the line between a cookie and a roster. `/health/live` is a real
+liveness probe with no I/O, because the old one opened three connections and a
+Redis outage therefore restart-looped every API pod that was still perfectly able
+to serve. The engine's pool is sized against `max_jobs` instead of SQLAlchemy's
+5 + 10. And the unverified `gpt-*` price rows are named in `UNVERIFIED_PRICES`
+and logged when used, rather than only warned about in a docstring — the person
+who needs to know is the one reading a cost total, not the one editing the file.
+
+---
+
+### D98 · Layout v2: the paper says which paper it is — design settled, not yet in force
+
+B4, the largest and highest-risk item of the three audits, and the only one the
+audit told us to schedule deliberately rather than fold into a sprint. **The
+design is agreed and the foundation is built; `LAYOUT_VERSION` is still `v1` and
+nothing about printing or scanning has changed.**
+
+**Why a bigger grid at all.** v1 encodes only the *pupil*: 8×4 = 32 cells, 24
+payload bits (class year, two letters, number) and a CRC-8. Three separate
+faults follow from that and all three reached the grading path — a UID resolving
+across school years (B3), which page of a copy a photograph shows being inferred
+from upload order (B5), and a page from a *different sheet* carrying the same
+pupil's UID being read against whatever answer key the pile happened to be
+attached to. The paper has to say more than whose it is.
+
+**The bit budget, settled: 12×6 = 72 bits.**
+
+    pupil identity  21   year 4, letters 5+5, number 7 — unchanged from v1
+    school year      3   rolling mod 8; defence in depth for B3
+    page in copy     4   1..16, stored 0-based; B5's real fix
+    canton           5   all 26, per the cantonal-scope decision
+    nonce           23   identifies (sheet, render generation)
+    CRC-16          16
+                  ----
+                    72
+
+The nonce is **23 bits, not 24**: the proposal said 57 payload + 16 checksum and
+that is 73, one over. Taking it from the nonce costs a 1-in-8.4M false accept
+instead of 1-in-16.8M and leaves every other field intact. A test asserts the
+sum against the grid rather than trusting this table.
+
+**CRC-16, not CRC-8.** The guarantee the whole scheme rests on is that a misread
+grid *fails* rather than resolving to a different real pupil — failing is
+recoverable, guessing is not. An 8-bit checksum over 56 payload bits no longer
+delivers it. A test walks every single-bit and every two-bit error over the
+whole grid and asserts each one is caught.
+
+**The grid moves UP, not down.** Six rows at v1's origin would span y 30..60 and
+print over the first exercise, since `ITEMS_TOP_MM` is 48. Pushing the items
+region down was the obvious alternative and is the wrong one:
+`ANSWER_BOX_MAX_LINES` is calibrated to the millimetre against that region —
+"14 lines is 133.3 mm of the 134 mm a page has" — so moving it silently costs a
+teacher the tallest answer box they can ask for. At origin y=18 the grid ends at
+47, one millimetre clear, and spans x 120..179 with 9 mm to the right fiducial.
+It overlaps the fiducial band vertically and that is harmless: the fiducials sit
+at x 14..22 and 188..196.
+
+**Versioned geometry is the foundation, and it is what shipped.** The detector
+used to read every page against the constants as they exist *today* and refuse
+outright on a mismatch — which its own comment called the only honest answer
+available, and which meant the first version bump would make every
+already-printed sheet unreadable. `layout.UID_GRIDS` now holds a frozen
+`UidGrid` per version and `uid_grid(version)` selects one; v1's cells are
+byte-for-byte where they were, asserted by a test. Grid order stays column-major
+in both versions, because a v2 that reordered cells would let a v1 page decode
+to a different real pupil instead of failing.
+
+**The reading half is done and proven on paper.** `scan/detector.py` samples
+the grid for the version the page was *printed* with and refuses only a layout
+this build has no geometry for — the old "refuse anything but the current
+version" was what made a bump unthinkable. `scan/synthetic.py` renders either
+layout. `read_uid_grid` returns the decoded `PageCode` alongside the uid, and
+`PageResult` carries it.
+
+The degradation suite runs against **both** layouts, which is the condition the
+audit set: a v2 page survives `phone_photo` and `copier` with its *whole* page
+code intact — not just the pupil, because a scheme that recovers the uid and
+garbles the page number would look like it worked — and v1 still survives the
+same suite unchanged.
+
+Both cross-version reads are tested and both name nobody: a v1 page sampled as
+v2 (the direction that matters once v2 is the default and v1 is what is already
+in the drawer), and a v2 page sampled as v1. The CRC is what turns "reads
+something plausible out of the wrong part of the paper" into a refusal, and
+that is asserted rather than assumed.
+
+**What is NOT done, and why the version has not moved.** The *writing* half:
+the print template still draws the v1 grid, `Sheet` has no per-render nonce to
+feed it, and the scan pipeline still counts uploads rather than reading
+`page_code.page_in_copy` and still does not check the nonce against the pile's
+sheet. Bumping `LAYOUT_VERSION` before those land would make the product print a
+grid it can read but has not filled in.
+
+**Until then B5's guards stand**, and they are a real mitigation rather than a
+placeholder: an extra page is left unpaired and flagged instead of wrapped onto
+page 1, and short copies and duplicate slots are flagged for the teacher.
+
+---
+
+### D95 · An invalidation that matches nothing looks exactly like one that works
+
+`useUpdateChapter` and `useDeleteChapter` invalidated `['classTree']`. No query
+in the app is registered under that key — the real prefix is
+`['classes', id, 'tree']` — so the call did nothing at all, and renaming a Theme
+left the programme beside it showing the old name until something else happened
+to refetch it. TanStack Query does not complain about a key that matches
+nothing, because "nothing to invalidate" is an ordinary state; there is no
+symptom until a teacher notices the screen disagreeing with itself.
+
+**The fix is a predicate, not a different literal.** A chapter belongs to many
+classes and the mutation knows only the chapter, so there is no key that means
+"every class's tree" — `everyClassTree` matches on shape instead.
+`queryKeys.classTreePrefix` covers the one-class case, so the remaining literal
+went too.
+
+**Banning literal arrays would have been the wrong gate.** `['classes']` and
+`['sheets']` are deliberate prefix invalidations, and a prefix is by definition
+not a key any builder returns. What is checkable is the first segment: if it is
+not a namespace `queryKeys` ever produces, the call can never match anything
+under any argument. `query-keys.test.ts` asks the builders themselves what those
+namespaces are, so it cannot go stale, and it fails on the original bug —
+verified by putting the bug back.
+
+**F30 needed nothing.** Both halves had already been resolved by earlier phases:
+`errors.notFound.*` is rendered by the `not-found.tsx` that D90 added, and
+`school_year_id` is a real generated field on `ClassCreate` rather than a dead
+hand-written type — `lib/api/types.ts` no longer mirrors the contract by hand at
+all. F32's "stray empty div" was a whitespace-only line, removed with the roster
+screen's missing states.
+
+**`docs/plan.md` §5 stays the inventory** and now lists all 24 screens, grouped
+by what a teacher is doing rather than by URL. It had drifted by 15 routes
+without anyone noticing, which is the argument for gating it — and the argument
+against a hand-kept list generally. Kept by decision; the next route added is
+the next chance for it to lie.
+
+---
+
+### D96 · Two red gates, and one defect that was never there
+
+Housekeeping that turned out to matter.
+
+**The colour-literal gate was failing on `main`**, and had been: four hits in
+TypeScript, so the job that enforces half of DESIGN.md §10.4 was red and
+therefore enforcing nothing. A gate nobody can pass is a gate everybody learns
+to scroll past.
+
+Three of the four were one file — `mock/fixtures.ts` holds a stand-in for the
+API's own print document, a standalone page in an iframe with white paper and
+black fiducials and no access to the app's stylesheet. It is paper, and paper is
+where the tokens are overwritten rather than read; it gets the same exemption
+`print.css` has, named one file at a time rather than by a pattern.
+
+The fourth was real: `shadow-[0_-10px_30px_-12px_rgb(27_23_53_/_18%)]` on the
+builder's mobile action bar — `--shadow-ambient` cast upwards, with the rgb
+retyped into a component because no token pointed that way. There is one now.
+
+**The visual baselines were stale by two separate things.** The 18 phone
+screenshots had been failing before any of this work started (verified in Phase
+1 by stashing every change and reproducing them), because the home screen's
+discipline chips wrap to a second row now that the fixture school has four
+subjects. Then D93's rename made them stale again and more interestingly: the
+committed baseline says "BRANCHE Mathématiques" where the app now correctly says
+"DISCIPLINE". Regenerated after looking at the rendered output rather than
+trusting the ratio — a diff that is purely a vertical offset plus a word we
+deliberately changed is a stale baseline, not a regression. The suite is green.
+
+**And a correction.** Two tests in `test_nouns_crud.py` failed in one full run
+and passed in the next, and this log would have recorded that as an
+order-dependent flake. It is not: `pytest-randomly` is not installed, so the
+`-p no:randomly` that "fixed" it changed nothing. The run that failed was at
+04:57, which is the minute a second session working in this tree wrote
+`open_answer_grading.py` and `scan_processing.py` — the suite was importing
+modules as they were being rewritten underneath it. There is no flake to chase.
+The lesson is about the tree, not the tests: a shared working directory makes
+every red an unreliable narrator.

@@ -101,6 +101,22 @@ class Settings(BaseSettings):
     above it: the worker sets it higher because a scan pipeline and an embedding
     write are legitimately slower than anything a request handler may do."""
 
+    db_pool_size: int = 10
+    """Connections kept open per process (audit 03, B30).
+
+    SQLAlchemy's default is 5, which the worker outgrows immediately: `max_jobs`
+    is 4 and each job holds its session for the job's whole life — a scan
+    pipeline is minutes, not milliseconds — so four concurrent jobs plus the
+    heartbeat commits leave almost nothing for anything else."""
+
+    db_max_overflow: int = 10
+    db_pool_timeout_s: int = 30
+    """How long a caller waits for a connection before failing loudly.
+
+    Failing is the point. The default is also 30, and it is named here so that
+    "the pool is exhausted" surfaces as an error with a number behind it rather
+    than as a request that hangs."""
+
     redis_url: RedisDsn = Field(default=RedisDsn("redis://localhost:6379/0"))
 
     # S3-compatible object storage (MinIO locally).
@@ -130,6 +146,26 @@ class Settings(BaseSettings):
     seeded fake roster in the same store as real children's work, and nothing
     downstream would notice. Set this on the staging deployment and the startup
     validator refuses the overlap."""
+
+    storage_backend: Literal["local", "s3"] | None = None
+    """Which object store to use. ``None`` means "decide from ``env``".
+
+    It was read straight off ``os.environ`` in `alppy/storage.py`, which put it
+    outside every check this class performs (audit 03, B25) — including the one
+    below. A production deployment that never set it, or misspelled it, fell
+    back to `local`: scanned answer sheets written to a container's temporary
+    directory, working perfectly until the container restarted and every
+    photograph of every child's handwriting was gone, with nothing anywhere
+    saying so. That is now a refusal at startup."""
+
+    storage_dir: str | None = None
+    """Where the local backend keeps its files. ``None`` is a temp directory."""
+
+    render_dir: str = "var/renders"
+    """Where rendered PDFs are written before they are stored."""
+
+    design_css_dir: str | None = None
+    """Override for the print stylesheet directory, for tests and tooling."""
 
     seed_teacher_password: str | None = None
     """Password for the accounts `python -m alppy.cli seed --allow-staging`
@@ -231,7 +267,75 @@ class Settings(BaseSettings):
     textbook chunk and a full ingest is thousands of calls; without a cap the
     debugging aid becomes the largest table in the database."""
 
+    # --- Jobs and the clients they hold open ----------------------------
+    job_timeout_s: int = 600
+    """How long the worker gives one job before arq cancels it.
+
+    Read by ``WorkerSettings`` and, just as importantly, by the code that has
+    to decide whether a ``RUNNING`` row still has anybody behind it. A job
+    cancelled at this ceiling leaves its ``asyncio.to_thread`` thread running
+    with nothing recording the fact, so ``RUNNING`` outlives the process that
+    wrote it (audit 03, B9)."""
+
+    job_stale_after_s: int = 1_200
+    """When a ``RUNNING`` job with no recent heartbeat is presumed dead.
+
+    Twice ``job_timeout_s`` by default — comfortably past the point where arq
+    would have cancelled the job — so a slow-but-alive job is never reaped out
+    from under itself. Confirmation reads this: `grading_in_progress` refused a
+    pile indefinitely because a stuck row said a grader was still coming, and
+    there was no route to clear it."""
+
+    provider_timeout_s: float = 60.0
+    """Per-request ceiling on a chat/vision provider call.
+
+    The SDKs default to 600s with 2 retries, so ONE logical call could hold for
+    about half an hour inside a job whose own ceiling is 600s — the job is
+    cancelled long before the HTTP call gives up, which is how a provider blip
+    became a stuck ``RUNNING`` row rather than a visible failure (B10)."""
+
+    provider_connect_timeout_s: float = 10.0
+    provider_max_retries: int = 1
+
+    provider_batch_timeout_s: float = 180.0
+    """The ceiling for a batched generation call.
+
+    Separate because the work is not comparable: a vision call over one crop
+    and a generation call over eight plans do not deserve the same budget, and
+    giving them one means either strangling the batch or letting a single crop
+    hang for three minutes."""
+
+    storage_connect_timeout_s: float = 5.0
+    storage_read_timeout_s: float = 30.0
+    storage_max_retries: int = 3
+
     # --- Uploads --------------------------------------------------------
+    scan_image_retention_days: int = 0
+    """How long a scanned page image is kept. **0 means keep forever**, which
+    is today's behaviour and the current default (audit 03, B14).
+
+    Off by default on purpose: the number is a policy decision about how long a
+    contested grade can be appealed, not a technical one, and a retention
+    window guessed by a developer is worse than none — it silently destroys the
+    evidence behind a mark the week before a parent asks about it. The audit
+    suggests "a school year plus one term"; until a school states its own, the
+    command that reads this refuses to run.
+
+    Note what a purge does and does not take. The grade, the transcription and
+    the verdict live on `Detection` and survive: what is lost is the ability to
+    re-crop or to look at the page again. B7's generation pinning is what makes
+    re-cropping unnecessary, so this is a narrower loss than it was."""
+
+    max_image_pixels: int = 50_000_000
+    """Ceiling on an uploaded image's DECLARED pixel count (audit 03, B15).
+
+    The byte cap below cannot stand in for this: `cv2.imdecode` allocates the
+    decoded raster, so a 40 KB PNG declaring 60000x60000 asks for about 10 GB
+    and takes the worker with it — and compression is precisely what makes the
+    file small. 50 Mpx is comfortably above any phone or flatbed a teacher will
+    use (a 48 Mpx phone photograph is ~12 Mpx by default) and far below
+    anything that threatens the worker."""
+
     max_upload_mb: int = 50
     max_upload_files: int = 120
     """Files per upload, checked before a single byte is read.
@@ -269,6 +373,17 @@ class Settings(BaseSettings):
     @property
     def max_upload_bytes(self) -> int:
         return self.max_upload_mb * 1024 * 1024
+
+    @property
+    def resolved_storage_backend(self) -> str:
+        """The backend actually in force, with the env-derived default applied.
+
+        One place, so `build_storage` and `_refuse_unsafe_deployment` cannot
+        disagree about what is configured — the whole failure mode of B25 was a
+        setting the safety check could not see."""
+        if self.storage_backend is not None:
+            return self.storage_backend
+        return "local" if self.env == "ci" else "s3"
 
     @model_validator(mode="after")
     def _resolve_chat_model(self) -> Settings:
@@ -349,6 +464,12 @@ class Settings(BaseSettings):
             problems.append(
                 "ALPPY_S3_SECRET_KEY is still the built-in development default; it "
                 "opens the bucket holding scanned answer sheets"
+            )
+        if self.resolved_storage_backend == "local":
+            problems.append(
+                "ALPPY_STORAGE_BACKEND resolves to 'local', so scanned answer sheets "
+                "are written to a temporary directory that does not survive a "
+                "container restart — set it to 's3'"
             )
         if self.demo_mode:
             problems.append(

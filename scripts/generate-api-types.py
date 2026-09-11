@@ -46,6 +46,7 @@ Usage:
 from __future__ import annotations
 
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -53,6 +54,7 @@ from typing import Any
 REPO_ROOT = Path(__file__).resolve().parents[1]
 OUTPUT_PATH = REPO_ROOT / "packages" / "shared" / "src" / "api-types.generated.ts"
 ROUTES_PATH = REPO_ROOT / "packages" / "shared" / "src" / "api-routes.generated.ts"
+CONSTANTS_PATH = REPO_ROOT / "packages" / "shared" / "src" / "api-constants.generated.ts"
 
 #: `format` values worth a name of their own. Everything else that is a string
 #: stays `string`: `email` and `date` carry no extra guarantee a TypeScript
@@ -353,6 +355,94 @@ def _response_type(operation: dict[str, Any]) -> str:
         # text/html, application/pdf: a body, but not a modelled one.
         return "string"
     return "void"
+def collect_error_codes() -> list[str]:
+    """Every `code` the error envelope can carry.
+
+    Read out of the source rather than declared in a list, because a list is
+    the thing that drifts. Two origins, and both are needed:
+
+    · `errors._STATUS_CODES` — the generic one per HTTP status, which is what
+      an unhandled 403 or 503 arrives as.
+    · every `code="..."` a handler passes to `conflict`/`unprocessable`, which
+      is where the domain codes live (`scan_pages_unassigned`, and fourteen
+      others at the time of writing).
+
+    Plus the three the client itself can produce or fall back to, since the
+    catalogue has to answer for those as well: a fetch that never left the
+    browser, a response the envelope did not shape, and the last resort.
+    """
+    from alppy.api import errors as api_errors
+
+    codes: set[str] = set(api_errors._STATUS_CODES.values())
+
+    # `validation_error` is raised by the request-validation handler rather
+    # than by a helper, and `internal_error` by the catch-all.
+    source_root = REPO_ROOT / "apps" / "api" / "alppy"
+    literal = re.compile(r'code="([a-z_]+)"')
+    for path in source_root.rglob("*.py"):
+        codes.update(literal.findall(path.read_text(encoding="utf-8")))
+
+    # Raised by handlers rather than by a helper, so no literal to find:
+    # `error_body("internal_error", ...)` in the catch-all, and the request
+    # validation handler's own code.
+    codes.update({"internal_error", "validation_error"})
+
+    # Client-side origins. `network_error` is `api/client.ts` when the fetch
+    # itself fails; `http_error` is `parseError` when the body is not our
+    # envelope (a proxy's HTML); `fallback` is what `apiErrorMessage` renders
+    # when it recognises nothing.
+    codes.update({"network_error", "http_error", "fallback"})
+    return sorted(codes)
+
+
+def collect_cantons() -> list[str]:
+    """The 26 cantons, from the allowlist the API validates against.
+
+    The settings screen used to take the canton as a free two-character box, so
+    "XX" or a typo for "ZH" was stored — and `School.canton` is what a
+    curriculum mapping keys on. Reading the list from the server's own
+    `SWISS_CANTONS` means the picker cannot offer something the API would then
+    refuse, and cannot fall behind if the set ever changes.
+    """
+    from alppy.schemas import SWISS_CANTONS
+
+    return sorted(SWISS_CANTONS)
+
+
+def render_constants(codes: list[str], cantons: list[str]) -> str:
+    lines = [
+        "// AUTO-GENERATED — DO NOT EDIT.",
+        "// Source of truth: apps/api/alppy/api/errors.py, plus every",
+        "// `code=\"...\"` raised under apps/api/alppy/.",
+        "// Regenerate with: PYTHONPATH=apps/api python scripts/generate-api-types.py",
+        "",
+        "/**",
+        " * Every `code` the error envelope can carry.",
+        " *",
+        " * `scripts/check-i18n.mjs` asserts that each one has a sentence in all",
+        " * three catalogues. The catalogue used to cover thirteen of them, so a",
+        " * teacher meeting any of the rest read the generic fallback — which is",
+        " * how a rate limit, a permission refusal and a dead API all came to say",
+        " * the same thing (F14).",
+        " */",
+        "export const API_ERROR_CODES = [",
+    ]
+    lines += [f"  '{code}'," for code in codes]
+    lines += [
+        "] as const;",
+        "",
+        "export type ApiErrorCode = (typeof API_ERROR_CODES)[number];",
+        "",
+        "/** The 26 Swiss cantons, as `schemas.SWISS_CANTONS` validates them. */",
+        "export const SWISS_CANTONS = [",
+    ]
+    lines += [f"  '{canton}'," for canton in cantons]
+    lines += [
+        "] as const;",
+        "",
+        "export type SwissCanton = (typeof SWISS_CANTONS)[number];",
+    ]
+    return "\n".join(lines) + "\n"
 
 
 def _write(path: Path, text: str, label: str) -> None:
@@ -379,6 +469,13 @@ def main() -> int:
     )
     _write(OUTPUT_PATH, render_ts(spec), f"{schemas} schemas")
     _write(ROUTES_PATH, render_routes(spec), f"{routes} routes")
+    codes = collect_error_codes()
+    cantons = collect_cantons()
+    _write(
+        CONSTANTS_PATH,
+        render_constants(codes, cantons),
+        f"{len(codes)} error codes, {len(cantons)} cantons",
+    )
     return 0
 
 

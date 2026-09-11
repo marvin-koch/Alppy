@@ -271,3 +271,48 @@ def test_true_false_reports_the_word_the_student_saw(db: Session, tenant: Tenant
     assert len(mistakes) == 1
     assert mistakes[0].given == "faux"
     assert mistakes[0].expected == "vrai"
+
+
+# --------------------------------------------------------------------------
+# F29 · The number is ranking information; the competency is not
+# --------------------------------------------------------------------------
+def test_the_feedback_page_names_the_competency_without_the_series_number() -> None:
+    """The two halves of a group label disclose different things.
+
+    "Fractions" tells a pupil what their sheet is about. "Série 3", against the
+    neighbour's "Série 1", tells anyone who can see both desks who is further
+    behind — and where a large group was split by severity, that is exactly
+    what the number encodes. It goes from the page a pupil is handed, and stays
+    on the screen and on the sheet header, where it is how a teacher tells one
+    pile from another.
+    """
+    from alppy.sheets.html import FeedbackCopy, FeedbackData, render_feedback_html
+
+    data = FeedbackData(
+        title="Fractions",
+        class_code="7B",
+        subject="Maths",
+        language="fr",
+        copies=(
+            FeedbackCopy(
+                uid="7B_04",
+                notes=("Revois la mise au même dénominateur.",),
+                group_label="Série 3 · Fractions équivalentes",
+            ),
+        ),
+    )
+    html = render_feedback_html(data)
+
+    assert "Fractions équivalentes" in html, "the pupil should read what it is about"
+    assert "Série 3" not in html
+    assert "Série" not in html
+
+
+def test_a_label_with_no_competency_survives_unchanged() -> None:
+    """A group with nothing to name, or a label from before this existed, is
+    still correct as it stands — better a bare label than an empty one."""
+    from alppy.sheets.html import _without_group_number
+
+    assert _without_group_number("Série 2") == "Série 2"
+    assert _without_group_number("") == ""
+    assert _without_group_number("Série 2 · Aires") == "Aires"

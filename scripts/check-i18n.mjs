@@ -47,6 +47,31 @@ function loadLocale(locale) {
   return { locale, path, exists: true, keys: flattenKeys(json) };
 }
 
+/**
+ * The error codes, read out of the generated contract.
+ *
+ * Parsed rather than imported: this is a plain `.mjs` run by `node` with no
+ * build step, and the generated file is TypeScript. The shape it parses is the
+ * one the generator writes and a test would notice if it changed — an empty
+ * result fails loudly below rather than passing vacuously.
+ */
+function apiErrorCodes() {
+  const path = new URL('../packages/shared/src/api-constants.generated.ts', import.meta.url);
+  const source = readFileSync(path, 'utf8');
+  // Only the error-code block: the same file also lists the cantons, which
+  // are uppercase and therefore cannot match, but slicing says so out loud.
+  const block = source.slice(
+    source.indexOf('API_ERROR_CODES = ['),
+    source.indexOf('] as const;', source.indexOf('API_ERROR_CODES = [')),
+  );
+  const codes = [...block.matchAll(/^ {2}'([a-z_]+)',$/gm)].map((m) => m[1]);
+  if (codes.length === 0) {
+    console.error('✗ could not read any error codes from api-constants.generated.ts');
+    process.exit(1);
+  }
+  return codes;
+}
+
 function main() {
   const locales = LOCALES.map(loadLocale);
   const present = locales.filter((l) => l.exists);
@@ -82,6 +107,23 @@ function main() {
       console.error(
         `✗ "${key}": present in [${presentIn.join(', ')}], missing from [${missingIn.join(', ')}]`,
       );
+    }
+  }
+
+  // Every error code the API can emit has a sentence (F14).
+  //
+  // Cross-locale sync alone could not catch this: the catalogue covered
+  // thirteen codes *consistently in all three languages*, and every other code
+  // fell through to `errors.code.fallback` — so a rate limit, a permission
+  // refusal and a dead API all read "L'envoi a échoué. Réessayez." The code
+  // list is generated from the API itself, so a new `code="..."` fails here
+  // rather than silently joining the fallback.
+  for (const code of apiErrorCodes()) {
+    const key = `errors.code.${code}`;
+    const missingIn = present.filter((l) => !l.keys.has(key)).map((l) => l.locale);
+    if (missingIn.length > 0) {
+      hasDrift = true;
+      console.error(`✗ API error code "${code}" has no sentence in [${missingIn.join(', ')}]`);
     }
   }
 

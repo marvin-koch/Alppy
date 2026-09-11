@@ -20,8 +20,8 @@ from test_api_fixtures import (
 )
 
 from alppy.core.config import Settings
-from alppy.models import Attempt, Detection, Scan, ScanPage, Sheet, SheetInstance, Student
-from alppy.models.enums import DetectionOutcome, ExerciseType, ScanStatus
+from alppy.models import Attempt, Detection, Job, Scan, ScanPage, Sheet, SheetInstance, Student
+from alppy.models.enums import DetectionOutcome, ExerciseType, JobKind, JobStatus, ScanStatus
 
 CORRECT_INDEX = 1
 
@@ -583,3 +583,175 @@ def test_a_written_answer_is_corrected_with_a_verdict_not_a_bubble(
     assert corrected["verdict_correct"] is True and corrected["transcription"] == "7/8"
     assert corrected["machine_verdict_correct"] is False
     assert corrected["machine_transcription"] == "7/9"
+
+
+# --------------------------------------------------------------------------
+# F11 · A retake joins the pile it belongs to
+# --------------------------------------------------------------------------
+def _upload_pile(
+    client: TestClient, sheet_id: str, count: int = 3, *, db: Session | None = None
+) -> str:
+    response = client.post(
+        "/api/v1/scans",
+        files=[
+            ("files", (f"IMG_{i:04d}.png", PNG_BYTES, "image/png")) for i in range(count)
+        ],
+        data={"sheet_id": sheet_id},
+    )
+    assert response.status_code == 202
+    if db is not None:
+        # The state a retake actually happens in: the pile has been read, and
+        # the teacher is looking at the page that would not register. One run
+        # at a time per pile, so leaving the job queued would (correctly) be
+        # refused — see `test_a_pile_still_being_read_refuses_another_page`.
+        _finish_processing(db)
+    return str(response.json()["id"])
+
+
+def _finish_processing(db: Session) -> None:
+    for job in db.execute(select(Job).where(Job.kind == JobKind.PROCESS_SCAN)).scalars():
+        job.status = JobStatus.SUCCEEDED
+    db.commit()
+
+
+def test_a_retake_joins_the_pile_rather_than_starting_a_second_one(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """The whole finding: three bad photographs out of thirty used to mean a
+    second scan, a second review and a second confirmation for one class's
+    single submission."""
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, db=db)
+
+    response = client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("IMG_0000-retake.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 202
+
+    scans = db.execute(select(Scan)).scalars().all()
+    assert len(scans) == 1, "a retake must not create a second pile"
+    assert len(scans[0].storage_keys or []) == 4
+    assert "IMG_0000-retake.png" in (scans[0].original_filename or "")
+
+
+def test_only_the_added_files_are_processed(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """Nothing deletes the pages already read — the teacher's corrections hang
+    off those rows — so re-reading the pile would duplicate every page. The job
+    says where to start."""
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, db=db)
+
+    client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("retake.png", PNG_BYTES, "image/png")},
+    )
+
+    jobs = client.get("/api/v1/jobs?kind=process_scan").json()
+    assert len(jobs) == 2, "the retake is its own piece of work"
+    # Newest first: the second job starts after the three already uploaded.
+    assert jobs[0]["id"] != jobs[1]["id"]
+
+
+def test_the_replaced_page_is_discarded_in_the_same_breath(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """Otherwise the pile holds both photographs, and a copy with more pages
+    than were printed is flagged as overflowing (B5)."""
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, count=1, db=db)
+
+    page = ScanPage(
+        id=uuid.uuid4(),
+        school_id=tenant.school.id,
+        scan_id=uuid.UUID(scan_id),
+        page_index=0,
+        image_key="scan-pages/whatever.png",
+        registered=False,
+    )
+    db.add(page)
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("retake.png", PNG_BYTES, "image/png")},
+        data={"supersedes_page_id": str(page.id)},
+    )
+    assert response.status_code == 202
+
+    db.refresh(page)
+    assert page.discarded is True, "the failed photograph is not one of the copy's pages"
+
+
+def test_a_confirmed_pile_refuses_more_pages(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """Its grades were computed from the readings as they stood. A page added
+    underneath them is a grade disagreeing with its own evidence."""
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, count=1)
+    scan = db.execute(select(Scan)).scalars().one()
+    scan.status = ScanStatus.CONFIRMED
+    db.commit()
+
+    response = client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("retake.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "scan_confirmed"
+
+
+def test_a_colleagues_pile_is_not_one_you_can_add_to(
+    client: TestClient, tenant: Tenant, sheet_id: str, colleague: Tenant
+) -> None:
+    """Reads as missing rather than forbidden, like every other scan route."""
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, count=1)
+
+    login(client, colleague.teacher.email)
+    response = client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("retake.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 404
+
+
+def test_a_pile_still_being_read_refuses_another_page(
+    client: TestClient, tenant: Tenant, sheet_id: str, db: Session
+) -> None:
+    """Two runs over one pile would collide.
+
+    Page numbers and stored image keys both continue from the rows already
+    written, and the worker runs four jobs at once — so a second run counting
+    the same rows writes the same `page_index` twice and overwrites the first
+    run's registered images. Reachable in practice, because pages appear as
+    they are read: a teacher can see page 1 fail while page 20 is still going.
+    """
+    login(client, tenant.teacher.email)
+    scan_id = _upload_pile(client, sheet_id, count=1)
+    # The upload's own job is queued and has not run: the state a teacher is
+    # in while watching the pile come in.
+
+    response = client.post(
+        f"/api/v1/scans/{scan_id}/pages",
+        files={"files": ("retake.png", PNG_BYTES, "image/png")},
+    )
+    assert response.status_code == 409
+    assert response.json()["error"]["code"] == "scan_processing"
+
+    # And it is allowed again once nothing is reading the pile.
+    job = db.execute(select(Job).where(Job.kind == JobKind.PROCESS_SCAN)).scalars().first()
+    assert job is not None
+    job.status = JobStatus.SUCCEEDED
+    db.commit()
+
+    assert (
+        client.post(
+            f"/api/v1/scans/{scan_id}/pages",
+            files={"files": ("retake.png", PNG_BYTES, "image/png")},
+        ).status_code
+        == 202
+    )

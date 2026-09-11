@@ -177,6 +177,22 @@ class EventKind(StrEnum):
     ADAPTIVE_EXPORTED = "adaptive_exported"
     FEEDBACK_WRITTEN = "feedback_written"
     FEEDBACK_APPROVED = "feedback_approved"
+    #: Who is in the staffroom, and since when. The membership itself has been
+    #: revocable since 0027 gave `teacher_school` a `valid_to`, but nothing
+    #: recorded the act — so a colleague appearing or disappearing from every
+    #: class in the school was a change with no author and no date. In a flat
+    #: staffroom, where membership IS the permission model (D85), that is the
+    #: one change most worth being able to point at afterwards (audit 03, B16).
+    TEACHER_JOINED = "teacher_joined"
+    TEACHER_LEFT = "teacher_left"
+    #: Who approved a generated exercise for print, and who edited an answer
+    #: key afterwards. The staffroom is flat on purpose (D85), so anyone can do
+    #: both — and that is fine only if both are legible afterwards. Approval is
+    #: the gate `Exercise.approved_at` exists to be; editing an expected answer
+    #: after a pile was printed changes what the grader judges against, on a
+    #: paper the class has already sat (audit 03, B21).
+    EXERCISE_APPROVED = "exercise_approved"
+    EXERCISE_EDITED = "exercise_edited"
 
 
 class EventSubject(StrEnum):
@@ -186,3 +202,5 @@ class EventSubject(StrEnum):
     SHEET = "sheet"
     SCAN = "scan"
     CLASS = "class"
+    TEACHER = "teacher"
+    EXERCISE = "exercise"

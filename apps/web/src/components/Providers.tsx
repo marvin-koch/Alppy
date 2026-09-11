@@ -3,13 +3,17 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { useTranslations } from 'next-intl';
 import { ToastProvider, TooltipProvider } from '@alppy/ui';
-import { Suspense, useState, type ReactNode } from 'react';
+import { Suspense, useEffect, useState, type ReactNode } from 'react';
 
+import { setUnauthorizedHandler } from '@/lib/api/client';
+import { useRouter } from '@/i18n/navigation';
+import { RevealProvider } from '@/lib/discreet';
 import { ScopeProvider } from '@/lib/scope';
 
 export function Providers({ children }: { children: ReactNode }) {
   const t = useTranslations('common');
   const a11y = useTranslations('a11y');
+  const router = useRouter();
   const [client] = useState(
     () =>
       new QueryClient({
@@ -29,6 +33,30 @@ export function Providers({ children }: { children: ReactNode }) {
       }),
   );
 
+  // The other half of the retry rule above. Declining to retry a 401 stops the
+  // pointless requests; it does not tell the teacher anything, and the
+  // middleware only redirects on a navigation — which is exactly what someone
+  // working inside one screen never does. So the redirect happens here, at the
+  // one place every request already passes through.
+  //
+  // The cache is cleared first and deliberately: it holds another teacher's
+  // session's worth of rosters and results, keyed by nothing that changes when
+  // the session does. Leaving it would show the next person to sign in on this
+  // browser the previous teacher's classes until each key happened to refetch.
+  useEffect(() => {
+    setUnauthorizedHandler(() => {
+      client.clear();
+      // `from` carries the locale prefix, the way the middleware writes it —
+      // `login/page.tsx` strips it back off. Read from `window` rather than
+      // from a hook: this fires from inside a fetch, and the pathname that
+      // matters is the one on screen at that moment.
+      const here = `${window.location.pathname}${window.location.search}`;
+      if (here.includes('/login')) return;
+      router.replace(`/login?from=${encodeURIComponent(here)}`);
+    });
+    return () => setUnauthorizedHandler(null);
+  }, [client, router]);
+
   return (
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -36,7 +64,11 @@ export function Providers({ children }: { children: ReactNode }) {
           {/* ScopeProvider reads the query string, so it needs a Suspense
               boundary or the statically-rendered locale routes fail to build. */}
           <Suspense fallback={null}>
-            <ScopeProvider>{children}</ScopeProvider>
+            {/* Projector mode's temporary reveal: one provider, reset on every
+                navigation, so it cannot outlive the screen it was meant for. */}
+            <RevealProvider>
+              <ScopeProvider>{children}</ScopeProvider>
+            </RevealProvider>
           </Suspense>
         </ToastProvider>
       </TooltipProvider>

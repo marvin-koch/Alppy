@@ -1,6 +1,6 @@
 /**
- * The blocking inline script that applies the four display switches before
- * first paint, and the CSP hash that allows it.
+ * The blocking inline script that applies the display switches before first
+ * paint, and the CSP hash that allows it.
  *
  * It lives here rather than inside `ThemeScript.tsx` because two very
  * different places need it: the component renders it, and `middleware.ts`
@@ -20,7 +20,7 @@ export const THEME_SCRIPT = `(function(){try{
     var raw=localStorage.getItem('alppy.display');
     if(!raw)return;
     var p=JSON.parse(raw);
-    ['theme','contrast','motion','calm'].forEach(function(k){
+    ['theme','contrast','motion','calm','discreet'].forEach(function(k){
       var v=p&&p[k];
       if(v){r.setAttribute('data-'+k,v);}else{r.removeAttribute('data-'+k);}
     });
@@ -35,4 +35,4 @@ export const THEME_SCRIPT = `(function(){try{
  * nothing. `theme-script.test.ts` recomputes it and fails if the two drift,
  * so the constant cannot go stale without the suite saying so.
  */
-export const THEME_SCRIPT_CSP_HASH = "'sha256-R7519KT138Wu0o5/uqsqhFPFnNvuBIEsVUAneTZTq0s='";
+export const THEME_SCRIPT_CSP_HASH = "'sha256-BELUbTYmaNn5YzkKSL4dbtPKLopklhC2I3lPgcwwwM0='";

@@ -37,6 +37,13 @@ export default function NewScanPage() {
   const [error, setError] = useState<string | null>(null);
   //  How many files are in flight, so the wait can name them.
   const [pending, setPending] = useState(0);
+  // What is actually being sent, by name. `FileDrop` has always known the list
+  // and the screen showed one aggregate count, so a pile of 28 photographs
+  // reported "Envoi de 28 copies…" for two minutes with no way to tell a slow
+  // upload from a stalled one (F10). The real fix for a dropped connection is
+  // a resumable upload and belongs in the API; naming the files is the half
+  // the client owns.
+  const [sending, setSending] = useState<string[]>([]);
 
   // Only a sheet that has been rendered can have copies coming back.
   const printable = (sheets.data ?? []).filter((s) => s.rendered_at !== null);
@@ -49,6 +56,7 @@ export default function NewScanPage() {
     }
     setError(null);
     setPending(files.length);
+    setSending(files.map((file) => file.name));
     upload.mutate(
       { files, sheetId },
       {
@@ -58,6 +66,7 @@ export default function NewScanPage() {
           ),
         onError: (e) => {
           setPending(0);
+          setSending([]);
           setError(apiErrorMessage(e, tErr));
         },
       },
@@ -138,6 +147,20 @@ export default function NewScanPage() {
                     {t('uploadingCount', { count: pending })}
                   </p>
                   <p className="text-body-s text-ink-500">{t('uploadingHelp')}</p>
+                  {/* The pile is ONE request, so there is no per-file
+                      progress to report honestly — what there is, is which
+                      files are in it. A teacher who can see the names knows
+                      the right photographs were picked, which is the question
+                      they actually have while waiting. */}
+                  {sending.length > 0 ? (
+                    <ul className="mt-2 flex flex-wrap gap-x-3 gap-y-1">
+                      {sending.map((name) => (
+                        <li key={name} className="truncate text-body-s text-ink-500">
+                          {name}
+                        </li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               </Panel>
             ) : null}

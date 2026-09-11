@@ -132,6 +132,7 @@ def teacher_out(
             contrast=teacher.contrast,
             motion=teacher.motion,
             calm=teacher.calm,
+            discreet=teacher.discreet,
         ),
     )
 
@@ -439,7 +440,12 @@ def expected_answer_for(detection: Detection) -> str | None:
     return exercise.answer_text or None
 
 
-def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPageOut:
+def scan_page_out(
+    page: ScanPage,
+    *,
+    storage: Storage | None = None,
+    corrections_dropped: tuple[int, ...] = (),
+) -> ScanPageOut:
     meta = page.registration_meta or {}
     return ScanPageOut(
         id=page.id,
@@ -454,10 +460,12 @@ def scan_page_out(page: ScanPage, *, storage: Storage | None = None) -> ScanPage
         discarded=page.discarded,
         page_in_copy=page.page_in_copy,
         registration_error=meta.get("error"),
+        flags=list(meta.get("flags") or []),
         detections=[
             detection_out(d, storage=storage)
             for d in sorted(page.detections, key=lambda d: d.item_index)
         ],
+        corrections_dropped=list(corrections_dropped),
     )
 
 

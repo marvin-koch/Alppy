@@ -1,6 +1,7 @@
 'use client';
 
-import { Button, Card, Field, Input } from '@alppy/ui';
+import { Button, Card, Field, Input, Select } from '@alppy/ui';
+import { SWISS_CANTONS } from '@alppy/shared/api-constants';
 import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
@@ -8,6 +9,7 @@ import { LockedValue } from '@/components/LockedValue';
 import { Link } from '@/i18n/navigation';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import {
+  useCreateSchool,
   useCreateSubject,
   useMe,
   useSubjects,
@@ -37,6 +39,7 @@ export function SchoolSettings() {
   const me = useMe();
   const subjects = useSubjects();
   const updateSchool = useUpdateSchool();
+  const createSchool = useCreateSchool();
   const createSubject = useCreateSubject();
   const updateSubject = useUpdateSubject();
 
@@ -48,6 +51,8 @@ export function SchoolSettings() {
   const [renaming, setRenaming] = useState<Uuid | null>(null);
   const [renameTo, setRenameTo] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [newSchoolName, setNewSchoolName] = useState('');
+  const [newSchoolCanton, setNewSchoolCanton] = useState('');
 
   const label = (subject: SubjectOut) =>
     subject.labels?.[locale] ?? subject.labels?.fr ?? subject.key;
@@ -66,13 +71,25 @@ export function SchoolSettings() {
             onChange={(e) => setName(e.target.value)}
           />
         </Field>
+        {/* A picker, not a two-character box (F21). `School.canton` is what a
+            curriculum mapping keys on, so "XX" or a typo for "ZH" was a stored
+            fact nothing downstream could use — and the teacher was told about
+            it, if at all, by a 422 after saving. The list is the server's own
+            `SWISS_CANTONS`, generated rather than retyped, so the picker
+            cannot offer a value the API would refuse. */}
         <Field label={t('canton')}>
-          <Input
-            className="max-w-[8rem]"
-            maxLength={2}
+          <Select
+            className="max-w-[12rem]"
             value={canton || (school?.canton ?? '')}
             onChange={(e) => setCanton(e.target.value)}
-          />
+          >
+            <option value="">{tc('none')}</option>
+            {SWISS_CANTONS.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </Select>
         </Field>
         <Field label={t('curriculum')} help={t('curriculumLocked')}>
           {/* An em dash rather than an empty box: a blank locked field reads
@@ -92,6 +109,59 @@ export function SchoolSettings() {
             }}
           >
             {tc('save')}
+          </Button>
+        </div>
+      </Card>
+
+      {/* A second establishment (F27). `POST /schools` has existed since the
+          contract was written and nothing called it, so a teacher who moves,
+          or who teaches at two, could not make the second one — and every
+          screen is scoped to a school. Creating does not switch: the route
+          says so itself, and moving the tenant out from under someone who was
+          only setting things up is not what they asked for. */}
+      <Card className="flex flex-col gap-4">
+        <div>
+          <h2 className="text-h3">{t('newSchoolTitle')}</h2>
+          <p className="mt-1 max-w-prose text-body-s text-ink-700">{t('newSchoolHelp')}</p>
+        </div>
+        <Field label={t('schoolName')}>
+          <Input value={newSchoolName} onChange={(e) => setNewSchoolName(e.target.value)} />
+        </Field>
+        <Field label={t('canton')}>
+          <Select
+            className="max-w-[12rem]"
+            value={newSchoolCanton}
+            onChange={(e) => setNewSchoolCanton(e.target.value)}
+          >
+            <option value="">{tc('none')}</option>
+            {SWISS_CANTONS.map((code) => (
+              <option key={code} value={code}>
+                {code}
+              </option>
+            ))}
+          </Select>
+        </Field>
+        <div className="flex justify-end border-t border-line pt-4">
+          <Button
+            variant="secondary"
+            disabled={!newSchoolName.trim() || createSchool.isPending}
+            loading={createSchool.isPending}
+            busyLabel={tc('saving')}
+            onClick={() => {
+              setError(null);
+              createSchool.mutate(
+                { name: newSchoolName.trim(), canton: newSchoolCanton || null },
+                {
+                  onSuccess: () => {
+                    setNewSchoolName('');
+                    setNewSchoolCanton('');
+                  },
+                  onError: report,
+                },
+              );
+            }}
+          >
+            {t('newSchoolAction')}
           </Button>
         </div>
       </Card>

@@ -24,6 +24,7 @@ import { useClass, useCurriculumTree, useStudentMastery } from '@/lib/api/querie
 import type { SheetTaken, Uuid } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
+import { useDiscretion } from '@/lib/discreet';
 
 /** The same thresholds as docs/mastery-model.md §2, for the overall ring. */
 function bandOf(score: number): MasteryBand {
@@ -40,6 +41,7 @@ export default function StudentPage({
 }) {
   const { classId, studentId } = use(params);
   const t = useTranslations('student');
+  const { hideNames } = useDiscretion();
   const tm = useTranslations('mastery');
   const tt = useTranslations('tree');
   const tc = useTranslations('common');
@@ -102,6 +104,13 @@ export default function StudentPage({
     );
   }
 
+  // Even on a profile the teacher navigated to deliberately: the screen can be
+  // projected, and a mode that holds only on the screens someone remembered is
+  // not a mode. The UID is already shown below the heading, so this replaces
+  // the name with the identifier the pupil's own paper carries.
+  const pupilName = hideNames
+    ? data.student.uid
+    : `${data.student.first_name} ${data.student.last_name}`.trim();
   const assessed = data.all_competencies.length > 0;
   const percent = Math.round((data.overall_score ?? 0) * 100);
   const overallBand = assessed ? bandOf(data.overall_score ?? 0) : 'none';
@@ -226,7 +235,7 @@ export default function StudentPage({
             key: 'roster',
           },
           {
-            label: `${data.student.first_name} ${data.student.last_name}`.trim(),
+            label: pupilName,
             key: 'student',
           },
         ]}
@@ -253,9 +262,7 @@ export default function StudentPage({
           <span className="text-label text-ink-500">{t('overall')}</span>
         </div>
         <div>
-          <h1>
-            {data.student.first_name} {data.student.last_name}
-          </h1>
+          <h1>{pupilName}</h1>
           {/* The uid is what appears on paper and in every prompt; the teacher
               needs to be able to match a sheet to this page.
 

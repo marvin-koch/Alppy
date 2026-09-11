@@ -17,6 +17,7 @@ from __future__ import annotations
 import uuid
 
 import pytest
+from conftest import printed_body
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
@@ -449,7 +450,9 @@ def test_a_continuation_prints_the_number_the_word_suite_and_the_box_only() -> N
     assert html.count('data-number="1"') == 2
 
     key = render_sheet_html(data, kind=__import__("alppy.sheets.html", fromlist=["SheetKind"]).SheetKind.ANSWER_KEY)
-    assert key.count("7/8") == 1, "the expected answer prints once, beside the box"
+    # `printed_body`: the head carries the embedded faces, and base64 contains
+    # every short string eventually. What is being asserted is about the page.
+    assert printed_body(key).count("7/8") == 1, "the expected answer prints once, beside the box"
 
 
 def test_the_key_prints_the_sheet_items_answer_over_the_exercises(

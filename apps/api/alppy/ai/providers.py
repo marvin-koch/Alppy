@@ -208,7 +208,18 @@ class AnthropicChatProvider:
         self._model = model
         from anthropic import Anthropic  # imported lazily: optional at runtime
 
-        self._client = Anthropic(api_key=api_key)
+        # Explicit budgets, because the SDK defaults are 600 s with 2 retries —
+        # about half an hour for one logical call, inside a job whose own
+        # ceiling is `job_timeout_s` (600 s by default). The job is cancelled
+        # long before the HTTP call gives up, which is precisely how a provider
+        # blip became a stuck RUNNING row instead of a visible failure
+        # (audit 03, B10).
+        settings = get_settings()
+        self._client = Anthropic(
+            api_key=api_key,
+            timeout=settings.provider_timeout_s,
+            max_retries=settings.provider_max_retries,
+        )
 
     def complete(self, request: ChatRequest) -> ChatResponse:
         message = self._client.messages.create(
@@ -218,6 +229,7 @@ class AnthropicChatProvider:
             system=request.system,
             messages=[{"role": "user", "content": _user_content(request)}],
             **({"stop_sequences": list(request.stop)} if request.stop else {}),
+            **({"timeout": request.timeout_s} if request.timeout_s else {}),
         )
         text = "".join(
             block.text for block in message.content if getattr(block, "type", "") == "text"
@@ -226,7 +238,12 @@ class AnthropicChatProvider:
             text=text,
             input_tokens=message.usage.input_tokens,
             output_tokens=message.usage.output_tokens,
-            model=self._model,
+            # What ANSWERED, not what was asked for (audit 03, B19). An alias
+            # like `claude-sonnet-5` resolves to a dated build that changes
+            # underneath it, so a disputed grade traced back to the configured
+            # string names a model that may never have seen the paper. The
+            # configured value is the fallback, for a response that carries none.
+            model=str(getattr(message, "model", "") or self._model),
         )
 
 
@@ -291,7 +308,14 @@ class OpenAiChatProvider:
         breaking every call in the product."""
         from openai import OpenAI  # imported lazily: optional at runtime
 
-        self._client = OpenAI(api_key=api_key)
+        # See the note on the Anthropic provider: explicit budgets rather than
+        # the SDK's 600 s × 3 attempts (audit 03, B10).
+        settings = get_settings()
+        self._client = OpenAI(
+            api_key=api_key,
+            timeout=settings.provider_timeout_s,
+            max_retries=settings.provider_max_retries,
+        )
 
     def complete(self, request: ChatRequest) -> ChatResponse:
         if request.stop:
@@ -301,7 +325,7 @@ class OpenAiChatProvider:
             raise NotImplementedError(
                 "stop sequences are not supported by the OpenAI Responses provider"
             )
-        from openai import omit
+        from openai import NOT_GIVEN, omit
 
         # cast, not ignore: the blocks are built by hand below and the SDK's
         # TypedDict union cannot narrow a plain dict.
@@ -319,6 +343,12 @@ class OpenAiChatProvider:
                 # a budget spent thinking returns nothing — see the check below.
                 max_output_tokens=request.max_tokens,
                 temperature=temperature,
+                # Explicit rather than a `**{}` splat: the overloads on
+                # `responses.create` do not resolve through unpacking. `timeout`
+                # takes `NOT_GIVEN` rather than the `omit` sentinel
+                # `temperature` uses — two different "leave it alone" values in
+                # one call, which is the SDK's choice and not ours.
+                timeout=request.timeout_s if request.timeout_s else NOT_GIVEN,
             )
 
         if self._temperature_refused:
@@ -346,7 +376,9 @@ class OpenAiChatProvider:
             text=text,
             input_tokens=getattr(usage, "input_tokens", None),
             output_tokens=getattr(usage, "output_tokens", None),
-            model=self._model,
+            # See the note on the Anthropic provider: the responding model, with
+            # the configured one as the fallback (audit 03, B19).
+            model=str(getattr(response, "model", "") or self._model),
         )
 
     def _warn_dropped(self, request: ChatRequest) -> None:

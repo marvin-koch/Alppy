@@ -23,6 +23,7 @@ from alppy.api import errors
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    IdempotencyKeyDep,
     RenderRateLimit,
     ScopeDep,
     StorageDep,
@@ -52,7 +53,7 @@ from alppy.schemas import (
     MisconceptionNoteOut,
     SheetOut,
 )
-from alppy.services import event_service, job_out, sheet_out
+from alppy.services import event_service, idempotency, job_out, sheet_out
 from alppy.services import sheet_service as sheet_svc
 from alppy.services.approval import (
     approve_exercises,
@@ -242,6 +243,19 @@ def approve(
     approved = approve_exercises(
         db, school_id=scope.school_id, exercise_ids=payload.exercise_ids
     )
+    for exercise_id in approved:
+        # One event per exercise rather than one per click: approval is a fact
+        # about an item, and a batch of eleven approved at once is eleven items
+        # that became printable (audit 03, B21). The flat staffroom means anyone
+        # could have done this, which is exactly why it needs an author.
+        event_service.record(
+            db,
+            school_id=scope.school_id,
+            kind=EventKind.EXERCISE_APPROVED,
+            subject_type=EventSubject.EXERCISE,
+            subject_id=exercise_id,
+            actor_id=scope.teacher_id,
+        )
     db.commit()
     return AdaptiveApproveResponse(approved=len(approved), exercise_ids=approved)
 
@@ -298,6 +312,7 @@ def create_batch(
     scope: ScopeDep,
     db: DbDep,
     storage: StorageDep,
+    idem: IdempotencyKeyDep = None,
 ) -> SheetOut:
     """Turn approved plans into one sheet with a different page per student.
 
@@ -305,11 +320,26 @@ def create_batch(
     ``POST /adaptive/batch/{id}/render``, which returns the job to poll. Two
     calls because binding 28 students to their item lists is fast and
     synchronous, while driving a headless browser over 170 pages is not.
+
+    Honours ``Idempotency-Key`` (audit 03, B17): a retry used to build a second
+    sheet binding the same pupils to the same plans, so the teacher printed one
+    of the two and the other sat in the list looking identical.
     """
-    sheet = sheet_svc.create_adaptive_sheet(db, scope, teacher.id, payload)
-    db.commit()
-    db.refresh(sheet)
-    return sheet_out(sheet, storage=storage)
+
+    def _work() -> SheetOut:
+        sheet = sheet_svc.create_adaptive_sheet(db, scope, teacher.id, payload)
+        db.commit()
+        db.refresh(sheet)
+        return sheet_out(sheet, storage=storage)
+
+    return idempotency.run(
+        db,
+        school_id=scope.school_id,
+        endpoint="adaptive.batch",
+        key=idem,
+        model=SheetOut,
+        work=_work,
+    )
 
 
 @router.post(
@@ -318,8 +348,21 @@ def create_batch(
     status_code=status.HTTP_202_ACCEPTED,
     dependencies=[RenderRateLimit],
 )
-def render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
+def render_batch(
+    sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep, idem: IdempotencyKeyDep = None
+) -> JobOut:
     """Queue the single PDF that holds every student's page, in order."""
+    return idempotency.run(
+        db,
+        school_id=scope.school_id,
+        endpoint="adaptive.batch.render",
+        key=idem,
+        model=JobOut,
+        work=lambda: _render_batch(sheet_id, scope, db),
+    )
+
+
+def _render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     sheet = sheet_svc.get_sheet(db, scope, sheet_id)
     if not sheet.instances:
         raise errors.unprocessable("this batch has no student instances to print")
@@ -348,6 +391,7 @@ def render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     "/adaptive/feedback/generate",
     response_model=JobOut,
     status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
 )
 def generate_feedback(
     payload: FeedbackGenerateRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep
@@ -358,6 +402,13 @@ def generate_feedback(
     a class of twenty inside a request handler is a timeout with a half-written
     batch behind it (CLAUDE.md — nothing blocks a request handler on a model
     call).
+
+    Rate-limited and guarded for exactly the reasons ``propose`` is, and it had
+    neither (audit 03, B13). It is one model call **per student**, so a class of
+    twenty-four is twenty-four calls behind a single unthrottled POST — the
+    largest fan-out any endpoint in the product puts in front of the worker, and
+    the only model-reaching route that was missing the limiter every one of its
+    neighbours carries.
     """
     school_class = get_class(db, scope, payload.class_id)
     source = sheet_svc.get_sheet(db, scope, payload.source_sheet_id)
@@ -367,6 +418,24 @@ def generate_feedback(
         "alppy.services.feedback_service", "generate_for_sheet", feature="feedback generation"
     )
 
+    running = db.scalars(
+        select(Job).where(
+            Job.school_id == scope.school_id,
+            Job.kind == JobKind.GENERATE_FEEDBACK,
+            Job.status.in_([JobStatus.QUEUED, JobStatus.RUNNING]),
+            Job.class_id == school_class.id,
+            Job.created_by_id == scope.teacher_id,
+        )
+    ).first()
+    # Keyed on `(class, source sheet, teacher)`. The source sheet is what makes
+    # two runs genuinely different work — notes are written from one corrected
+    # pile — and the teacher is on the key for the same reason it is on
+    # `propose`: the payload carries a language, and handing a colleague the job
+    # someone else started writes their notes in someone else's chosen language
+    # (audit 02, C1).
+    if running is not None and (running.payload or {}).get("source_sheet_id") == str(source.id):
+        return job_out(running)
+
     job = Job(
         id=uuid.uuid4(),
         school_id=scope.school_id,
@@ -374,6 +443,12 @@ def generate_feedback(
         status=JobStatus.QUEUED,
         progress=0.0,
         message="queued for feedback",
+        # The same three columns `propose` fills (0029). They are what the
+        # in-flight guard above reads: left NULL, the guard matches nothing and
+        # is decoration.
+        class_id=school_class.id,
+        subject_id=payload.subject_id,
+        created_by_id=scope.teacher_id,
         payload={
             "class_id": str(school_class.id),
             "subject_id": str(payload.subject_id),
@@ -395,7 +470,9 @@ def list_feedback(
     """Every live note written from one common sheet, newest per student."""
     from sqlalchemy import select
 
-    sheet_svc.get_sheet(db, scope, source_sheet_id)  # tenancy check
+    # REPORT: listing notes already written from this sheet. Generating a
+    # new one (`generate_feedback`) bills a model call and stays a gate.
+    sheet_svc.get_sheet_for_read(db, scope, source_sheet_id)  # tenancy check
     rows = list(
         db.scalars(
             select(MisconceptionNote)
@@ -409,10 +486,16 @@ def list_feedback(
     )
     # `school_id` is redundant here — every id came from a note already filtered
     # on it — and it is written anyway. A scoped query that leans on the query
-    # above it is correct until someone widens that one, and this is the only
-    # place in the codebase where the tenant filter is an inference rather than
-    # a line. The lookup is by primary key either way; the extra predicate is a
-    # comparison on rows already fetched.
+    # above it is correct until someone widens that one. The lookup is by
+    # primary key either way; the extra predicate is a comparison on rows
+    # already fetched.
+    #
+    # This used to claim to be the only such site in the codebase. It was not:
+    # `timeline._titles` had five lookups selecting by primary key alone and the
+    # class-code lookup beside it a sixth, all of them inferring the tenant from
+    # the query above rather than saying it (audit 03, B20). They say it now, so
+    # the claim is retired rather than corrected — a comment that counts sites
+    # is a comment that goes stale.
     #
     # Keyed on the person since 0028, and resolved back to a student to answer
     # with the uid the paper carries. A note may outlive the year it was

@@ -97,6 +97,83 @@ async function parseError(response: Response): Promise<ApiError> {
   return new ApiError(response.status, code, message, details, requestId);
 }
 
+/* ------------------------------------------------------------------------
+ * The session expiring under a teacher's hands
+ *
+ * The cookie is a stateless signed token with a 12-hour life and no refresh
+ * (`core/config.py`). The middleware gate checks that it is *present*, and only
+ * on a navigation — so a teacher who signs in at 07:50 on Monday and comes back
+ * to the same tab on Tuesday sees a screen that looks like it is working: the
+ * query cache serves the pile she was reviewing, and every verdict she presses
+ * goes out without a cookie and comes back 401. Nothing navigates, so nothing
+ * redirects; `apiErrorMessage` has no `unauthorized` entry and falls through to
+ * "L'envoi a échoué. Réessayez." She retries. It fails the same way.
+ *
+ * `docs/reviews/F7-review.md:178-196` found this on 2026-09-06 and offered two
+ * directions — a middleware guard on the cookie, OR a client boundary that
+ * redirects on `isUnauthorized`. Only the first shipped (`F7-fixes.md` F-3),
+ * and it covers a visitor who is not signed in, which is the other case. This
+ * is the second direction, which is why `ApiError.isUnauthorized` existed with
+ * zero callers for five days.
+ *
+ * A settable handler rather than a redirect written here: this module knows
+ * about HTTP and nothing about routing or about the query cache, and the two
+ * things that have to happen — clear the cache, then leave — both belong to the
+ * app shell. `Providers` registers it.
+ * --------------------------------------------------------------------- */
+
+type UnauthorizedHandler = () => void;
+
+let unauthorizedHandler: UnauthorizedHandler | null = null;
+
+/** Registered by `Providers`; null outside a mounted app (tests, SSR). */
+export function setUnauthorizedHandler(handler: UnauthorizedHandler | null): void {
+  unauthorizedHandler = handler;
+}
+
+/**
+ * `/auth/me` is the app ASKING whether there is a session. A 401 is that
+ * question's answer, not a session that has just died, and treating it as one
+ * would redirect the login screen to itself.
+ */
+function isSessionProbe(path: string): boolean {
+  return path.startsWith('/auth/me') || path.startsWith('/auth/login');
+}
+
+function noteUnauthorized(path: string, error: ApiError): void {
+  if (!error.isUnauthorized || isSessionProbe(path)) return;
+  unauthorizedHandler?.();
+}
+
+/* ------------------------------------------------------------------------
+ * Whether the API is answering at all
+ *
+ * `navigator.onLine` answers a different and weaker question — whether the
+ * machine believes it has a network — and a school wifi that associates but
+ * routes nowhere reports `true` throughout. What a teacher needs to know is
+ * whether Alppy is reachable, and the only thing that knows that is the last
+ * request that tried.
+ *
+ * So every request reports its outcome here, and `lib/connection.ts` turns
+ * that into the one bar in the shell. This is the second caller of the two
+ * predicates that were written and never used: `isUnauthorized` above,
+ * `isOffline` here.
+ * --------------------------------------------------------------------- */
+
+type ReachabilityListener = (reachable: boolean) => void;
+
+const reachabilityListeners = new Set<ReachabilityListener>();
+
+/** Subscribe to "did the last request reach the API". Returns an unsubscribe. */
+export function onApiReachability(listener: ReachabilityListener): () => void {
+  reachabilityListeners.add(listener);
+  return () => reachabilityListeners.delete(listener);
+}
+
+function noteReachability(reachable: boolean): void {
+  for (const listener of reachabilityListeners) listener(reachable);
+}
+
 export async function apiRequest<T>(path: string, options: RequestOptions = {}): Promise<T> {
   const { method = 'GET', body, formData, signal, query } = options;
   const url = withQuery(path, query);
@@ -120,10 +197,19 @@ export async function apiRequest<T>(path: string, options: RequestOptions = {}):
     });
   } catch (cause) {
     if (cause instanceof DOMException && cause.name === 'AbortError') throw cause;
-    throw new ApiError(0, 'network_error', 'the API could not be reached');
+    const offline = new ApiError(0, 'network_error', 'the API could not be reached');
+    noteReachability(false);
+    throw offline;
   }
 
-  if (!response.ok) throw await parseError(response);
+  // A 4xx or a 5xx still proves the API is there and answering — being told
+  // "no" is not the same as being unable to ask.
+  noteReachability(true);
+  if (!response.ok) {
+    const error = await parseError(response);
+    noteUnauthorized(path, error);
+    throw error;
+  }
   if (response.status === 204) return undefined as T;
 
   const text = await response.text();
@@ -168,6 +254,10 @@ export async function apiRequestText(path: string, options: RequestOptions = {})
     throw new ApiError(0, 'network_error', 'the API could not be reached');
   }
 
-  if (!response.ok) throw await parseError(response);
+  if (!response.ok) {
+    const error = await parseError(response);
+    noteUnauthorized(path, error);
+    throw error;
+  }
   return response.text();
 }

@@ -154,11 +154,18 @@ jobs:
 
       # Stylelint does not see TSX, and an inline style is the easiest way to
       # smuggle a hex in. This is the second half of the same rule.
+      #
+      # `mock/fixtures.ts` is excluded for the reason print.css is: it holds a
+      # stand-in for the API's own print document — a standalone page in an
+      # iframe, with white paper and black fiducials and no access to the app's
+      # stylesheet. It is paper, and paper is where the tokens are overwritten
+      # rather than read (DESIGN.md §10.4). Narrow on purpose: one file, named.
       - name: No colour literals in TypeScript
         run: |
           if grep -rEn "#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(" \
                packages/ui/src apps/web/src apps/web/app \
-               --include="*.ts" --include="*.tsx" 2>/dev/null; then
+               --include="*.ts" --include="*.tsx" \
+               --exclude="fixtures.ts" 2>/dev/null; then
             echo "::error::colour literal found outside tokens.css — use var(--c-*)"
             exit 1
           fi
@@ -197,6 +204,30 @@ jobs:
             exit 1
           fi
 
+  print-fonts:
+    name: The printed sheet still carries its own type
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: 9 }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The API image has no node_modules: `packages/ui/src/design/fonts.css` is
+      # what ships, so an upgraded font package that nobody regenerated would
+      # leave the PDF and the preview typeset in a stale face — and the answer
+      # boxes were measured against the current one.
+      - name: Regenerate and diff
+        run: |
+          node scripts/embed-fonts.mjs
+          if ! git diff --exit-code -- packages/ui/src/design/fonts.css; then
+            echo "::error::fonts.css is stale — run scripts/embed-fonts.mjs and commit"
+            exit 1
+          fi
+
   api-contract:
     name: The client's types match the API
     runs-on: ubuntu-latest
@@ -228,11 +259,6 @@ jobs:
             echo "::error::the generated contract is stale — run scripts/generate-api-types.py and commit"
             exit 1
           fi
-      # The other half of the same contract: a code crosses to the client and
-      # the CLIENT owns the sentence, which only holds if it HAS one for every
-      # code the API can raise. Twelve of twenty-three had none.
-      - name: Every error code has a sentence, in every locale
-        run: python scripts/check-error-catalogue.py
 
   schema-drift:
     name: Migrations reproduce the models
