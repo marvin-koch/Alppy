@@ -20,6 +20,21 @@ import { badgeVariant } from '@/lib/detectionOutcome';
 
 type Verdict = 'correct' | 'wrong' | 'unsure';
 
+/**
+ * The space a crop is given before it decodes, in rem.
+ *
+ * A floor, not a size: it stops the column collapsing and then shoving the verdict
+ * control down under the teacher's cursor, and a taller crop simply overflows it.
+ *
+ * Flat, rather than derived from the box's printed line count as the audit
+ * suggested — `answer_box_lines` is on the sheet item, not on `DetectionOut`, and
+ * threading the sheet's items down into every detection row to compute a CSS hint
+ * would couple this component to print geometry for a cosmetic gain. Five rem is a
+ * two- or three-line box, which is the common case; a twelve-line box overflows and
+ * shifts the rows below it once, on first decode, rather than every row above it.
+ */
+const CROP_MIN_HEIGHT_REM = 5;
+
 function verdictOf(d: DetectionOut): Verdict {
   if (d.verdict_correct === true) return 'correct';
   if (d.verdict_correct === false) return 'wrong';
@@ -47,7 +62,6 @@ export interface OpenAnswerCardProps {
   readOnly: boolean;
   /** Below this the pipeline stops trusting itself; from `@alppy/shared`. */
   lowConfidence: number;
-  onSelect: () => void;
   onCorrect: (body: DetectionCorrection) => void;
   /** A correction in flight. The control shows this instead of the server's
    *  verdict, so the teacher sees what they pressed while it travels.
@@ -76,7 +90,6 @@ export function OpenAnswerCard({
   selected,
   readOnly,
   lowConfidence,
-  onSelect,
   onCorrect,
   pendingCorrection,
   unsaved = false,
@@ -101,7 +114,10 @@ export function OpenAnswerCard({
   return (
     <Panel
       sunken={detection.outcome === 'low_confidence' || detection.outcome === 'not_gradeable'}
-      onClick={onSelect}
+      // No `onClick` (G19): it was a click handler on a `div` with no role, no
+      // `tabIndex` and no key handler. Selection is reachable from the overlay's
+      // real buttons and from the `N` shortcut, both of which a keyboard and a
+      // screen reader can use.
       className={selected ? 'shadow-[var(--focus-ring)]' : undefined}
       data-open-answer=""
     >
@@ -129,14 +145,25 @@ export function OpenAnswerCard({
       {detection.crop_url ? (
         <figure className="mt-3">
           <figcaption className="text-label uppercase text-ink-700">{to('crop')}</figcaption>
-          <img
-            src={detection.crop_url}
-            alt={to('cropAlt', { number: detection.number ?? detection.item_index + 1 })}
-            // Six written answers per copy, thirty copies: the crops outnumber
-            // the pages (F23).
-            loading="lazy"
-            className="mt-1 block w-full rounded-sm border border-line bg-surface"
-          />
+          {/* A reserved minimum height, derived from the number of ruled lines the
+              box was printed with, so a lazily-decoding crop does not collapse and
+              then shove the verdict control down under the teacher's cursor (G13).
+              A minimum rather than a fixed ratio: the crop's width varies with the
+              page, and letterboxing a line of handwriting to a guessed ratio would
+              shrink the one thing being read. */}
+          <div
+            className="mt-1 w-full overflow-hidden rounded-sm border border-line bg-surface"
+            style={{ minHeight: `${CROP_MIN_HEIGHT_REM}rem` }}
+          >
+            <img
+              src={detection.crop_url}
+              alt={to('cropAlt', { number: detection.number ?? detection.item_index + 1 })}
+              // Six written answers per copy, thirty copies: the crops outnumber
+              // the pages (F23).
+              loading="lazy"
+              className="block w-full"
+            />
+          </div>
         </figure>
       ) : null}
 

@@ -29,7 +29,7 @@ import {
 import { SCAN_THRESHOLDS, SHEET_LAYOUT } from '@alppy/shared';
 import { useTranslations } from 'next-intl';
 import { useSearchParams } from 'next/navigation';
-import { use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { memo, use, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import {
   useAddScanPages,
@@ -107,7 +107,11 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const sheet = useSheet(scan.data?.sheet_id ?? null);
   const job = useJob(jobId);
   const router = useRouter();
-  const students = useScanStudents(scanId);
+  const studentsQuery = useScanStudents(scanId);
+  // `?? []` inline would mint a new array on every render while the query is
+  // still loading, which is one more prop change per card that the memo cannot
+  // absorb.
+  const students = useMemo(() => studentsQuery.data ?? [], [studentsQuery.data]);
   // Destructured: the mutation RESULT is a new object every render, and an
   // unstable `onCorrect` would defeat any memo a page card is given. `mutate` is
   // stable. Nothing here reads `isPending` — one flag cannot speak for a screen
@@ -201,6 +205,13 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
     submitRef.current = submitCorrection;
   }, [submitCorrection]);
 
+  /** Stable, so it does not defeat `PageCard`'s memo on every render. The map it
+   *  writes into is a ref, so there is nothing to depend on. */
+  const registerRow = useCallback((id: Uuid, el: HTMLLIElement | null) => {
+    if (el) rowRefs.current.set(id, el);
+    else rowRefs.current.delete(id);
+  }, []);
+
   const status = scan.data?.status;
   const processing = status === 'uploaded' || status === 'processing';
 
@@ -221,6 +232,9 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   );
   const [copyFilter, setCopyFilter] = useState('');
   const filtered = outcomeFilter.size > 0 || copyFilter !== '';
+  /** Primed once, when the pile first arrives. A teacher who then clears the
+   *  filter must not have it reapplied under them on the next poll. */
+  const filterPrimed = useRef(false);
 
   const outcomeCounts = useMemo(() => {
     const counts: Record<FilterOutcome, number> = {
@@ -236,6 +250,29 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
     }
     return counts;
   }, [pages]);
+
+  /**
+   * A pile opens on the items that need a human, when there are any.
+   *
+   * Least-confident-first only ordered items WITHIN a page, and the filter started
+   * empty — so a 28-page pile with three uncertain marks opened on page 1's
+   * settled items and the teacher scrolled looking for work the machine had
+   * already identified (G12).
+   *
+   * Deliberately not silent about it. The filter card above states the count and
+   * keeps its clear control, so this narrows the view without making anything
+   * unreachable — the same promise the builder's counted "Sans thème" row keeps
+   * (DC-content-06). Confirming is still gated on the UNFILTERED count of pending
+   * answers, because a filter is a way of looking and never a way of signing off.
+   */
+  useEffect(() => {
+    if (filterPrimed.current || pages.length === 0) return;
+    filterPrimed.current = true;
+    const needsAttention = new Set<FilterOutcome>();
+    if (outcomeCounts.low_confidence > 0) needsAttention.add('low_confidence');
+    if (outcomeCounts.multiple > 0) needsAttention.add('multiple');
+    if (needsAttention.size > 0) setOutcomeFilter(needsAttention);
+  }, [pages.length, outcomeCounts]);
 
   const copies = useMemo(() => {
     const byKey = new Map<string, { key: string; label: string; unsure: number }>();
@@ -617,16 +654,20 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
             page={page}
             confirmed={confirmed}
             processing={processing}
-            selected={selected}
+            // Resolved per page rather than passed whole. `selected` changes on
+            // every `N` and every click, and handing the raw value to all thirty
+            // cards re-rendered all thirty of them — roughly a thousand overlay
+            // buttons — to move one highlight. Twenty-nine of the thirty now get
+            // the same `null` they had before and the memo holds (G11).
+            selectedOnThisPage={
+              selected !== null && page.detections.some((d) => d.id === selected) ? selected : null
+            }
             onSelect={setSelected}
-            registerRow={(id, el) => {
-              if (el) rowRefs.current.set(id, el);
-              else rowRefs.current.delete(id);
-            }}
+            registerRow={registerRow}
             onCorrect={submitCorrection}
             pendingCorrections={pendingCorrections}
             unsavedCorrections={unsavedCorrections}
-            students={students.data ?? []}
+            students={students}
           />
         ))}
       </div>
@@ -636,12 +677,12 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
 /* ------------------------------------------------------------------ page --- */
 
-function PageCard({
+const PageCard = memo(function PageCard({
   scanId,
   page,
   confirmed,
   processing,
-  selected,
+  selectedOnThisPage: selected,
   onSelect,
   onCorrect,
   pendingCorrections,
@@ -654,7 +695,9 @@ function PageCard({
   confirmed: boolean;
   /** A run is already reading this pile. One at a time: see `append_pages`. */
   processing: boolean;
-  selected: Uuid | null;
+  /** The selected detection, but only when it belongs to THIS page — otherwise
+   *  null, so a selection elsewhere is not a prop change here. */
+  selectedOnThisPage: Uuid | null;
   onSelect: (id: Uuid) => void;
   onCorrect: (detectionId: Uuid, body: DetectionCorrection, label: string) => void;
   /** What the teacher pressed and the server has not answered for yet. */
@@ -822,7 +865,6 @@ function PageCard({
                     selected={selected === d.id}
                     readOnly={confirmed || page.discarded}
                     lowConfidence={LOW_CONFIDENCE}
-                    onSelect={() => onSelect(d.id)}
                     onCorrect={(body) => onCorrect(d.id, body, itemLabel(d))}
                     pendingCorrection={pendingCorrections.get(d.id)}
                     unsaved={unsavedCorrections.has(d.id)}
@@ -832,7 +874,6 @@ function PageCard({
                     detection={d}
                     selected={selected === d.id}
                     readOnly={confirmed || page.discarded}
-                    onSelect={() => onSelect(d.id)}
                     onCorrect={(index) => onCorrect(d.id, { detected_index: index }, itemLabel(d))}
                     pending={pendingCorrections.get(d.id)}
                     unsaved={unsavedCorrections.has(d.id)}
@@ -845,7 +886,7 @@ function PageCard({
       ) : null}
     </Card>
   );
-}
+});
 
 /* ------------------------------------------------------------------- row --- */
 
@@ -853,7 +894,6 @@ function DetectionRow({
   detection,
   selected,
   readOnly,
-  onSelect,
   onCorrect,
   pending,
   unsaved,
@@ -861,7 +901,6 @@ function DetectionRow({
   detection: DetectionOut;
   selected: boolean;
   readOnly: boolean;
-  onSelect: () => void;
   onCorrect: (index: number | null) => void;
   /** In flight. The control shows this, not the server's value. */
   pending: DetectionCorrection | undefined;
@@ -878,7 +917,12 @@ function DetectionRow({
   return (
     <Panel
       sunken={needsAHuman(detection)}
-      onClick={onSelect}
+      // No `onClick`, deliberately (G19). It was a click handler on a `div` with
+      // no role, no `tabIndex` and no key handler — unreachable from a keyboard
+      // and invisible to a screen reader. Selection is already reachable two
+      // better ways: the overlay's real buttons, and the `N` shortcut. Adding ARIA
+      // to a redundant target would have been dressing up something that should
+      // not exist rather than removing it.
       className={selected ? 'shadow-[var(--focus-ring)]' : undefined}
     >
       <div className="flex flex-wrap items-center justify-between gap-3">

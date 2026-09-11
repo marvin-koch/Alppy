@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { gotoStable, withDisplay } from './helpers';
+import { gotoStable, showEveryItem, withDisplay } from './helpers';
 
 /**
  * A correction that does not land says so.
@@ -45,6 +45,8 @@ test.describe('a correction the API refuses', () => {
   }) => {
     await failCorrections(page);
     await gotoStable(page, SCAN);
+    // Settled items are hidden by default now (G12).
+    await showEveryItem(page);
 
     const card = page.locator('[data-open-answer]').first();
     const verdict = card.getByRole('radiogroup', { name: /verdict/i });
@@ -78,6 +80,8 @@ test.describe('a correction the API refuses', () => {
     // Fail once. The retry meets a working API, the way a blip actually behaves.
     await failCorrections(page, 1);
     await gotoStable(page, SCAN);
+    // Settled items are hidden by default now (G12).
+    await showEveryItem(page);
 
     const card = page.locator('[data-open-answer]').first();
     const verdict = card.getByRole('radiogroup', { name: /verdict/i });

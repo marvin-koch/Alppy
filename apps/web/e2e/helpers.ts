@@ -61,3 +61,20 @@ export async function gotoMatrix(page: Page, locale = 'fr'): Promise<void> {
 export function shot(name: string, ...parts: string[]): string {
   return [name, ...parts].filter(Boolean).join('-') + '.png';
 }
+
+/**
+ * Clear the review screen's default filter.
+ *
+ * A pile now OPENS on the items that need a human — low confidence and multiple
+ * marks — because least-confident-first only ordered within a page and a 28-page
+ * pile used to open on page 1's settled items (G12). Anything already settled,
+ * including a written answer the model read confidently, is therefore hidden until
+ * the filter is cleared.
+ *
+ * A no-op when the pile has nothing uncertain in it, so a spec can call it
+ * unconditionally.
+ */
+export async function showEveryItem(page: Page): Promise<void> {
+  const clear = page.getByRole('button', { name: /tout afficher|effacer les filtres/i }).first();
+  if (await clear.count()) await clear.click();
+}

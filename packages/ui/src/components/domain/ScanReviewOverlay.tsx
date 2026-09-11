@@ -126,7 +126,16 @@ export const ScanReviewOverlay = forwardRef<HTMLDivElement, ScanReviewOverlayPro
     return (
       <div
         ref={ref}
-        className={cx('relative w-full overflow-hidden rounded-lg border border-line bg-surface-2', className)}
+        // The A4 ratio, reserved before the image decodes. Thirty of these load
+        // lazily down one scrolling column, and without a reserved box each one
+        // collapsed to nothing and then pushed the page down as it decoded —
+        // under a teacher's cursor, on the screen where a misclick corrects the
+        // wrong item (G13). The ratio is the page's, not a guess: `SHEET_LAYOUT`
+        // is 210 x 297 and the registered image is the whole page.
+        className={cx(
+          'relative aspect-[210/297] w-full overflow-hidden rounded-lg border border-line bg-surface-2',
+          className,
+        )}
         {...rest}
       >
         {/* A pile is thirty registered pages at full resolution, and the
@@ -138,14 +147,18 @@ export const ScanReviewOverlay = forwardRef<HTMLDivElement, ScanReviewOverlayPro
           src={imageSrc}
           alt={imageAlt}
           loading="lazy"
-          className="block h-auto w-full select-none"
+          // `h-full object-contain` inside the reserved box: the box owns the
+          // height now, and a page photographed slightly off-ratio letterboxes
+          // rather than stretching — the overlay's coordinates are fractions of
+          // the frame, so a stretched image would put every bubble box out.
+          className="block h-full w-full select-none object-contain"
           draggable={false}
         />
 
         <div role="group" aria-label={regionLabel} className="absolute inset-0">
           {marks.map((mark) => {
-            const selected = selectedId !== undefined &&
-              (mark.id === selectedId || mark.groupId === selectedId);
+            const selected =
+              selectedId !== undefined && (mark.id === selectedId || mark.groupId === selectedId);
             const low = (mark.confidence ?? 1) < lowConfidenceThreshold;
             return (
               <button

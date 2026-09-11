@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 
-import { gotoStable, withDisplay } from './helpers';
+import { gotoStable, showEveryItem, withDisplay } from './helpers';
 
 /**
  * The review of a written answer. The mock scan carries one open item on its
@@ -17,6 +17,9 @@ test.describe('scan review · written answers', () => {
     page,
   }) => {
     await gotoStable(page, '/fr/scans/00000000-0000-4000-8000-000000000800');
+    // The pile opens filtered to what needs a human (G12); this answer was read
+    // confidently, so it is settled and hidden until the filter is cleared.
+    await showEveryItem(page);
 
     const card = page.locator('[data-open-answer]').first();
     await expect(card).toBeVisible();
