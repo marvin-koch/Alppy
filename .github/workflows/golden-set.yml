@@ -1,0 +1,63 @@
+# Does the vision grader still read an answer the way it did? (T9, T12)
+#
+# Nothing else measures this. `PROMPT_VERSION` moved v2 -> v3 with nothing
+# watching the effect on a real model: the existing prompt test proves the two
+# agree on a FAKE provider, which is a statement about routing rather than about
+# reading. And the prompt-injection defence is tested only through the model's
+# own self-reported flag, so nothing says a real model raises that flag when
+# shown instruction-shaped writing.
+#
+# NOT on every push, deliberately. This is the one gate in the repo that has to
+# talk to a real provider, so every run costs money and a network round trip per
+# sample. Putting that in front of every commit is how a gate gets turned off
+# within a month. It runs nightly, and on any change to the thing it measures —
+# the prompt, the grader, or the corpus itself.
+#
+# It needs `ALPPY_ANTHROPIC_API_KEY` (or OPENAI). Without one the provider falls
+# back to `echo`, the run says so in capitals, and the job stops rather than
+# reporting a number that means nothing.
+name: Golden set
+
+on:
+  schedule:
+    - cron: "30 3 * * *"
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "apps/api/alppy/ai/prompts/**"
+      - "apps/api/alppy/services/open_answer_grading.py"
+      - "apps/api/tests/golden/**"
+      - "scripts/run-golden-set.py"
+
+jobs:
+  measure:
+    name: Recognition against the golden set
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      - name: Install
+        run: pip install -e "apps/api[dev]"
+
+      # A fork's PR has no secret, and a silent fall back to `echo` would report
+      # a meaningless pass. Say so and stop.
+      - name: Refuse to measure nothing
+        env:
+          KEY: ${{ secrets.ALPPY_ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "::warning::no provider key — the golden set cannot measure recognition here"
+            echo "skip=1" >> "$GITHUB_ENV"
+          fi
+
+      - name: Run the golden set
+        if: env.skip != '1'
+        env:
+          ALPPY_ENV: ci
+          ALPPY_SECRET_KEY: ci-secret-not-a-real-key
+          ALPPY_AI_CHAT_PROVIDER: anthropic
+          ALPPY_ANTHROPIC_API_KEY: ${{ secrets.ALPPY_ANTHROPIC_API_KEY }}
+          ALPPY_AI_EMBEDDINGS_PROVIDER: hash
+        run: PYTHONPATH=apps/api python scripts/run-golden-set.py

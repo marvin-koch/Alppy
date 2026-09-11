@@ -1,0 +1,7 @@
+{
+  "grounded": false,
+  "verdict_agreement": 0.125,
+  "transcription_exact_match": 0.125,
+  "margin": 0.1,
+  "note": "Accepted by a person who read the matrix above. The margin is what a run may fall by before this fails \u2014 wide, because the corpus is small and a single sample is 12.5%."
+}
