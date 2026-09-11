@@ -15,6 +15,7 @@ from fastapi import APIRouter, File, Form, Query, UploadFile, status
 from alppy.api.deps import (
     AiRateLimit,
     DbDep,
+    IdempotencyKeyDep,
     ScopeDep,
     SettingsDep,
     StorageDep,
@@ -34,7 +35,7 @@ from alppy.schemas import (
     ScanUnvalidateResponse,
     StudentOut,
 )
-from alppy.services import detection_out, scan_out, scan_page_out, student_out
+from alppy.services import detection_out, idempotency, scan_out, scan_page_out, student_out
 from alppy.services import scan_service as svc
 
 router = APIRouter(tags=["scans"])
@@ -69,6 +70,7 @@ async def upload_scan(
     storage: StorageDep,
     files: Annotated[list[UploadFile], File()],
     sheet_id: Annotated[uuid.UUID, Form()],
+    idem: IdempotencyKeyDep = None,
 ) -> ScanOut:
     """Accept a PDF, or a pile of phone photos, and return immediately.
 
@@ -90,7 +92,71 @@ async def upload_scan(
     # request, so the count is what bounds the memory, not the per-file cap.
     check_upload_count(files, settings)
     payloads = [await read_upload(f, settings) for f in files]
-    scan, job = svc.create_scan(db, scope.school_id, teacher.id, storage, payloads, sheet_id=sheet_id)
+
+    # Read the files first, claim the key second. A retry from a phone that
+    # lost the answer is the case this exists for (audit 03, B17), and without
+    # it the pile is uploaded twice — twenty-eight copies reviewed and
+    # confirmed in duplicate. The bytes are already in memory by the time the
+    # claim is taken, so a replay costs the upload but not the processing.
+    def _work() -> ScanOut:
+        scan, job = svc.create_scan(db, scope, storage, payloads, sheet_id=sheet_id)
+        db.commit()
+        start_job(db, job)
+        db.refresh(scan)
+        return scan_out(scan, storage=storage, job_id=job.id)
+
+    return idempotency.run(
+        db,
+        school_id=scope.school_id,
+        endpoint="scans.create",
+        key=idem,
+        model=ScanOut,
+        work=_work,
+    )
+
+
+@router.post(
+    "/scans/{scan_id}/pages",
+    response_model=ScanOut,
+    status_code=status.HTTP_202_ACCEPTED,
+    dependencies=[AiRateLimit],
+)
+async def add_scan_pages(
+    scan_id: uuid.UUID,
+    teacher: TeacherDep,
+    scope: ScopeDep,
+    db: DbDep,
+    settings: SettingsDep,
+    storage: StorageDep,
+    files: Annotated[list[UploadFile], File()],
+    supersedes_page_id: Annotated[uuid.UUID | None, Form()] = None,
+) -> ScanOut:
+    """Retake a page into the pile it belongs to.
+
+    A page whose fiducials were not found gets advice — "reprenez la photo" —
+    and, until this route, nowhere to act on it: uploading the retake made a
+    second pile, with its own review and its own confirmation, for one class's
+    single submission.
+
+    Only the added files are processed. The pages already read keep their rows,
+    because the teacher's corrections hang off them.
+
+    ``supersedes_page_id`` discards the page being replaced, in the same
+    transaction as the upload that replaces it — otherwise the pile briefly
+    holds both, and a copy with more photographs than printed pages is flagged
+    as overflowing (B5).
+    """
+    check_upload_count(files, settings)
+    payloads = [await read_upload(f, settings) for f in files]
+    scan, job = svc.append_pages(
+        db,
+        scope,
+        teacher.id,
+        storage,
+        payloads,
+        scan_id=scan_id,
+        supersedes_page_id=supersedes_page_id,
+    )
     db.commit()
     start_job(db, job)
     db.refresh(scan)
@@ -217,7 +283,7 @@ def assign_page(
 ) -> ScanPageOut:
     """Manual fallback when the printed UID grid could not be read."""
     svc.get_scan(db, scope, scan_id)
-    page = svc.assign_page_student(
+    page, dropped = svc.assign_page_student(
         db, scope, scan_id, page_id, payload.student_id, storage=storage
     )
     # Re-reading the page may have cut written answers no job was chained
@@ -227,7 +293,9 @@ def assign_page(
     if follow_up is not None:
         start_job(db, follow_up)
     db.refresh(page)
-    return scan_page_out(page, storage=storage)
+    # `dropped` is read before the refresh could matter — it is not a column,
+    # it is what this one call could not carry over (audit 03, B6).
+    return scan_page_out(page, storage=storage, corrections_dropped=dropped)
 
 
 @router.post("/scans/{scan_id}/confirm", response_model=ScanConfirmResponse)

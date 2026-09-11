@@ -55,10 +55,21 @@ PipelineFn = Callable[[Session, Job, ProgressCB], "dict[str, Any] | None"]
 
 
 def _make_progress_cb(db: Session, job: Job) -> ProgressCB:
+    """Progress ticks, which double as the job's heartbeat (audit 03, B9).
+
+    ``updated_at`` carries ``onupdate=func.now()``, so in practice a tick that
+    moves ``progress`` already stamps it. It is written explicitly anyway: a
+    tick reporting the same fraction twice leaves the row clean, SQLAlchemy
+    emits no UPDATE, and the heartbeat silently stops for a job that is very
+    much alive. Something that decides whether to declare a job dead must not
+    depend on a value changing.
+    """
+
     def _progress(fraction: float, message: str | None = None) -> None:
         job.progress = max(0.0, min(1.0, fraction))
         if message is not None:
             job.message = message
+        job.updated_at = datetime.now(UTC)
         db.commit()
 
     return _progress
@@ -225,6 +236,9 @@ async def process_scan(ctx: dict[str, Any], job_id: str) -> None:
             db,
             get_storage(),
             scan_id=_uuid_from(job, "scan_id"),
+            # Present only when pages were added to a pile that had already
+            # been read (F11); absent means the whole upload, as it always did.
+            from_file=int((job.payload or {}).get("from_file", 0)),
             on_progress=on_progress,
         )
 
