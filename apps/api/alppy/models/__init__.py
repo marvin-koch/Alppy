@@ -138,6 +138,7 @@ teacher_school = Table(
         "school_id",
         unique=True,
         postgresql_where=text("valid_to IS NULL"),
+        sqlite_where=text("valid_to IS NULL"),
     ),
 )
 
@@ -220,6 +221,24 @@ class SchoolYear(Base, TimestampMixin, SchoolScopedMixin):
         # and the suite builds its schema on SQLite (D18), where a check nobody
         # can run is a check nobody has.
         CheckConstraint("label LIKE '____/__'", name="ck_school_year_label"),
+        # One row per label per school (0044). 0036 stopped the same year being
+        # SPELLED two ways; this stops one spelling existing twice. Both are
+        # needed, because `current_school_year` resolves a year BY LABEL when
+        # no row is marked current, and `uq_student_uid` is keyed on the year:
+        # two rows a human reads as one year are two rosters and two sets of
+        # UIDs (audit H8).
+        UniqueConstraint("school_id", "label", name="uq_school_year_label"),
+        # A school has one current year, or none. Nothing enforced it, and the
+        # read that depends on it papers over the ambiguity with `ORDER BY
+        # starts_on DESC LIMIT 1` — so a second current row would not raise,
+        # it would quietly make "the current year" mean whichever sorted first.
+        Index(
+            "uq_school_year_current",
+            "school_id",
+            unique=True,
+            postgresql_where=text("is_current"),
+            sqlite_where=text("is_current"),
+        ),
     )
 
     id: Mapped[uuid.UUID] = _pk()
@@ -327,6 +346,7 @@ class_teacher_subject = Table(
         "subject_id",
         unique=True,
         postgresql_where=text("valid_to IS NULL"),
+        sqlite_where=text("valid_to IS NULL"),
     ),
 )
 
@@ -384,6 +404,7 @@ class_student = Table(
         "student_id",
         unique=True,
         postgresql_where=text("valid_to IS NULL"),
+        sqlite_where=text("valid_to IS NULL"),
     ),
 )
 
@@ -865,6 +886,7 @@ class Exercise(Base, TimestampMixin, SchoolScopedMixin):
             "ix_exercise_discarded",
             "subject_id",
             postgresql_where=text("discarded_at IS NOT NULL"),
+            sqlite_where=text("discarded_at IS NOT NULL"),
         ),
     )
 
