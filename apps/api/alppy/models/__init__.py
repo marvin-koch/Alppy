@@ -1531,6 +1531,16 @@ class MasterySnapshot(Base, TimestampMixin, SchoolScopedMixin):
     """student x competency x time. Recomputed after every confirmed scan."""
 
     __tablename__ = "mastery_snapshot"
+
+    # No RETURNING on insert. `TimestampMixin` gives every table a
+    # `server_default`, and SQLAlchemy fetches those back eagerly — which turns
+    # a bulk snapshot write into INSERT ... RETURNING and hands it to the
+    # `insertmanyvalues` correlation machinery. On SQLite that path
+    # intermittently applies the wrong result processor and fails with
+    # `'float' object has no attribute 'replace'`. These two tables are written
+    # in bulk after every confirmed scan and their timestamps are never read
+    # back in the same transaction, so there is nothing to fetch eagerly.
+    __mapper_args__ = {"eager_defaults": False}  # noqa: RUF012  (read once, never mutated)
     __table_args__ = (
         Index("ix_mastery_person_competency", "person_id", "competency_id", "computed_at"),
         CheckConstraint("score >= 0 AND score <= 1", name="score_unit_interval"),
@@ -1570,6 +1580,16 @@ class MasteryBranchSnapshot(Base, TimestampMixin, SchoolScopedMixin):
     """
 
     __tablename__ = "mastery_branch_snapshot"
+
+    # No RETURNING on insert. `TimestampMixin` gives every table a
+    # `server_default`, and SQLAlchemy fetches those back eagerly — which turns
+    # a bulk snapshot write into INSERT ... RETURNING and hands it to the
+    # `insertmanyvalues` correlation machinery. On SQLite that path
+    # intermittently applies the wrong result processor and fails with
+    # `'float' object has no attribute 'replace'`. These two tables are written
+    # in bulk after every confirmed scan and their timestamps are never read
+    # back in the same transaction, so there is nothing to fetch eagerly.
+    __mapper_args__ = {"eager_defaults": False}  # noqa: RUF012  (read once, never mutated)
     __table_args__ = (
         Index("ix_mastery_branch_person", "person_id", "subject_id", "computed_at"),
         CheckConstraint(
