@@ -22,12 +22,20 @@ every test stays green.
 
 Usage
 -----
-    ALPPY_DATABASE_URL=postgresql+psycopg://owner:...@host/db python scripts/check-rls.py
+    createdb alppy_rls
+    ALPPY_ENV=local \
+    ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://owner:pw@localhost:5432/alppy_rls \
+        python scripts/check-rls.py
 
-The URL must be the **owner's**, and must point at a **disposable** database:
-this drops and recreates its public schema. The low-privilege role is created
-here, so nothing outside this script has to exist first. Exits 0 when every
-check passes, 1 with the failures listed otherwise.
+The URL must be the **owner's**. It **drops and recreates the public schema**
+of the database it is given, so it refuses to run against one that is not
+visibly disposable — see ``alppy.db.disposable``. Note what that guard is for
+here in particular: this script wants an owner DSN, and the owner DSN a
+developer has to hand is ``ALPPY_ADMIN_DATABASE_URL``, which points at the
+database the application is serving. The low-privilege role is created here, so
+nothing outside this script has to exist first. Exits 0 when every check
+passes, 1 with the failures listed, 2 when it would not accept the database it
+was pointed at.
 """
 
 from __future__ import annotations
@@ -41,13 +49,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps" / "api"))
 
-URL = os.environ.get("ALPPY_DATABASE_URL")
-if not URL:
-    print("ALPPY_DATABASE_URL is not set; pointing it at a disposable database is required")
-    raise SystemExit(2)
-if "postgresql" not in URL:
-    print(f"this check needs Postgres, not {URL.split('://')[0]}: SQLite has no row-level security")
-    raise SystemExit(2)
+from alppy.db.disposable import NotDisposableError, resolve_disposable_url
+
+try:
+    URL = resolve_disposable_url(os.environ)
+except NotDisposableError as exc:
+    print(exc)
+    raise SystemExit(2) from None
+
+# alembic/env.py reads the app's own setting rather than anything passed to it,
+# by design — a migration must not be runnable against a URL hard-coded in a
+# file. Pointing that setting at the database the guard just approved is how
+# the two rules meet.
+os.environ["ALPPY_DATABASE_URL"] = URL
 
 #: Created by this script, dropped by nothing — the database is disposable.
 APP_ROLE = "alppy_rls_probe"

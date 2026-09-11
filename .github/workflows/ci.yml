@@ -288,7 +288,14 @@ jobs:
       # changes arrived buried in noise.
       - name: Diff a freshly migrated database against the models
         env:
-          ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_drift
+          # Not ALPPY_DATABASE_URL. Both scripts open by dropping the public
+          # schema, and reading the application's own variable is what made
+          # that a data-loss risk for anyone who exported this repository's
+          # .env and ran the documented command. The dedicated variable, the
+          # `_drift` database name and ALPPY_ENV are the three things
+          # alppy.db.disposable insists on before it will hand over a DSN.
+          ALPPY_ENV: ci
+          ALPPY_DISPOSABLE_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_drift
         run: python scripts/check-schema-drift.py
 
   row-level-security:
@@ -320,7 +327,14 @@ jobs:
       # mechanism off with every test still green (D84).
       - name: Prove a bound tenant cannot read past its school
         env:
-          ALPPY_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_rls
+          # Not ALPPY_DATABASE_URL. Both scripts open by dropping the public
+          # schema, and reading the application's own variable is what made
+          # that a data-loss risk for anyone who exported this repository's
+          # .env and ran the documented command. The dedicated variable, the
+          # `_rls` database name and ALPPY_ENV are the three things
+          # alppy.db.disposable insists on before it will hand over a DSN.
+          ALPPY_ENV: ci
+          ALPPY_DISPOSABLE_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_rls
         run: python scripts/check-rls.py
 
   e2e:

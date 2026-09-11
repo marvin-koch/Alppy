@@ -17,10 +17,15 @@ is the very thing the migrations are supposed to reproduce.
 
 Usage
 -----
-    ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
+    createdb alppy_drift
+    ALPPY_ENV=local \
+    ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://user:pw@localhost:5432/alppy_drift \
+        python scripts/check-schema-drift.py
 
-The URL must point at a **disposable** database: this drops and recreates its
-public schema. Exits 0 when clean, 1 with the differences listed otherwise.
+This **drops and recreates the public schema** of the database it is given, so
+it refuses to run against one that is not visibly disposable — see
+``alppy.db.disposable``. Exits 0 when clean, 1 with the differences listed, 2
+when it would not accept the database it was pointed at.
 """
 
 from __future__ import annotations
@@ -32,13 +37,19 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "apps" / "api"))
 
-URL = os.environ.get("ALPPY_DATABASE_URL")
-if not URL:
-    print("ALPPY_DATABASE_URL is not set; pointing it at a disposable database is required")
-    raise SystemExit(2)
-if "postgresql" not in URL:
-    print(f"this check needs Postgres, not {URL.split('://')[0]}: SQLite cannot show the drift")
-    raise SystemExit(2)
+from alppy.db.disposable import NotDisposableError, resolve_disposable_url
+
+try:
+    URL = resolve_disposable_url(os.environ)
+except NotDisposableError as exc:
+    print(exc)
+    raise SystemExit(2) from None
+
+# alembic/env.py reads the app's own setting rather than anything passed to it,
+# by design — a migration must not be runnable against a URL hard-coded in a
+# file. Pointing that setting at the database the guard just approved is how
+# the two rules meet.
+os.environ["ALPPY_DATABASE_URL"] = URL
 
 
 def main() -> int:

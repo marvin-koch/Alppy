@@ -42,15 +42,27 @@ pnpm i18n:check                    # fails on a key missing from any locale
 PYTHONPATH=apps/api .venv/bin/python -m pytest apps/api/tests -q
 .venv/bin/ruff check apps/api && .venv/bin/mypy --config-file apps/api/pyproject.toml apps/api/alppy
 
-# Migrations reproduce the models. Needs a DISPOSABLE Postgres: it drops the
-# public schema. The unit tests build their schema with create_all() from the
-# models, so they structurally cannot catch this.
-ALPPY_DATABASE_URL=postgresql+psycopg://... python scripts/check-schema-drift.py
+# Both checks below DROP THE PUBLIC SCHEMA of the database they are given, so
+# both refuse anything that is not visibly disposable: a throwaway database
+# name, ALPPY_ENV of ci|local, and loopback unless you name the dedicated
+# variable (alppy/db/disposable.py). Do NOT hand them ALPPY_DATABASE_URL or
+# ALPPY_ADMIN_DATABASE_URL — those are the database the app is serving, and
+# reading them is what used to make this a data-loss risk.
+createdb alppy_drift alppy_rls
+
+# Migrations reproduce the models. The unit tests build their schema with
+# create_all() from the models, so they structurally cannot catch this.
+ALPPY_ENV=local \
+ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://user:pw@localhost:5432/alppy_drift \
+  python scripts/check-schema-drift.py
 
 # Row-level security: same disposable-Postgres shape, same blind spot. SQLite has
 # no roles and no policies, so the unit tests cannot see a policy that was never
-# created, a FORCE left off, or the API pointed back at the owning role.
-ALPPY_DATABASE_URL=postgresql+psycopg://OWNER:...@host/db python scripts/check-rls.py
+# created, a FORCE left off, or the API pointed back at the owning role. This one
+# wants the OWNER's credentials — against a database of its own, never the app's.
+ALPPY_ENV=local \
+ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://OWNER:pw@localhost:5432/alppy_rls \
+  python scripts/check-rls.py
 
 python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
 python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
