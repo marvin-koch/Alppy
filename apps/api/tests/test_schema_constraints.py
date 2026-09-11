@@ -1093,3 +1093,205 @@ def test_a_mastery_score_is_a_unit_interval(db: Session, world: World) -> None:
             )
         )
         db.flush()
+
+
+# --------------------------------------------------------------------------
+# The open-membership indexes — what the widened primary key does NOT give
+# --------------------------------------------------------------------------
+# 0027 made a membership an interval, which meant widening three primary keys
+# to include `valid_from` so that a gap-then-return is a second row. The
+# widened key alone admits **two open rows** for the same pair, differing only
+# in `valid_from` — and that pupil is then enrolled twice, today: counted twice
+# in every roster join, drawn twice in every matrix column, with no error
+# anywhere near the wrong number. `uq_class_student_open` and its two siblings
+# are the guarantee, and they are partial (`WHERE valid_to IS NULL`) because
+# constraining *rows* rather than *open rows* would forbid the history.
+#
+# These live here rather than in the default suite for a reason that was itself
+# a finding: SQLAlchemy applies `postgresql_where` only on PostgreSQL, so on
+# SQLite these three indexes were created as UNCONDITIONALLY unique. The unit
+# suite was therefore *stricter* than production — it forbade the closed-row +
+# open-row pair that Postgres allows and the product depends on — which is the
+# worst direction for a divergence to run, because every test passes.
+# `sqlite_where` now mirrors the predicate so the two engines agree; these
+# tests assert the behaviour against the engine that actually ships.
+
+
+def _enrol(
+    db: Session,
+    world: World,
+    student: Student,
+    *,
+    valid_from: str,
+    valid_to: str | None = None,
+) -> None:
+    db.execute(
+        pg_insert(_TABLES["class_student"]).values(
+            class_id=world.klass.id,
+            student_id=student.id,
+            valid_from=valid_from,
+            valid_to=valid_to,
+        )
+    )
+
+
+def _pupil(db: Session, world: World, *, uid: str, number: int) -> Student:
+    person = Person(
+        id=uuid.uuid4(), school_id=world.school.id, first_name="Lea", last_name="Roth"
+    )
+    db.add(person)
+    db.flush()
+    student = Student(
+        id=uuid.uuid4(),
+        school_id=world.school.id,
+        person_id=person.id,
+        school_year_id=world.year.id,
+        home_class_id=world.klass.id,
+        uid=uid,
+        number=number,
+        first_name="Lea",
+        last_name="Roth",
+    )
+    db.add(student)
+    db.flush()
+    return student
+
+
+def test_a_pupil_cannot_be_enrolled_in_one_class_twice_at_once(
+    db: Session, world: World
+) -> None:
+    """`uq_class_student_open`. Two open rows differing only in `valid_from`.
+
+    The primary key is `(class_id, student_id, valid_from)`, so these two rows
+    do not collide on it. Only the partial index stops them.
+    """
+    student = _pupil(db, world, uid="5A_9", number=9)
+    _enrol(db, world, student, valid_from="2026-08-20")
+    db.commit()
+
+    with pytest.raises(IntegrityError):
+        _enrol(db, world, student, valid_from="2026-09-01")
+        db.flush()
+
+
+def test_a_teacher_cannot_hold_one_branch_in_one_class_twice_at_once(
+    db: Session, world: World
+) -> None:
+    """`uq_class_teacher_subject_open`, the same rule for a staffing row."""
+    world.declare(db, world.maths)
+    world.assign(db, world.martin, world.maths)
+    db.commit()
+
+    with pytest.raises(IntegrityError):
+        db.execute(
+            pg_insert(_TABLES["class_teacher_subject"]).values(
+                class_id=world.klass.id,
+                teacher_id=world.martin.id,
+                subject_id=world.maths.id,
+                valid_from="2027-01-15",
+            )
+        )
+        db.flush()
+
+
+def test_a_teacher_cannot_join_one_school_twice_at_once(
+    db: Session, world: World
+) -> None:
+    """`uq_teacher_school_open`. `World._teacher` already opened one."""
+    db.commit()
+    with pytest.raises(IntegrityError):
+        db.execute(
+            pg_insert(_TABLES["teacher_school"]).values(
+                teacher_id=world.martin.id,
+                school_id=world.school.id,
+                valid_from="2027-01-15",
+            )
+        )
+        db.flush()
+
+
+def test_a_pupil_who_left_in_february_rejoins_in_may(db: Session, world: World) -> None:
+    """The other half of "partial": a closed row and an open one coexist.
+
+    Lea is streamed out of the niveau-2 maths group in February and comes back
+    in May. Both facts have to be on the record — the October worksheets she
+    sat there are reached through the closed row (D87) — and she is enrolled
+    exactly once today. An index over `(class_id, student_id)` with no
+    predicate forbids this, which is precisely what the SQLite suite was doing
+    before `sqlite_where` was added.
+    """
+    student = _pupil(db, world, uid="5A_10", number=10)
+    _enrol(db, world, student, valid_from="2026-08-20", valid_to="2027-02-15")
+    _enrol(db, world, student, valid_from="2027-05-01")
+    db.commit()
+
+    rows = db.execute(
+        sa.select(
+            _TABLES["class_student"].c.valid_from, _TABLES["class_student"].c.valid_to
+        )
+        .where(_TABLES["class_student"].c.student_id == student.id)
+        .order_by(_TABLES["class_student"].c.valid_from)
+    ).all()
+    assert len(rows) == 2, "the gap-then-return could not be represented"
+    assert rows[0].valid_to is not None
+    assert rows[1].valid_to is None
+
+    open_rows = db.execute(
+        sa.select(sa.func.count())
+        .select_from(_TABLES["class_student"])
+        .where(_TABLES["class_student"].c.student_id == student.id)
+        .where(_TABLES["class_student"].c.valid_to.is_(None))
+    ).scalar_one()
+    assert open_rows == 1, "she is on the roster twice today"
+
+
+def test_two_closed_memberships_for_the_same_pair_are_allowed(
+    db: Session, world: World
+) -> None:
+    """History is not constrained; only the present is.
+
+    Three spells in the same group over two years is an ordinary career, and
+    the index must not be the thing that decides how many times a child may
+    change their mind.
+    """
+    student = _pupil(db, world, uid="5A_11", number=11)
+    _enrol(db, world, student, valid_from="2026-08-20", valid_to="2026-11-01")
+    _enrol(db, world, student, valid_from="2026-12-01", valid_to="2027-02-15")
+    _enrol(db, world, student, valid_from="2027-05-01", valid_to="2027-06-30")
+    db.commit()
+
+    total = db.execute(
+        sa.select(sa.func.count())
+        .select_from(_TABLES["class_student"])
+        .where(_TABLES["class_student"].c.student_id == student.id)
+    ).scalar_one()
+    assert total == 3
+
+
+def test_the_open_indexes_are_partial_on_the_engine_that_ships(
+    db: Session, world: World
+) -> None:
+    """Read the predicate back out of Postgres itself.
+
+    The behavioural tests above would all still pass if the predicate were
+    `WHERE true`; this is the one that says the index is the shape it was
+    designed to be, asked of the database rather than of the model that
+    generated it.
+    """
+    predicates = dict(
+        db.execute(
+            sa.text(
+                "SELECT indexname, indexdef FROM pg_indexes "
+                "WHERE indexname LIKE 'uq_%_open'"
+            )
+        ).all()
+    )
+    assert set(predicates) == {
+        "uq_class_student_open",
+        "uq_class_teacher_subject_open",
+        "uq_teacher_school_open",
+    }, f"an open-membership index is missing: {sorted(predicates)}"
+    for name, definition in predicates.items():
+        assert "WHERE (valid_to IS NULL)" in definition, (
+            f"{name} is not partial: {definition}"
+        )
