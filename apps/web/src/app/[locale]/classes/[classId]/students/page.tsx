@@ -23,6 +23,7 @@ import type { MasteryCell, Uuid } from '@/lib/api/types';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /**
  * Worst first, and `none` is not a weakness — it is the absence of evidence.
@@ -56,11 +57,7 @@ interface RosterRow {
 /** `mastery_service.ATTENTION_BANDS`, the same two the home screen counts. */
 const ATTENTION: ReadonlySet<MasteryBand> = new Set<MasteryBand>(['weak', 'fading']);
 
-export default function StudentsPage({
-  params,
-}: {
-  params: Promise<{ classId: string }>;
-}) {
+export default function StudentsPage({ params }: { params: Promise<{ classId: string }> }) {
   const { classId } = use(params);
   const t = useTranslations('students');
   const { hideNames } = useDiscretion();
@@ -96,9 +93,7 @@ export default function StudentsPage({
       // not a mastery claim about the child.
       const assessed = mine.filter((c) => c.band !== 'none');
       const weakest = assessed.length
-        ? assessed.reduce((worst, c) =>
-            SEVERITY[c.band] < SEVERITY[worst.band] ? c : worst,
-          ).band
+        ? assessed.reduce((worst, c) => (SEVERITY[c.band] < SEVERITY[worst.band] ? c : worst)).band
         : null;
       return {
         id: s.id,
@@ -138,9 +133,7 @@ export default function StudentsPage({
       <header className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1>{t('heading', { code: klass.data?.code ?? '' })}</h1>
-          <p className="text-body-s text-ink-500">
-            {t('count', { count: rows.length })}
-          </p>
+          <p className="text-body-s text-ink-500">{t('count', { count: rows.length })}</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <RevealNames />
@@ -168,6 +161,7 @@ export default function StudentsPage({
         <ErrorState
           title={te('title')}
           description={te('body')}
+          requestId={requestIdOf(matrix.error)}
           action={
             <Button variant="secondary" onClick={() => void matrix.refetch()}>
               {te('action')}
@@ -225,9 +219,7 @@ export default function StudentsPage({
                             key={code}
                             variant={code === row.homeClassCode ? 'primary' : 'neutral'}
                           >
-                            {code === row.homeClassCode
-                              ? t('homeClass', { code })
-                              : code}
+                            {code === row.homeClassCode ? t('homeClass', { code }) : code}
                           </Chip>
                         ))
                       : null}

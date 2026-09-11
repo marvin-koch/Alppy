@@ -23,11 +23,7 @@ import { ExercisePicker } from '@/components/sheet-builder/ExercisePicker';
 import { ProposeTab } from '@/components/sheet-builder/ProposeTab';
 import { SectionPicker } from '@/components/sheet-builder/SectionPicker';
 import { SheetComposer } from '@/components/sheet-builder/SheetComposer';
-import {
-  ThemePicker,
-  canFile,
-  type ThemeSelection,
-} from '@/components/sheet-builder/ThemePicker';
+import { ThemePicker, canFile, type ThemeSelection } from '@/components/sheet-builder/ThemePicker';
 import {
   draftHasMixedLanguages,
   draftLanguage,
@@ -35,7 +31,7 @@ import {
   useDraftSheet,
 } from '@/components/sheet-builder/useDraftSheet';
 import { Link, useRouter } from '@/i18n/navigation';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import {
   useChapters,
   useCreateSheet,
@@ -85,14 +81,18 @@ export default function SheetBuilderPage() {
 
   // Only for the "Sans thème" count in the picker: how many exercises in this
   // Branch the ingest could not tag with a chapter at all.
-  const tree = useCurriculumTree(activeClass || null, activeSubject ? { subjectId: activeSubject } : {});
+  const tree = useCurriculumTree(
+    activeClass || null,
+    activeSubject ? { subjectId: activeSubject } : {},
+  );
   const unfiledExerciseCount =
-    tree.data?.branches.find((b) => b.subject_id === activeSubject)
-      ?.unfiled_exercise_count ?? 0;
+    tree.data?.branches.find((b) => b.subject_id === activeSubject)?.unfiled_exercise_count ?? 0;
 
   // Keyed on the pair the draft belongs to: coming back to a different class
   // must not hand the teacher the other one's exercises (F19).
-  const draft = useDraftSheet(activeClass && activeSubject ? `${activeClass}:${activeSubject}` : null);
+  const draft = useDraftSheet(
+    activeClass && activeSubject ? `${activeClass}:${activeSubject}` : null,
+  );
   const create = useCreateSheet();
   const composer = useRef<HTMLDivElement | null>(null);
 
@@ -195,7 +195,11 @@ export default function SheetBuilderPage() {
 
   if (sources.isError) {
     return (
-      <ErrorState title={te('title')} description={apiErrorMessage(sources.error, tcode)} />
+      <ErrorState
+        title={te('title')}
+        description={apiErrorMessage(sources.error, tcode)}
+        requestId={requestIdOf(sources.error)}
+      />
     );
   }
 
@@ -211,7 +215,9 @@ export default function SheetBuilderPage() {
   const scopeLine = [
     scope.currentClass?.code,
     scope.currentSubject
-      ? (scope.currentSubject.labels[locale] ?? scope.currentSubject.labels.fr ?? scope.currentSubject.key)
+      ? (scope.currentSubject.labels[locale] ??
+        scope.currentSubject.labels.fr ??
+        scope.currentSubject.key)
       : null,
   ]
     .filter(Boolean)
@@ -259,10 +265,10 @@ export default function SheetBuilderPage() {
           <label className="block">
             <span className="sr-only">{ts('sheetTitle')}</span>
             <input
-            value={title}
-            onChange={(event) => setTitle(event.target.value)}
-            placeholder={suggestedTitle || t('titlePlaceholder')}
-            maxLength={200}
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder={suggestedTitle || t('titlePlaceholder')}
+              maxLength={200}
               className="w-full rounded-sm border-0 bg-transparent px-0 font-display text-h1 font-bold text-ink-900 placeholder:text-ink-300 focus:outline-none focus-visible:shadow-[0_0_0_4px_var(--c-primary-100)]"
             />
           </label>
@@ -335,11 +341,7 @@ export default function SheetBuilderPage() {
                   sourceId={sourceId || null}
                   section={section}
                   themeFilter={
-                    theme === 'unfiled'
-                      ? 'none'
-                      : canFile(theme)
-                        ? theme.chapter_id
-                        : undefined
+                    theme === 'unfiled' ? 'none' : canFile(theme) ? theme.chapter_id : undefined
                   }
                   draft={draft}
                   sources={readySources}
@@ -386,9 +388,7 @@ export default function SheetBuilderPage() {
             <p className="font-display font-semibold">
               {t('exerciseCount', { count: draft.count })}
             </p>
-            <p className="text-body-s text-ink-500">
-              {t('pagesA4', { count: draft.minPages })}
-            </p>
+            <p className="text-body-s text-ink-500">{t('pagesA4', { count: draft.minPages })}</p>
           </div>
           <Button
             variant="primary"

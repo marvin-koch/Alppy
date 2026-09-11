@@ -25,6 +25,7 @@ import { useFormatters } from '@/lib/format';
 import { useScope } from '@/lib/scope';
 import { useTimeline } from '@/lib/api/queries';
 import type { EventKind, TimelineEventOut } from '@/lib/api/types';
+import { requestIdOf } from '@/lib/api/error-message';
 
 const PAGE = 20;
 
@@ -131,6 +132,7 @@ export default function TimelinePage() {
       <ErrorState
         title={t('error.title')}
         description={t('error.body')}
+        requestId={requestIdOf(timeline.error)}
         action={
           <Button variant="primary" onClick={() => void timeline.refetch()}>
             {tc('retry')}
@@ -230,9 +232,7 @@ export default function TimelinePage() {
                           </span>
                           <span className="block font-bold">{event.title}</span>
                         </span>
-                        {event.class_code ? (
-                          <Chip data-numeric>{event.class_code}</Chip>
-                        ) : null}
+                        {event.class_code ? <Chip data-numeric>{event.class_code}</Chip> : null}
                         {/* The row it describes is gone. The line stays —
                             deleting a sheet does not un-print it — but it is
                             no longer a link. */}
@@ -264,9 +264,7 @@ export default function TimelinePage() {
 
           {(timeline.data?.total ?? 0) > items.length ? (
             <div className="mt-6 flex justify-center">
-              <Button onClick={() => setLimit((current) => current + PAGE)}>
-                {t('loadMore')}
-              </Button>
+              <Button onClick={() => setLimit((current) => current + PAGE)}>{t('loadMore')}</Button>
             </div>
           ) : null}
         </>

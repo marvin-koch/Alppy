@@ -6,7 +6,7 @@ import { use, useState } from 'react';
 
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
 import { LockedValue } from '@/components/LockedValue';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import {
   useChapters,
   useDeleteChapter,
@@ -30,11 +30,7 @@ import type { ChapterOut, SourceOut, Uuid } from '@/lib/api/types';
  * `primary_competency_id === null`, never by its key: a school may relabel it,
  * and a rename must not make it deletable.
  */
-export default function BranchSettingsPage({
-  params,
-}: {
-  params: Promise<{ subjectId: string }>;
-}) {
+export default function BranchSettingsPage({ params }: { params: Promise<{ subjectId: string }> }) {
   const { subjectId } = use(params);
   const t = useTranslations('settings');
   const tc = useTranslations('common');
@@ -77,6 +73,7 @@ export default function BranchSettingsPage({
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(chapters.error)}
         action={<Button onClick={() => void chapters.refetch()}>{tc('retry')}</Button>}
       />
     );
@@ -181,10 +178,7 @@ export default function BranchSettingsPage({
                 {editingBook === book.id ? (
                   <>
                     <Field label={t('bookTitle')}>
-                      <Input
-                        value={bookTitle}
-                        onChange={(e) => setBookTitle(e.target.value)}
-                      />
+                      <Input value={bookTitle} onChange={(e) => setBookTitle(e.target.value)} />
                     </Field>
                     <Field label={t('publisher')}>
                       <Input
@@ -243,9 +237,7 @@ export default function BranchSettingsPage({
                 ) : (
                   <div className="flex flex-wrap items-center gap-3">
                     <span className="min-w-0 flex-1 truncate font-semibold">
-                      {book.title ?? (
-                        <span className="text-ink-500">{t('noTitle')}</span>
-                      )}
+                      {book.title ?? <span className="text-ink-500">{t('noTitle')}</span>}
                     </span>
                     <span className="truncate font-mono text-label text-ink-500">
                       {book.filename}

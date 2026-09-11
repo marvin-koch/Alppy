@@ -123,6 +123,9 @@ export default function ClassPage({ params }: { params: Promise<{ classId: strin
   if (isError) {
     return gone ? (
       // No retry: the way forward is the class list, not this address again.
+      // And no request id either — a 404 is not a malfunction to report, it is an
+      // answer. Reporting it would send a teacher to support about a class that
+      // is simply no longer theirs.
       <ErrorState
         title={te('title')}
         description={tcode('not_found')}

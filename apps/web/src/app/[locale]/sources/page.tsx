@@ -19,6 +19,7 @@ import { useState } from 'react';
 import { useSourceExercises, useSources, useSubjects, useUploadSource } from '@/lib/api/queries';
 import { useFormatters } from '@/lib/format';
 import type { SourceOut } from '@/lib/api/types';
+import { requestIdOf } from '@/lib/api/error-message';
 
 const MAX_MB = 50;
 
@@ -36,7 +37,7 @@ export default function SourcesPage() {
   // worker, so the list polls while anything is still moving. The poll lives
   // in `useSources` now (F25): a `setInterval` here was
   // the only hand-rolled one left, and it kept asking on a hidden tab.
-  const { data, isLoading, isError, refetch } = useSources();
+  const { data, isLoading, isError, error, refetch } = useSources();
 
   const activeSubject = subjectId || subjects.data?.[0]?.id || '';
 
@@ -116,6 +117,7 @@ export default function SourcesPage() {
         <ErrorState
           title={te('title')}
           description={te('body')}
+          requestId={requestIdOf(error)}
           action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
         />
       ) : sources.length === 0 ? (

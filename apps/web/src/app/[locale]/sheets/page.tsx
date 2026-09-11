@@ -21,6 +21,7 @@ import { useCurriculumTree, useSheets } from '@/lib/api/queries';
 import type { SheetOut, Uuid } from '@/lib/api/types';
 import { useScope } from '@/lib/scope';
 import { useFormatters } from '@/lib/format';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /**
  * The sheets the teacher has built, for the class the shell is on.
@@ -48,7 +49,7 @@ export default function SheetsIndexPage() {
   // branch's tree, so listing every subject's sheets against it would file
   // another subject's work under "Non classé" permanently — not a loading
   // flash, the resting state.
-  const { data, isLoading, isError, refetch } = useSheets(
+  const { data, isLoading, isError, error, refetch } = useSheets(
     classId ?? undefined,
     subjectId ?? undefined,
   );
@@ -108,6 +109,7 @@ export default function SheetsIndexPage() {
         <ErrorState
           title={te('title')}
           description={te('body')}
+          requestId={requestIdOf(error)}
           action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
         />
       ) : sheets.length === 0 ? (

@@ -23,6 +23,7 @@ import { useClassSubject } from '@/lib/use-class-subject';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /**
  * One Competence, for one class.
@@ -116,7 +117,11 @@ export default function CompetencePage({
     return (
       <div className="mx-auto max-w-4xl">
         {header}
-        <ErrorState title={te('title')} description={te('body')} />
+        <ErrorState
+          title={te('title')}
+          description={te('body')}
+          requestId={requestIdOf(tree.error)}
+        />
       </div>
     );
   }

@@ -24,7 +24,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { use, useEffect, useRef, useState } from 'react';
 
 import { ApiError, API_BASE } from '@/lib/api/client';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { ApiErrorBody } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
 import { printReadiness } from '@/lib/print';
@@ -97,6 +97,7 @@ export default function SheetPage({ params }: { params: Promise<{ sheetId: strin
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(sheet.error)}
         action={<Button onClick={() => void sheet.refetch()}>{tc('retry')}</Button>}
       />
     );

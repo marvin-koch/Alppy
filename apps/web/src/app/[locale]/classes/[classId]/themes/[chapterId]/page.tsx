@@ -22,6 +22,7 @@ import { useClass, useCurriculumTree, useSheets } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useFormatters } from '@/lib/format';
 import { useClassSubject } from '@/lib/use-class-subject';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /** One Theme, for one class: where it sits, what it credits, what was set. */
 export default function ThemePage({
@@ -60,7 +61,13 @@ export default function ThemePage({
   const crumbs = [
     { label: klass.data?.code ?? '', href: `/classes/${classId}`, key: 'class' },
     ...(branch
-      ? [{ label: label(branch.labels, branch.subject_key), href: `/classes/${classId}`, key: 'branch' }]
+      ? [
+          {
+            label: label(branch.labels, branch.subject_key),
+            href: `/classes/${classId}`,
+            key: 'branch',
+          },
+        ]
       : []),
     ...(parent
       ? [
@@ -96,7 +103,11 @@ export default function ThemePage({
     return (
       <div className="mx-auto max-w-4xl">
         {header}
-        <ErrorState title={te('title')} description={te('body')} />
+        <ErrorState
+          title={te('title')}
+          description={te('body')}
+          requestId={requestIdOf(tree.error)}
+        />
       </div>
     );
   }
@@ -171,9 +182,7 @@ export default function ThemePage({
                   href={`/sheets/${sheet.id}`}
                   className="flex min-h-11 flex-wrap items-center gap-3 rounded-md px-2 py-2 no-underline hover:bg-primary-050"
                 >
-                  <span className="min-w-0 flex-1 font-semibold text-ink-900">
-                    {sheet.title}
-                  </span>
+                  <span className="min-w-0 flex-1 font-semibold text-ink-900">{sheet.title}</span>
                   {/* A corrected sheet IS its confirmed scan; there is no
                       separate entity, so the count of piles is the honest
                       thing to show here. */}

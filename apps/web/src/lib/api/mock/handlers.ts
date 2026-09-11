@@ -366,6 +366,8 @@ export interface MockFailure {
   times?: number;
 }
 
+let failureCounter = 0;
+
 function failureFor(method: string, url: string): MockFailure | undefined {
   const queued = globalThis.__alppyMockFail;
   if (!queued || queued.length === 0) return undefined;
@@ -408,7 +410,18 @@ export async function handleMock<T>(
   // Before anything is mutated: a test asking for a 500 wants the state the
   // teacher's screen was in, not that state with the write half-applied.
   const failure = failureFor(method, url);
-  if (failure) throw new ApiError(failure.status, failure.code, `injected ${failure.status}`);
+  if (failure) {
+    // With a request id, because the real envelope always carries one
+    // (`api/errors.py`) and a screen that renders it has to have something to
+    // render. Stable per failure so a test can read it back.
+    throw new ApiError(
+      failure.status,
+      failure.code,
+      `injected ${failure.status}`,
+      {},
+      `mock-${failure.status}-${(failureCounter += 1)}`,
+    );
+  }
   // The query string used to be dropped on the floor, so a filtered or sorted
   // request was indistinguishable from an unfiltered one and no e2e test could
   // tell whether the controls did anything.

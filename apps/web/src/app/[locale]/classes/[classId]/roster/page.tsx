@@ -18,7 +18,7 @@ import { Link, useRouter } from '@/i18n/navigation';
 import { RevealNames } from '@/components/RevealNames';
 import { StudentEditor } from '@/components/StudentEditor';
 import { useAddStudents, useClass, useStudents } from '@/lib/api/queries';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { Uuid } from '@/lib/api/types';
 import { useDiscretion } from '@/lib/discreet';
 import { takeRoster } from '@/lib/roster-handoff';
@@ -92,6 +92,7 @@ export default function RosterPage({ params }: { params: Promise<{ classId: stri
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(klass.error ?? existing.error)}
         action={
           <Button
             onClick={() => {

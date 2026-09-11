@@ -20,14 +20,8 @@ import { useEffect, useMemo, useState } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { DEFAULT_PAGE_SIZE, useSourceExercises } from '@/lib/api/queries';
-import { apiErrorMessage } from '@/lib/api/error-message';
-import type {
-  ExerciseOut,
-  ExerciseType,
-  SourceOut,
-  SourceSectionOut,
-  Uuid,
-} from '@/lib/api/types';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
+import type { ExerciseOut, ExerciseType, SourceOut, SourceSectionOut, Uuid } from '@/lib/api/types';
 import { ExerciseRow } from './ExerciseRow';
 import type { DraftSheet } from './useDraftSheet';
 
@@ -136,7 +130,9 @@ export function ExercisePicker({
     <Card className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-h3">{t('inDocument')}</h2>
-        {facets ? <Badge variant="neutral">{t('exerciseCount', { count: facets.total })}</Badge> : null}
+        {facets ? (
+          <Badge variant="neutral">{t('exerciseCount', { count: facets.total })}</Badge>
+        ) : null}
       </div>
 
       {/* — filters — */}
@@ -218,6 +214,7 @@ export function ExercisePicker({
         <ErrorState
           title={te('generic')}
           description={apiErrorMessage(exercises.error, te)}
+          requestId={requestIdOf(exercises.error)}
           action={<Button onClick={() => void exercises.refetch()}>{tc('retry')}</Button>}
         />
       ) : exercises.isPending ? (

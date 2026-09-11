@@ -185,6 +185,20 @@ jobs:
         with: { node-version: "22" }
       - run: node scripts/check-i18n.mjs
 
+  # docs/plan.md §5 is the screen inventory of record, and it had gone stale at
+  # eleven screens of twenty-four. Two frontend audits in a row asked whether it
+  # was still the record; this is what makes the answer stay yes. Unlike §4's
+  # route list it is not generated — each line says what a screen is FOR — so
+  # this checks the set of paths, which is the half that drifts silently.
+  screens:
+    name: Screens — the inventory matches the route tree
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: "22" }
+      - run: node scripts/check-screens.mjs
+
   layout-contract:
     name: Print geometry has not drifted
     runs-on: ubuntu-latest

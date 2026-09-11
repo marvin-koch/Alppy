@@ -19,6 +19,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useDiscretion } from '@/lib/discreet';
 import { pupilLabel } from '@/lib/pupil-label';
 import { useFormatters } from '@/lib/format';
+import { requestIdOf } from '@/lib/api/error-message';
 
 export interface CellDrillDownProps {
   studentId: Uuid;
@@ -55,7 +56,10 @@ export function CellDrillDown({
   // a teacher is most likely to click during a lesson (DC-content, D94).
   const { hideNames } = useDiscretion();
 
-  const { data, isLoading, isError, refetch } = useCompetencyAttempts(studentId, competencyId);
+  const { data, isLoading, isError, error, refetch } = useCompetencyAttempts(
+    studentId,
+    competencyId,
+  );
 
   const competencyLabel =
     data?.competency.labels?.[locale] ?? data?.competency.labels?.fr ?? data?.competency.code ?? '';
@@ -82,6 +86,7 @@ export function CellDrillDown({
         <ErrorState
           title={te('title')}
           description={te('body')}
+          requestId={requestIdOf(error)}
           action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
         />
       ) : null}

@@ -26,6 +26,7 @@ import { useBandLabels } from '@/lib/bands';
 import { useFormatters } from '@/lib/format';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /** The same thresholds as docs/mastery-model.md §2, for the overall ring. */
 function bandOf(score: number): MasteryBand {
@@ -53,7 +54,7 @@ export default function StudentPage({
   const fmt = useFormatters();
   const bandLabels = useBandLabels();
 
-  const { data, isLoading, isError, refetch } = useStudentMastery(studentId);
+  const { data, isLoading, isError, error, refetch } = useStudentMastery(studentId);
   const klass = useClass(classId as Uuid);
   // The same tree the class dashboard shows, narrowed to this child, so the
   // headings carry their own bands rather than the class's.
@@ -96,6 +97,7 @@ export default function StudentPage({
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(error)}
         action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
       />
     );

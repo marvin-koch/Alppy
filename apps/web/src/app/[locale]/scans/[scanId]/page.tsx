@@ -45,7 +45,7 @@ import {
   useSheet,
 } from '@/lib/api/queries';
 import { Link, useRouter } from '@/i18n/navigation';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { DetectionCorrection, DetectionOut, ScanPageOut, Uuid } from '@/lib/api/types';
 import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { RevealNames } from '@/components/RevealNames';
@@ -376,6 +376,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(scan.error)}
         action={<Button onClick={() => void scan.refetch()}>{tc('retry')}</Button>}
       />
     );
@@ -383,6 +384,9 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
 
   if (scan.data.status === 'failed') {
     return (
+      // No request id: `scan.data.error` is a failure the WORKER recorded on the
+      // pile, not an HTTP envelope, so there is no request to name. The read that
+      // fetched it succeeded.
       <ErrorState
         title={t('failed.title')}
         description={scan.data.error ?? t('failed.body')}

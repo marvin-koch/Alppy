@@ -28,7 +28,7 @@ import {
   useReorderBranches,
   useSubjects,
 } from '@/lib/api/queries';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import type { ClassTeacherOut, SubjectOut, Uuid } from '@/lib/api/types';
 
 /**
@@ -49,11 +49,7 @@ import type { ClassTeacherOut, SubjectOut, Uuid } from '@/lib/api/types';
  * branch no colour, icon or tint (DC-colour-06, DC-colour-08) — the mandarin
  * accent means "a model wrote this" and nothing else, so a branch is named.
  */
-export default function TeachingPage({
-  params,
-}: {
-  params: Promise<{ classId: string }>;
-}) {
+export default function TeachingPage({ params }: { params: Promise<{ classId: string }> }) {
   const { classId } = use(params);
   const t = useTranslations('teaching');
   const tc = useTranslations('common');
@@ -117,6 +113,7 @@ export default function TeachingPage({
       <ErrorState
         title={t('error.title')}
         description={t('error.body')}
+        requestId={requestIdOf(klass.error ?? teachers.error ?? subjects.error ?? colleagues.error)}
         action={
           <Button
             onClick={() => {
@@ -145,9 +142,7 @@ export default function TeachingPage({
   /** Whoever does not already hold this branch. Includes the signed-in teacher:
    *  `/colleagues` returns the whole staffroom, self included. */
   const addable = (subjectId: Uuid) =>
-    (colleagues.data ?? []).filter(
-      (c) => !holders(subjectId).some((h) => h.teacher_id === c.id),
-    );
+    (colleagues.data ?? []).filter((c) => !holders(subjectId).some((h) => h.teacher_id === c.id));
 
   function move(subjectId: Uuid, by: -1 | 1) {
     const from = declared.indexOf(subjectId);

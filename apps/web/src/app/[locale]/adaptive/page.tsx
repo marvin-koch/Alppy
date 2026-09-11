@@ -32,7 +32,7 @@ import { useRouter } from '@/i18n/navigation';
 import { discardAdaptive as discardAdaptiveNow } from '@/lib/api/endpoints';
 import { useFormatters } from '@/lib/format';
 import { useScope } from '@/lib/scope';
-import { apiErrorMessage } from '@/lib/api/error-message';
+import { apiErrorMessage, requestIdOf } from '@/lib/api/error-message';
 import { loadRun, recentRuns, rememberRun, saveRun, type RecentRun } from '@/lib/adaptive-session';
 
 import { AdaptiveItem } from '@/components/AdaptiveItem';
@@ -447,6 +447,7 @@ export default function AdaptivePage() {
       <ErrorState
         title={t('loadError.title')}
         description={t('loadError.body')}
+        requestId={requestIdOf(classes.error ?? subjects.error)}
         action={
           <Button
             variant="primary"
@@ -912,6 +913,7 @@ export default function AdaptivePage() {
           // The API's `message` is its own English string, for the console
           // (`client.ts` says so). `apiErrorMessage` switches on `code` instead.
           details={apiErrorMessage(propose.error ?? proposal.error, tcode)}
+          requestId={requestIdOf(propose.error ?? proposal.error)}
           action={
             <Button
               variant="primary"
@@ -1151,6 +1153,7 @@ export default function AdaptivePage() {
                   ? apiErrorMessage(batch.error ?? render.error, tcode)
                   : undefined
               }
+              requestId={requestIdOf(batch.error ?? render.error)}
               action={
                 <Button variant="primary" onClick={startExport}>
                   {t('retry')}

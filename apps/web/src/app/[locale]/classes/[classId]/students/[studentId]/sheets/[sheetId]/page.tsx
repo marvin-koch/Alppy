@@ -22,6 +22,7 @@ import type { StudentSheetItemOut, Uuid } from '@/lib/api/types';
 import { useFormatters } from '@/lib/format';
 import { pointsRatio } from '@/lib/points';
 import { useDiscretion } from '@/lib/discreet';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /**
  * One pupil's copy, question by question.
@@ -46,7 +47,7 @@ export default function StudentSheetPage({
   const te = useTranslations('errors.generic');
   const a11y = useTranslations('a11y');
   const fmt = useFormatters();
-  const { data, isLoading, isError, refetch } = useStudentSheet(studentId, sheetId);
+  const { data, isLoading, isError, error, refetch } = useStudentSheet(studentId, sheetId);
 
   if (isLoading) return <LoadingState shape="list" label={tc('loading')} rows={6} />;
   if (isError || !data) {
@@ -54,6 +55,7 @@ export default function StudentSheetPage({
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(error)}
         action={<Button onClick={() => void refetch()}>{tc('retry')}</Button>}
       />
     );

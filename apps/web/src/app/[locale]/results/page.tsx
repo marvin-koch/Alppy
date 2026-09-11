@@ -24,6 +24,7 @@ import { useScope } from '@/lib/scope';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentNameParts } from '@/lib/studentName';
+import { requestIdOf } from '@/lib/api/error-message';
 
 /** The synthetic right-hand column: everything so far, added up. */
 const TOTAL_COLUMN = '__total__';
@@ -85,10 +86,7 @@ export default function ResultsPage() {
     return [...sheets, { id: TOTAL_COLUMN, label: t('totalColumn') }];
   }, [points.data, t]);
 
-  const classTotal = useMemo(
-    () => aggregatePoints([...byStudent.values()]),
-    [byStudent],
-  );
+  const classTotal = useMemo(() => aggregatePoints([...byStudent.values()]), [byStudent]);
   const classRatio = pointsRatio(classTotal);
 
   const rows = useMemo(
@@ -99,27 +97,16 @@ export default function ResultsPage() {
         // projector mode the name becomes the UID — same row, same number,
         // no answer to "who is that". `studentNameParts` does the same for a
         // pupil whose record was anonymised and has no name to hide.
-        ...(hideNames
-          ? { firstName: student.uid, lastName: '' }
-          : studentNameParts(student)),
+        ...(hideNames ? { firstName: student.uid, lastName: '' } : studentNameParts(student)),
       })),
     [students.data, hideNames],
   );
 
   const valueFor = (studentId: string, columnId: string): PointsValue | undefined =>
-    columnId === TOTAL_COLUMN
-      ? byStudent.get(studentId)
-      : byCell.get(`${studentId}:${columnId}`);
+    columnId === TOTAL_COLUMN ? byStudent.get(studentId) : byCell.get(`${studentId}:${columnId}`);
 
   if (points.isLoading || students.isLoading) {
-    return (
-      <LoadingState
-        shape="matrix"
-        label={tc('loading')}
-        rows={6}
-        columns={5}
-      />
-    );
+    return <LoadingState shape="matrix" label={tc('loading')} rows={6} columns={5} />;
   }
 
   if (points.isError || students.isError) {
@@ -127,6 +114,7 @@ export default function ResultsPage() {
       <ErrorState
         title={te('title')}
         description={te('body')}
+        requestId={requestIdOf(points.error ?? students.error)}
         action={
           <Button
             onClick={() => {
@@ -149,9 +137,7 @@ export default function ResultsPage() {
         <div>
           <h1 className="text-h1">{t('title')}</h1>
           {currentClass ? (
-            <p className="text-body-s text-ink-500">
-              {t('forClass', { code: currentClass.code })}
-            </p>
+            <p className="text-body-s text-ink-500">{t('forClass', { code: currentClass.code })}</p>
           ) : null}
         </div>
         {/* Only rendered when projector mode is on. */}
@@ -233,9 +219,7 @@ export default function ResultsPage() {
               // total column is a summary of several papers and opens nothing.
               onCellSelect={({ studentId, columnId }) => {
                 if (columnId === TOTAL_COLUMN) return;
-                router.push(
-                  `/classes/${classId}/students/${studentId}/sheets/${columnId}`,
-                );
+                router.push(`/classes/${classId}/students/${studentId}/sheets/${columnId}`);
               }}
             />
           </Card>
