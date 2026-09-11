@@ -13,6 +13,7 @@
  * the same thing (F14).
  */
 export const API_ERROR_CODES = [
+  'ai_budget_exceeded',
   'bad_request',
   'branch_holds_sheets',
   'conflict',

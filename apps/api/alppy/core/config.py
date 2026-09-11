@@ -276,6 +276,26 @@ class Settings(BaseSettings):
     proxies actually in front: each extra hop is one entry of attacker-supplied
     text treated as a client address."""
 
+    ai_daily_cap_chf: float = 20.0
+    ai_monthly_cap_chf: float = 200.0
+    """Per school, rolling 24 hours and rolling 30 days. 0 means no ceiling.
+
+    There was no spend limit of any kind (D21): `cost_estimate_chf` was written
+    on every call and never summed. The shapes that make that expensive are in
+    the product already — one call per pupil for feedback, one per crop for
+    open-answer grading, thousands for a textbook ingest.
+
+    The numbers are chosen to bound a runaway without blocking real work: a
+    full textbook ingest is on the order of 10 CHF, so 20 a day leaves room for
+    one and refuses a loop that would do forty. Rolling windows rather than
+    calendar ones, because a calendar month resets at midnight on the 1st,
+    which is the one moment a runaway is guaranteed to be forgiven.
+
+    Enforced at the API boundary (`deps.enforce_ai_budget`), which bounds what
+    can be STARTED. A job already queued when the cap is reached runs to
+    completion — the alternative abandons a class set half-graded, which is a
+    worse thing to hand a teacher than a slightly overshot ceiling."""
+
     rate_limit_backend: Literal["auto", "memory", "redis"] = "auto"
     """Where a rate-limit bucket lives (D30).
 
@@ -346,6 +366,24 @@ class Settings(BaseSettings):
     from under itself. Confirmation reads this: `grading_in_progress` refused a
     pile indefinitely because a stuck row said a grader was still coming, and
     there was no route to clear it."""
+
+    sentry_dsn: str | None = None
+    """Error tracking (D8). Unset — the default — installs nothing at all.
+
+    There is no error tracker, no metrics and no alerting: a failure during a
+    lesson is unrecoverable for that lesson, and the only way anybody learns of
+    one today is a teacher mentioning it afterwards. `core/observability.py` is
+    the integration, complete and inert until this is set; the vendor account is
+    a human act and there is no reason the two should wait for each other.
+
+    Read `observability.before_send` before turning this on. A
+    default-configured tracker sends the request body, and on this API that body
+    is transcriptions of what a named child wrote, presigned links to
+    photographs of their handwriting, roster names, or a password."""
+
+    sentry_traces_sample_rate: float = 0.05
+    """Performance traces, if any. Low on purpose: a scan pipeline is hundreds
+    of spans and what is missing here is error reporting, not an APM product."""
 
     health_detail_token: str | None = None
     """Shared secret for `GET /api/v1/health/detail` (D35).

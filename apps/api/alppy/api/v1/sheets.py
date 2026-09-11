@@ -19,6 +19,7 @@ from fastapi.responses import HTMLResponse
 
 from alppy.api import errors
 from alppy.api.deps import (
+    AiBudget,
     AiRateLimit,
     DbDep,
     IdempotencyKeyDep,
@@ -51,7 +52,9 @@ router = APIRouter(tags=["sheets"])
 
 
 @router.post(
-    "/sheets/propose", response_model=SheetProposeResponse, dependencies=[AiRateLimit]
+    "/sheets/propose",
+    response_model=SheetProposeResponse,
+    dependencies=[AiRateLimit, AiBudget],
 )
 def propose(
     payload: SheetProposeRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep

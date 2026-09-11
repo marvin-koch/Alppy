@@ -110,6 +110,23 @@ def rate_limited(message: str, retry_after_s: int) -> ApiError:
     )
 
 
+def ai_budget_exceeded(window: str, cap_chf: float) -> ApiError:
+    """This school has reached its model-spend ceiling (D21).
+
+    402 rather than 429: this is not "slow down", it is "not until the window
+    rolls or somebody raises the cap", and a client that retries on 429 would
+    hammer a door that is not going to open. `window` and `cap_chf` are in
+    `details` so the teacher-facing sentence — which the client owns — can say
+    which ceiling and what it is.
+    """
+    return ApiError(
+        status.HTTP_402_PAYMENT_REQUIRED,
+        "ai_budget_exceeded",
+        f"the {window} AI budget for this school has been reached",
+        details={"window": window, "cap_chf": cap_chf},
+    )
+
+
 def service_unavailable(message: str, **details: Any) -> ApiError:
     """A collaborating module is not deployed yet. Explicit, never a 500."""
     return ApiError(
@@ -123,6 +140,11 @@ _STATUS_CODES: dict[int, str] = {
     403: "forbidden",
     404: "not_found",
     405: "method_not_allowed",
+    # 402 has exactly one meaning in this API, so the generic code for the
+    # status and the specific one are the same string — which is also what
+    # puts it in `API_ERROR_CODES`, and therefore what makes the i18n check
+    # demand a sentence for it in all three catalogues.
+    402: "ai_budget_exceeded",
     409: "conflict",
     413: "payload_too_large",
     415: "unsupported_media_type",

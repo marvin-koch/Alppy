@@ -19,6 +19,7 @@ from arq.connections import RedisSettings
 
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
+from alppy.core.observability import configure as configure_observability
 from alppy.worker.cron import cron_jobs as _build_cron_jobs
 from alppy.worker.tasks import (
     extract_section,
@@ -39,7 +40,13 @@ def _redis_settings() -> RedisSettings:
 
 
 async def on_startup(ctx: dict[str, Any]) -> None:
-    configure_logging(debug=get_settings().debug)
+    settings = get_settings()
+    configure_logging(debug=settings.debug)
+    # The worker is where the long, expensive, unattended work happens — a scan
+    # pipeline, a Chromium render, a class set of vision calls — so it is the
+    # half where a failure is least likely to be noticed by a human. No-op
+    # unless ALPPY_SENTRY_DSN is set (D8).
+    configure_observability(settings)
     log.info("worker.startup")
 
 

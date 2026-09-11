@@ -18,6 +18,7 @@ from alppy.api.errors import install_error_handlers
 from alppy.api.v1 import api_router
 from alppy.core.config import Settings, get_settings
 from alppy.core.logging import configure_logging, get_logger, new_request_id, request_id_var
+from alppy.core.observability import configure as configure_observability
 
 log = get_logger(__name__)
 
@@ -60,6 +61,22 @@ SECURITY_HEADERS = {
 #: submission to a browser-vendor list that is slow to leave, and the production
 #: domain is not settled. Adding it later is a one-word change.
 HSTS_HEADER = ("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+
+def app_version() -> str:
+    """The release tag an error tracker groups events by.
+
+    Same source as `/health`'s: the installed package version. Without it every
+    event from every deploy lands in one undifferentiated pile, and "did this
+    start on Tuesday" — the first question asked of any error tracker — has no
+    answer.
+    """
+    from importlib.metadata import PackageNotFoundError, version
+
+    try:
+        return version("alppy-api")
+    except PackageNotFoundError:  # pragma: no cover - running from a checkout
+        return "0.0.0-dev"
+
 
 DESCRIPTION = """
 Alppy — teacher-facing tooling for Swiss compulsory school (Sek I, cycle 3).
@@ -104,6 +121,11 @@ def _install_request_id(app: FastAPI, *, is_deployment: bool = False) -> None:
 def create_app(settings: Settings | None = None) -> FastAPI:
     resolved = settings or get_settings()
     configure_logging(debug=resolved.debug)
+    # No-op unless ALPPY_SENTRY_DSN is set (D8). Before logging would mean
+    # errors during logging setup go unreported; after means the integration's
+    # own warnings are formatted the way everything else is. The second matters
+    # more, because the commonest outcome here is "not installed".
+    configure_observability(resolved, release=app_version())
 
     # The schema is a development tool, and it was served to anyone who asked,
     # in every environment. It exposes no data, but it is the map: every route,

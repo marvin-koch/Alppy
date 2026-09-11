@@ -19,6 +19,7 @@ from sqlalchemy.orm import Session
 
 from alppy.api import errors
 from alppy.api.deps import (
+    AiBudget,
     AiRateLimit,
     DbDep,
     ScopeDep,
@@ -120,7 +121,7 @@ def list_sources(school_id: TenantDep, db: DbDep) -> list[SourceOut]:
     "/sources",
     response_model=SourceOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 async def upload_source(
     teacher: TeacherDep,
@@ -259,7 +260,7 @@ def list_source_sections(
     "/sources/{source_id}/sections/{section_id}/extract",
     response_model=JobOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 def extract_source_section(
     source_id: uuid.UUID, section_id: uuid.UUID, school_id: TenantDep, db: DbDep

@@ -14,6 +14,7 @@ from typing import Annotated
 from fastapi import APIRouter, File, Form, Query, UploadFile, status
 
 from alppy.api.deps import (
+    AiBudget,
     AiRateLimit,
     DbDep,
     IdempotencyKeyDep,
@@ -71,7 +72,7 @@ def list_scans(
     "/scans",
     response_model=ScanOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 async def upload_scan(
     teacher: TeacherDep,
@@ -130,7 +131,7 @@ async def upload_scan(
     "/scans/{scan_id}/pages",
     response_model=ScanOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 async def add_scan_pages(
     scan_id: uuid.UUID,

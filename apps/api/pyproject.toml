@@ -41,6 +41,12 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+# Error tracking (D8). NOT a runtime dependency: the default image carries no
+# tracker, and `core/observability.py` reports the absence once at startup
+# rather than crashing. A deployment that has chosen a vendor installs this.
+observability = [
+  "sentry-sdk>=2.20.0",
+]
 dev = [
   "pytest>=8.3.0",
   "pytest-asyncio>=0.24.0",

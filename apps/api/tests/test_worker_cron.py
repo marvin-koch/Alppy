@@ -23,6 +23,7 @@ EXPECTED: dict[str, str] = {
     "purge_scan_images": "photographs of named children's handwriting accumulate without bound",
     "purge_prompt_logs": "the one table holding what was actually sent to a provider never expires",
     "purge_access_log": "the read audit trail grows with every profile a teacher opens",
+    "health_signals": "grading quality degrades in one school and nobody learns a number",
 }
 
 
@@ -75,6 +76,23 @@ def test_the_purges_run_nightly_and_not_at_startup(name: str) -> None:
 def test_the_purges_do_not_share_a_minute() -> None:
     nightly = [j for j in WorkerSettings.cron_jobs if j.hour == 3]
     assert len({j.minute for j in nightly}) == len(nightly)
+
+
+def test_the_health_signals_run_weekly_over_the_week_they_report(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """The question is a trend — is this school's printer drifting — and a
+    daily number over a class set or two is noise. Monday morning, so the week
+    being reported is the week that just finished."""
+    job = _by_name()["health_signals"]
+    assert job.weekday == "mon"
+    assert job.hour == 4
+    assert job.run_at_startup is False
+
+    days_seen: list[int] = []
+    monkeypatch.setattr("alppy.cli._health_signals", lambda *, days: days_seen.append(days) or 0)
+    asyncio.run(cron_module.health_signals({}))
+    assert days_seen == [7]  # the window matches the schedule
 
 
 # --- what the job bodies actually do ---------------------------------------

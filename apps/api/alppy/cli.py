@@ -288,6 +288,31 @@ def _reap_jobs(*, dry_run: bool = False) -> int:
     return 0
 
 
+def _health_signals(*, days: int) -> int:
+    """Compute and log the override rate and the confidence distribution (D8).
+
+    The two signals that would show grading quality degrading in the field, and
+    both are already in Postgres — `Detection` keeps what the machine read
+    beside what the teacher stored, and `machine_confidence` is on every row.
+    Neither has ever been queried.
+
+    Cross-school on purpose, so it runs as the owner: the question is *which*
+    school is drifting, and a tenant-bound session cannot answer it. Nothing it
+    emits identifies a pupil, a teacher or a page — every value is a count.
+    """
+    from alppy.services.health_signals import report
+
+    db = admin_session()
+    try:
+        report(db, days=days)
+    except Exception:
+        log.exception("health_signals.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
 def _purge_scan_images(*, older_than_days: int | None, dry_run: bool = False) -> int:
     """Delete the stored images of piles past the retention window.
 
@@ -427,6 +452,19 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="Count what would be deleted without deleting anything.",
     )
+    signals = subparsers.add_parser(
+        "health-signals",
+        help=(
+            "Log the override rate, the confidence distribution and the "
+            "registration failure rate, per school."
+        ),
+    )
+    signals.add_argument(
+        "--days",
+        type=int,
+        default=7,
+        help="How far back to look. Default 7, matching the weekly schedule.",
+    )
 
     args = parser.parse_args(argv)
 
@@ -444,6 +482,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "reap-jobs":
         return _reap_jobs(dry_run=args.dry_run)
+
+    if args.command == "health-signals":
+        return _health_signals(days=args.days)
 
     if args.command == "purge-scan-images":
         return _purge_scan_images(

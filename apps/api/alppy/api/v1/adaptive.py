@@ -21,6 +21,7 @@ from sqlalchemy import select
 
 from alppy.api import errors
 from alppy.api.deps import (
+    AiBudget,
     AiRateLimit,
     DbDep,
     IdempotencyKeyDep,
@@ -70,7 +71,7 @@ router = APIRouter(tags=["adaptive"])
     "/adaptive/propose",
     response_model=JobOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 def propose(
     payload: AdaptiveProposeRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep
@@ -275,7 +276,7 @@ def discard(
 @router.post(
     "/adaptive/regenerate",
     response_model=AdaptiveRegenerateResponse,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 def regenerate(
     payload: AdaptiveRegenerateRequest, scope: ScopeDep, db: DbDep
@@ -304,7 +305,7 @@ def regenerate(
     "/adaptive/batch",
     response_model=SheetOut,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 def create_batch(
     payload: AdaptiveBatchRequest,
@@ -391,7 +392,7 @@ def _render_batch(sheet_id: uuid.UUID, scope: ScopeDep, db: DbDep) -> JobOut:
     "/adaptive/feedback/generate",
     response_model=JobOut,
     status_code=status.HTTP_202_ACCEPTED,
-    dependencies=[AiRateLimit],
+    dependencies=[AiRateLimit, AiBudget],
 )
 def generate_feedback(
     payload: FeedbackGenerateRequest, teacher: TeacherDep, scope: ScopeDep, db: DbDep

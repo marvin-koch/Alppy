@@ -367,13 +367,15 @@ def enforce_ai_rate_limit(teacher: TeacherDep) -> None:
     out itself, and a pile of 28 copies with 6 open items is ~168 calls behind
     a single POST.
 
-    The bucket is per teacher and **per process** (``TokenBucketLimiter`` holds
-    it in memory, deliberately — see its docstring). The effective ceiling for
-    one teacher is therefore ``ai_rate_limit_per_min x uvicorn workers``, not
-    ``ai_rate_limit_per_min``: with 4 workers the default 20/min admits up to
-    80/min. Size the setting against the worker count, and do not read this as
-    a global cost control — that lives in ``Settings.ai_max_output_tokens`` and
-    in the provider account.
+    The bucket is per teacher, and since D30 it is shared across workers on a
+    real deployment (``ALPPY_RATE_LIMIT_BACKEND``): it used to be a dict in each
+    uvicorn process, so the effective ceiling was ``ai_rate_limit_per_min x
+    workers`` and the app now refuses to boot on that combination.
+
+    It is still a guard against one teacher holding a click, not a cost
+    control. The cost ceiling is ``enforce_ai_budget`` below, plus
+    ``Settings.ai_max_output_tokens`` and whatever the provider account itself
+    allows.
     """
     wait = get_ai_limiter().take(str(teacher.id))
     if wait > 0.0:
@@ -400,7 +402,40 @@ def enforce_render_rate_limit(teacher: TeacherDep) -> None:
         )
 
 
+def enforce_ai_budget(membership: MembershipDep, db: DbDep, settings: SettingsDep) -> None:
+    """Refuse to START work for a school that has reached its spend ceiling (D21).
+
+    Beside the rate limiter rather than inside `AiClient.complete`, and that is
+    deliberate twice over. `AiClient` is built and used with no database at all
+    — the seed loader, the offline paths and most of the test suite construct
+    one directly — so a database read inside it would be a new hard dependency
+    on the one object that must not have one. And a check at the point of the
+    call abandons a class set half-graded, which is a worse thing to hand a
+    teacher than a ceiling overshot by one job.
+
+    So this bounds what can be started. A job already queued runs to
+    completion, and the cap is a bound on the rate of new work rather than a
+    hard wall in front of the invoice. That is the version a teacher can be
+    told about, and the numbers are sized for it.
+    """
+    from alppy.ai.spend import AiBudgetError, assert_within_budget
+
+    try:
+        assert_within_budget(db, school_id=membership.school_id, settings=settings)
+    except AiBudgetError as exc:
+        cap = (
+            exc.budget.monthly_cap_chf
+            if exc.budget.window == "monthly"
+            else exc.budget.daily_cap_chf
+        )
+        raise errors.ai_budget_exceeded(exc.budget.window, cap) from exc
+
+
 AiRateLimit = Depends(enforce_ai_rate_limit)
+#: Pair this with `AiRateLimit` on every route that can reach a provider. The
+#: two answer different questions — "too fast" and "too much" — and only one of
+#: them was being asked.
+AiBudget = Depends(enforce_ai_budget)
 RenderRateLimit = Depends(enforce_render_rate_limit)
 
 

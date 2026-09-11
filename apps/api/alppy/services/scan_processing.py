@@ -477,6 +477,35 @@ def _persist_page(
     )
     db.add(page)
     db.flush()
+    # A page that failed to REGISTER had no event at all (D8). A UID that fails
+    # its CRC is visible — the page shows up unassigned and a teacher deals with
+    # it — but a page whose four fiducials could not be located produces no
+    # readings of any kind, so it is invisible in every downstream number
+    # including the override rate. Registration failure rate is the most
+    # diagnostic single signal for "something about the physical inputs has
+    # changed": a new photocopier, different paper, a darker classroom.
+    #
+    # Counts and geometry only. `error` is the detector's own short reason, not
+    # an exception's text, and nothing here identifies a pupil.
+    if not result.registered:
+        log.warning(
+            "scan.page.registration_failed",
+            scan_id=str(scan.id),
+            page_index=page_index,
+            skew_deg=round(result.skew_deg, 3),
+            quality=round(result.quality, 3),
+            reason=result.error,
+        )
+    else:
+        log.info(
+            "scan.page.registered",
+            scan_id=str(scan.id),
+            page_index=page_index,
+            skew_deg=round(result.skew_deg, 3),
+            quality=round(result.quality, 3),
+            uid_read=result.uid is not None,
+            uid_confidence=round(result.uid_confidence, 3) if result.uid_confidence else None,
+        )
     _persist_detections(
         db, scan=scan, page=page, result=result,
         printed_page=printed_page, sheet_items=sheet_items, crops=crops,

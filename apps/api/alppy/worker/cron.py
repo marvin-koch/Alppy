@@ -121,6 +121,19 @@ async def purge_access_log(ctx: dict[str, Any]) -> None:
     await _in_thread("purge_access_log", _purge_access_log)
 
 
+async def health_signals(ctx: dict[str, Any]) -> None:
+    """Log the override rate and the confidence distribution (D8).
+
+    Weekly, because the question it answers is a trend — "is this school's
+    printer, photocopier or lighting drifting away from what the detector was
+    tuned against" — and a daily number over a class set or two is noise.
+    Monday morning, so the week that just finished is the week being reported.
+    """
+    from alppy.cli import _health_signals
+
+    await _in_thread("health_signals", lambda: _health_signals(days=7))
+
+
 #: Every fifth minute. Written out rather than computed so the schedule can be
 #: read at a glance and diffed.
 EVERY_FIVE_MINUTES = {0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55}
@@ -146,4 +159,11 @@ def cron_jobs() -> list[CronJob]:
         cron(purge_prompt_logs, name="purge_prompt_logs", hour=3, minute=10),
         cron(purge_access_log, name="purge_access_log", hour=3, minute=20),
         cron(purge_scan_images, name="purge_scan_images", hour=3, minute=30),
+        cron(
+            health_signals,
+            name="health_signals",
+            weekday="mon",
+            hour=4,
+            minute=0,
+        ),
     ]
