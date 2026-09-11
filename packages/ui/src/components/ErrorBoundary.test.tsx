@@ -8,12 +8,12 @@
  */
 
 import { fireEvent, render, screen } from '@testing-library/react';
-import { useState } from 'react';
+import { useState, type ReactElement } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { ErrorBoundary } from './ErrorBoundary';
 
-function Boom({ throws }: { throws: boolean }): JSX.Element {
+function Boom({ throws }: { throws: boolean }): ReactElement {
   if (throws) throw new Error('boom');
   return <p>intact</p>;
 }
@@ -71,7 +71,7 @@ describe('ErrorBoundary', () => {
    * and succeeds on its second is not a thing a test can rely on.
    */
   it('hands the fallback a reset that lets the subtree try again', () => {
-    function Case(): JSX.Element {
+    function Case(): ReactElement {
       const [broken, setBroken] = useState(true);
       return (
         <ErrorBoundary
