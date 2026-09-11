@@ -590,12 +590,26 @@ def update_exercise(
     exercise_id: uuid.UUID,
     payload: ExerciseUpdate,
     school_id: TenantDep,
+    teacher: TeacherDep,
     db: DbDep,
 ) -> ExerciseOut:
     """Edit an extracted or generated exercise, and approve it for printing.
 
     Approval is the gate an AI-generated exercise must pass before it can be
     printed — the teacher is the one who signs off, never the model.
+
+    Two acts here are recorded rather than merely performed (audit 03, B21),
+    and `TeacherDep` is present only to name who did them — the gate stays
+    tenant-grained, so the flat staffroom (D85) is unchanged:
+
+    * **Approving.** The gate CLAUDE.md calls load-bearing is satisfied by *a*
+      teacher, not by the teacher whose class receives the sheet. Under D85
+      that is intended; it was not written down, and nothing recorded who
+      signed off on an item a model wrote.
+    * **Editing an answer key.** `_answer_key` resolves live, so changing
+      `answer_index` on Wednesday regrades Tuesday's scans on Thursday. That is
+      deliberate for the typo case and undetectable for the mistake case,
+      because nothing recorded that the key moved at all.
     """
     exercise = db.execute(
         select(Exercise).where(Exercise.id == exercise_id).where(Exercise.school_id == school_id)
@@ -617,8 +631,39 @@ def update_exercise(
         exercise.explanation = payload.explanation
     if payload.difficulty is not None:
         exercise.difficulty = payload.difficulty
+    # Read before the write, so "was it already approved" is answerable: a
+    # second approval of an approved item is not the moment worth recording.
+    was_approved = exercise.approved_at is not None
+    key_changed = any(
+        value is not None
+        for value in (payload.answer_index, payload.answer_bool, payload.answer_text)
+    )
+
     if payload.approved is not None:
         exercise.approved_at = datetime.now(UTC) if payload.approved else None
+
+    if key_changed:
+        event_service.record(
+            db,
+            school_id=school_id,
+            kind=EventKind.EXERCISE_EDITED,
+            subject_type=EventSubject.EXERCISE,
+            subject_id=exercise.id,
+            summary=exercise.statement[:200],
+            actor_id=teacher.id,
+            subject_area_id=exercise.subject_id,
+        )
+    if payload.approved and not was_approved:
+        event_service.record(
+            db,
+            school_id=school_id,
+            kind=EventKind.EXERCISE_APPROVED,
+            subject_type=EventSubject.EXERCISE,
+            subject_id=exercise.id,
+            summary=exercise.statement[:200],
+            actor_id=teacher.id,
+            subject_area_id=exercise.subject_id,
+        )
 
     db.commit()
     db.refresh(exercise)

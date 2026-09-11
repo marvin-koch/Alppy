@@ -716,3 +716,71 @@ def test_erasing_a_pupil_takes_their_photographs_too(
 
     assert not storage.exists("scan-pages/p.png"), "the page image survived erasure"
     assert not storage.exists("crops/c.png"), "the handwriting crop survived erasure"
+
+
+def test_approving_an_exercise_and_editing_its_key_are_recorded(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """Both acts get an author (audit 03, B21).
+
+    The permission model is unchanged — the flat staffroom means any member may
+    do either (D85) — but approval is the gate standing between something a
+    model wrote and something a child is handed, and an answer key edited after
+    printing regrades an already-scanned pile, because `_answer_key` resolves
+    live. Neither had an author or a date.
+    """
+    from test_api_fixtures import make_exercise
+
+    from alppy.models import Event
+    from alppy.models.enums import EventKind, EventSubject
+
+    exercise = make_exercise(db, tenant, statement="Combien font 3 x 7 ?")
+    db.commit()
+    login(client, tenant.teacher.email)
+
+    # Approving it.
+    assert client.patch(
+        f"/api/v1/exercises/{exercise.id}", json={"approved": True}
+    ).status_code == 200
+    # ...and later moving the answer key underneath an already-printed sheet.
+    assert client.patch(
+        f"/api/v1/exercises/{exercise.id}", json={"answer_index": 2}
+    ).status_code == 200
+
+    events = db.execute(
+        select(Event)
+        .where(Event.subject_type == EventSubject.EXERCISE)
+        .where(Event.subject_id == exercise.id)
+    ).scalars().all()
+    kinds = {e.kind for e in events}
+    assert EventKind.EXERCISE_APPROVED in kinds
+    assert EventKind.EXERCISE_EDITED in kinds
+    assert all(e.actor_id == tenant.teacher.id for e in events), "recorded with no author"
+
+
+def test_re_approving_an_approved_exercise_is_not_a_second_approval(
+    client: TestClient, tenant: Tenant, db: Session
+) -> None:
+    """The boundary: a log that records every PATCH is a log nobody reads.
+
+    The moment worth recording is the one where an item became printable.
+    """
+    from test_api_fixtures import make_exercise
+
+    from alppy.models import Event
+    from alppy.models.enums import EventKind, EventSubject
+
+    exercise = make_exercise(db, tenant, statement="Combien font 3 x 7 ?")
+    db.commit()
+    login(client, tenant.teacher.email)
+
+    for _ in range(3):
+        client.patch(f"/api/v1/exercises/{exercise.id}", json={"approved": True})
+
+    approvals = db.execute(
+        select(Event)
+        .where(Event.subject_type == EventSubject.EXERCISE)
+        .where(Event.subject_id == exercise.id)
+        .where(Event.kind == EventKind.EXERCISE_APPROVED)
+    ).scalars().all()
+    assert len(approvals) == 1
