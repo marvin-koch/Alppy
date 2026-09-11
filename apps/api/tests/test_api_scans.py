@@ -373,6 +373,34 @@ def _build_scanned_sheet(client: TestClient, tenant: Tenant, db: Session) -> dic
     }
 
 
+def _review_unsure_readings(client: TestClient, scan_id: str) -> list[str]:
+    """Open every reading the detector was unsure of, and affirm it.
+
+    Since D-scan-low-confidence a pile with an unreviewed `LOW_CONFIDENCE` row
+    cannot be confirmed: the machine saying "I do not know" must not become a
+    mark on a child without a person looking. Affirming is re-sending the same
+    reading — `correct_detection` stamps `CORRECTED` whatever value it gets —
+    so this is what a teacher does when they look and agree.
+
+    Returns the ids it reviewed, so a test can assert there were some: a helper
+    that silently reviewed nothing would make the tests below pass for the
+    wrong reason.
+    """
+    pages = client.get(f"/api/v1/scans/{scan_id}").json()["pages"]
+    reviewed: list[str] = []
+    for page in pages:
+        for detection in page["detections"]:
+            if detection["outcome"] != DetectionOutcome.LOW_CONFIDENCE:
+                continue
+            response = client.patch(
+                f"/api/v1/scans/{scan_id}/detections/{detection['id']}",
+                json={"detected_index": detection["detected_index"]},
+            )
+            assert response.status_code == 200, response.text
+            reviewed.append(detection["id"])
+    return reviewed
+
+
 def _band_for(client: TestClient, tenant: Tenant, student_id: str) -> str:
     matrix = client.get(f"/api/v1/classes/{tenant.school_class.id}/mastery").json()
     cells = [c for c in matrix["cells"] if c["student_id"] == student_id]
@@ -451,6 +479,7 @@ def test_confirming_twice_is_a_conflict(
 ) -> None:
     login(client, tenant.teacher.email)
     ctx = _build_scanned_sheet(client, tenant, db)
+    assert _review_unsure_readings(client, str(ctx["scan_id"]))
     assert client.post(f"/api/v1/scans/{ctx['scan_id']}/confirm").status_code == 200
     again = client.post(f"/api/v1/scans/{ctx['scan_id']}/confirm")
     assert again.status_code == 409
@@ -479,6 +508,7 @@ def test_a_page_with_no_student_blocks_confirmation_until_assigned(
     assert assigned.json()["student_id"] == str(ctx["student_id"])
     assert assigned.json()["sheet_instance_id"] is not None
 
+    assert _review_unsure_readings(client, str(ctx["scan_id"]))
     assert client.post(f"/api/v1/scans/{ctx['scan_id']}/confirm").status_code == 200
 
 

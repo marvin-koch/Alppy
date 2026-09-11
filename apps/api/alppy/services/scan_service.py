@@ -891,6 +891,36 @@ def confirm_scan(
             )
         settle_abandoned(db, scan.id)
 
+    # A reading the machine was unsure of is not a grade until a person has
+    # looked at it (D-scan-low-confidence, Q4 of audit 06).
+    #
+    # `LOW_CONFIDENCE` used to be counted for a report and nothing else, so a
+    # teacher who confirmed a pile without opening it turned every unsure
+    # reading into a mark — silently, and on the one axis where the product
+    # promises not to guess about a child. Every other outcome is either a
+    # reading the detector stands behind, a teacher's own word (`CORRECTED`),
+    # or an honest refusal that scores nothing (`MULTIPLE`, `NOT_GRADEABLE`,
+    # `BLANK`). This one is the machine saying it does not know.
+    #
+    # Reviewing does not mean disagreeing: `correct_detection` stamps
+    # `CORRECTED` whatever value is sent, so a teacher who agrees affirms by
+    # re-sending the same reading. That is what keeps the gate from being a
+    # wall in front of a thirty-copy pile — and it is why the message names
+    # the rows rather than the count.
+    unreviewed = [
+        str(detection.id)
+        for page in pending
+        for detection in page.detections
+        if detection.outcome is DetectionOutcome.LOW_CONFIDENCE
+    ]
+    if unreviewed:
+        raise errors.conflict(
+            "some readings are too unsure to grade; open each one and confirm "
+            "or correct it before confirming the pile",
+            code="scan_low_confidence_unreviewed",
+            detection_ids=unreviewed,
+        )
+
     answered_at = _answered_at(scan, at)
     attempts_created = 0
     attempts_superseded = 0
