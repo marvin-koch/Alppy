@@ -595,7 +595,16 @@ def list_students(
             select(Student)
             # `student_out` names every class a pupil sits in, and a roster is
             # 24 of them: without these two the serialiser fires 48 queries.
-            .options(selectinload(Student.classes), selectinload(Student.home_class))
+            .options(
+                selectinload(Student.classes),
+                selectinload(Student.home_class),
+                # `person` too: `student_out` reads `person.anonymised_at`, so
+                # without this every roster paid one extra query PER PUPIL for
+                # the one field that says whether a name may be shown. Two of
+                # the three were already eager; the third was the one nobody
+                # noticed because eighteen pupils hides it.
+                selectinload(Student.person),
+            )
             .where(Student.school_id == scope.school_id)
             .where(Student.id.in_(enrolled_in_owned_classes(scope, on=on)))
             .where(Student.id.in_(enrolled_student_ids(class_id, on=on)))

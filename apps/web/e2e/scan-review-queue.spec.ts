@@ -75,6 +75,10 @@ test.describe('the review queue', () => {
     expect(shown).toBeGreaterThan(0);
 
     // The scan query polls while anything is still moving; give it room to.
+    // Same shape as responsive.spec.ts: the claim is that the count does NOT
+    // change while the scan query polls, and "nothing happened" has no
+    // condition to wait on. The 2.5s covers more than one poll interval, which
+    // is what makes it evidence rather than a coin toss.
     await page.waitForTimeout(2_500);
 
     expect(await page.locator('[data-open-answer]').count()).toBe(shown);

@@ -125,6 +125,10 @@ test('a real wheel cannot pan the page sideways', async ({ page }, testInfo) => 
   if (!heading) throw new Error('no heading to aim the wheel at');
   await page.mouse.move(heading.x + 5, heading.y + 5);
   await page.mouse.wheel(400, 0);
+  // A sleep, and deliberately so: the assertion below is that the wheel did
+  // NOT pan the document, and there is no condition to poll for the absence of
+  // an event. Polling `scrollX === 0` would pass on the first tick, before the
+  // browser had a chance to scroll at all, which is the opposite of a test.
   await page.waitForTimeout(300);
 
   const panned = await page.evaluate(() => window.scrollX);

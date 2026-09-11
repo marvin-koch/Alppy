@@ -56,10 +56,19 @@ test('a ghost button shows the focus ring like every other variant', async ({
   await trigger.focus();
   // `.ard-btn[data-variant='ghost']`'s `box-shadow: none` had the same
   // specificity as `.ard-btn:focus-visible` and came later, so it won and the
-  // ring was never drawn. The transition has to settle before measuring.
-  await page.waitForTimeout(400);
-  const shadow = await trigger.evaluate((el) => getComputedStyle(el).boxShadow);
-  expect(shadow, 'ghost buttons must draw --focus-ring').toContain('rgb(91, 63, 240)');
+  // ring was never drawn.
+  //
+  // Polled rather than slept on (T22). The transition has to settle before the
+  // computed style means anything, and `waitForTimeout(400)` guessed how long
+  // that takes — too short on a loaded CI runner and the test fails for a
+  // reason that has nothing to do with the CSS, too long and every run pays for
+  // it. The condition is what we actually want to wait for.
+  await expect
+    .poll(async () => trigger.evaluate((el) => getComputedStyle(el).boxShadow), {
+      timeout: 5_000,
+      message: 'ghost buttons must draw --focus-ring',
+    })
+    .toContain('rgb(91, 63, 240)');
 });
 
 test('the drawer is a modal, and gives focus back when it closes', async ({

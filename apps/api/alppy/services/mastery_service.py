@@ -21,7 +21,7 @@ from datetime import UTC, date, datetime
 from typing import Final
 
 from sqlalchemy import select
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from alppy.api import errors
 from alppy.api.deps import Scope
@@ -286,6 +286,18 @@ def _student_ids_for_class(
         .where(Student.school_id == school_id)
         .where(Student.id.in_(enrolled_student_ids(class_id, on=on)))
         .order_by(Student.number.asc())
+        # `student_out` reads `home_class.code`, every code in `classes`, and
+        # `person.anonymised_at` — three lazy loads per pupil, on the screen a
+        # teacher opens first. At the eighteen pupils every fixture has, that is
+        # 54 invisible queries and nothing to notice; at a niveau group of
+        # twenty-four it is 72, and the matrix is the one read that also has a
+        # cell per competency. `selectinload` is one extra query per
+        # relationship whatever the roster size (T18/T23).
+        .options(
+            selectinload(Student.classes),
+            selectinload(Student.home_class),
+            selectinload(Student.person),
+        )
     )
     return list(db.execute(stmt).scalars())
 

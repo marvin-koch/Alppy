@@ -22,6 +22,15 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 1 : 0,
+  // A retry that turns red into green is a FAILURE, not a pass (T22).
+  //
+  // `retries: 1` on its own meant a flake was retried into green and the run
+  // reported success with nothing anywhere naming which test had needed a
+  // second go. The retry is still worth having — a runner that drops a
+  // connection should not fail a branch — but the result has to be visible, and
+  // the only place a flake reliably gets looked at is a red build. Locally
+  // `retries` is 0, so this never fires there.
+  failOnFlakyTests: Boolean(process.env.CI),
   reporter: process.env.CI ? [['github'], ['html', { open: 'never' }]] : [['list']],
   timeout: 30_000,
   expect: {
