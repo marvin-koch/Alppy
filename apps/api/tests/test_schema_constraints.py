@@ -28,6 +28,7 @@ import getpass
 import os
 import uuid
 from collections.abc import Iterator
+from datetime import UTC, datetime
 
 import pytest
 import sqlalchemy as sa
@@ -990,10 +991,16 @@ def test_a_sheet_cannot_be_deleted_while_it_has_been_printed(
 
 
 def test_one_attempt_per_pupil_per_exercise_per_sheet(db: Session, world: World) -> None:
-    """`uq_attempt_student_exercise_sheet`.
+    """`uq_attempt_person_exercise_sheet`.
 
     Confirming a pile twice must not double a child's evidence — the mastery
     model weights by count, so a duplicate silently doubles that item's pull.
+
+    `answered_at` is part of the key since 0045, so the two rows have to share
+    one for this to be the same attempt twice. It cannot be `now()`: that is
+    the TRANSACTION's timestamp, and the commit between the two inserts puts
+    them in different transactions — which is exactly how this test went green
+    against a key it was no longer exercising.
     """
     _person = Person(
         id=uuid.uuid4(),
@@ -1017,7 +1024,8 @@ def test_one_attempt_per_pupil_per_exercise_per_sheet(db: Session, world: World)
     common = {
         "school_id": world.school.id, "person_id": student.person_id,
         "exercise_id": exercise_id, "sheet_id": sheet_id,
-        "correct": True, "score": 1.0, "answered_at": sa.func.now(),
+        "correct": True, "score": 1.0,
+        "answered_at": datetime(2026, 9, 5, 12, 0, tzinfo=UTC),
     }
     db.execute(pg_insert(attempt).values(id=uuid.uuid4(), **common))
     db.commit()
