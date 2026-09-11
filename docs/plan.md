@@ -108,42 +108,37 @@ Without a key the echo provider returns no verdict and the item is reported as s
 
 ## 4. API surface (FastAPI, `/api/v1`)
 
-```
-POST   /auth/login                 POST /auth/logout        GET /auth/me
-PATCH  /teachers/me/preferences    (locale, theme, contrast, motion, calm)
+**The list of routes is generated, not written here.**
+[`packages/shared/src/api-routes.generated.ts`](../packages/shared/src/api-routes.generated.ts)
+holds every `METHOD /path` the application serves, and what each one returns;
+[`api-types.generated.ts`](../packages/shared/src/api-types.generated.ts) beside it holds
+every shape that crosses the wire. Both come from `create_app().openapi()` via
+`scripts/generate-api-types.py`, and CI regenerates and diffs them, so neither can drift
+from the routers.
 
-GET    /classes                    POST /classes            GET /classes/{id}
-GET    /classes/{id}/students      POST /classes/{id}/students   (roster paste)
-GET    /subjects                   GET  /curricula/{kind}/competencies
-GET    /chapters                   POST /chapters
+This section used to be a hand-maintained block of about thirty-five routes. The API
+serves ninety-six. It had also gone quietly wrong in the usual way: it gave
+`POST /adaptive/batch` the shape `-> job -> one PDF`, where the route answers with a
+`SheetOut` and the render is a separate call. That is the failure a document which
+repeats a source of truth eventually has, and the reason this is a pointer now
+(audit 02, M11).
 
-POST   /sources                    (upload PDF -> job)      GET /sources/{id}
-GET    /sources/{id}/status        GET /sources/{id}/sections
-GET    /sources/{id}/exercises     (section/chapter/type/difficulty/q, paged, faceted)
-POST   /sources/{id}/sections/{sid}/extract   -> job   (read one chapter on demand)
-POST   /exercises                  PATCH /exercises/{id}
+What is worth stating here is the *shape* of the surface, which the generated list cannot
+say:
 
-POST   /sheets/propose             (class, subject, chapters[], intent) -> ranked exercises + provenance
-POST   /sheets                     PATCH /sheets/{id}       GET /sheets/{id}
-POST   /sheets/preview             (an UNSAVED draft, rendered; persists nothing)
-POST   /sheets/{id}/render         -> job -> blank.pdf + answer-key.pdf
-GET    /sheets/{id}/preview        (server-rendered HTML using the same print.css)
-
-POST   /scans                      (upload pages -> job)
-GET    /scans/{id}                 GET /scans/{id}/detections
-PATCH  /scans/{id}/detections/{d}  (teacher correction)
-POST   /scans/{id}/confirm         -> Attempts -> mastery recompute
-
-GET    /classes/{id}/mastery       (matrix: students × competencies, band + score)
-GET    /students/{id}/mastery      (profile: strengths, gaps, trend)
-POST   /adaptive/propose           (class or student, gap targeting)
-POST   /adaptive/batch             -> job -> one PDF, one .print-page per physical page
-
-GET    /jobs/{id}                  GET /health
-```
-
-Frontend consumes `packages/shared`, generated from the served OpenAPI schema — never from
-assumptions.
+- **One error envelope.** Every failure crosses as `{error: {code, message, details,
+  request_id}}`. The code is the contract; the sentence belongs to the client, which has
+  one for every code the API can raise — `check-i18n.mjs` fails the build otherwise.
+- **Ownership is resolved from data, never from a claim.** A route takes `ScopeDep`
+  (school + teacher) and asks `get_class` / `get_student` / `taught_here`; a colleague's
+  class reads as **404, never 403**, so a response cannot confirm that an id exists.
+- **Nothing blocks a handler on a model call.** Anything that reaches a provider answers
+  `202` with a `JobOut` and reports progress through `GET /jobs/{id}`.
+- **Reads answer "now" unless asked otherwise.** `as_of` on the computed reads, `on` on
+  the rosters, `school_year_id` on the lists — with `GET /school-years` to discover the
+  ids (D87, audit 02 C3).
+- **Collections that grow are paged** — `{items, total, offset, limit}`, where `total`
+  counts the filtered set and not the page.
 
 ## 5. Screens
 

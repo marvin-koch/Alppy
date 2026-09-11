@@ -191,7 +191,14 @@ export interface BranchOrder {
   subject_ids?: Uuid[];
 }
 
-/** Not in ``alppy.schemas`` — see the report note on the contract gap. */
+/**
+ * A new Theme.
+ *
+ * Lived in `api/v1/curriculum.py` until now, which put it outside the file
+ * the client's types are generated from — so `POST /chapters` was the one
+ * write in the API whose request shape the contract gate could not see
+ * (audit 02, M11).
+ */
 export interface ChapterCreate {
   subject_id: Uuid;
   key: string;

@@ -83,9 +83,22 @@ class Storage(Protocol):
     Missing is not an error: purging is idempotent by nature, and a key that
     has already gone is the outcome the caller wanted."""
 
-    def url_for(self, key: str) -> str: ...
+    def url_for(self, key: str, *, ttl_s: int | None = None) -> str: ...
 
     def healthy(self) -> bool: ...
+
+
+DEFAULT_URL_TTL_S = 900
+"""Fifteen minutes: long enough to open a PDF the teacher just rendered."""
+
+CROP_URL_TTL_S = 120
+"""Two minutes, for a photograph of one child's handwriting.
+
+The review screen fetches a crop as it draws the row, so it needs seconds, not
+minutes. Every other signed URL in the product is a document the teacher asked
+for; a crop is a picture of a named pupil's own paper, and it is the most
+personal artefact this product holds (audit 02, L3).
+"""
 
 
 class LocalStorage:
@@ -133,7 +146,11 @@ class LocalStorage:
         path.unlink()
         return True
 
-    def url_for(self, key: str) -> str:
+    def url_for(self, key: str, *, ttl_s: int | None = None) -> str:
+        """`ttl_s` is accepted and ignored: this backend serves through the
+        API, which authenticates every request, so there is no signature to
+        put a lifetime on."""
+        del ttl_s
         return f"/api/v1/files/{key}"
 
     def healthy(self) -> bool:
@@ -223,15 +240,23 @@ class S3Storage:
             raise StorageError(f"could not delete: {key!r}") from exc
         return True
 
-    def url_for(self, key: str) -> str:
+    def url_for(self, key: str, *, ttl_s: int | None = None) -> str:
         """A time-limited download URL the teacher's browser can actually fetch.
 
         Signed by ``_url_client``, which points at the public origin: SigV4
         covers the Host header, so rewriting the origin after signing yields a
         403 rather than a download.
+
+        `ttl_s` narrows the window for the things that deserve a narrower one.
+        A signed URL is a bearer token — anyone holding the string has the
+        object until it expires, with no session and no tenancy behind it —
+        so the default is the longest any of these should live, not a
+        convenient round number (audit 02, L3).
         """
         url: str = self._url_client.generate_presigned_url(
-            "get_object", Params={"Bucket": self._bucket, "Key": key}, ExpiresIn=900
+            "get_object",
+            Params={"Bucket": self._bucket, "Key": key},
+            ExpiresIn=ttl_s if ttl_s is not None else DEFAULT_URL_TTL_S,
         )
         return url
 

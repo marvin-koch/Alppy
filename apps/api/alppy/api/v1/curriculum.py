@@ -11,7 +11,6 @@ import uuid
 from typing import Annotated
 
 from fastapi import APIRouter, Query, status
-from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 
 from alppy.api import errors
@@ -19,25 +18,15 @@ from alppy.api.deps import DbDep, ScopeDep, TenantDep, scoped_get
 from alppy.models import Chapter, Competency, Subject
 from alppy.models.enums import CurriculumKind
 from alppy.schemas import (
+    ChapterCreate,
     ChapterOut,
     ChapterUpdate,
     CompetencyListOut,
-    LocalisedText,
 )
 from alppy.services import chapter_out, competency_out
 from alppy.services import nouns_service as svc
 
 router = APIRouter(tags=["curriculum"])
-
-
-class ChapterCreate(BaseModel):
-    """Not in ``alppy.schemas`` — see the report note on the contract gap."""
-
-    subject_id: uuid.UUID
-    key: Annotated[str, Field(min_length=1, max_length=80)]
-    labels: LocalisedText
-    position: Annotated[int, Field(ge=0)] = 0
-    competency_ids: Annotated[list[uuid.UUID], Field(max_length=50)] = []
 
 
 @router.get("/curricula/{kind}/competencies", response_model=CompetencyListOut)

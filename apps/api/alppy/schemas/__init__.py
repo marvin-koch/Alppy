@@ -267,6 +267,23 @@ class SubjectUpdate(BaseModel):
     labels: dict[str, str]
 
 
+class ChapterCreate(BaseModel):
+    """A new Theme.
+
+    Lived in `api/v1/curriculum.py` until now, which put it outside the file
+    the client's types are generated from — so `POST /chapters` was the one
+    write in the API whose request shape the contract gate could not see
+    (audit 02, M11).
+    """
+
+    subject_id: uuid.UUID
+    key: Annotated[str, Field(min_length=1, max_length=80)]
+    labels: LocalisedText
+    position: Annotated[int, Field(ge=0)] = 0
+    #: What the Theme CREDITS, not where it sits (D56).
+    competency_ids: Annotated[list[uuid.UUID], Field(max_length=50)] = []
+
+
 class ChapterUpdate(BaseModel):
     labels: dict[str, str] | None = None
     position: int | None = None

@@ -251,3 +251,69 @@ The middleware is a **routing convenience, not the security boundary** — the c
 so its mere presence is all the edge can check, and the API answers 401 on a forged or expired one
 regardless of what the edge let through. Every authorisation decision in this product is made in
 `api/deps.py`.
+
+## 6. HTTP conventions the routers follow
+
+These were followed consistently and written down nowhere, so the only way to learn them
+was to read enough of `api/v1/` to notice (audit 02, L5–L7). None of this is new
+behaviour; it is the existing behaviour, stated — and checked against the generated route
+list rather than remembered.
+
+### 6.1 How deep a path nests, and why it stops there
+
+A **collection** hangs off at most one parent: `/classes/{id}/students`,
+`/scans/{id}/detections`, `/sources/{id}/exercises`. The parent is the resource that
+answers *"may I see this"* — ownership resolves from the class, the scan or the source —
+so it is in the path, and everything narrower is a query parameter.
+
+Paths go one level deeper only to name **a relationship, or an action on a member**, and
+the last segment is then a noun for the relationship itself or a verb for a state change
+that is not an edit:
+
+```
+POST   /classes/{id}/students/{id}/enrollment          the membership, as a thing
+POST   /classes/{id}/teachers/{id}/branches/{id}       who teaches what, here
+POST   /scans/{id}/detections/{id}/revert              undo, not a field edit
+POST   /scans/{id}/pages/{id}/discard
+POST   /sources/{id}/sections/{id}/extract
+```
+
+The test is whether the last segment could sensibly be a `PATCH` of a field on the member.
+Where it could, it is one — correcting a reading is `PATCH .../detections/{id}`. Where it
+could not, because it is a transition with its own rules and its own refusals, it gets a
+verb.
+
+### 6.2 201 everywhere a row appears, including a join row
+
+Every `POST` that causes a row to exist answers **201**, and that deliberately includes the
+join tables: seating a pupil in another class, and assigning a teacher to a branch, both
+create a membership row and both answer 201 — the same as minting pupils from a pasted
+roster.
+
+They are also **idempotent**: repeating one returns 201 and the same list, having changed
+nothing. That combination is intentional. The alternative — 200 on the repeat — would make
+the client's handling depend on state it does not have, and 201 describes what the resource
+looks like afterwards rather than how much work the server had to do to get there.
+
+`PUT /classes/{id}/subjects` answers **200**, because it replaces a whole set rather than
+adding to one, and the set existed before.
+
+### 6.3 The product's nouns and the schema's nouns are not the same words
+
+The teacher-facing vocabulary is French and deliberately not the table names. Both appear
+in the code, and neither is wrong; what matters is knowing which one you are reading.
+
+| product (UI, French) | schema / API |
+|---|---|
+| Discipline / Branche | `Subject` |
+| Thème | `Chapter` |
+| Compétence | `Competency` |
+| Classe, Groupe, Série | `Class` |
+| Fiche | `Sheet` |
+| Pile (de copies) | `Scan` |
+| Élève | `Student` (one year) / `Person` (across years) |
+
+`Chapter` is the one that catches people: it is a **Thème** in the product, it *sits*
+under one Competence (`primary_competency_id`) and *credits* many
+(`chapter_competency`), and those two are not interchangeable — see
+[`docs/curriculum.md`](curriculum.md) §3.1.

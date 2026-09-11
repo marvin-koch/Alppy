@@ -66,7 +66,7 @@ from alppy.schemas import (
     TeacherPreferences,
 )
 from alppy.sheets.layout import OptionLetters, tf_letters
-from alppy.storage import Storage, get_storage
+from alppy.storage import CROP_URL_TTL_S, Storage, get_storage
 
 if TYPE_CHECKING:
     from alppy.services.results_service import StudentSheet
@@ -300,10 +300,20 @@ def sheet_instance_out(
     )
 
 
-def _url(storage: Storage | None, key: str | None) -> str | None:
+def _url(storage: Storage | None, key: str | None, *, ttl_s: int | None = None) -> str | None:
     if storage is None or not key:
         return None
-    return storage.url_for(key)
+    return storage.url_for(key, ttl_s=ttl_s)
+
+
+def _crop_url(storage: Storage | None, key: str | None) -> str | None:
+    """A signed URL for a photograph of one child's handwriting.
+
+    Two minutes rather than fifteen. A signed URL is a bearer token, and this
+    is the most personal artefact the product holds; the review screen fetches
+    it as it draws the row, so it needs seconds (audit 02, L3).
+    """
+    return _url(storage, key, ttl_s=CROP_URL_TTL_S)
 
 
 def sheet_out(
@@ -414,7 +424,7 @@ def detection_out(
         exercise_type=exercise.type if exercise is not None else None,
         ai_generated=(exercise is not None and exercise.origin is ExerciseOrigin.AI_GENERATED),
         answer_index=answer_index,
-        crop_url=_url(storage, detection.crop_key),
+        crop_url=_crop_url(storage, detection.crop_key),
         transcription=detection.transcription,
         verdict_correct=detection.verdict_correct,
         machine_transcription=detection.machine_transcription,
@@ -548,7 +558,7 @@ def student_sheet_out(
                 correct=item.correct,
                 points_earned=item.points_earned,
                 points_possible=item.points_possible,
-                crop_url=_url(storage, item.crop_key),
+                crop_url=_crop_url(storage, item.crop_key),
             )
             for item in breakdown.items
         ],
