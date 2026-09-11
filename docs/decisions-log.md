@@ -2514,7 +2514,85 @@ being readable — on the roster, the matrix, the results screen and a pupil's o
 profile, plus the reveal, its reset on navigation, the shortcut, and the
 shortcut declining to fire inside a text field.
 
-### D95 · A grade's evidence belongs to the paper it was printed on
+### D95 · An invalidation that matches nothing looks exactly like one that works
+
+`useUpdateChapter` and `useDeleteChapter` invalidated `['classTree']`. No query
+in the app is registered under that key — the real prefix is
+`['classes', id, 'tree']` — so the call did nothing at all, and renaming a Theme
+left the programme beside it showing the old name until something else happened
+to refetch it. TanStack Query does not complain about a key that matches
+nothing, because "nothing to invalidate" is an ordinary state; there is no
+symptom until a teacher notices the screen disagreeing with itself.
+
+**The fix is a predicate, not a different literal.** A chapter belongs to many
+classes and the mutation knows only the chapter, so there is no key that means
+"every class's tree" — `everyClassTree` matches on shape instead.
+`queryKeys.classTreePrefix` covers the one-class case, so the remaining literal
+went too.
+
+**Banning literal arrays would have been the wrong gate.** `['classes']` and
+`['sheets']` are deliberate prefix invalidations, and a prefix is by definition
+not a key any builder returns. What is checkable is the first segment: if it is
+not a namespace `queryKeys` ever produces, the call can never match anything
+under any argument. `query-keys.test.ts` asks the builders themselves what those
+namespaces are, so it cannot go stale, and it fails on the original bug —
+verified by putting the bug back.
+
+**F30 needed nothing.** Both halves had already been resolved by earlier phases:
+`errors.notFound.*` is rendered by the `not-found.tsx` that D90 added, and
+`school_year_id` is a real generated field on `ClassCreate` rather than a dead
+hand-written type — `lib/api/types.ts` no longer mirrors the contract by hand at
+all. F32's "stray empty div" was a whitespace-only line, removed with the roster
+screen's missing states.
+
+**`docs/plan.md` §5 stays the inventory** and now lists all 24 screens, grouped
+by what a teacher is doing rather than by URL. It had drifted by 15 routes
+without anyone noticing, which is the argument for gating it — and the argument
+against a hand-kept list generally. Kept by decision; the next route added is
+the next chance for it to lie.
+
+---
+
+### D96 · Two red gates, and one defect that was never there
+
+Housekeeping that turned out to matter.
+
+**The colour-literal gate was failing on `main`**, and had been: four hits in
+TypeScript, so the job that enforces half of DESIGN.md §10.4 was red and
+therefore enforcing nothing. A gate nobody can pass is a gate everybody learns
+to scroll past.
+
+Three of the four were one file — `mock/fixtures.ts` holds a stand-in for the
+API's own print document, a standalone page in an iframe with white paper and
+black fiducials and no access to the app's stylesheet. It is paper, and paper is
+where the tokens are overwritten rather than read; it gets the same exemption
+`print.css` has, named one file at a time rather than by a pattern.
+
+The fourth was real: `shadow-[0_-10px_30px_-12px_rgb(27_23_53_/_18%)]` on the
+builder's mobile action bar — `--shadow-ambient` cast upwards, with the rgb
+retyped into a component because no token pointed that way. There is one now.
+
+**The visual baselines were stale by two separate things.** The 18 phone
+screenshots had been failing before any of this work started (verified in Phase
+1 by stashing every change and reproducing them), because the home screen's
+discipline chips wrap to a second row now that the fixture school has four
+subjects. Then D93's rename made them stale again and more interestingly: the
+committed baseline says "BRANCHE Mathématiques" where the app now correctly says
+"DISCIPLINE". Regenerated after looking at the rendered output rather than
+trusting the ratio — a diff that is purely a vertical offset plus a word we
+deliberately changed is a stale baseline, not a regression. The suite is green.
+
+**And a correction.** Two tests in `test_nouns_crud.py` failed in one full run
+and passed in the next, and this log would have recorded that as an
+order-dependent flake. It is not: `pytest-randomly` is not installed, so the
+`-p no:randomly` that "fixed" it changed nothing. The run that failed was at
+04:57, which is the minute a second session working in this tree wrote
+`open_answer_grading.py` and `scan_processing.py` — the suite was importing
+modules as they were being rewritten underneath it. There is no flake to chase.
+The lesson is about the tree, not the tests: a shared working directory makes
+every red an unreliable narrator.
+
+### D97 · A grade's evidence belongs to the paper it was printed on
 
 Four faults in the path where a child's answers become a child's grade, found by
 the phase-3 audit and fixed together because they are one mistake wearing four
@@ -2588,7 +2666,7 @@ should pick up.
 
 ---
 
-### D96 · A job that dies says so, a call has a deadline, and a retry does the work once
+### D98 · A job that dies says so, a call has a deadline, and a retry does the work once
 
 The reliability layer, which is what turns a transient failure into a stuck
 class or an unbounded bill. Nine findings, one shape: **the product assumed
@@ -2683,7 +2761,7 @@ either, and belong in the same pass.
 
 ---
 
-### D97 · A number stops moving, a query stops fanning out, and a setting stops hiding
+### D99 · A number stops moving, a query stops fanning out, and a setting stops hiding
 
 The medium and low findings, cleared in one pass. Individually small; two of them
 change what a teacher is shown.
@@ -2764,7 +2842,7 @@ who needs to know is the one reading a cost total, not the one editing the file.
 
 ---
 
-### D98 · Layout v2: the paper says which paper it is — design settled, not yet in force
+### D100 · Layout v2: the paper says which paper it is
 
 B4, the largest and highest-risk item of the three audits, and the only one the
 audit told us to schedule deliberately rather than fold into a sprint. **The
@@ -2840,12 +2918,44 @@ in the drawer), and a v2 page sampled as v1. The CRC is what turns "reads
 something plausible out of the wrong part of the paper" into a refusal, and
 that is asserted rather than assumed.
 
-**What is NOT done, and why the version has not moved.** The *writing* half:
-the print template still draws the v1 grid, `Sheet` has no per-render nonce to
-feed it, and the scan pipeline still counts uploads rather than reading
-`page_code.page_in_copy` and still does not check the nonce against the pile's
-sheet. Bumping `LAYOUT_VERSION` before those land would make the product print a
-grid it can read but has not filled in.
+**The writing half, and the bump.** `LAYOUT_VERSION` is **v2**. The renderer
+lays each sheet out with the geometry *it declares* rather than whatever is
+current, prints the page code into the grid, and the pipeline reads
+`page_code.page_in_copy` off the paper instead of counting uploads — pages
+uploaded backwards now land in their printed order, which is B5's real fix
+rather than its mitigation.
+
+**The nonce is derived, not stored.** `sheet_nonce(sheet_id, render_generation)`
+is computed by the renderer when it prints and again by the scan pipeline from
+the sheet the pile claims to belong to, then compared. No column to migrate, no
+row to fall out of step with the paper. A mismatch raises `wrong_sheet` and the
+page is left ungraded.
+
+That closes a fault v1 could not even notice: one pupil sits two sheets and
+carries the *same UID* on both, so a page of Tuesday's test landing in
+Thursday's pile decoded perfectly and was graded against Thursday's answer key —
+real marks, real pupil, somebody else's questions. Because the nonce includes
+the render generation, it also makes B7's pinning something the **paper**
+asserts rather than something inferred at upload.
+
+**One ordering hazard, found by building it.** `_persist_answer_box_placements`
+bumped the generation *after* `build_sheet_data` had already run. Under v2 that
+would print generation N into the grid and file the rectangles under N+1 — the
+exact disagreement B7 exists to end, reintroduced by the fix for B4.
+`_open_render_generation` now opens the generation before anything is laid out,
+and the placement writer consumes it rather than bumping.
+
+**What the fixture migration exposed.** Bumping the constant turned 57 tests
+red, and almost every one was a fixture printing a grid the sheet did not
+declare — `render_page` defaulting to "current" rather than following
+`sheet.layout_version`. Two of them mattered beyond their own file:
+`bits_to_cells`/`cells_to_bits` defaulted to the current version, so pairing
+them with `encode_uid` (which is inherently v1) produced 32 bits in and 72 out
+the day v2 shipped; they now infer the layout from the run's length, which is
+unambiguous because the grids differ in size. And several placement fixtures
+wrote a NULL `render_generation`, which since B7 means "printed before
+generations existed" and matches no scan — they now write what the render job
+would.
 
 **Until then B5's guards stand**, and they are a real mitigation rather than a
 placeholder: an extra page is left unpaired and flagged instead of wrapped onto
@@ -2853,80 +2963,91 @@ page 1, and short copies and duplicate slots are flagged for the teacher.
 
 ---
 
-### D95 · An invalidation that matches nothing looks exactly like one that works
+**One drift the bump nearly shipped, and the export is what found it.**
+`layout.as_dict()` is exported to TypeScript by `scripts/export-layout.py` so
+the web print preview and the server cannot disagree about a millimetre, and CI
+fails if the generated file goes stale. After the bump it reported
+`layoutVersion: "v2"` beside **v1's grid** — 8x4 at y=30 — because the bare
+`UID_GRID_*` constants had been left behind as aliases whose comment claimed
+they tracked the current layout and whose values did not. The preview would have
+drawn the old grid in the old place while the server printed the new one, and
+both sides would have agreed on the stale number, so the very check built to
+catch this would have walked past it.
 
-`useUpdateChapter` and `useDeleteChapter` invalidated `['classTree']`. No query
-in the app is registered under that key — the real prefix is
-`['classes', id, 'tree']` — so the call did nothing at all, and renaming a Theme
-left the programme beside it showing the old name until something else happened
-to refetch it. TanStack Query does not complain about a key that matches
-nothing, because "nothing to invalidate" is an ordinary state; there is no
-symptom until a teacher notices the screen disagreeing with itself.
+Those constants are **gone**, not corrected: a name that reads as "the current
+grid" is a trap once two layouts are live. Callers ask `uid_grid(version)` and
+say which version they mean. `uid_code`'s v1 sizes now come from
+`uid_grid("v1")` explicitly — they had been derived from those aliases and were
+right only by accident, an accident that would have ended the moment anyone made
+the aliases honest. The export carries `uidGrids` for **every** readable layout
+alongside `uidGrid` for the current one, because a preview of an
+already-printed v1 sheet has to be drawn as v1.
 
-**The fix is a predicate, not a different literal.** A chapter belongs to many
-classes and the mutation knows only the chapter, so there is no key that means
-"every class's tree" — `everyClassTree` matches on shape instead.
-`queryKeys.classTreePrefix` covers the one-class case, so the remaining literal
-went too.
-
-**Banning literal arrays would have been the wrong gate.** `['classes']` and
-`['sheets']` are deliberate prefix invalidations, and a prefix is by definition
-not a key any builder returns. What is checkable is the first segment: if it is
-not a namespace `queryKeys` ever produces, the call can never match anything
-under any argument. `query-keys.test.ts` asks the builders themselves what those
-namespaces are, so it cannot go stale, and it fails on the original bug —
-verified by putting the bug back.
-
-**F30 needed nothing.** Both halves had already been resolved by earlier phases:
-`errors.notFound.*` is rendered by the `not-found.tsx` that D90 added, and
-`school_year_id` is a real generated field on `ClassCreate` rather than a dead
-hand-written type — `lib/api/types.ts` no longer mirrors the contract by hand at
-all. F32's "stray empty div" was a whitespace-only line, removed with the roster
-screen's missing states.
-
-**`docs/plan.md` §5 stays the inventory** and now lists all 24 screens, grouped
-by what a teacher is doing rather than by URL. It had drifted by 15 routes
-without anyone noticing, which is the argument for gating it — and the argument
-against a hand-kept list generally. Kept by decision; the next route added is
-the next chance for it to lie.
+**And the prompt moved.** `PROMPT_VERSION` is **v3** (B8). The precondition was a
+verdict diff between the versions, and there were no fixtures to produce one —
+nothing called `grade_one` at all. `test_open_grading_prompt.py` is that missing
+net: identical model output through both versions produces an identical
+`Detection` for every answer shape the grader already handled, so the change is
+additive. The one deliberate difference is `instruction_like` routing to
+LOW_CONFIDENCE whatever confidence the model reports. What this does **not**
+rest on is how a real model reads the reworded prompt; that needs an evaluation
+against real handwriting, and reverting is one constant.
 
 ---
 
-### D96 · Two red gates, and one defect that was never there
+### D101 · `fr-CH` never meant what three files said it meant
 
-Housekeeping that turned out to matter.
+Audit 05 §10.1 dismissed the brief's §54 — which asked for Swiss decimal handling
+— on the grounds that the repo had already settled it correctly: *"ICU agrees —
+`fr-CH` is `.` for decimals and `’` for groups. So `fmt.number(4.5)` renders
+`4.5` and that is correct for the locale."* `lib/format.ts` said the same thing in
+its own header: *"`fr` alone would print `1 234,5`; Suisse romande writes
+`1'234.5` … hence `fr-CH`"*.
 
-**The colour-literal gate was failing on `main`**, and had been: four hits in
-TypeScript, so the job that enforces half of DESIGN.md §10.4 was red and
-therefore enforcing nothing. A gate nobody can pass is a gate everybody learns
-to scroll past.
+Both are false, and they were checked rather than reasoned about only when a test
+asserted the output. CLDR's `fr-CH` is byte-identical to plain `fr`:
 
-Three of the four were one file — `mock/fixtures.ts` holds a stand-in for the
-API's own print document, a standalone page in an iframe with white paper and
-black fiducials and no access to the app's stylesheet. It is paper, and paper is
-where the tokens are overwritten rather than read; it gets the same exemption
-`print.css` has, named one file at a time rather than by a pattern.
+| tag | 1234.5 | 0.25 |
+|---|---|---|
+| `fr` | `1 234,5` | `0,25` |
+| `fr-CH` | `1 234,5` | `0,25` |
+| `de-CH` | `1’234.5` | `0.25` |
+| `en-CH` | `1’234.5` | `0.25` |
 
-The fourth was real: `shadow-[0_-10px_30px_-12px_rgb(27_23_53_/_18%)]` on the
-builder's mobile action bar — `--shadow-ambient` cast upwards, with the rgb
-retyped into a component because no token pointed that way. There is one now.
+Only the Germanic tags carry the apostrophe group and the period decimal. The
+`fr-CH` mapping bought French **nothing**, and had bought nothing since it was
+written. Verified identically under Node's ICU 76.1 and the Chromium the e2e suite
+ships against, so this is not a build-environment artefact.
 
-**The visual baselines were stale by two separate things.** The 18 phone
-screenshots had been failing before any of this work started (verified in Phase
-1 by stashing every change and reproducing them), because the home screen's
-discipline chips wrap to a second row now that the fixture school has four
-subjects. Then D93's rename made them stale again and more interestingly: the
-committed baseline says "BRANCHE Mathématiques" where the app now correctly says
-"DISCIPLINE". Regenerated after looking at the rendered output rather than
-trusting the ratio — a diff that is purely a vertical offset plus a word we
-deliberately changed is a stale baseline, not a regression. The suite is green.
+**Two consequences, one of them a real defect.** French was never inconsistent —
+both halves wrote a comma. **German was**, and nobody had looked: a catalogue's
+own `{points, number}` is formatted by next-intl with the app locale (`de` → a
+comma) while `lib/format.ts` formats with `de-CH` (a period). A German teacher
+read `Total: 2.5 Punkte` above `0,5 Pkt.` in one panel, and on a returned paper
+`3.25 / 4,5 Pkt.` on one line.
 
-**And a correction.** Two tests in `test_nouns_crud.py` failed in one full run
-and passed in the next, and this log would have recorded that as an
-order-dependent flake. It is not: `pytest-randomly` is not installed, so the
-`-p no:randomly` that "fixed" it changed nothing. The run that failed was at
-04:57, which is the minute a second session working in this tree wrote
-`open_answer_grading.py` and `scan_processing.py` — the suite was importing
-modules as they were being rewritten underneath it. There is no flake to chase.
-The lesson is about the tree, not the tests: a shared working directory makes
-every red an unreliable narrator.
+**The fix is two-layered, and the layers answer different questions.** The nine
+catalogue messages that formatted a number no longer do: they take a plain
+`{points}` and the caller passes `fmt.number(v, 2)`, so every number in the
+product comes from the one authority `format.ts`'s header always claimed it did.
+Two fraction digits, not the default one — a quarter-point penalty is a real
+barème and `0.3` is not it. Then `format.ts` substitutes the group and decimal
+marks itself, through `formatToParts`, in every locale.
+
+That substitution is a **deliberate departure from CLDR for `fr`**, and it is the
+part worth disagreeing with. Suisse romande prose does write a comma; the brief
+was right about that and §10.1 was wrong to wave it away. The argument for
+overriding it anyway is that a barème, a points total and a class average are
+figures on a school document rather than prose, `1’234.5` is the convention a
+Swiss teacher reads there, and one product should not punctuate the same barème
+two ways depending on which of three UI languages is selected. U+2019 is pinned
+rather than read off `de-CH`, so an ICU upgrade cannot move the French UI on its
+own.
+
+`lib/format.ts` had no test at all (G32) — the single highest-leverage untested
+file in the repo, and the reason a false claim about ICU survived in a comment
+long enough to be repeated in an audit and then acted on. `format.test.ts` pins
+all three locales, asserts they agree, and asserts no decimal comma is ever
+emitted. It is also why G2's comma-INPUT support is not a nicety: a field may
+display `0.25` now, but a Romand keyboard still produces `0,5`, and a teacher's
+own separator has to be readable whatever the display convention is.
