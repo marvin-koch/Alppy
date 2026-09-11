@@ -293,8 +293,12 @@ export const listSources = () => apiRequest<SourceOut[]>('/sources');
 
 export const getSource = (sourceId: Uuid) => apiRequest<SourceOut>(`/sources/${sourceId}`);
 
+/** The INGESTION JOB for this source, not the source. Declared `SourceOut`
+ *  until the call-site check caught it: a consumer reading `filename` or
+ *  `exercise_count` off it would have got `undefined` with no type error,
+ *  because `apiRequest<T>` asserts T rather than checking it. */
 export const getSourceStatus = (sourceId: Uuid) =>
-  apiRequest<SourceOut>(`/sources/${sourceId}/status`);
+  apiRequest<JobOut>(`/sources/${sourceId}/status`);
 
 export const listSourceSections = (sourceId: Uuid) =>
   apiRequest<SourceSectionOut[]>(`/sources/${sourceId}/sections`);
@@ -317,7 +321,11 @@ export const listSourceExercises = (sourceId: Uuid, query: ExerciseQuery = {}) =
     query: { ...query },
   });
 
-/** `POST /sources` starts an ingestion job; the API may answer with either shape.
+/** `POST /sources` stores the file and enqueues the ingestion, and answers
+ *  202 with the SOURCE — poll `getSourceStatus` for the job. It was declared
+ *  `SourceOut | JobOut` on a comment that said the API "may answer with either
+ *  shape"; the handler has only ever returned one, and the union made every
+ *  consumer narrow a branch that cannot happen.
  *
  * `subject_id` is required by the API — a source is always filed under a
  * subject, because that is what scopes retrieval later. Omitting it made every
@@ -326,7 +334,7 @@ export const uploadSource = ({ file, subjectId }: { file: File; subjectId: Uuid 
   const formData = new FormData();
   formData.append('file', file);
   formData.append('subject_id', subjectId);
-  return apiRequest<SourceOut | JobOut>('/sources', { method: 'POST', formData });
+  return apiRequest<SourceOut>('/sources', { method: 'POST', formData });
 };
 
 /* ---------------------------------------------------------- exercises --- */

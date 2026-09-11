@@ -292,10 +292,13 @@ def render_routes(spec: dict[str, Any]) -> str:
     could catch because the payload was right and only the address was wrong.
     """
     routes: list[str] = []
+    responses: dict[str, str] = {}
     for path, operations in spec.get("paths", {}).items():
         for method, operation in operations.items():
             if isinstance(operation, dict):
-                routes.append(f"{method.upper()} {path}")
+                route = f"{method.upper()} {path}"
+                routes.append(route)
+                responses[route] = _response_type(operation)
 
     lines = [
         "// AUTO-GENERATED — DO NOT EDIT.",
@@ -311,8 +314,45 @@ def render_routes(spec: dict[str, Any]) -> str:
         "] as const;",
         "",
         "export type ApiRoute = (typeof API_ROUTES)[number];",
+        "",
+        "/**",
+        " * What each route RETURNS, as the TypeScript type expression for it.",
+        " *",
+        " * `apiRequest<T>` is an assertion and not a check: the client states the",
+        " * shape it expects and TypeScript believes it, so a route whose response",
+        " * model changes goes on compiling at every call site while the data",
+        " * underneath is a different shape. The generated types cannot see that —",
+        " * they describe the document, not who reads it. This is the join, and",
+        " * `contract.test.ts` is what enforces it.",
+        " */",
+        "export const API_RESPONSES: Record<string, string> = {",
     ]
+    lines += [f"  '{route}': '{responses[route]}'," for route in sorted(routes)]
+    lines += ["};"]
     return "\n".join(lines) + "\n"
+
+
+def _response_type(operation: dict[str, Any]) -> str:
+    """The TypeScript type of a route's success response.
+
+    `void` where there is no body at all (a 204), and `string` for the routes
+    that answer with HTML or a PDF rather than JSON — the preview and the
+    print views, which are real responses with a real shape the client has to
+    declare.
+    """
+    for status in ("200", "201", "202", "204"):
+        response = operation.get("responses", {}).get(status)
+        if response is None:
+            continue
+        content = response.get("content") or {}
+        if not content:
+            return "void"
+        for media, body in content.items():
+            if media.startswith("application/json"):
+                return ts_type(body.get("schema") or {})
+        # text/html, application/pdf: a body, but not a modelled one.
+        return "string"
+    return "void"
 
 
 def _write(path: Path, text: str, label: str) -> None:

@@ -15,6 +15,7 @@ from datetime import UTC, datetime
 from typing import Annotated, Any
 
 from fastapi import APIRouter, Query, Response, status
+from fastapi.responses import HTMLResponse
 
 from alppy.api import errors
 from alppy.api.deps import (
@@ -222,7 +223,9 @@ def _assert_printable(db: DbDep, sheet: Any) -> None:
         raise _not_renderable(exc, render_error) from exc
 
 
-@router.post("/sheets/preview", response_class=Response, dependencies=[RenderRateLimit])
+@router.post(
+    "/sheets/preview", response_class=HTMLResponse, dependencies=[RenderRateLimit]
+)
 def preview_draft(
     payload: SheetDraftPreview, scope: ScopeDep, db: DbDep
 ) -> Response:
@@ -276,7 +279,9 @@ def preview_draft(
 
 
 @router.get(
-    "/sheets/{sheet_id}/preview", response_class=Response, dependencies=[RenderRateLimit]
+    "/sheets/{sheet_id}/preview",
+    response_class=HTMLResponse,
+    dependencies=[RenderRateLimit],
 )
 def preview_sheet(
     sheet_id: uuid.UUID,

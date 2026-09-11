@@ -706,7 +706,7 @@ export function useExtractSection(): UseMutationResult<
 }
 
 export function useUploadSource(): UseMutationResult<
-  SourceOut | JobOut,
+  SourceOut,
   Error,
   { file: File; subjectId: Uuid }
 > {
