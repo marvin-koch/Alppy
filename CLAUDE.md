@@ -219,8 +219,15 @@ first layer and it does not change. Underneath it, row-level security keyed on
 owner, so the API connecting as the schema owner leaves every policy in place and
 inert, which looks exactly like a working deployment. `ALPPY_DATABASE_URL` is the
 low-privilege role, `ALPPY_ADMIN_DATABASE_URL` is the owner, and
-`alppy/db/tenancy.py` is the **only** writer of the GUC — bound in
-`get_membership` after the `teacher_school` check and nowhere else. An unbound
+`alppy/db/tenancy.py` is the **only** writer of the GUC, and it is called from
+exactly **two** places: `get_membership`, after the `teacher_school` check, and
+`POST /auth/login`, after the same check against the home school. The rule is
+not "one call site" — it is *never bind without proving a CURRENT membership of
+the school being bound*, and both do. Login needs it because the `school`
+policy's second arm keys on `app.current_teacher_id` (D74) and an unbound
+session sees nothing: without it the `schools` field of every login response was
+`[]` on Postgres, while the SQLite suite saw it full and passed. A third call
+site needs the same proof or it is a hole. An unbound
 session sees nothing rather than everything; a handler that reads an empty list
 where it expected rows has forgotten `TenantDep`, not found a bug.
 

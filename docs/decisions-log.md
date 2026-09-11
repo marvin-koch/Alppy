@@ -3689,3 +3689,49 @@ system underneath, which is where a digest-pinned base quietly accumulates CVEs
 between Dependabot bumps. A scanner that fails a merge on a medium advisory in a
 transitive Debian package is a scanner somebody disables, and a disabled scanner
 reports success forever.
+
+---
+
+## Two bugs that only `docker compose up` could find
+
+Both were invisible to a suite of 1 566 passing tests, and for the same
+structural reason: **the tests build their schema with `create_all` on SQLite**,
+which has no migrations to run and no row-level security to enforce.
+
+**The advisory lock silently rolled back two thirds of the migrations.**
+`pg_advisory_lock` was taken on the connection before `context.begin_transaction()`
+— and SQLAlchemy 2.0 begins a transaction implicitly on the first `execute`, so
+alembic's own transaction nested inside a borrowed one rather than owning it.
+Migration **0042** then issues `op.execute("COMMIT")` on purpose, so
+`CREATE INDEX CONCURRENTLY` has nothing of ours to wait on: that commit ended the
+borrowed transaction, everything up to 0041 persisted, and 0042 onwards ran in a
+second implicit transaction alembic did not know it owned and never committed.
+Every migration logged "Running upgrade". The database came up at 0041, without
+`competency.edition_id`, and the seed died on the first read. The fix is one
+`connection.commit()` after taking the lock — which does not release it, because
+`pg_advisory_lock` is session-scoped, which is why this file uses it rather than
+the transaction-scoped variant.
+
+`scripts/check-schema-drift.py` catches this and is already a gating CI job: it
+migrates a real disposable Postgres from scratch and diffs it against the models.
+It was not run between writing the lock and running the stack. That is the
+lesson, and it is cheaper than the bug.
+
+**Login returned an empty staffroom list in every deployment.** RLS is keyed on
+`app.current_school_id` and an unbound session sees nothing; `get_membership`
+binds, and login — which runs *before* there is a membership to resolve — never
+did. So `schools` was `[]` on Postgres and full on SQLite, and the web client,
+which seeds its `me` cache from the login response, showed an empty school
+switcher for one render until `invalidateQueries` refetched `/auth/me`.
+
+The `school` policy was written for this moment: its second arm matches
+`app.current_teacher_id` against an open `teacher_school` row, which is what
+keeps a teacher's other staffrooms visible (D74). It needs the GUC set.
+
+So login binds — and the rule about a single writer is restated rather than
+broken. The rule was never "one call site"; it is *never bind without proving a
+CURRENT membership of the school being bound*. Login proves exactly what
+`get_membership` proves, with the same predicate, and a teacher whose home school
+is no longer theirs binds nothing and gets an empty list — which is the honest
+report of the state they are in, since their cookie is about to be refused by
+every other route anyway.

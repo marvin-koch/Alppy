@@ -107,6 +107,22 @@ def run_migrations_online() -> None:
             connection.execute(
                 text("SELECT pg_advisory_lock(:key)"), {"key": MIGRATION_LOCK_KEY}
             )
+            # COMMIT, and this line is load-bearing. SQLAlchemy 2.0 begins a
+            # transaction implicitly on the first `execute`, so without this the
+            # lock statement leaves one open — and alembic's own
+            # `begin_transaction()` then nests inside it rather than owning it.
+            # Every migration runs, every migration logs "Running upgrade", and
+            # the whole thing is ROLLED BACK when the connection closes: a
+            # database left at whatever revision it started from, with an
+            # entrypoint that reported success. Found by running
+            # `docker compose up` rather than by any test, because the suite
+            # builds its schema with `create_all` on SQLite and never comes
+            # through here.
+            #
+            # Committing does not release the lock: `pg_advisory_lock` is
+            # SESSION-scoped, which is the reason this file uses it rather than
+            # the transaction-scoped variant.
+            connection.commit()
         try:
             context.configure(
                 connection=connection,
@@ -122,6 +138,7 @@ def run_migrations_online() -> None:
                     text("SELECT pg_advisory_unlock(:key)"),
                     {"key": MIGRATION_LOCK_KEY},
                 )
+                connection.commit()
 
 
 if context.is_offline_mode():

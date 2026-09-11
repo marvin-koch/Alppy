@@ -18,7 +18,9 @@ from alppy.api.deps import (
     record_failed_login,
 )
 from alppy.core.security import hash_password, issue_session, needs_rehash, verify_password
-from alppy.models import Teacher
+from alppy.db import tenancy
+from alppy.db.validity import today, valid_on
+from alppy.models import Teacher, teacher_school
 from alppy.models.enums import Locale
 from alppy.schemas import (
     LoginRequest,
@@ -82,11 +84,39 @@ def login(
         path="/",
     )
     db.commit()
-    return teacher_out(
-        teacher,
-        teacher.home_school_id,
-        schools=class_service.schools_for_teacher(db, teacher.id),
-    )
+    # Bind the tenant before reading the staffroom list, and ONLY after proving
+    # the same thing `get_membership` proves.
+    #
+    # Row-level security is keyed on `app.current_school_id` (D84) and an
+    # unbound session sees nothing. So on Postgres this read returned an EMPTY
+    # LIST — the `schools` field of every login response was `[]`, in every
+    # deployment, while the SQLite suite (which has no policies) saw it full and
+    # passed. The web client seeds its `me` cache from this response, so the
+    # school switcher came up empty for one render before `invalidateQueries`
+    # refetched `/auth/me` and filled it in. Self-healing, and wrong.
+    #
+    # The `school` policy was written for exactly this moment: its second arm
+    # matches on `app.current_teacher_id` against an OPEN `teacher_school` row,
+    # which is what keeps a teacher's other staffrooms visible (D74). It needs
+    # the GUC set, and login was the one entry point that never set it.
+    #
+    # This is the SECOND writer of the GUC, after `get_membership`. The rule
+    # that there be only one is about never binding without the entitlement
+    # check, so the check comes with it: a CURRENT membership of the school the
+    # cookie is being minted for, the same predicate `get_membership` uses. A
+    # teacher whose home school is no longer theirs binds nothing and gets an
+    # empty list — which is the honest answer, and the state they are in.
+    current = db.execute(
+        select(teacher_school.c.school_id)
+        .where(teacher_school.c.teacher_id == teacher.id)
+        .where(teacher_school.c.school_id == teacher.home_school_id)
+        .where(valid_on(teacher_school, today()))
+    ).first()
+    schools = []
+    if current is not None:
+        tenancy.bind(db, school_id=teacher.home_school_id, teacher_id=teacher.id)
+        schools = class_service.schools_for_teacher(db, teacher.id)
+    return teacher_out(teacher, teacher.home_school_id, schools=schools)
 
 
 @router.post("/auth/school/{school_id}", response_model=TeacherOut)
