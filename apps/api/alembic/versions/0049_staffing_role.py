@@ -41,7 +41,11 @@ down_revision = "0048"
 branch_labels = None
 depends_on = None
 
-_ROLES = ("titulaire", "appui", "remplacant", "co_enseignant")
+#: The Postgres labels are the Python enum MEMBER NAMES, which is what
+#: SQLAlchemy sends for an `Enum(PyEnum)` column and what every enum since
+#: 0001 uses. The lowercase forms are the VALUES, and they are what the API
+#: and the message catalogues speak in.
+_ROLES = ("TITULAIRE", "APPUI", "REMPLACANT", "CO_ENSEIGNANT")
 
 
 def upgrade() -> None:

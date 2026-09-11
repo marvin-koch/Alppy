@@ -44,7 +44,9 @@ from alppy.models.enums import (
     AccessSubject,
     AnswerBoxFill,
     ClassKind,
+    CompetencyKind,
     CurriculumKind,
+    CurriculumYear,
     DetectionOutcome,
     EventKind,
     EventSubject,
@@ -463,6 +465,16 @@ class Class(Base, TimestampMixin, SchoolScopedMixin):
     kind: Mapped[ClassKind | None] = mapped_column(
         Enum(ClassKind, name="class_kind"), nullable=True
     )
+    # Which cantonal level this group teaches, when it teaches one (H2). NULL
+    # on a homeroom and on any group that is not streamed, which is most of
+    # them outside maths, German and French.
+    #
+    # RESTRICT: a canton's stream vocabulary is reference data, and deleting a
+    # row somebody's class points at should be refused rather than silently
+    # unstreaming a group mid-year.
+    stream_id: Mapped[uuid.UUID | None] = _fk(
+        "stream.id", nullable=True, ondelete="RESTRICT"
+    )
 
     # The children this class is HOME to — the ones whose UID it minted. No
     # delete-orphan any more: with enrollment a student removed from this list
@@ -604,6 +616,77 @@ class Student(Base, TimestampMixin, SchoolScopedMixin):
 # --------------------------------------------------------------------------
 # Curriculum
 # --------------------------------------------------------------------------
+class Stream(Base, TimestampMixin):
+    """A canton's name for a level a pupil is streamed into (audit H2).
+
+    Cycle 3 is streamed, and every canton streams differently: Vaud has VG and
+    VP with niveaux 1 and 2 inside VG, Geneva has R1/R2/R3, Valais has niveau
+    I and II. The PER's own `Niv 1-2-3` markers inside a progression are a
+    third vocabulary again. None of it was representable — a niveau-2 maths
+    group was a `Class` whose code happened to contain a "2".
+
+    **A lookup table, not an enum**, and that is the whole point of the
+    finding: the test is "can a canton be added without a migration", and an
+    enum fails it. Twenty-six cantons and their reforms are exactly the kind of
+    vocabulary that changes on somebody else's schedule.
+
+    Not school-scoped: a canton's streams are the canton's, shared by every
+    school in it — the same argument `Competency` makes for the curriculum.
+    """
+
+    __tablename__ = "stream"
+    __table_args__ = (
+        UniqueConstraint("canton", "code", name="uq_stream_code"),
+        Index("ix_stream_canton_position", "canton", "position"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    #: Two letters, as on a plate: VD, GE, VS, NE, FR, JU.
+    canton: Mapped[str] = mapped_column(String(2), nullable=False)
+    #: The canton's own short form — "VG", "VP", "R2", "N1".
+    code: Mapped[str] = mapped_column(String(20), nullable=False)
+    labels: Mapped[dict[str, str]] = mapped_column(JSONB, nullable=False)
+    #: Ordered weakest to strongest as the canton itself orders them, so a
+    #: picker does not have to guess and a move between groups has a direction.
+    #: NOT a difficulty score: the gap between VD's niveau 1 and 2 is not the
+    #: same quantity as the gap between GE's R2 and R3, and nothing may compare
+    #: them across cantons.
+    position: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class CurriculumEdition(Base, TimestampMixin):
+    """One published version of one curriculum (audit H3).
+
+    A curriculum is not a constant. The PER has been revised, and a school
+    marking against the 2010 wording and a school marking against the current
+    one are not marking against the same thing — but `uq_competency_code` was
+    `(curriculum, code)`, so the two editions could never coexist and an
+    update had to overwrite history in place. Every band ever computed from the
+    old row would silently start meaning something else.
+
+    Not school-scoped: an edition is a fact about a published document, the
+    same for everyone. Which edition a school marks against is the school's,
+    and lives on `School.default_curriculum`'s side of the question.
+    """
+
+    __tablename__ = "curriculum_edition"
+    __table_args__ = (
+        UniqueConstraint("curriculum", "edition", name="uq_curriculum_edition"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    curriculum: Mapped[CurriculumKind] = mapped_column(
+        Enum(CurriculumKind, name="curriculum_kind"), nullable=False
+    )
+    #: The publisher's own name for it — "2010", "2023". Not a number we chose.
+    edition: Mapped[str] = mapped_column(String(20), nullable=False)
+    valid_from: Mapped[date | None] = mapped_column(Date)
+    #: NULL while it is the one in force. The same half-open shape D87 gave
+    #: membership, for the same reason: the fact that an edition was current
+    #: has to outlive its being current.
+    valid_to: Mapped[date | None] = mapped_column(Date)
+
+
 class Competency(Base, TimestampMixin):
     """Hierarchical, curriculum-coded. LP21 and PER coexist in one table.
 
@@ -612,14 +695,59 @@ class Competency(Base, TimestampMixin):
 
     __tablename__ = "competency"
     __table_args__ = (
-        UniqueConstraint("curriculum", "code", name="uq_competency_code"),
+        # Widened to carry the edition (H3): the same code means different
+        # things in two editions, and a unique key that cannot tell them apart
+        # forces an update to overwrite the row every past band was computed
+        # from.
+        UniqueConstraint("curriculum", "edition_id", "code", name="uq_competency_code"),
         Index("ix_competency_subject_cycle", "subject_key", "cycle"),
+        # "Every progression for 10H maths" — what a year-scoped adaptive plan
+        # asks, and what H1 says the two-level tree could not express at all.
+        Index("ix_competency_kind_year", "kind", "year"),
     )
 
     id: Mapped[uuid.UUID] = _pk()
     curriculum: Mapped[CurriculumKind] = mapped_column(
         Enum(CurriculumKind, name="curriculum_kind"), nullable=False
     )
+    #: Which published edition this row belongs to.
+    #:
+    #: NOT NULL, and that is load-bearing rather than tidy: it is part of
+    #: `uq_competency_code`, and two NULLs are DISTINCT inside a unique index —
+    #: so a nullable version would have let `(PER, NULL, 'MSN 31')` exist twice,
+    #: which is exactly the duplication the constraint is for.
+    edition_id: Mapped[uuid.UUID] = mapped_column(
+        PgUUID(as_uuid=True),
+        ForeignKey("curriculum_edition.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    #: Which of the curriculum's levels this is. See `CompetencyKind`.
+    kind: Mapped[CompetencyKind] = mapped_column(
+        Enum(CompetencyKind, name="competency_kind"),
+        nullable=False,
+        server_default=text("'OBJECTIF'"),
+    )
+    #: The school year a PROGRESSION belongs to, and NULL on every other kind:
+    #: an objectif spans the cycle, and dating it would be a claim the source
+    #: does not make.
+    year: Mapped[CurriculumYear | None] = mapped_column(
+        Enum(CurriculumYear, name="curriculum_year")
+    )
+    #: Whether this row came from the publisher or from us (H3).
+    #:
+    #: It existed because the seed carried invented codes — `MSN 31.2` is not a
+    #: CIIP code — presented in CIIP's own notation, so a teacher reading one
+    #: off a printed sheet had no way to know their inspector would not
+    #: recognise it. Rows sourced from the publisher are True; anything we add
+    #: is False and has to be marked as such wherever it is shown.
+    is_official: Mapped[bool] = mapped_column(
+        Boolean, nullable=False, default=False, server_default=text("false")
+    )
+    #: Where an official row came from, precisely enough to check: the CIIP API
+    #: endpoint, or the document and page. NULL on unofficial rows, which have
+    #: no source to cite.
+    source_ref: Mapped[str | None] = mapped_column(String(200))
     code: Mapped[str] = mapped_column(String(40), nullable=False)
     # Indexed: the tree walks children-of-a-node, and `ondelete="SET NULL"`
     # makes Postgres find every child of a deleted competency — both of which

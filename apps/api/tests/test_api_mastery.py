@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import (
     Tenant,
+    ensure_edition,
     login,
     make_chapter,
     make_exercise,
@@ -25,6 +26,7 @@ from alppy.services.mastery_service import recompute_for_people
 def _second_competency(db: Session) -> Competency:
     competency = Competency(
         id=uuid.uuid4(),
+        edition_id=ensure_edition(db),
         curriculum=CurriculumKind.PER,
         code="MSN.13",
         parent_id=None,

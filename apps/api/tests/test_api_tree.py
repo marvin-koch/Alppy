@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
 from test_api_fixtures import (
     Tenant,
+    ensure_edition,
     login,
     make_chapter,
     make_exercise,
@@ -42,6 +43,7 @@ def _competency(
 ) -> Competency:
     row = Competency(
         id=uuid.uuid4(),
+        edition_id=ensure_edition(db),
         curriculum=CurriculumKind.PER,
         code=code,
         parent_id=parent.id if parent else None,

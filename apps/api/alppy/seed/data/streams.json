@@ -1,0 +1,27 @@
+{
+  "_source": "Cantonal secondary-I structures, cycle 3. Ordered as each canton orders them, weakest to strongest. Position is an ORDER, never a score: the gap between VD's niveau 1 and 2 is not the same quantity as GE's R2 to R3, and nothing compares them across cantons.",
+  "streams": [
+    {"canton": "VD", "code": "VG-N1", "position": 1, "labels": {"fr": "Voie générale, niveau 1", "de": "Allgemeine Ausrichtung, Niveau 1", "en": "General track, level 1"}},
+    {"canton": "VD", "code": "VG-N2", "position": 2, "labels": {"fr": "Voie générale, niveau 2", "de": "Allgemeine Ausrichtung, Niveau 2", "en": "General track, level 2"}},
+    {"canton": "VD", "code": "VP", "position": 3, "labels": {"fr": "Voie prégymnasiale", "de": "Vorgymnasiale Ausrichtung", "en": "Pre-gymnasium track"}},
+
+    {"canton": "GE", "code": "R1", "position": 1, "labels": {"fr": "Regroupement 1", "de": "Gruppierung 1", "en": "Grouping 1"}},
+    {"canton": "GE", "code": "R2", "position": 2, "labels": {"fr": "Regroupement 2", "de": "Gruppierung 2", "en": "Grouping 2"}},
+    {"canton": "GE", "code": "R3", "position": 3, "labels": {"fr": "Regroupement 3", "de": "Gruppierung 3", "en": "Grouping 3"}},
+
+    {"canton": "VS", "code": "N2", "position": 1, "labels": {"fr": "Niveau II", "de": "Niveau II", "en": "Level II"}},
+    {"canton": "VS", "code": "N1", "position": 2, "labels": {"fr": "Niveau I", "de": "Niveau I", "en": "Level I"}},
+
+    {"canton": "NE", "code": "MO", "position": 1, "labels": {"fr": "Section moderne", "de": "Moderne Abteilung", "en": "Modern section"}},
+    {"canton": "NE", "code": "PR", "position": 2, "labels": {"fr": "Section préprofessionnelle", "de": "Vorberufliche Abteilung", "en": "Pre-vocational section"}},
+    {"canton": "NE", "code": "MA", "position": 3, "labels": {"fr": "Section maturités", "de": "Maturitätsabteilung", "en": "Maturité section"}},
+
+    {"canton": "FR", "code": "EB", "position": 1, "labels": {"fr": "Classe à exigences de base", "de": "Klasse mit Grundansprüchen", "en": "Basic-requirements class"}},
+    {"canton": "FR", "code": "GE", "position": 2, "labels": {"fr": "Classe générale", "de": "Allgemeine Klasse", "en": "General class"}},
+    {"canton": "FR", "code": "PG", "position": 3, "labels": {"fr": "Classe prégymnasiale", "de": "Vorgymnasiale Klasse", "en": "Pre-gymnasium class"}},
+
+    {"canton": "JU", "code": "NA", "position": 1, "labels": {"fr": "Niveau A", "de": "Niveau A", "en": "Level A"}},
+    {"canton": "JU", "code": "NB", "position": 2, "labels": {"fr": "Niveau B", "de": "Niveau B", "en": "Level B"}},
+    {"canton": "JU", "code": "NC", "position": 3, "labels": {"fr": "Niveau C", "de": "Niveau C", "en": "Level C"}}
+  ]
+}

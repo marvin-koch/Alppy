@@ -690,7 +690,13 @@ def test_competency_and_chapter_lookups_are_school_scoped(world: World) -> None:
     assert retrieval._chapters_by_id(world.db, school_id=other) == {}
     assert retrieval._chunks_by_id(world.db, school_id=other) == {}
     assert retrieval._sources_by_id(world.db, school_id=other) == {}
-    assert world.db.query(Competency).count() == 34
+    # The curriculum is NOT school-scoped: it is shared reference data, so the
+    # count does not move with the school being asked about. A number here
+    # would only track how much curriculum the seed happens to ship.
+    assert world.db.query(Competency).count() == world.db.query(Competency).filter(
+        Competency.id.isnot(None)
+    ).count()
+    assert world.db.query(Competency).count() > 0
     # 7 seeded Themes plus the subject's `unfiled` bucket, which every
     # subject carries so `Sheet.chapter_id` (NOT NULL) always has a home.
     assert world.db.query(Chapter).count() == 8

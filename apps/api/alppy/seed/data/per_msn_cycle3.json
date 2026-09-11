@@ -1,0 +1,5130 @@
+{
+  "curriculum": "PER",
+  "edition": "2023",
+  "cycle": 3,
+  "subject_key": "mathematics",
+  "competencies": [
+    {
+      "code": "MSN",
+      "kind": "domaine",
+      "parent_code": null,
+      "year": null,
+      "labels": {
+        "fr": "Mathématiques et Sciences de la nature"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/disciplines"
+    },
+    {
+      "code": "MSN 31",
+      "kind": "objectif",
+      "parent_code": "MSN",
+      "year": null,
+      "labels": {
+        "fr": "Poser et résoudre des problèmes pour modéliser le plan et l'espace"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C1",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en définissant des figures planes et des solides par certaines de leurs propriétés géométriques"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C2",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant des propriétés des figures et leur décomposition en figures élémentaires pour les construire et les reproduire"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C3",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant des systèmes de repérages"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C4",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant les instruments ou les logiciels appropriés"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C5",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant des représentations conventionnelles des figures planes et des solides (croquis, dessin à l'échelle, perspective,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C6",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en recourant au raisonnement déductif"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C7",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant des transformations géométriques"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.C8",
+      "kind": "composante",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "…en représentant des solides en perspective et en faisant le développement"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4840.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Résolution de problèmes géométriques en lien avec les figures et les transformations étudiées, notamment : ( 2 , 3 , 4 , 5 , 6 , 7 , A , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des transformations géométriques pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4840.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes géométriques en lien avec les figures et les transformations étudiées, notamment : ( 2 , 3 , 4 , 5 , 6 , 7 , A , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des transformations géométriques pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4840.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes géométriques en lien avec les figures et les transformations étudiées, notamment : ( 2 , 3 , 4 , 5 , 6 , 7 , A , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des transformations géométriques pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2722",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes géométriques en faisant appel à une ou plusieurs des composantes suivantes : choix et mise en relation des données nécessaires à la résolution mobilisation des propriétés des figures et des transformations utilisation des outils de construction appropriés élaboration de cheminements déductifs basés sur des figures géométriques (Niv 3) vérification de la pertinence du résultat communication de la démarche et du résultat en utilisant un vocabulaire adéquat"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4841.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de figures planes selon leurs propriétés (symétrie-s, interne-s, côtés, angles, somme des angles, diagonales) et construction de : ( 1 , 2 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4841.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de figures planes selon leurs propriétés (symétrie-s, interne-s, côtés, angles, somme des angles, diagonales) et construction de : ( 1 , 2 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4841.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de figures planes selon leurs propriétés (symétrie-s, interne-s, côtés, angles, somme des angles, diagonales) et construction de : ( 1 , 2 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4842.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "triangles, quadrilatères, cercles"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4842.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "triangles, quadrilatères, cercles"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4843.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "polygones réguliers (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4843.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "polygones réguliers (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2723",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît, nomme, décrit et construit : droites parallèles, droites perpendiculaires, hauteurs, angles, triangles, quadrilatères, cercle médiatrice d'un segment, bissectrice d'un angle, cercles inscrit et circonscrit (Niv 2-3) tangente à un cercle, médianes d'un triangle, polygones réguliers (Niv 3) utilise la somme des angles d'un triangle utilise de manière appropriée les instruments de géométrie (règle, équerre, compas, rapporteur) réalise un croquis comme support de réflexion, pour mémoriser ou communiquer des informations sans ambiguïté"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4844",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance et dénomination des angles (aigu, obtus, droit, plat) ( 1 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2724",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît, nomme, décrit et construit : droites parallèles, droites perpendiculaires, hauteurs, angles, triangles, quadrilatères, cercle médiatrice d'un segment, bissectrice d'un angle, cercles inscrit et circonscrit (Niv 2-3) tangente à un cercle, médianes d'un triangle, polygones réguliers (Niv 3) utilise la somme des angles d'un triangle utilise de manière appropriée les instruments de géométrie (règle, équerre, compas, rapporteur) réalise un croquis comme support de réflexion, pour mémoriser ou communiquer des informations sans ambiguïté"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4845.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description des propriétés et construction de : ( 1 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4845.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description des propriétés et construction de : ( 1 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4845.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description des propriétés et construction de : ( 1 , 4 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4846.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "droites parallèles, droites perpendiculaires hauteur, médiatrice, bissectrice cercles inscrit et circonscrit (Niv 1s-2-3) médiane, centre de gravité (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4846.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "droites parallèles, droites perpendiculaires hauteur, médiatrice, bissectrice cercles inscrit et circonscrit (Niv 1s-2-3) médiane, centre de gravité (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4847",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "tangente, angle au centre d'un cercle, angle inscrit dans un cercle, angles isométriques (opposés par le sommet, alternes-internes,…) (Niv 2s-3) cercle de Thalès (Niv 3)"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2725",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît, nomme, décrit et construit : droites parallèles, droites perpendiculaires, hauteurs, angles, triangles, quadrilatères, cercle médiatrice d'un segment, bissectrice d'un angle, cercles inscrit et circonscrit (Niv 2-3) tangente à un cercle, médianes d'un triangle, polygones réguliers (Niv 3) utilise la somme des angles d'un triangle utilise de manière appropriée les instruments de géométrie (règle, équerre, compas, rapporteur) réalise un croquis comme support de réflexion, pour mémoriser ou communiquer des informations sans ambiguïté"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4848.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C5",
+      "year": "9H",
+      "labels": {
+        "fr": "Représentation de figures planes par un croquis et/ou un dessin à l'échelle (y compris l'échelle 1:1) ( 5 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4848.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C5",
+      "year": "10H",
+      "labels": {
+        "fr": "Représentation de figures planes par un croquis et/ou un dessin à l'échelle (y compris l'échelle 1:1) ( 5 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4848.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C5",
+      "year": "11H",
+      "labels": {
+        "fr": "Représentation de figures planes par un croquis et/ou un dessin à l'échelle (y compris l'échelle 1:1) ( 5 )"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2726",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît, nomme, décrit et construit : droites parallèles, droites perpendiculaires, hauteurs, angles, triangles, quadrilatères, cercle médiatrice d'un segment, bissectrice d'un angle, cercles inscrit et circonscrit (Niv 2-3) tangente à un cercle, médianes d'un triangle, polygones réguliers (Niv 3) utilise la somme des angles d'un triangle utilise de manière appropriée les instruments de géométrie (règle, équerre, compas, rapporteur) réalise un croquis comme support de réflexion, pour mémoriser ou communiquer des informations sans ambiguïté"
+      },
+      "description": {
+        "fr": "Figures géométriques planes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4849.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de solides selon leurs propriétés (faces, sommets, arêtes, polyèdre ou non) : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4849.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de solides selon leurs propriétés (faces, sommets, arêtes, polyèdre ou non) : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4849.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Reconnaissance, dénomination, description de solides selon leurs propriétés (faces, sommets, arêtes, polyèdre ou non) : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4850.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "cube, parallélépipède rectangle, prisme droit, cylindre, pyramide"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4850.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "cube, parallélépipède rectangle, prisme droit, cylindre, pyramide"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4851",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "cône, sphère"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2727",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : cube, parallélépipède rectangle, prisme droit, pyramide, cylindre, cône, sphère esquisse la représentation d'un solide : par un développement en perspective réalise le développement : d'un cube, d'un parallélépipède rectangle d'un prisme droit (Niv 2-3) d'un cylindre (Niv 3)"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4852.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Réalisation de développements et construction de solides : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4852.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Réalisation de développements et construction de solides : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4852.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Réalisation de développements et construction de solides : ( 1 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4853.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "cube, parallélépipède rectangle, prisme droit"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4853.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "cube, parallélépipède rectangle, prisme droit"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4854",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "cylindre (Niv 1s-2-3) pyramide régulière (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2728",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : cube, parallélépipède rectangle, prisme droit, pyramide, cylindre, cône, sphère esquisse la représentation d'un solide : par un développement en perspective réalise le développement : d'un cube, d'un parallélépipède rectangle d'un prisme droit (Niv 2-3) d'un cylindre (Niv 3)"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4855.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Représentation de solides en perspective ( 5 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4855.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Représentation de solides en perspective ( 5 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4855.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Représentation de solides en perspective ( 5 , 8 )"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2729",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : cube, parallélépipède rectangle, prisme droit, pyramide, cylindre, cône, sphère esquisse la représentation d'un solide : par un développement en perspective réalise le développement : d'un cube, d'un parallélépipède rectangle d'un prisme droit (Niv 2-3) d'un cylindre (Niv 3)"
+      },
+      "description": {
+        "fr": "Solides"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4856.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance et dénomination des isométries : translation, symétrie axiale, rotation, symétrie centrale ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4856.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance et dénomination des isométries : translation, symétrie axiale, rotation, symétrie centrale ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2730",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4857.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "9H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une isométrie (vecteur de translation, axe de symétrie, centre de rotation ou de symétrie, conservation des grandeurs,…) (Niv 1) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4857.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "10H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une isométrie (vecteur de translation, axe de symétrie, centre de rotation ou de symétrie, conservation des grandeurs,…) (Niv 1) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4857.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "11H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une isométrie (vecteur de translation, axe de symétrie, centre de rotation ou de symétrie, conservation des grandeurs,…) (Niv 1) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2731",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4858.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "9H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une : (Niv 2-3) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4858.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "10H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une : (Niv 2-3) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4858.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "11H",
+      "labels": {
+        "fr": "Description et identification des caractéristiques d'une : (Niv 2-3) ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4859.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "isométrie (vecteur de translation, axe de symétrie, centre de rotation ou de symétrie, conservation des grandeurs,…)"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4859.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "isométrie (vecteur de translation, axe de symétrie, centre de rotation ou de symétrie, conservation des grandeurs,…)"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4860",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "homothétie (centre, rapport,…) similitude (Niv 3s)"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2732",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4861.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "9H",
+      "labels": {
+        "fr": "Anticipation de la position d'une figure plane après une ou plusieurs isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4861.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "10H",
+      "labels": {
+        "fr": "Anticipation de la position d'une figure plane après une ou plusieurs isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4861.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "11H",
+      "labels": {
+        "fr": "Anticipation de la position d'une figure plane après une ou plusieurs isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2733",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4862.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "9H",
+      "labels": {
+        "fr": "Réalisation de frises ou de pavages à l'aide d'isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4862.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "10H",
+      "labels": {
+        "fr": "Réalisation de frises ou de pavages à l'aide d'isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4862.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C7",
+      "year": "11H",
+      "labels": {
+        "fr": "Réalisation de frises ou de pavages à l'aide d'isométries ( 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2734",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4863.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "À l'aide des instruments ou de logiciels appropriés, construction de l'image d'une figure plane par une isométrie : translation, symétrie axiale, rotation, symétrie centrale ( 4 , 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4863.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "À l'aide des instruments ou de logiciels appropriés, construction de l'image d'une figure plane par une isométrie : translation, symétrie axiale, rotation, symétrie centrale ( 4 , 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2735",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4864",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "9H",
+      "labels": {
+        "fr": "Agrandissement et réduction de figures planes en utilisant la proportionnalité (Niv s) ( 4 , 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4865",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "10H",
+      "labels": {
+        "fr": "Agrandissement et réduction de figures planes en utilisant la proportionnalité ( 4 , 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4866",
+      "kind": "progression",
+      "parent_code": "MSN 31",
+      "year": "11H",
+      "labels": {
+        "fr": "Construction de l'image d'une figure plane : (Niv 2-3) par une homothétie par une similitude (Niv 3s) ( 4 , 7 )"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2736",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "reconnaît et nomme (Niv 1-2) / reconnaît, nomme et décrit (Niv 3) : une isométrie une homothétie (Niv 2-3) construit l'image d'une figure plane par : une isométrie une homothétie (Niv 2-3) construit : le-s axe-s de symétrie d'une figure plane le centre de symétrie d'une figure plane (Niv 2-3) agrandit et réduit une figure plane reconnaît des figures semblables"
+      },
+      "description": {
+        "fr": "Transformations géométriques"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4867.9H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C3",
+      "year": "9H",
+      "labels": {
+        "fr": "Utilisation de systèmes de repérage pour communiquer des positions et des itinéraires, pour placer des points (plan et espace) ( 3 )"
+      },
+      "description": {
+        "fr": "Repérage dans le plan et l'espace"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4867.10H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C3",
+      "year": "10H",
+      "labels": {
+        "fr": "Utilisation de systèmes de repérage pour communiquer des positions et des itinéraires, pour placer des points (plan et espace) ( 3 )"
+      },
+      "description": {
+        "fr": "Repérage dans le plan et l'espace"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.P4867.11H",
+      "kind": "progression",
+      "parent_code": "MSN 31.C3",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation de systèmes de repérage pour communiquer des positions et des itinéraires, pour placer des points (plan et espace) ( 3 )"
+      },
+      "description": {
+        "fr": "Repérage dans le plan et l'espace"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 31.A2737",
+      "kind": "attente",
+      "parent_code": "MSN 31",
+      "year": null,
+      "labels": {
+        "fr": "construit et utilise un système de repérage du plan pour placer des points, pour communiquer leur position ou décrire des itinéraires lit un plan"
+      },
+      "description": {
+        "fr": "Repérage dans le plan et l'espace"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/49"
+    },
+    {
+      "code": "MSN 32",
+      "kind": "objectif",
+      "parent_code": "MSN",
+      "year": null,
+      "labels": {
+        "fr": "Poser et résoudre des problèmes pour construire et structurer des représentations des nombres réels"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C1",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en ordonnant des nombres réels"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C2",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en comparant différentes écritures de nombre et systèmes de numération"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C3",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en découvrant quelques nombres irrationnels (pi, racine de 2,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C4",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant différentes écritures des nombres (fraction, écriture décimale, %,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C5",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant des propriétés des nombres réels"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C6",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant différentes procédures de calcul, y compris le calcul littéral"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.C7",
+      "kind": "composante",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "…en organisant les nombres réels à travers les opérations"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P1260.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Résolution de problèmes numériques en lien avec les ensembles de nombres travaillés, l'écriture de ces nombres et les opérations étudiées, notamment : ( 1 , 4 , 5 , 6 , 7 , A , C , D , F , a , c , d , e , f , g , h ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures, puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des nombres et des opérations pour établir des preuves traduction des données d'un problème en opérations arithmétiques, en respectant les conventions d'écriture choix de l'outil de calcul le mieux adapté à la situation et à ses propres compétences utilisation de la calculatrice dans des situations où l'aspect calculatoire est secondaire, pour vérifier le résultat d'un calcul ou pour effectuer des calculs complexes acceptation ou refus d'un résultat par l'estimation de l'ordre de grandeur, la connaissance des opérations ou la confrontation au réel vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P1260.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes numériques en lien avec les ensembles de nombres travaillés, l'écriture de ces nombres et les opérations étudiées, notamment : ( 1 , 4 , 5 , 6 , 7 , A , C , D , F , a , c , d , e , f , g , h ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures, puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des nombres et des opérations pour établir des preuves traduction des données d'un problème en opérations arithmétiques, en respectant les conventions d'écriture choix de l'outil de calcul le mieux adapté à la situation et à ses propres compétences utilisation de la calculatrice dans des situations où l'aspect calculatoire est secondaire, pour vérifier le résultat d'un calcul ou pour effectuer des calculs complexes acceptation ou refus d'un résultat par l'estimation de l'ordre de grandeur, la connaissance des opérations ou la confrontation au réel vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P1260.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes numériques en lien avec les ensembles de nombres travaillés, l'écriture de ces nombres et les opérations étudiées, notamment : ( 1 , 4 , 5 , 6 , 7 , A , C , D , F , a , c , d , e , f , g , h ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures, puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des nombres et des opérations pour établir des preuves traduction des données d'un problème en opérations arithmétiques, en respectant les conventions d'écriture choix de l'outil de calcul le mieux adapté à la situation et à ses propres compétences utilisation de la calculatrice dans des situations où l'aspect calculatoire est secondaire, pour vérifier le résultat d'un calcul ou pour effectuer des calculs complexes acceptation ou refus d'un résultat par l'estimation de l'ordre de grandeur, la connaissance des opérations ou la confrontation au réel vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A496",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes numériques en faisant appel à une ou plusieurs des composantes suivantes : choix et mise en relation des données nécessaires à la résolution choix des opérations utilisation d'outils de calcul appropriés estimation et vérification de la pertinence du résultat communication de la démarche et du résultat, en utilisant un vocabulaire adéquat traduit un problème numérique en une écriture mathématique appropriée utilise les fonctions de base de la calculatrice (+ ; – ; ∙ ; : ; racine ; puissance ; mémorisation ;…) et met en lien le résultat obtenu avec le résultat attendu"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4918.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Connaissance et utilisation de diverses fonctions de la calculatrice : quatre opérations de base, parenthèses, mise en mémoire et récupération de valeurs, puissance, racine,… ( f ) Prise en compte de l'ordre dans lequel la calculatrice effectue les opérations"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4918.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance et utilisation de diverses fonctions de la calculatrice : quatre opérations de base, parenthèses, mise en mémoire et récupération de valeurs, puissance, racine,… ( f ) Prise en compte de l'ordre dans lequel la calculatrice effectue les opérations"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4918.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Connaissance et utilisation de diverses fonctions de la calculatrice : quatre opérations de base, parenthèses, mise en mémoire et récupération de valeurs, puissance, racine,… ( f ) Prise en compte de l'ordre dans lequel la calculatrice effectue les opérations"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2766",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes numériques en faisant appel à une ou plusieurs des composantes suivantes : choix et mise en relation des données nécessaires à la résolution choix des opérations utilisation d'outils de calcul appropriés estimation et vérification de la pertinence du résultat communication de la démarche et du résultat, en utilisant un vocabulaire adéquat traduit un problème numérique en une écriture mathématique appropriée utilise les fonctions de base de la calculatrice (+ ; – ; ∙ ; : ; racine ; puissance ; mémorisation ;…) et met en lien le résultat obtenu avec le résultat attendu"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4919.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Exploration de situations aléatoires ( E )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4919.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Exploration de situations aléatoires ( E )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P4920",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Traitement de situations aléatoires à l'aide de notions de probabilités (Niv 2-3) ( E )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2767",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "explore un ensemble de possibilités et organise un dénombrement conduit un raisonnement probabiliste simple en dénombrant les cas favorables et les cas possibles (cartes, dés, pièces de monnaie,…) (Niv 3)"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5160.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32.C5",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance et utilisation de propriétés des nombres naturels : ( 5 )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5160.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32.C5",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance et utilisation de propriétés des nombres naturels : ( 5 )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5161",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "critères de divisibilité, multiples et diviseurs communs ppmc, pgdc, nombres premiers, produit de facteurs (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5162",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "ppmc, pgdc, nombres premiers, produit de facteurs (Niv 1)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2902",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "utilise les critères de divisibilité par 2, 3, 5, 9, 10, 25, 100 détermine le ppmc et le pgdc de deux nombres : 10 et 15; 12 et 20 ;… 56 et 84 ; 45 et 75 ;… (Niv 2-3) décompose un nombre inférieur à 1000 en produit de facteurs premiers complète une suite de nombres et exprime sa loi de formation : suites arithmétiques, suite des carrés, suites des puissances de 2, de 10,… suites géométriques dans , suite des cubes,… (Niv 3) reconnaît, utilise différentes écritures d'un même nombre et passe de l'une à l'autre : décimale, fractionnaire, pourcentage, puissance, racine notation scientifique (Niv 2-3) (Niv 2-3) extrait le nombre entier: de milliers, de centaines, de dizaines et d'unités d'un nombre positif de dixièmes, de centièmes et de millièmes d'un nombre positif (Niv 2-3) amplifie, simplifie, rend irréductible une fraction et la représente géométriquement compare, ordonne, encadre, intercale : des nombres entiers relatifs des nombres écrits sous forme décimale ou fractionnaire dans (Niv 1) , dans (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5163.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Connaissance et utilisation de différentes écritures d'un même nombre ( 2 ) Comparaison, approximation, encadrement, représentation sur une droite et ordre de grandeur de nombres écrits sous forme : ( 1 , 5 , c )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5163.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance et utilisation de différentes écritures d'un même nombre ( 2 ) Comparaison, approximation, encadrement, représentation sur une droite et ordre de grandeur de nombres écrits sous forme : ( 1 , 5 , c )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5163.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Connaissance et utilisation de différentes écritures d'un même nombre ( 2 ) Comparaison, approximation, encadrement, représentation sur une droite et ordre de grandeur de nombres écrits sous forme : ( 1 , 5 , c )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5164.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "entière dans décimale dans"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5164.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "entière dans décimale dans"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5164.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "entière dans décimale dans"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5165.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "fractionnaire (y compris simplification et amplification), de pourcentage"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5165.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "fractionnaire (y compris simplification et amplification), de pourcentage"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5166",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "dans (Niv 1-2)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5167",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "dans (Niv 1-2)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5168",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "dans (Niv 3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5169.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "de puissance a b (a sous forme décimale, b dans )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5169.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "de puissance a b (a sous forme décimale, b dans )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5169.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "de puissance a b (a sous forme décimale, b dans )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5170",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "a dans (Niv 1-2)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5171",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "a dans (Niv 2)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5172",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "a dans (Niv 3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5173.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "de la notation scientifique : a·10 n - n dans (Niv 1s) - n dans (Niv 2-3) de racine carrée et cubique dans"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5173.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "de la notation scientifique : a·10 n - n dans (Niv 1s) - n dans (Niv 2-3) de racine carrée et cubique dans"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2903",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "utilise les critères de divisibilité par 2, 3, 5, 9, 10, 25, 100 détermine le ppmc et le pgdc de deux nombres : 10 et 15; 12 et 20 ;… 56 et 84 ; 45 et 75 ;… (Niv 2-3) décompose un nombre inférieur à 1000 en produit de facteurs premiers complète une suite de nombres et exprime sa loi de formation : suites arithmétiques, suite des carrés, suites des puissances de 2, de 10,… suites géométriques dans , suite des cubes,… (Niv 3) reconnaît, utilise différentes écritures d'un même nombre et passe de l'une à l'autre : décimale, fractionnaire, pourcentage, puissance, racine notation scientifique (Niv 2-3) (Niv 2-3) extrait le nombre entier: de milliers, de centaines, de dizaines et d'unités d'un nombre positif de dixièmes, de centièmes et de millièmes d'un nombre positif (Niv 2-3) amplifie, simplifie, rend irréductible une fraction et la représente géométriquement compare, ordonne, encadre, intercale : des nombres entiers relatifs des nombres écrits sous forme décimale ou fractionnaire dans (Niv 1) , dans (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5174.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32.C3",
+      "year": "9H",
+      "labels": {
+        "fr": "Discernement des ensembles de nombres, découverte de quelques nombres irrationnels ( 3 )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5174.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32.C3",
+      "year": "10H",
+      "labels": {
+        "fr": "Discernement des ensembles de nombres, découverte de quelques nombres irrationnels ( 3 )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5174.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32.C3",
+      "year": "11H",
+      "labels": {
+        "fr": "Discernement des ensembles de nombres, découverte de quelques nombres irrationnels ( 3 )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2904",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "utilise les critères de divisibilité par 2, 3, 5, 9, 10, 25, 100 détermine le ppmc et le pgdc de deux nombres : 10 et 15; 12 et 20 ;… 56 et 84 ; 45 et 75 ;… (Niv 2-3) décompose un nombre inférieur à 1000 en produit de facteurs premiers complète une suite de nombres et exprime sa loi de formation : suites arithmétiques, suite des carrés, suites des puissances de 2, de 10,… suites géométriques dans , suite des cubes,… (Niv 3) reconnaît, utilise différentes écritures d'un même nombre et passe de l'une à l'autre : décimale, fractionnaire, pourcentage, puissance, racine notation scientifique (Niv 2-3) (Niv 2-3) extrait le nombre entier: de milliers, de centaines, de dizaines et d'unités d'un nombre positif de dixièmes, de centièmes et de millièmes d'un nombre positif (Niv 2-3) amplifie, simplifie, rend irréductible une fraction et la représente géométriquement compare, ordonne, encadre, intercale : des nombres entiers relatifs des nombres écrits sous forme décimale ou fractionnaire dans (Niv 1) , dans (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5175.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Exploration de quelques systèmes de numération (Rome, Égypte, Babylone, binaire,…) ( 2 , b )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5175.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Exploration de quelques systèmes de numération (Rome, Égypte, Babylone, binaire,…) ( 2 , b )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5175.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Exploration de quelques systèmes de numération (Rome, Égypte, Babylone, binaire,…) ( 2 , b )"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2905",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "utilise les critères de divisibilité par 2, 3, 5, 9, 10, 25, 100 détermine le ppmc et le pgdc de deux nombres : 10 et 15; 12 et 20 ;… 56 et 84 ; 45 et 75 ;… (Niv 2-3) décompose un nombre inférieur à 1000 en produit de facteurs premiers complète une suite de nombres et exprime sa loi de formation : suites arithmétiques, suite des carrés, suites des puissances de 2, de 10,… suites géométriques dans , suite des cubes,… (Niv 3) reconnaît, utilise différentes écritures d'un même nombre et passe de l'une à l'autre : décimale, fractionnaire, pourcentage, puissance, racine notation scientifique (Niv 2-3) (Niv 2-3) extrait le nombre entier: de milliers, de centaines, de dizaines et d'unités d'un nombre positif de dixièmes, de centièmes et de millièmes d'un nombre positif (Niv 2-3) amplifie, simplifie, rend irréductible une fraction et la représente géométriquement compare, ordonne, encadre, intercale : des nombres entiers relatifs des nombres écrits sous forme décimale ou fractionnaire dans (Niv 1) , dans (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Nombres"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5176.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Connaissance et utilisation des priorités des opérations (y compris parenthèses)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5176.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance et utilisation des priorités des opérations (y compris parenthèses)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2906",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "effectue des calculs en respectant les priorités des opérations : 3+5∙4 = 23; 2∙3 2 = 18; 36:(12:3) = 9 … utilise des procédures de calcul réfléchi ou de calcul mental pour effectuer un calcul de manière efficace, par exemple : addition et soustraction : 32+80 ; 1450–600 ; 50–12,8 ; … 10–23 ; -12 – 5; (Niv 2-3) multiplication et division : 6·1,5 ; 0,12·10 ; 15·8 ; 140 :5 ; 1,8 :3 ; 250 :1000 ; 25% de 60 … 6·(-1,5) ; ·4 ; 144:9 ; -32 : (-4) ; les deux tiers de 24 … (Niv 2-3) puissance et racine : 0,3 2 ; 25 ; … 40 3 ; (-2) 5 ; (Niv 2-3) utilise un algorithme pour effectuer un calcul avec des nombres écrits sous forme décimale ou fractionnaire, par exemple : addition et soustraction : 487,7+90,15; 1250-546,8 ; 0,5+ (Niv 2-3) multiplication, division et puissance : 4,25·8,4 ; 1200 :7,5 ; (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5177.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Connaissance et utilisation des propriétés des opérations pour organiser et effectuer des calculs de manière efficace et pour donner des estimations : ( 7 , c , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5177.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance et utilisation des propriétés des opérations pour organiser et effectuer des calculs de manière efficace et pour donner des estimations : ( 7 , c , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5177.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Connaissance et utilisation des propriétés des opérations pour organiser et effectuer des calculs de manière efficace et pour donner des estimations : ( 7 , c , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5178.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "addition, soustraction, multiplication, division"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5178.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "addition, soustraction, multiplication, division"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5179",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "puissances (a, b, m et n dans ) : a m ·a n = a m+n a m : a n = a m-n (a m ) n = a m·n a m ·b m = (a·b) m (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5180",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "racines carrées (cubiques), y compris extraction d'entiers (a et b dans ) : (Niv 3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2907",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "effectue des calculs en respectant les priorités des opérations : 3+5∙4 = 23; 2∙3 2 = 18; 36:(12:3) = 9 … utilise des procédures de calcul réfléchi ou de calcul mental pour effectuer un calcul de manière efficace, par exemple : addition et soustraction : 32+80 ; 1450–600 ; 50–12,8 ; … 10–23 ; -12 – 5; (Niv 2-3) multiplication et division : 6·1,5 ; 0,12·10 ; 15·8 ; 140 :5 ; 1,8 :3 ; 250 :1000 ; 25% de 60 … 6·(-1,5) ; ·4 ; 144:9 ; -32 : (-4) ; les deux tiers de 24 … (Niv 2-3) puissance et racine : 0,3 2 ; 25 ; … 40 3 ; (-2) 5 ; (Niv 2-3) utilise un algorithme pour effectuer un calcul avec des nombres écrits sous forme décimale ou fractionnaire, par exemple : addition et soustraction : 487,7+90,15; 1250-546,8 ; 0,5+ (Niv 2-3) multiplication, division et puissance : 4,25·8,4 ; 1200 :7,5 ; (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5181.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Utilisation de procédures de calcul réfléchi ou de calcul mental avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5181.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Utilisation de procédures de calcul réfléchi ou de calcul mental avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5181.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation de procédures de calcul réfléchi ou de calcul mental avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5182.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme décimale (+, −, ∙, :)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5182.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme décimale (+, −, ∙, :)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5182.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme décimale (+, −, ∙, :)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5183.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels sous forme décimale (+, −, ∙, :) (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5183.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "nombres rationnels sous forme décimale (+, −, ∙, :) (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5184",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres entiers relatifs de -100 à +100 (+) (Niv 1)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5185",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "nombres entiers relatifs de -100 à +100 (+, −, ∙, :) (Niv 1)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5186.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "nombres entiers relatifs de -100 à +100 (+, −, ∙, :) (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5186.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres entiers relatifs de -100 à +100 (+, −, ∙, :) (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5187",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire (+, −) (Niv 2)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5188",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire (+, −, ∙, :) (Niv 2)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5189",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire (+, −) (Niv 3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5190",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire (+, −, ·, :) (Niv 3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5191.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "des carrés parfaits pour en extraire la racine"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5191.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "des carrés parfaits pour en extraire la racine"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2908",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "effectue des calculs en respectant les priorités des opérations : 3+5∙4 = 23; 2∙3 2 = 18; 36:(12:3) = 9 … utilise des procédures de calcul réfléchi ou de calcul mental pour effectuer un calcul de manière efficace, par exemple : addition et soustraction : 32+80 ; 1450–600 ; 50–12,8 ; … 10–23 ; -12 – 5; (Niv 2-3) multiplication et division : 6·1,5 ; 0,12·10 ; 15·8 ; 140 :5 ; 1,8 :3 ; 250 :1000 ; 25% de 60 … 6·(-1,5) ; ·4 ; 144:9 ; -32 : (-4) ; les deux tiers de 24 … (Niv 2-3) puissance et racine : 0,3 2 ; 25 ; … 40 3 ; (-2) 5 ; (Niv 2-3) utilise un algorithme pour effectuer un calcul avec des nombres écrits sous forme décimale ou fractionnaire, par exemple : addition et soustraction : 487,7+90,15; 1250-546,8 ; 0,5+ (Niv 2-3) multiplication, division et puissance : 4,25·8,4 ; 1200 :7,5 ; (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5192.9H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "Utilisation des algorithmes pour effectuer des calculs de façon efficace avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5192.10H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "Utilisation des algorithmes pour effectuer des calculs de façon efficace avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5192.11H",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation des algorithmes pour effectuer des calculs de façon efficace avec des : ( 7 , e )"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5193",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "nombres rationnels positifs, sous forme décimale, inférieurs à 10000, ayant au plus deux décimales (+, −, ·, :)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5195",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire(+, −) (Niv 1-2)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P5196",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "11H",
+      "labels": {
+        "fr": "nombres rationnels sous forme fractionnaire(+, −, ·, :) (Niv 1-2)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.A2909",
+      "kind": "attente",
+      "parent_code": "MSN 32",
+      "year": null,
+      "labels": {
+        "fr": "effectue des calculs en respectant les priorités des opérations : 3+5∙4 = 23; 2∙3 2 = 18; 36:(12:3) = 9 … utilise des procédures de calcul réfléchi ou de calcul mental pour effectuer un calcul de manière efficace, par exemple : addition et soustraction : 32+80 ; 1450–600 ; 50–12,8 ; … 10–23 ; -12 – 5; (Niv 2-3) multiplication et division : 6·1,5 ; 0,12·10 ; 15·8 ; 140 :5 ; 1,8 :3 ; 250 :1000 ; 25% de 60 … 6·(-1,5) ; ·4 ; 144:9 ; -32 : (-4) ; les deux tiers de 24 … (Niv 2-3) puissance et racine : 0,3 2 ; 25 ; … 40 3 ; (-2) 5 ; (Niv 2-3) utilise un algorithme pour effectuer un calcul avec des nombres écrits sous forme décimale ou fractionnaire, par exemple : addition et soustraction : 487,7+90,15; 1250-546,8 ; 0,5+ (Niv 2-3) multiplication, division et puissance : 4,25·8,4 ; 1200 :7,5 ; (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P1298",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "9H",
+      "labels": {
+        "fr": "nombres rationnels positifs sous forme fractionnaire(+, −) (Niv 3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 32.P1299",
+      "kind": "progression",
+      "parent_code": "MSN 32",
+      "year": "10H",
+      "labels": {
+        "fr": "nombres rationnels sous forme fractionnaire(+, −, ·, :) (Niv 3)"
+      },
+      "description": {
+        "fr": "Calculs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/62"
+    },
+    {
+      "code": "MSN 33",
+      "kind": "objectif",
+      "parent_code": "MSN",
+      "year": null,
+      "labels": {
+        "fr": "Résoudre des problèmes numériques et algébriques"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C1",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en reconnaissant les caractéristiques mathématiques d'une situation et en la traduisant en écritures numérique ou littérale"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C2",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en observant comment les hommes ont résolu historiquement des problèmes de ce type"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C3",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant des propriétés des opérations (+, -, x , :, puissance, racine carrée et cubique)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C4",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en choisissant l'outil de calcul le mieux approprié à la situation proposée"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C5",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant l'algèbre comme outil de calcul (équations), de preuve ou de généralisation"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C6",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en construisant, en exerçant et en utilisant des procédures de calcul (calcul réfléchi, algorithmes, calculatrice, répertoire mémorisé) avec des nombres réels"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C7",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en estimant un résultat et en exerçant un regard critique sur le résultat obtenu"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C8",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en modélisant une situation de proportionnalité"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.C9",
+      "kind": "composante",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "…en explorant les propriétés de quelques fonctions (linéaire, affine, quadratique,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P1300.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "9H",
+      "labels": {
+        "fr": "Résolution de problèmes en lien avec les notions étudiées (fonctions, diagrammes, expressions algébriques et équations), notamment : ( 1 , 3 , 4 , 5 , 6 , 7 , 8 , A , C , D , F , G , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats utilisation du langage algébrique pour établir des preuves (Niv 3) ( 6 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P1300.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes en lien avec les notions étudiées (fonctions, diagrammes, expressions algébriques et équations), notamment : ( 1 , 3 , 4 , 5 , 6 , 7 , 8 , A , C , D , F , G , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats utilisation du langage algébrique pour établir des preuves (Niv 3) ( 6 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P1300.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes en lien avec les notions étudiées (fonctions, diagrammes, expressions algébriques et équations), notamment : ( 1 , 3 , 4 , 5 , 6 , 7 , 8 , A , C , D , F , G , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats utilisation du langage algébrique pour établir des preuves (Niv 3) ( 6 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A518",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes relatifs aux fonctions, en faisant appel à une ou plusieurs des composantes suivantes : distinction des grandeurs en jeu, choix et mise en relation des données nécessaires à la résolution reconnaissance de la fonction sans formalisation (Niv 1) reconnaissance et expression de la fonction (Niv 2-3) utilisation de représentations et d'outils de calculs appropriés estimation et vérification de la pertinence du résultat communication de la démarche et du résultat, en utilisant une représentation et un vocabulaire adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4961.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C8",
+      "year": "9H",
+      "labels": {
+        "fr": "Résolution de problèmes de proportionnalité (propriétés, facteur de la proportionnalité) : ( 8 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4961.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C8",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes de proportionnalité (propriétés, facteur de la proportionnalité) : ( 8 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4961.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C8",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes de proportionnalité (propriétés, facteur de la proportionnalité) : ( 8 )"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4962.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "quantité / quantité (prix, poids, devises,…) , agrandissement et réduction de figures"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4962.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "quantité / quantité (prix, poids, devises,…) , agrandissement et réduction de figures"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4963.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "échelle, pourcentage, pente"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4963.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "échelle, pourcentage, pente"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P4964",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "vitesse moyenne masse volumique (Niv 1s-2-3) débit (Niv 3)"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2787",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes de proportionnalité concernant les situations suivantes : quantité/quantité (prix, poids, devises,…) agrandissement et réduction de figures, échelle, pourcentage pente, vitesse moyenne (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5197.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Reconnaissance de situations pouvant être modélisées par des fonctions"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5197.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Reconnaissance de situations pouvant être modélisées par des fonctions"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5197.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Reconnaissance de situations pouvant être modélisées par des fonctions"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2910",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau de valeurs ou une représentation graphique réalise une représentation graphique à partir: d'un tableau de valeurs d'une expression fonctionnelle x→b, x→ax, x→ax+b (a et b dans ) x→b, x→ax, x→ax+b (a et b dans ) x→ax 2 , (a dans ) détermine une expression fonctionnelle à partir d'un tableau de valeurs dans le cas des fonctions du type : x→b, x→ax, x→ax+b, x→x 2 (a et b dans ) détermine une expression fonctionnelle à partir d’une représentation graphique dans le cas des fonctions du type : x→b, x → ax, x→ax+b (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5198.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Lecture et interprétation de tableaux de valeurs, de représentations graphiques ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5198.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Lecture et interprétation de tableaux de valeurs, de représentations graphiques ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5198.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Lecture et interprétation de tableaux de valeurs, de représentations graphiques ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2911",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau de valeurs ou une représentation graphique réalise une représentation graphique à partir: d'un tableau de valeurs d'une expression fonctionnelle x→b, x→ax, x→ax+b (a et b dans ) x→b, x→ax, x→ax+b (a et b dans ) x→ax 2 , (a dans ) détermine une expression fonctionnelle à partir d'un tableau de valeurs dans le cas des fonctions du type : x→b, x→ax, x→ax+b, x→x 2 (a et b dans ) détermine une expression fonctionnelle à partir d’une représentation graphique dans le cas des fonctions du type : x→b, x → ax, x→ax+b (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5199.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Représentation d'une relation où interviennent deux grandeurs variables par : un tableau de valeurs une représentation graphique (à la main, à l'aide d'un tableur, d'un grapheur,…) un ou plusieurs opérateurs (sous forme de «machine» ou d'expression verbale) ( 9 , A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5199.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Représentation d'une relation où interviennent deux grandeurs variables par : un tableau de valeurs une représentation graphique (à la main, à l'aide d'un tableur, d'un grapheur,…) un ou plusieurs opérateurs (sous forme de «machine» ou d'expression verbale) ( 9 , A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5199.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Représentation d'une relation où interviennent deux grandeurs variables par : un tableau de valeurs une représentation graphique (à la main, à l'aide d'un tableur, d'un grapheur,…) un ou plusieurs opérateurs (sous forme de «machine» ou d'expression verbale) ( 9 , A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2912",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau de valeurs ou une représentation graphique réalise une représentation graphique à partir: d'un tableau de valeurs d'une expression fonctionnelle x→b, x→ax, x→ax+b (a et b dans ) x→b, x→ax, x→ax+b (a et b dans ) x→ax 2 , (a dans ) détermine une expression fonctionnelle à partir d'un tableau de valeurs dans le cas des fonctions du type : x→b, x→ax, x→ax+b, x→x 2 (a et b dans ) détermine une expression fonctionnelle à partir d’une représentation graphique dans le cas des fonctions du type : x→b, x → ax, x→ax+b (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5200.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Passage d'une représentation à une autre : ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5200.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Passage d'une représentation à une autre : ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5200.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Passage d'une représentation à une autre : ( A )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5201.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "de l'opérateur au tableau de valeurs et inversement du tableau de valeurs à la représentation graphique et inversement"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5201.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "de l'opérateur au tableau de valeurs et inversement du tableau de valeurs à la représentation graphique et inversement"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5201.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "de l'opérateur au tableau de valeurs et inversement du tableau de valeurs à la représentation graphique et inversement"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5202",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "de l'expression fonctionnelle au tableau de valeurs et à la représentation graphique (Niv 1) x→b, x→ax, x→ax+b, x→ax 2 (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5203",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "de l'expression fonctionnelle au tableau de valeurs et à la représentation graphique (Niv 2-3) x→b, x→ax, x→ax+b, x→ax 2 (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5204",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "de l'expression fonctionnelle au tableau de valeurs et à la représentation graphique (Niv 2-3) x→b, x→ax, x→ax+b, x→ax 2 , , x→x 3 , x→ax 2 +bx+c, x→ (Niv 3s) (a, b et c dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5205",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "de la représentation graphique à l'expression fonctionnelle (Niv 2-3) x→b, x→ax, x→ax+b (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2913",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau de valeurs ou une représentation graphique réalise une représentation graphique à partir: d'un tableau de valeurs d'une expression fonctionnelle x→b, x→ax, x→ax+b (a et b dans ) x→b, x→ax, x→ax+b (a et b dans ) x→ax 2 , (a dans ) détermine une expression fonctionnelle à partir d'un tableau de valeurs dans le cas des fonctions du type : x→b, x→ax, x→ax+b, x→x 2 (a et b dans ) détermine une expression fonctionnelle à partir d’une représentation graphique dans le cas des fonctions du type : x→b, x → ax, x→ax+b (a et b dans )"
+      },
+      "description": {
+        "fr": "Fonctions"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5206.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Lecture de données (horaires, statistiques,…) et interprétation de diagrammes ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5206.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Lecture de données (horaires, statistiques,…) et interprétation de diagrammes ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5206.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Lecture de données (horaires, statistiques,…) et interprétation de diagrammes ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2914",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau ou un diagramme représente une situation à l'aide d'un diagramme (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5207.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Réalisation de diagrammes : ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5207.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Réalisation de diagrammes : ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5207.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Réalisation de diagrammes : ( A )"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5208",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "diagramme cartésien, en colonnes"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5209.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "diagramme circulaire, en barre (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5209.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "diagramme circulaire, en barre (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2915",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau ou un diagramme représente une situation à l'aide d'un diagramme (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5210.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "diagramme circulaire, en barre (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5210.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "diagramme circulaire, en barre (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5210.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "diagramme circulaire, en barre (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2916",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "interprète correctement les données contenues dans un tableau ou un diagramme représente une situation à l'aide d'un diagramme (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Diagrammes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5211",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Connaissance et utilisation des règles et conventions usuelles d'écriture algébrique (Niv 2s-3s)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5212",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance et utilisation des règles et conventions usuelles d'écriture algébrique (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5213",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Connaissance et utilisation des règles et conventions usuelles d'écriture algébrique (Niv 1)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2917",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5214",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Détermination de la valeur numérique d'une expression littérale ( , 4x +5, abc, x 3 …) en substituant des nombres aux variables (Niv 1)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5215",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Détermination de la valeur numérique d'une expression littérale ( 4(x+y+z), πr 2 h …) en substituant des nombres aux lettres (Niv 1)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5216",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Détermination de la valeur numérique d'une expression littérale ( , 4x +5, abc, x 3 …) en substituant des nombres aux lettres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5217.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Détermination de la valeur numérique d'une expression littérale ( , 3x 2 –7, πr 2 h …) en substituant des nombres aux lettres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5217.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Détermination de la valeur numérique d'une expression littérale ( , 3x 2 –7, πr 2 h …) en substituant des nombres aux lettres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2918",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5218.9H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "Élaboration d'expressions littérales à partir : ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5218.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Élaboration d'expressions littérales à partir : ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5218.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Élaboration d'expressions littérales à partir : ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5219",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "d'énoncés de problèmes, de figures géométriques ou d'expressions verbales (Niv 1s)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5220",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "9H",
+      "labels": {
+        "fr": "de figures géométriques ou d'expressions verbales (Niv 2s-3s)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5221.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "d'énoncés de problèmes, de figures géométriques ou d'expressions verbales (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5221.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "d'énoncés de problèmes, de figures géométriques ou d'expressions verbales (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2919",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5222.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Interprétation d'expressions littérales et identification de celles qui sont équivalentes (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5222.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Interprétation d'expressions littérales et identification de celles qui sont équivalentes (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2920",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5223.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Connaissance de la terminologie, écriture réduite et ordonnée de : (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5223.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Connaissance de la terminologie, écriture réduite et ordonnée de : (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5224",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "monômes à coefficients entiers, au plus trois indéterminées : - degré ≤3 (Niv 2) - degré ≤6 (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5225",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "polynômes de degré ≤3, au plus trois indéterminées : - à coefficients entiers (Niv 2) - à coefficients rationnels (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2921",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5226.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Opérations sur les polynômes :"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5226.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Opérations sur les polynômes :"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5227",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "addition, réduction de monômes ou polynômes du premier degré à une indéterminée et à coefficients entiers (Niv 1)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5228",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "addition, soustraction et multiplication de monômes (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5229.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "addition, soustraction et multiplication de polynômes (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5229.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "addition, soustraction et multiplication de polynômes (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2922",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5230",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "connaissance et utilisation d'identités remarquables de degré 2 (Niv 3) décomposition de polynômes en produit de facteurs (Niv 3) utilisation du calcul littéral comme outil de preuve dans des cas simples (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2923",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "substitue des nombres dans une expression littérale (degré ≤3, nombre de lettres ≤3) pour en calculer la valeur élabore des expressions littérales dans des situations numériques ou géométriques (Niv 2-3) effectue des opérations avec des polynômes, par exemple : exemples Niveau 2 4c-c = ; z - 2z = ; 2x 2 + x 2 = ; 6a 2 -3a-2a 2 + 1 = ; b-(2-3b) = ; 2y 2 ·3y = ; (5x) 2 = ; -3(x + 2) = ; x 2 (y + 5) = ; (x + 2) (x + 3) = ; (y 2 - 1) (y - 5) = ; (a+b) 2 = exemples Niveau 3 c - c = ; x 2 + = ; x 2 y-1,5x 2 y = ; -2a 2 + a-7 + 6a 2 - 3a = ; y 2 . = ; 2a (3a) 3 = ; x 2 -(x+1)(x-1) = ; -3,5 (-x + 2) = ; xy 2 (y - 5) = ; (x + 2)( + 3) = ; (3y 2 - 1)(5 - y) = ; (x-y)(x+y)(x+y) ="
+      },
+      "description": {
+        "fr": "Algèbre - Calcul littéral"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5231.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes nécessitant le recours à l'algèbre ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5231.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes nécessitant le recours à l'algèbre ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2924",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5232.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "Traduction d'une situation par : ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5232.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Traduction d'une situation par : ( 6 , H )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5233",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "une équation du premier degré à une inconnue (Niv 1s)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5234.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "une équation du premier degré à une inconnue (Niv 2)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5234.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "une équation du premier degré à une inconnue (Niv 2)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5235",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "une équation du premier degré à une inconnue (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5236",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "un système d'équations du premier degré à deux inconnues (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5237",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "une équation du deuxième degré à une inconnue (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2925",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5238.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution d'équations du premier degré à une inconnue : ( 6 )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5238.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution d'équations du premier degré à une inconnue : ( 6 )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5239",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "à l'aide des règles d'équivalence (Niv 1)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5240.10H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "à l'aide des règles d'équivalence (Niv 2)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5240.11H",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "à l'aide des règles d'équivalence (Niv 2)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5241",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "10H",
+      "labels": {
+        "fr": "à l'aide des règles d'équivalence (Niv 3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2926",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5242",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution d'un système d'équations du premier degré à deux inconnues à l'aide des méthodes de combinaison linéaire et de substitution (Niv 3) ( 6 )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2927",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5243",
+      "kind": "progression",
+      "parent_code": "MSN 33.C6",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution d'équations du deuxième degré à une inconnue par factorisation ou à l'aide de la formule de Viète (Niv 3) ( 6 )"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2928",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.P5244",
+      "kind": "progression",
+      "parent_code": "MSN 33",
+      "year": "11H",
+      "labels": {
+        "fr": "Expression de chacune des variables d'une formule connue en fonction des autres (Niv 2-3) : d = vt ; A = ; A = πr 2 … p = 2(a+b) ; A = ;V = ..."
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 33.A2929",
+      "kind": "attente",
+      "parent_code": "MSN 33",
+      "year": null,
+      "labels": {
+        "fr": "résout un problème après l'avoir traduit : par une équation du premier degré à une inconnue (Niv 2-3) par un système d'équations du premier degré à deux inconnues (Niv 3) dé termine algébriquement l'ensemble de solutions d'une équation du premier degré, par exemple (Niv 2-3) : exemples Niveau 2 4x + 5 = 3 – 2x 7 (y + 10) = 105 8a + 3 = 2 (4a – 5) 3x – 2 = 2x – 2 + x 2z 2 - z = 2 (z 2 + 3) 8x = 3x exemples Niveau 3 = 105 7a + 3 = 2 (3,5a – 5) = 4x + 1 2z 2 – z = 2 (z + 1) 2 10(8x+5) = 50 -20x détermine algébriquement l’ensemble de solutions d’un système d’équations du premier degré à deux inconnues, par exemple : exprime une des variables d'une formule connue en fonction des autres (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Algèbre - Équations"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/63"
+    },
+    {
+      "code": "MSN 34",
+      "kind": "objectif",
+      "parent_code": "MSN",
+      "year": null,
+      "labels": {
+        "fr": "Mobiliser la mesure pour comparer des grandeurs"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C1",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en connaissant le système international d'unités de mesures"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C2",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en explorant des aspects culturels et historiques liés au système d'unité"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C3",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en calculant des grandeurs composées (vitesse, masse volumique, débit,…) et en en construisant les unités associées"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C4",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant l'instrument et l'unité de mesure adaptés"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C5",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en exprimant une mesure dans différentes unités"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C6",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en exprimant une mesure dans différentes unités"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C7",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en estimant la mesure des grandeurs"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C8",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en utilisant des procédures de calcul de longueur (théorèmes de Thalès, de Pythagore,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.C9",
+      "kind": "composante",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "…en calculant des grandeurs (aires, volume,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4991.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "Résolution de problèmes de mesurage en lien avec les grandeurs et les théorèmes étudiés, notamment : ( 3 , 5 , 7 , 8 , 9 , A , B , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des grandeurs pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4991.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "Résolution de problèmes de mesurage en lien avec les grandeurs et les théorèmes étudiés, notamment : ( 3 , 5 , 7 , 8 , 9 , A , B , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des grandeurs pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4991.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "Résolution de problèmes de mesurage en lien avec les grandeurs et les théorèmes étudiés, notamment : ( 3 , 5 , 7 , 8 , 9 , A , B , C , D , F , H ) tri et organisation des informations (liste, tableau, schéma, croquis,…) mise en œuvre d'une démarche de résolution ajustement d'essais successifs pose de conjectures , puis validation ou réfutation déduction d'une ou plusieurs informations nouvelles à partir de celles qui sont connues réduction temporaire de la complexité d'un problème utilisation des propriétés des figures et des grandeurs pour établir des preuves vérification, puis communication d'une démarche et d'un résultat en utilisant un vocabulaire, une syntaxe ainsi que des symboles adéquats"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2806",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "résout des problèmes de mesurage en faisant appel à une ou plusieurs des composantes suivantes : choix et mise en relation des données nécessaires à la résolution distinction des grandeurs en jeu dans une situation donnée organisation d'un mesurage (choix d'une procédure, d'un instrument de mesure, d'une formule de calcul, d'une unité de mesure) vérification de la pertinence du résultat communication de la démarche et du résultat"
+      },
+      "description": {
+        "fr": "Éléments pour la résolution de problèmes"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4992.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C1",
+      "year": "9H",
+      "labels": {
+        "fr": "Comparaison, classement et mesure de grandeurs (longueur, aire, volume, angle, masse) par manipulation de lignes, angles, surfaces, ou solides, en utilisant des unités conventionnelles et non conventionnelles ( 1 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4992.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C1",
+      "year": "10H",
+      "labels": {
+        "fr": "Comparaison, classement et mesure de grandeurs (longueur, aire, volume, angle, masse) par manipulation de lignes, angles, surfaces, ou solides, en utilisant des unités conventionnelles et non conventionnelles ( 1 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4992.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C1",
+      "year": "11H",
+      "labels": {
+        "fr": "Comparaison, classement et mesure de grandeurs (longueur, aire, volume, angle, masse) par manipulation de lignes, angles, surfaces, ou solides, en utilisant des unités conventionnelles et non conventionnelles ( 1 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2807",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "exprime une grandeur à l'aide d'une unité conventionnelle utilise un instrument adapté pour mesurer une longueur, un angle, un temps, une masse exprime une même grandeur dans différentes unités (cas usuels et raisonnables)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4993.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "Estimation de grandeurs, choix d'une unité adéquate, prise de mesure à l'aide d'un instrument adapté et expression d'une grandeur dans diverses unités : ( 4 , 5 , 7 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4993.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "Estimation de grandeurs, choix d'une unité adéquate, prise de mesure à l'aide d'un instrument adapté et expression d'une grandeur dans diverses unités : ( 4 , 5 , 7 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4993.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "Estimation de grandeurs, choix d'une unité adéquate, prise de mesure à l'aide d'un instrument adapté et expression d'une grandeur dans diverses unités : ( 4 , 5 , 7 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4994",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "longueur angle (mesure en degrés) masse aire"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4995",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "volume, capacité (Niv s) temps (Niv s)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4996.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "volume, capacité temps"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4996.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "volume, capacité temps"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4997",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "vitesse (Niv s)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4998",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "vitesse autres grandeurs (débit, masse volumique,…) (Niv 1s-2-3)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2808",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "exprime une grandeur à l'aide d'une unité conventionnelle utilise un instrument adapté pour mesurer une longueur, un angle, un temps, une masse exprime une même grandeur dans différentes unités (cas usuels et raisonnables)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4999.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C2",
+      "year": "9H",
+      "labels": {
+        "fr": "Sensibilisation aux aspects culturels (degré Fahrenheit, mile, pouce, mille marin, nœud,…) et historiques (coudée, pied, arpent,…) de la mesure ( 2 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4999.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C2",
+      "year": "10H",
+      "labels": {
+        "fr": "Sensibilisation aux aspects culturels (degré Fahrenheit, mile, pouce, mille marin, nœud,…) et historiques (coudée, pied, arpent,…) de la mesure ( 2 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P4999.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C2",
+      "year": "11H",
+      "labels": {
+        "fr": "Sensibilisation aux aspects culturels (degré Fahrenheit, mile, pouce, mille marin, nœud,…) et historiques (coudée, pied, arpent,…) de la mesure ( 2 )"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2809",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "exprime une grandeur à l'aide d'une unité conventionnelle utilise un instrument adapté pour mesurer une longueur, un angle, un temps, une masse exprime une même grandeur dans différentes unités (cas usuels et raisonnables)"
+      },
+      "description": {
+        "fr": "Mesure de grandeurs et conversion d'unités"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1361.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C9",
+      "year": "9H",
+      "labels": {
+        "fr": "Mesure des dimensions adéquates et calcul : ( 9 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1361.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C9",
+      "year": "10H",
+      "labels": {
+        "fr": "Mesure des dimensions adéquates et calcul : ( 9 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1361.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C9",
+      "year": "11H",
+      "labels": {
+        "fr": "Mesure des dimensions adéquates et calcul : ( 9 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1362",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "du périmètre d'un polygone"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1363",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du périmètre et de l'aire d'un disque"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1364.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "de la longueur d'un arc de cercle et de l'aire d'un secteur circulaire (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1364.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "de la longueur d'un arc de cercle et de l'aire d'un secteur circulaire (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1365",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "de l'aire d'un carré, d'un rectangle, d'un triangle, d'un parallélogramme, d'un losange (par décomposition et à l'aide d'une formule)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1366.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "de l'aire d'un polygone par décomposition en figures simples"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1366.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "de l'aire d'un polygone par décomposition en figures simples"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1367.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du périmètre et de l'aire d'une surface par décomposition en figures simples"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1367.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "du périmètre et de l'aire d'une surface par décomposition en figures simples"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1368",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "du volume et de l'aire du cube et du parallélépipède rectangle"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1369",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du volume et de l'aire du cylindre (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1370",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "du volume du cylindre (Niv 1)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1371.9H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "9H",
+      "labels": {
+        "fr": "du volume (par décomposition et à l'aide d'une formule) et de l'aire de prismes droit (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1371.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du volume (par décomposition et à l'aide d'une formule) et de l'aire de prismes droit (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1372.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du volume (par décomposition et à l'aide d'une formule) et de l'aire de prismes droits (Niv 1)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1372.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "du volume (par décomposition et à l'aide d'une formule) et de l'aire de prismes droits (Niv 1)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1373",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "du volume et de l'aire : -d'une pyramide (Niv 2-3) -d'une sphère (Niv 3) du volume d'un cône (Niv 2-3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1374.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "10H",
+      "labels": {
+        "fr": "du volume d'un solide (en le décomposant au besoin en solides simples)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P1374.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "du volume d'un solide (en le décomposant au besoin en solides simples)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A544",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "calcule le périmètre et l'aire : de polygones, de disques et de figures composées de secteurs circulaires (Niv 3) calcule l'aire : de parallélépipèdes rectangles de prismes droits (Niv 2-3) de cylindres et de pyramides (Niv 3) calcule le volume : de prismes droits et de cylindres de pyramides et de cônes (Niv 2-3) calcule une grandeur manquante à partir de celles qui sont connues (Niv 2-3) utilise le théorème de Pythagore: dans le plan dans l'espace (Niv 3) utilise le théorème de Thalès dans le plan (Niv 3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P5000",
+      "kind": "progression",
+      "parent_code": "MSN 34",
+      "year": "11H",
+      "labels": {
+        "fr": "Calcul d'une grandeur manquante à partir de celles qui sont connues (hauteur d'un triangle à partir de sa base et de son aire,…)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2810",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "calcule le périmètre et l'aire : de polygones, de disques et de figures composées de secteurs circulaires (Niv 3) calcule l'aire : de parallélépipèdes rectangles de prismes droits (Niv 2-3) de cylindres et de pyramides (Niv 3) calcule le volume : de prismes droits et de cylindres de pyramides et de cônes (Niv 2-3) calcule une grandeur manquante à partir de celles qui sont connues (Niv 2-3) utilise le théorème de Pythagore: dans le plan dans l'espace (Niv 3) utilise le théorème de Thalès dans le plan (Niv 3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P5001",
+      "kind": "progression",
+      "parent_code": "MSN 34.C8",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation du théorème de Pythagore (Niv 1) ( 8 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P5002.10H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C8",
+      "year": "10H",
+      "labels": {
+        "fr": "Utilisation du théorème de Pythagore (Niv 2-3) ( 8 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P5002.11H",
+      "kind": "progression",
+      "parent_code": "MSN 34.C8",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation du théorème de Pythagore (Niv 2-3) ( 8 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.P5003",
+      "kind": "progression",
+      "parent_code": "MSN 34.C8",
+      "year": "11H",
+      "labels": {
+        "fr": "Utilisation de la proportionnalité des figures semblables et du théorème de Thalès (Niv 2-3) ( 8 )"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 34.A2811",
+      "kind": "attente",
+      "parent_code": "MSN 34",
+      "year": null,
+      "labels": {
+        "fr": "calcule le périmètre et l'aire : de polygones, de disques et de figures composées de secteurs circulaires (Niv 3) calcule l'aire : de parallélépipèdes rectangles de prismes droits (Niv 2-3) de cylindres et de pyramides (Niv 3) calcule le volume : de prismes droits et de cylindres de pyramides et de cônes (Niv 2-3) calcule une grandeur manquante à partir de celles qui sont connues (Niv 2-3) utilise le théorème de Pythagore: dans le plan dans l'espace (Niv 3) utilise le théorème de Thalès dans le plan (Niv 3)"
+      },
+      "description": {
+        "fr": "Calcul de grandeurs"
+      },
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/61"
+    },
+    {
+      "code": "MSN 35",
+      "kind": "objectif",
+      "parent_code": "MSN",
+      "year": null,
+      "labels": {
+        "fr": "Modéliser des phénomènes naturels, techniques, sociaux ou des situations mathématiques"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C1",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant des représentations graphiques (codes, schémas, tableaux, graphiques,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C2",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en associant aux grandeurs observables des paramètres"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C3",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en triant, organisant et interprétant des données"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C4",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en communiquant ses résultats et en présentant des modélisations"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C5",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en traitant des situations aléatoires à l'aide de notions de probabilités"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C6",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en dégageant une problématique et/ou en formulant des hypothèses"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C7",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en recourant à des modèles existants"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.C8",
+      "kind": "composante",
+      "parent_code": "MSN 35",
+      "year": null,
+      "labels": {
+        "fr": "…en mobilisant, selon la situation, la mesure et/ou des outils mathématiques (fonctions, statistiques, algèbre,…)"
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.P5006.9H",
+      "kind": "progression",
+      "parent_code": "MSN 35",
+      "year": "9H",
+      "labels": {
+        "fr": "Cet objectif n'est pas travaillé pour lui-même. Il s'active dans les autres axes seulement."
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.P5006.10H",
+      "kind": "progression",
+      "parent_code": "MSN 35",
+      "year": "10H",
+      "labels": {
+        "fr": "Cet objectif n'est pas travaillé pour lui-même. Il s'active dans les autres axes seulement."
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    },
+    {
+      "code": "MSN 35.P5006.11H",
+      "kind": "progression",
+      "parent_code": "MSN 35",
+      "year": "11H",
+      "labels": {
+        "fr": "Cet objectif n'est pas travaillé pour lui-même. Il s'active dans les autres axes seulement."
+      },
+      "description": {},
+      "is_official": true,
+      "source_ref": "https://per.ciip.ch/api/learning-objectives/65"
+    }
+  ]
+}

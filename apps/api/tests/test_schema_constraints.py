@@ -79,6 +79,29 @@ _TABLE_NAMES = (
 )
 _TABLES = Base.metadata.tables
 
+
+def _edition(db: Session, curriculum: str = "PER", name: str = "2010") -> uuid.UUID:
+    """The `curriculum_edition` a raw competency insert needs, created once.
+
+    `competency.edition_id` is NOT NULL since 0051 — it is part of
+    `uq_competency_code`. Idempotent, because some of these tests run against a
+    database the seed has already put an edition in.
+    """
+    existing = db.execute(
+        sa.select(_TABLES["curriculum_edition"].c.id)
+        .where(_TABLES["curriculum_edition"].c.curriculum == curriculum)
+        .where(_TABLES["curriculum_edition"].c.edition == name)
+    ).scalar_one_or_none()
+    if existing is not None:
+        return existing  # type: ignore[no-any-return]
+    new_id = uuid.uuid4()
+    db.execute(
+        pg_insert(_TABLES["curriculum_edition"]).values(
+            id=new_id, curriculum=curriculum, edition=name
+        )
+    )
+    return new_id
+
 # Only the SERVER is reused — every run creates its own database and drops it
 # again, so a failing test can never leave rows in a database somebody is
 # developing against. Candidates in order: an explicit override, the dev
@@ -678,18 +701,39 @@ def test_unenrolling_removes_the_row_and_nothing_else(db: Session, world: World)
 
 
 def test_a_competency_code_is_unique_within_a_curriculum(db: Session, world: World) -> None:
-    """`uq_competency_code`. LP21 and PER may both define "MSN 31"."""
+    """`uq_competency_code`, now `(curriculum, edition_id, code)`.
+
+    Three claims in one, and the third is what 0051 widened the key for: LP21
+    and PER may both define "MSN 31"; one curriculum may not define it twice in
+    one edition; and the SAME code in two EDITIONS is the point — a revised PER
+    has to land beside the old one rather than overwrite the rows every past
+    band was computed from.
+    """
     competency = _TABLES["competency"]
+    editions = {
+        (curriculum, name): _edition(db, curriculum, name)
+        for curriculum, name in (("PER", "2010"), ("PER", "2023"), ("LP21", "2014"))
+    }
     common = {"labels": {"fr": "Nombres"}, "cycle": 3, "subject_key": "maths"}
+
     db.execute(
         pg_insert(competency).values(
-            id=uuid.uuid4(), curriculum="PER", code="MSN 31", **common
+            id=uuid.uuid4(), curriculum="PER", code="MSN 31",
+            edition_id=editions[("PER", "2010")], **common,
         )
     )
     # The same code in the OTHER curriculum is fine.
     db.execute(
         pg_insert(competency).values(
-            id=uuid.uuid4(), curriculum="LP21", code="MSN 31", **common
+            id=uuid.uuid4(), curriculum="LP21", code="MSN 31",
+            edition_id=editions[("LP21", "2014")], **common,
+        )
+    )
+    # ...and so is the same code in a later edition of the SAME curriculum.
+    db.execute(
+        pg_insert(competency).values(
+            id=uuid.uuid4(), curriculum="PER", code="MSN 31",
+            edition_id=editions[("PER", "2023")], **common,
         )
     )
     db.commit()
@@ -697,7 +741,8 @@ def test_a_competency_code_is_unique_within_a_curriculum(db: Session, world: Wor
     with pytest.raises(IntegrityError):
         db.execute(
             pg_insert(competency).values(
-                id=uuid.uuid4(), curriculum="PER", code="MSN 31", **common
+                id=uuid.uuid4(), curriculum="PER", code="MSN 31",
+                edition_id=editions[("PER", "2010")], **common,
             )
         )
         db.flush()
@@ -788,9 +833,13 @@ def test_deleting_a_pupil_takes_their_evidence_with_them(db: Session, world: Wor
     db.flush()
     snapshot = _TABLES["mastery_snapshot"]
     competency = _TABLES["competency"]
+    # Every competency belongs to an edition since 0051, and the column is NOT
+    # NULL because it is part of `uq_competency_code`.
+    edition_id = _edition(db)
     db.execute(
         pg_insert(competency).values(
             id=(cid := uuid.uuid4()), curriculum="PER", code="MSN 32",
+            edition_id=edition_id,
             labels={"fr": "Nombres"}, cycle=3, subject_key="maths",
         )
     )
@@ -1081,7 +1130,8 @@ def test_a_mastery_score_is_a_unit_interval(db: Session, world: World) -> None:
     cid = uuid.uuid4()
     db.execute(
         pg_insert(_TABLES["competency"]).values(
-            id=cid, curriculum="PER", code="MSN 33", labels={}, cycle=3, subject_key="maths",
+            id=cid, curriculum="PER", code="MSN 33", edition_id=_edition(db),
+            labels={}, cycle=3, subject_key="maths",
         )
     )
     db.commit()

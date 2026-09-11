@@ -14,7 +14,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import Tenant, login, make_exercise
+from test_api_fixtures import Tenant, ensure_edition, login, make_exercise
 
 from alppy.models import Competency
 from alppy.models.enums import ExerciseOrigin, ExerciseType
@@ -74,6 +74,7 @@ def test_the_competency_filter_repeats(
 ) -> None:
     other = Competency(
         id=uuid.uuid4(),
+        edition_id=ensure_edition(db),
         curriculum=tenant.competency.curriculum,
         code="MSN.99",
         parent_id=None,

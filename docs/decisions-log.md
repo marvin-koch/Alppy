@@ -3210,3 +3210,112 @@ both directions. Not generated, unlike §4's route list: each line of §5 says w
 screen is *for*, which is the only reason to read it and which no generator can
 produce. The prose stays written; the check guards the set of paths, which is the
 half that drifts silently.
+
+---
+
+### D88 · The audit's remaining findings, and the two it was wrong about
+
+Phase 1 (D87) fixed the two Critical findings. This is everything else in
+`docs/audits/01-database-audit.md` that was worth doing, plus two places where
+checking the source changed the answer.
+
+**The drift gate was blind to the thing it had already missed.** Alembic does
+not compare `server_default` unless asked, and `check-schema-drift.py` never
+asked — so the gate that exists to prove "the migrations reproduce the models"
+could not see the class of drift that produced 0025. Turning `compare_server_default`
+on surfaced exactly the seven the audit predicted, all the same shape: a DEFAULT
+in the database that no model declared. All seven are now declared on the
+models rather than dropped from the database, because the database's default is
+the one that covers a write the ORM did not build — a backfill, a seed, a psql
+console. One of them is written `'[]'` and not `'[]'::jsonb`: Postgres coerces
+an untyped literal to the column's type, and SQLite — where `create_all` builds
+the suite's schema — renders the cast verbatim into a CREATE TABLE and rejects
+it.
+
+**Eighteen redundant indexes, not the audit's seventeen, and the list is
+derived rather than copied.** The schema had moved eleven migrations since the
+audit ran. The rule — non-unique, non-partial, btree, single column, and some
+other index on the table starts with that column — is mechanical, so it is run
+against the live catalogue instead of trusted. Seven of the eighteen are
+`school_id`, which is worth saying out loud because 0024's RLS policy compares
+that column on *every statement*: they are dropped only where a composite on
+the same table already *starts* with `school_id`, so the prefix scan is the
+same scan. `attempt`, where nothing leads with it, keeps its index. The models
+carry the claim (`__school_id_index__`, `_fk(index=False)`) so the gate can
+check it, and every site names the index that covers it.
+
+**A latent bug found while adding a constraint, not while looking for it.**
+`postgresql_where` is dropped on other dialects, so on SQLite — where the suite
+actually builds its schema — every PARTIAL unique index had been an ABSOLUTE
+one. `uq_class_student_open` was quietly forbidding a pupil from ever rejoining
+a class they had left, which is precisely the case D87 widened the key to
+allow, and no test had asked. All of them now carry `sqlite_where` too.
+
+**The read audit trail goes where the subject is known, not where the plan said.**
+`access_log` answers "who looked at my child's file", which `event` — a write
+log of eleven product verbs — cannot. The plan put the write in
+`deps.get_membership`, which resolves actor and tenant on every request but not
+*which pupil*; a log without subjects answers nothing, and the table's own
+`subject_type`/`subject_id` columns say so. So it writes from the two gates that
+already decide whether this teacher may see this child. `subject_id` is
+deliberately not a foreign key: the question is most worth asking about a pupil
+who has since been deleted. The write is best-effort and never fails the read —
+a lost row is a gap in a trail, a raised exception is a class nobody can open
+on a Monday morning — and that trade is the reason the retention sweep is the
+only other writer.
+
+**Where the audit was wrong, checked against the source.**
+
+*Pythagoras is composante 8, not 5.* The audit said to move the theorem from
+`MSN 31` to `MSN 34` composante 5. CIIP's own API puts it under `MSN 34`
+composante **8** — "…en utilisant des procédures de calcul de longueur
+(théorèmes de Thalès, de Pythagore…)" — in the section "Calcul de grandeurs",
+Niv 1 in 11H and Niv 2-3 from 10H. The move happened; the number did not come
+from the audit.
+
+*The PER is fetchable as data, not only as PDFs.* The audit proposed parsing
+`PER_print_MSN_*.pdf` with `pdftotext -layout`. `per.ciip.ch/api` is CIIP's own
+service behind the public viewer and returns the whole structure as JSON —
+levels as fields rather than indentation. `scripts/fetch-per-curriculum.py`
+uses it, which makes the seed reproducible instead of the output of a parse
+nobody will re-run.
+
+**The real curriculum lands BESIDE the invented one, not on top of it.** 373
+official rows in a `2023` edition — 1 domaine, 5 objectifs, 41 composantes, 270
+progressions carrying their year, 56 attentes fondamentales — every one citing
+the endpoint it came from. The sixteen hand-authored rows stay, in a `2010`
+edition, marked `is_official = false`. Overwriting them would have rewritten the
+rows every existing band was computed from and broken every chapter and test
+still pointing at them, for no gain a second edition does not give. That is what
+`edition_id` is for, and widening `uq_competency_code` to carry it is what makes
+it possible. `edition_id` is NOT NULL for a reason that is easy to miss: two
+NULLs are distinct inside a unique index, so a nullable version would have put
+the same hole in the new key that M4 had to close on `attempt`.
+
+**M5 is deliberately not done, and this is the argument.** The audit proposed
+converting `MasteryBand`, `CurriculumKind` and `Locale` from Postgres enums to
+lookup tables, so a change needs a row rather than an `ALTER TYPE`. Rejected,
+because for these three the row is never the whole change:
+
+- a sixth `MasteryBand` needs a colour token calibrated to 0.46 luminance, a
+  band glyph, a print underline style and a rule in `mastery/model.py` — a
+  lookup table would let somebody insert a band that nothing can render and
+  nothing can compute;
+- a third `CurriculumKind` needs a seeded curriculum, which is `competency`
+  and `curriculum_edition`, not an enum member;
+- a fourth `Locale` needs a message catalogue, which CI already enforces exists
+  in three.
+
+The test the audit applies to `stream` — "can a canton be added without a
+migration" — is the right test, and `stream` is a lookup table because it
+passes it. These three fail it. A lookup table here would move the constraint
+somewhere it cannot be checked, which is the opposite of the flexibility it
+looks like.
+
+**Revisit if** a school needs to mark against two editions at once (today
+`School.default_curriculum` picks a curriculum, not an edition, so the newest
+edition wins by being the one chapters point at); or if `access_log` grows
+enough that the retention default of a year is the wrong shape and it wants
+partitioning rather than a sweep; or if a `MasteryBand` ever genuinely has to
+be school-configurable, at which point M5's argument is worth re-reading rather
+than re-deriving.

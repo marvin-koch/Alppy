@@ -23,7 +23,7 @@ import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 from pgvector.sqlalchemy import Vector
-from sqlalchemy import create_engine, event, text
+from sqlalchemy import create_engine, event, select, text
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.engine import Connection, Engine
@@ -53,6 +53,7 @@ from alppy.models import (  # noqa: E402
     Chapter,
     Class,
     Competency,
+    CurriculumEdition,
     Detection,
     Exercise,
     Person,
@@ -445,6 +446,7 @@ def make_tenant(
     if competency is None:
         competency = Competency(
             id=uuid.uuid4(),
+            edition_id=ensure_edition(db),
             curriculum=CurriculumKind.PER,
             code=competency_code,
             parent_id=None,
@@ -731,6 +733,24 @@ def assign_branch(
         )
     )
     db.flush()
+
+
+def ensure_edition(db: Session, curriculum: CurriculumKind = CurriculumKind.PER) -> uuid.UUID:
+    """The `curriculum_edition` a hand-built `Competency` belongs to.
+
+    `competency.edition_id` is NOT NULL since 0051 — it is part of
+    `uq_competency_code`, and a nullable column there would put a NULL hole in
+    the key. Fixtures that mint a competency need an edition to hang it on, and
+    one helper beats each of them inventing its own.
+    """
+    row = db.scalars(
+        select(CurriculumEdition).where(CurriculumEdition.curriculum == curriculum)
+    ).first()
+    if row is None:
+        row = CurriculumEdition(id=uuid.uuid4(), curriculum=curriculum, edition="test")
+        db.add(row)
+        db.flush()
+    return row.id
 
 
 def make_subject(db: Session, school: School, key: str) -> Subject:

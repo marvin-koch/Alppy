@@ -41,19 +41,36 @@ from alppy.models import (
     UNFILED_CHAPTER_KEY,
     Chapter,
     Competency,
+    CurriculumEdition,
     Exercise,
     School,
     Source,
     SourceChunk,
     SourceSection,
+    Stream,
     Subject,
 )
-from alppy.models.enums import CurriculumKind, ExerciseOrigin, ExerciseType, JobStatus
+from alppy.models.enums import (
+    CompetencyKind,
+    CurriculumKind,
+    CurriculumYear,
+    ExerciseOrigin,
+    ExerciseType,
+    JobStatus,
+)
 from alppy.services import chapter_service
 
 log = get_logger(__name__)
 
 DATA_DIR = Path(__file__).parent / "data"
+
+OFFICIAL_PER_FILE = "per_msn_cycle3.json"
+STREAMS_FILE = "streams.json"
+"""Written by `scripts/fetch-per-curriculum.py`, from CIIP's own API.
+
+Committed rather than fetched at seed time: `docker compose up` has to work
+with no network, and a curriculum that changes under a running seed is a
+curriculum nobody can reproduce a band from."""
 
 SUBJECT_LABELS: dict[str, dict[str, str]] = {
     "mathematics": {"fr": "Mathématiques", "de": "Mathematik", "en": "Mathematics"},
@@ -82,6 +99,10 @@ class SeedError(ValueError):
 class ReferenceLoadResult:
     subject_ids: dict[str, uuid.UUID] = field(default_factory=dict)
     competency_ids: dict[str, uuid.UUID] = field(default_factory=dict)
+    #: The fetched, citable PER tree, keyed by code. Separate from
+    #: `competency_ids` so nothing reaches an official row by accident.
+    official_competency_ids: dict[str, uuid.UUID] = field(default_factory=dict)
+    streams_created: int = 0
     chapter_ids: dict[str, uuid.UUID] = field(default_factory=dict)
     #: The per-subject `unfiled` bucket, keyed by subject key. Every sheet
     #: whose teacher has not filed it lands here; `sheet.chapter_id` is NOT
@@ -160,6 +181,14 @@ def load_reference_data(
     )
     result.competency_ids, result.competencies_created = _load_competencies(db, competency_rows)
 
+    # The fetched PER, in its own edition beside the hand-authored rows. Keyed
+    # separately from `competency_ids` so a chapter cannot reach an official
+    # code by accident: moving one is a deliberate edit to chapters.json.
+    result.official_competency_ids, official_created = load_official_per(db, data_dir=data_dir)
+    result.competencies_created += official_created
+
+    result.streams_created = load_streams(db, data_dir=data_dir)
+
     # Before the chapters: a sheet cannot be created without a chapter_id, and
     # the fallback has to exist for every subject the school now has.
     result.unfiled_chapter_ids = chapter_service.ensure_unfiled_chapters(
@@ -174,7 +203,12 @@ def load_reference_data(
         school_id=school_id,
         rows=chapter_rows,
         subject_ids=result.subject_ids,
-        competency_ids=result.competency_ids,
+        # Both editions, merged. A chapter names the code it means and the
+        # loader finds it; the two sets are disjoint (`MSN 31.2` was invented,
+        # `MSN 34.C8` is CIIP's), so nothing is ambiguous — and a Theme moving
+        # onto an official row is then one edit to chapters.json rather than a
+        # migration.
+        competency_ids={**result.competency_ids, **result.official_competency_ids},
         curriculum=school.default_curriculum,
     )
     db.flush()
@@ -182,6 +216,8 @@ def load_reference_data(
         "seed.reference",
         subjects=len(result.subject_ids),
         competencies=len(result.competency_ids),
+        official_competencies=len(result.official_competency_ids),
+        streams=result.streams_created,
         chapters=len(result.chapter_ids),
     )
     return result
@@ -209,6 +245,28 @@ def _load_subjects(
     return out, created
 
 
+#: The edition each curriculum's hand-authored `competencies.json` rows belong
+#: to. Those rows are NOT marked official: five of the PER codes are real and
+#: eleven were invented in CIIP's notation, and the seed loader cannot tell
+#: which is which by looking. `per_msn_cycle3.json` is the fetched, citable one
+#: and lands in its own edition beside them (audit H3).
+LEGACY_EDITIONS = {CurriculumKind.PER: "2010", CurriculumKind.LP21: "2014"}
+
+
+def _ensure_edition(db: Session, curriculum: CurriculumKind, edition: str) -> uuid.UUID:
+    """One `curriculum_edition` row per (curriculum, edition). Idempotent."""
+    row = db.scalars(
+        select(CurriculumEdition)
+        .where(CurriculumEdition.curriculum == curriculum)
+        .where(CurriculumEdition.edition == edition)
+    ).first()
+    if row is None:
+        row = CurriculumEdition(id=uuid.uuid4(), curriculum=curriculum, edition=edition)
+        db.add(row)
+        db.flush()
+    return row.id
+
+
 def _load_competencies(
     db: Session, rows: Sequence[dict[str, Any]]
 ) -> tuple[dict[str, uuid.UUID], int]:
@@ -219,7 +277,8 @@ def _load_competencies(
     forgets.
     """
     existing = {
-        (row.curriculum, row.code): row for row in db.scalars(select(Competency))
+        (row.curriculum, row.edition_id, row.code): row
+        for row in db.scalars(select(Competency))
     }
     by_code: dict[str, Competency] = {}
     created = 0
@@ -236,15 +295,23 @@ def _load_competencies(
         if code in by_code:
             raise SeedError(f"competency code '{code}' appears twice in competencies.json")
 
-        row = existing.get((curriculum, code))
+        edition_id = _ensure_edition(db, curriculum, LEGACY_EDITIONS[curriculum])
+        row = existing.get((curriculum, edition_id, code))
         if row is None:
-            row = Competency(id=uuid.uuid4(), curriculum=curriculum, code=code)
+            row = Competency(
+                id=uuid.uuid4(), curriculum=curriculum, code=code, edition_id=edition_id
+            )
             db.add(row)
             created += 1
         row.subject_key = _required(entry, "subject", "competencies.json", code)
         row.cycle = int(entry.get("cycle") or 3)
         row.labels = _localised(entry, "labels", "competency", code)
         row.description = entry.get("description") or {}
+        row.kind = CompetencyKind(entry.get("kind") or "objectif")
+        # Never True from this file. The rows here predate the fetch and the
+        # loader cannot tell a real CIIP code from one written to look like one.
+        row.is_official = False
+        row.source_ref = None
         by_code[code] = row
 
     db.flush()
@@ -265,6 +332,106 @@ def _load_competencies(
 
     db.flush()
     return {code: row.id for code, row in by_code.items()}, created
+
+
+def load_official_per(
+    db: Session, *, data_dir: Path | None = None
+) -> tuple[dict[str, uuid.UUID], int]:
+    """Seed the fetched PER tree — the five real levels, every row citable.
+
+    Written by `scripts/fetch-per-curriculum.py` from CIIP's own API, and read
+    from a committed file rather than fetched here: `docker compose up` has to
+    work with no network.
+
+    Lands in its own EDITION beside the hand-authored rows rather than
+    replacing them (audit H3). Overwriting would have rewritten the very rows
+    every existing band was computed from — and would have broken every chapter
+    and test still pointing at them — for no gain that a second edition does
+    not give. The old rows stay, marked `is_official = False`; a chapter moves
+    when somebody moves it.
+    """
+    path = (data_dir or DATA_DIR) / OFFICIAL_PER_FILE
+    if not path.exists():
+        # Optional, and only for a caller that supplied its own data directory:
+        # a test fixture or a deployment carrying a different curriculum should
+        # not be forced to ship a fetched PER it does not use. The shipped
+        # directory always has it.
+        log.info("seed.official_per.absent", path=str(path))
+        return {}, 0
+    payload, _raw = read_seed_file(OFFICIAL_PER_FILE, data_dir=data_dir)
+    rows = payload.get("competencies") or []
+    curriculum = CurriculumKind(payload["curriculum"])
+    edition_id = _ensure_edition(db, curriculum, str(payload["edition"]))
+    subject_key = payload.get("subject_key") or "mathematics"
+    cycle = int(payload.get("cycle") or 3)
+
+    existing = {
+        row.code: row
+        for row in db.scalars(
+            select(Competency).where(Competency.edition_id == edition_id)
+        )
+    }
+    by_code: dict[str, Competency] = {}
+    created = 0
+    for entry in rows:
+        code = entry["code"]
+        row = existing.get(code)
+        if row is None:
+            row = Competency(
+                id=uuid.uuid4(), curriculum=curriculum, code=code, edition_id=edition_id
+            )
+            db.add(row)
+            created += 1
+        row.subject_key = subject_key
+        row.cycle = cycle
+        row.labels = entry["labels"]
+        row.description = entry.get("description") or {}
+        row.kind = CompetencyKind(entry["kind"])
+        row.year = CurriculumYear(entry["year"]) if entry.get("year") else None
+        row.is_official = bool(entry.get("is_official"))
+        row.source_ref = entry.get("source_ref")
+        by_code[code] = row
+
+    db.flush()
+    for entry in rows:
+        parent_code = entry.get("parent_code")
+        if parent_code:
+            by_code[entry["code"]].parent_id = by_code[parent_code].id
+    db.flush()
+    return {code: row.id for code, row in by_code.items()}, created
+
+
+def load_streams(db: Session, *, data_dir: Path | None = None) -> int:
+    """The cantonal level vocabularies (audit H2). Idempotent by (canton, code).
+
+    Reference data, not a school's: a canton's streams are the canton's, shared
+    by every school in it — the same argument `Competency` makes. Seeded for
+    the six Romandie cantons.
+
+    A FILE and a table, not an enum, because the finding's own test is "can a
+    canton be added without a migration" — and reforms happen on a cantonal
+    parliament's schedule, not ours.
+    """
+    path = (data_dir or DATA_DIR) / STREAMS_FILE
+    if not path.exists():
+        log.info("seed.streams.absent", path=str(path))
+        return 0
+    payload, _raw = read_seed_file(STREAMS_FILE, data_dir=data_dir)
+    rows = _entries(payload, "streams", STREAMS_FILE)
+    existing = {(row.canton, row.code): row for row in db.scalars(select(Stream))}
+    created = 0
+    for entry in rows:
+        canton = _required(entry, "canton", STREAMS_FILE, entry.get("code", "?"))
+        code = _required(entry, "code", STREAMS_FILE, canton)
+        row = existing.get((canton, code))
+        if row is None:
+            row = Stream(id=uuid.uuid4(), canton=canton, code=code)
+            db.add(row)
+            created += 1
+        row.labels = _localised(entry, "labels", "stream", f"{canton}/{code}")
+        row.position = int(entry.get("position") or 0)
+    db.flush()
+    return created
 
 
 UNFILED_POSITION = 999

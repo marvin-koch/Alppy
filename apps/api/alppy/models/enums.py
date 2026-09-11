@@ -29,6 +29,50 @@ class ClassKind(StrEnum):
     COURSE = "course"
 
 
+class CompetencyKind(StrEnum):
+    """Which of the PER's five levels a `Competency` row is (audit H1).
+
+    The tree was two levels deep where the PER is five, and the second level
+    was invented — `MSN 31.2` is not a CIIP code (H3). These are the real
+    ones, in the source's own vocabulary:
+
+        domaine      Mathématiques et Sciences de la nature
+        objectif     MSN 31 · "Poser et résoudre des problèmes pour modéliser…"
+        composante   the numbered continuations, "…en définissant des figures…"
+        progression  what is taught, per year — 9H, 10H, 11H
+        attente      attente fondamentale: what a pupil must be able to do
+
+    Not every level is a place a teacher navigates. `Chapter.primary_competency_id`
+    files a Theme at COMPOSANTE level, so the tree stays Branch → Competence →
+    Theme with the objectif as the Competence; progressions and attentes are
+    reference data the adaptive engine can reason over, which is what H1 said
+    was missing.
+
+    LP21 rows carry `OBJECTIF` and nothing finer. The German curriculum has its
+    own levels and the audit could not verify its codes (the cantonal viewers
+    refuse a direct fetch), so nothing here claims to have mapped them.
+    """
+
+    DOMAINE = "domaine"
+    OBJECTIF = "objectif"
+    COMPOSANTE = "composante"
+    PROGRESSION = "progression"
+    ATTENTE = "attente"
+
+
+class CurriculumYear(StrEnum):
+    """The Swiss school year a progression belongs to, HarmoS numbering.
+
+    Cycle 3 only, because that is the product's scope. NULL on every row that
+    is not a progression: an objectif spans the cycle, and saying it belongs to
+    10H would be a claim the source does not make.
+    """
+
+    H9 = "9H"
+    H10 = "10H"
+    H11 = "11H"
+
+
 class AccessSubject(StrEnum):
     """What kind of record an `AccessLog` row is about.
 

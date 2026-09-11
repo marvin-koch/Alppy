@@ -52,7 +52,8 @@ branch_labels = None
 depends_on = None
 
 CURRENT_SCHOOL = "nullif(current_setting('app.current_school_id', true), '')::uuid"
-_SUBJECTS = ("student", "class")
+#: Member names, like every enum since 0001 — that is what SQLAlchemy sends.
+_SUBJECTS = ("STUDENT", "CLASS")
 
 
 def upgrade() -> None:

@@ -7,7 +7,7 @@ import uuid
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_api_fixtures import *  # noqa: F403
-from test_api_fixtures import PDF_BYTES, Tenant, login
+from test_api_fixtures import PDF_BYTES, Tenant, ensure_edition, login
 
 from alppy.api.deps import TokenBucketLimiter, get_ai_limiter, get_render_limiter
 from alppy.core.config import Settings
@@ -166,6 +166,7 @@ def test_competencies_are_filterable(client: TestClient, tenant: Tenant, db: Ses
     db.add(
         Competency(
             id=uuid.uuid4(),
+            edition_id=ensure_edition(db),
             curriculum=CurriculumKind.LP21,
             code="MA.1.A.1",
             parent_id=None,

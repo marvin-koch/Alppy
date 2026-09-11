@@ -81,17 +81,22 @@ def test_the_unfiled_bucket_is_not_created_twice(db: Session) -> None:
 
 @pytest.mark.parametrize(
     ("curriculum", "code"),
-    [(CurriculumKind.PER, "MSN 31.2"), (CurriculumKind.LP21, "MA.2.A.2")],
+    [(CurriculumKind.PER, "MSN 34.C8"), (CurriculumKind.LP21, "MA.2.A.2")],
 )
 def test_a_theme_hangs_from_its_own_schools_curriculum(
     db: Session, curriculum: CurriculumKind, code: str
 ) -> None:
     """The point of `primary_competency_id` being per school.
 
-    `plane_geometry_pythagoras` tags four competencies across BOTH curricula so
-    two language regions can share the chapter (docs/curriculum.md §3). Exactly
-    one of them is where a given school files it — and because `Chapter` is
+    `plane_geometry_pythagoras` tags competencies across BOTH curricula so two
+    language regions can share the chapter (docs/curriculum.md §3). Exactly one
+    of them is where a given school files it — and because `Chapter` is
     school-scoped, that needs one nullable FK rather than two columns.
+
+    The PER side is `MSN 34.C8` and not the old `MSN 31.2`, which was invented:
+    CIIP files the theorem under "Mobiliser la mesure pour comparer des
+    grandeurs", composante 8, verified against per.ciip.ch/api. The audit said
+    composante 5; the source says 8.
     """
     school = _school(db, curriculum)
     load_reference_data(db, school_id=school.id)
@@ -102,10 +107,12 @@ def test_a_theme_hangs_from_its_own_schools_curriculum(
     assert primary.code == code
     assert primary.curriculum is curriculum
 
-    # The tagging set is untouched: mastery still credits every one of them,
-    # including the other curriculum's.
+    # Mastery still credits every one of them, including the other
+    # curriculum's — and including `MSN 31.2`, which stays a credit after
+    # ceasing to be the primary. Where a Theme SITS moved; what it CREDITS did
+    # not, because the exercises tagged with the old code did not move (D56).
     tagged = {c.code for c in chapter.competencies}
-    assert tagged == {"MSN 31.2", "MSN 31.1", "MA.2.A.2", "MA.2.C.1"}
+    assert tagged == {"MSN 34.C8", "MSN 31.2", "MSN 31.1", "MA.2.A.2", "MA.2.C.1"}
 
 
 def test_every_seeded_theme_has_a_primary_and_it_is_one_of_its_own_tags(

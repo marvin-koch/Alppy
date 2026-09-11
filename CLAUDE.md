@@ -66,6 +66,11 @@ ALPPY_DISPOSABLE_DATABASE_URL=postgresql+psycopg://OWNER:pw@localhost:5432/alppy
 
 python -m alppy.cli backfill-events   # rebuild the agenda from existing timestamps
 python -m alppy.cli purge-prompt-logs # enforce ALPPY_AI_PROMPT_LOG_RETENTION_DAYS
+python -m alppy.cli purge-access-log  # enforce ALPPY_ACCESS_LOG_RETENTION_DAYS (read audit)
+
+# Regenerate the PER from CIIP's own API. Needs network; the output is
+# COMMITTED, because `docker compose up` must work without one.
+python scripts/fetch-per-curriculum.py
 ```
 
 ---
@@ -129,6 +134,28 @@ constraint, not a preference.
 **`layout.py` and `print.css` describe the same geometry, and the detector reads
 it.** *(DC-print-07)* Changing a number is a **layout version bump**, not a tweak — old scans
 must keep registering against the layout they were printed with.
+
+**A partial index needs `sqlite_where` as well as `postgresql_where`.** The
+dialect kwarg is *dropped* on other dialects, and the suite builds its schema
+with `create_all` on SQLite — so a partial UNIQUE index silently becomes an
+absolute one in the only place it ever runs. `uq_class_student_open` spent a
+release forbidding a pupil from rejoining a class they had left, which is the
+exact case 0027 widened the key to allow (D88).
+
+**A curriculum row belongs to an EDITION, and says whether it is official.**
+`uq_competency_code` is `(curriculum, edition_id, code)`. A revised curriculum
+lands beside the old one rather than overwriting the rows past bands were
+computed from — so never "fix" a competency in place; add an edition and move
+what points at it. `is_official` separates what a publisher wrote from what we
+invented, and an official row carries a `source_ref` that can be checked.
+`scripts/fetch-per-curriculum.py` regenerates the PER from CIIP's own API; the
+result is committed, because `docker compose up` has to work with no network.
+
+**Some vocabularies are closed, and a lookup table would be a lie.**
+`stream` is a table because a canton must be addable without a migration.
+`MasteryBand`, `CurriculumKind` and `Locale` stay enums because a new member
+needs a colour token, a glyph, a print style, a seeded curriculum or a message
+catalogue — a row that nothing can render is worse than a migration (D88).
 
 **A membership is an interval, and `on` is a required argument.** `class_student`,
 `class_teacher_subject` and `teacher_school` carry `valid_from`/`valid_to`, and

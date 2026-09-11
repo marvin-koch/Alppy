@@ -221,6 +221,41 @@ year-bound `student` row — `sheet_instance`, `answer_box_placement.student_uid
 
 ---
 
+## 7bis · How things are named
+
+Unstated for a long time, which is the whole of audit finding L5: the
+convention was consistent and nobody had written it down, so every migration
+re-derived it by reading its neighbours.
+
+`Base.metadata` carries it (`db/base.py`), and Alembic autogenerate uses it, so
+a constraint created without an explicit name still gets the right one — but
+every migration spells names out anyway, because a RENAME has to reproduce what
+the convention *would* have produced or the drift gate reports a spurious
+difference for ever.
+
+| Kind | Pattern | Example |
+|---|---|---|
+| Index | `ix_%(column_0_label)s` | `ix_attempt_person_answered` |
+| Unique | `uq_%(table_name)s_%(column_0_name)s` | `uq_student_uid` |
+| Check | `ck_%(table_name)s_%(constraint_name)s` | `ck_school_year_label` |
+| Foreign key | `fk_%(table_name)s_%(column_0_name)s_%(referred_table_name)s` | `fk_student_person_id_person` |
+| Primary key | `pk_%(table_name)s` | `pk_attempt` |
+
+Three habits sit on top of it, and none is enforceable by a convention:
+
+- **A partial index says what it is partial on, not just what it covers.**
+  `uq_class_student_open` is unique over `(class_id, student_id)` *where the
+  membership is open*; the name carries the predicate because the columns
+  cannot.
+- **Tables are singular** (`scan_page`, `class_student`), and `class` needs
+  quoting in every raw statement because it is a SQL keyword. This is why the
+  RLS migration writes `ALTER TABLE "class"` rather than bare.
+- **An association table is named for its two ends, in the order the composite
+  primary key uses**: `class_student`, `chapter_competency`,
+  `misconception_note_competency`.
+
+---
+
 ## 8 · Changing the schema
 
 1. Change the model in `apps/api/alppy/models/__init__.py`.

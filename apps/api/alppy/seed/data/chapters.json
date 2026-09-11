@@ -61,15 +61,17 @@
         "en": "Plane geometry and the Pythagorean theorem"
       },
       "competency_codes": [
+        "MSN 34.C8",
         "MSN 31.2",
         "MSN 31.1",
         "MA.2.A.2",
         "MA.2.C.1"
       ],
       "primary_competency_code": {
-        "PER": "MSN 31.2",
+        "PER": "MSN 34.C8",
         "LP21": "MA.2.A.2"
-      }
+      },
+      "_note": "Filed under MSN 34.C8, not MSN 31. CIIP puts the theorem under 'Mobiliser la mesure pour comparer des grandeurs', composante 8 — '…en utilisant des procédures de calcul de longueur (théorèmes de Thalès, de Pythagore…)' — verified against per.ciip.ch/api. The database audit said MSN 34 composante 5; the source says 8. The old MSN 31.2 stays among the credits: it is what this school's exercises were tagged with, and what a chapter CREDITS is not where it SITS (D56)."
     },
     {
       "key": "areas_volumes",
