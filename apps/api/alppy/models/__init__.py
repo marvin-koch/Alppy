@@ -41,6 +41,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from alppy.core.config import get_settings
 from alppy.db.base import Base, SchoolScopedMixin, TimestampMixin
 from alppy.models.enums import (
+    AccessSubject,
     AnswerBoxFill,
     ClassKind,
     CurriculumKind,
@@ -56,6 +57,7 @@ from alppy.models.enums import (
     ScanStatus,
     SheetKind,
     SheetTarget,
+    StaffingRole,
 )
 
 _EMBED_DIM = get_settings().embedding_dim
@@ -301,6 +303,15 @@ class_teacher_subject = Table(
         server_default=text("CURRENT_DATE"),
     ),
     Column("valid_to", Date, nullable=True),
+    # In what capacity (0049, audit L2). NULL means "not declared", and is NOT
+    # a synonym for `titulaire`: every row predating the column predates the
+    # question, and answering it for them would put four remplaçants on record
+    # as holding branches they were covering. The same reasoning `class.kind`
+    # uses for its own NULL (0026).
+    #
+    # Nothing branches on it yet. What it unlocks is a staff list that can say
+    # which of two co-teachers is which, and a cover period that reads as one.
+    Column("role", Enum(StaffingRole, name="staffing_role"), nullable=True),
     # WHO TEACHES WHAT HERE. `class_subject` is the other half and they are
     # not interchangeable: that one is what the class STUDIES (a fact about
     # the class, carrying the Branch nav order), this one is who TEACHES it
@@ -652,6 +663,28 @@ exercise_competency = Table(
 )
 
 
+misconception_note_competency = Table(
+    "misconception_note_competency",
+    Base.metadata,
+    Column(
+        "note_id",
+        PgUUID(as_uuid=True),
+        ForeignKey("misconception_note.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "competency_id",
+        PgUUID(as_uuid=True),
+        ForeignKey("competency.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    # The reverse direction, like 0039 gave `exercise_competency` and 0043 gave
+    # `chapter_competency`: the composite PK leads with `note_id` and answers
+    # nothing keyed on the competency.
+    Index("ix_misconception_note_competency_competency_id", "competency_id"),
+)
+
+
 UNFILED_CHAPTER_KEY = "unfiled"
 """The Theme a sheet nobody has filed belongs to, one per subject.
 
@@ -682,7 +715,16 @@ class Chapter(Base, TimestampMixin, SchoolScopedMixin):
     )
 
     id: Mapped[uuid.UUID] = _pk()
-    subject_id: Mapped[uuid.UUID] = _fk("subject.id")
+    # RESTRICT, not the module's usual CASCADE (M10). `Sheet.chapter_id` is
+    # RESTRICT — a printed sheet must survive its Theme being deleted — and a
+    # CASCADE here went straight past it: deleting a Subject removed its
+    # Chapters, and the RESTRICT on the sheet then refused the delete from
+    # inside a cascade it could not see the top of. Two rules that contradict
+    # each other, and the one that wins depends on whether any sheet happens to
+    # exist. Matching the stricter one makes "you cannot delete a Branch that
+    # still holds Themes" a refusal with a sentence, at the level a teacher
+    # asked the question.
+    subject_id: Mapped[uuid.UUID] = _fk("subject.id", ondelete="RESTRICT")
     # The single canonical parent this chapter HANGS FROM in the navigation
     # tree: Branch -> Competence -> Theme. The Competence node is this
     # competency's own ``parent_id`` (or itself, when the primary is already
@@ -1364,18 +1406,20 @@ class MisconceptionNote(Base, TimestampMixin, SchoolScopedMixin):
     language: Mapped[str] = mapped_column(String(5), nullable=False)
     # ["...", "..."] — one sentence group per misconception, printed in order.
     notes: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
-    # `'[]'` without the `::jsonb` cast the database stores it as. Postgres
-    # coerces an untyped literal to the column's type and records the same
-    # default either way; SQLite, where the suite builds its schema with
-    # `create_all` (D18), renders whatever is written here verbatim into a
-    # CREATE TABLE and chokes on the cast.
-    competency_ids: Mapped[list[str]] = mapped_column(
-        JSONB, default=list, server_default=text("'[]'")
-    )
     approved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     generation_meta: Mapped[dict[str, Any] | None] = mapped_column(JSONB)
 
+    # What this note is ABOUT, as rows the database can check (0046). It was a
+    # JSONB array of UUID strings with no foreign key, so a deleted competency
+    # left an id resolving to nothing and the endpoint handed it to the client
+    # anyway; and "which notes mention this competency" was a full scan.
+    #
+    # selectin: the review screen loads every note of a sheet at once, which was
+    # one query per note under the default lazy load.
+    competencies: Mapped[list[Competency]] = relationship(
+        secondary=misconception_note_competency, lazy="selectin"
+    )
     # The identity, not the year. What a note explains — a misconception a
     # child holds — is not a fact about one year's enrolment record (D87).
     person: Mapped[Person] = relationship()
@@ -1524,9 +1568,32 @@ class ScanPage(Base, TimestampMixin, SchoolScopedMixin):
     # A cover sheet, a lens-cap frame, a page re-shot later. Discarded pages are
     # kept for audit and ignored by confirmation, so one bad photo cannot hold
     # a whole class set hostage.
-    discarded: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False, server_default=text("false")
+    #
+    # A timestamp and an actor, not a boolean (0047), because this is a
+    # TEACHER'S DECISION that removes a copy — and a pupil's marks with it —
+    # from grading, from the results screen and from the mastery recompute.
+    # Asked in June why a child has no mark for the February sheet, the row has
+    # to be able to answer. The two columns above stay booleans on purpose:
+    # `registered` and `wrong_class` are machine classifications the pipeline
+    # RE-DERIVES, and a timestamp on a re-derived value reads as the moment
+    # something happened when re-running would move it.
+    #
+    # NULL `discarded_by_id` on a set `discarded_at` means "before 0047" —
+    # nothing recorded the actor, and the backfill would have had to invent one.
+    discarded_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    discarded_by_id: Mapped[uuid.UUID | None] = _fk(
+        "teacher.id", nullable=True, ondelete="SET NULL", index=False
     )
+
+    @property
+    def discarded(self) -> bool:
+        """The boolean the read paths and the API contract still speak in.
+
+        `ScanPageOut.discarded` stays a boolean, so 0047 changed no client. In a
+        `WHERE` use the column — `ScanPage.discarded_at.is_(None)` — because
+        this is Python and does not compile to SQL.
+        """
+        return self.discarded_at is not None
     # Which page of that student's copy this is, resolved from the decoded UID.
     page_in_copy: Mapped[int | None] = mapped_column(Integer)
 
@@ -1624,10 +1691,28 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
         Index("ix_attempt_person_answered", "person_id", "answered_at"),
         # Re-scanning a pile must correct the record, not double it: mastery is
         # a weighted mean over attempts, so a duplicate silently doubles one
-        # lesson's weight against every other. confirm_scan supersedes rather
-        # than inserts; this is the backstop that makes that a guarantee.
+        # lesson's weight against every other. `confirm_scan` supersedes rather
+        # than inserts, and this backs that up.
+        #
+        # `NULLS NOT DISTINCT` because `sheet_id` is NULLABLE — an attempt whose
+        # sheet was deleted keeps the mark and loses the reference — and two
+        # NULLs are DISTINCT inside an ordinary unique index. The constraint was
+        # therefore off for exactly the rows that needed it most (M4).
+        #
+        # `answered_at` is in the key so a later decision to partition this
+        # table by time does not have to rewrite a uniqueness rule over a term
+        # of real marking (M7). It weakens what the database can promise:
+        # `answered_at` is the SCAN's timestamp, so a re-upload as a new scan no
+        # longer collides here. `confirm_scan`'s own lookup omits the column and
+        # still supersedes, and `test_a_rescan_on_another_day_still_supersedes`
+        # is what keeps that true — it is the backstop now, not this line.
         UniqueConstraint(
-            "person_id", "exercise_id", "sheet_id", name="uq_attempt_person_exercise_sheet"
+            "person_id",
+            "exercise_id",
+            "sheet_id",
+            "answered_at",
+            name="uq_attempt_person_exercise_sheet",
+            postgresql_nulls_not_distinct=True,
         ),
     )
 
@@ -1794,6 +1879,78 @@ class AdaptiveProposal(Base, TimestampMixin, SchoolScopedMixin):
     payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
 
     __table_args__ = (UniqueConstraint("job_id", name="uq_adaptive_proposal_job"),)
+
+
+class AccessLog(Base, TimestampMixin, SchoolScopedMixin):
+    """Who READ a pupil's record, and when. Append-only (audit H7).
+
+    `Event` is the write log: eleven verbs, product prose, written for a
+    teacher to read on the agenda. It answers "what happened to this class".
+    It cannot answer the question a parent or a DPO actually asks, which is
+    **"who looked at my child's file"** — because looking leaves no trace at
+    all.
+
+    This is that trace, and it is a separate table on purpose, for the same
+    reason `PromptLog` is separate from `ModelCall`: different reader,
+    different lifetime, different consent story. Adding these as `EventKind`
+    members would put "M. Rossier opened Léa's profile" in the agenda a teacher
+    scrolls, forty times a lesson.
+
+    **Append-only.** Nothing in the codebase updates or deletes a row except
+    the retention sweep (`purge-access-log`). There is no endpoint. A log a
+    reader can edit answers nothing.
+
+    **Written where the subject is known.** The plan put this in
+    `deps.get_membership`, which knows the actor and the tenant on every
+    request — but not WHICH pupil was read, and a log without subjects cannot
+    answer the question above. So the write sits at the two gates that already
+    decide whether this teacher may see this child (`_owned_student`,
+    `class_service.get_student`), with the actor and tenant still coming from
+    the `Scope` that `get_membership` built.
+
+    **No names, ever.** A subject id and a teacher id. Resolving them is a
+    query somebody makes deliberately, against the tables that hold the names —
+    which is also what keeps this table safe to retain after a pupil has been
+    anonymised (0041).
+    """
+
+    __tablename__ = "access_log"
+    __table_args__ = (
+        # The two questions asked of it: "everything about this record" and
+        # "everything this teacher read". Both are time-ordered, and both are
+        # asked over a window, so the timestamp is the trailing column.
+        Index("ix_access_log_subject", "subject_type", "subject_id", "occurred_at"),
+        Index("ix_access_log_teacher", "teacher_id", "occurred_at"),
+    )
+
+    id: Mapped[uuid.UUID] = _pk()
+    # Covered by neither composite: both lead with something else, and the
+    # retention sweep reads `school_id` with `occurred_at`.
+    __school_id_index__ = True
+
+    # RESTRICT would be wrong and CASCADE would be worse: deleting a teacher
+    # must not erase the record of what they read. SET NULL keeps the row and
+    # loses only the name — the same rule every other actor column follows.
+    teacher_id: Mapped[uuid.UUID | None] = _fk(
+        "teacher.id", nullable=True, ondelete="SET NULL", index=False
+    )
+    subject_type: Mapped[AccessSubject] = mapped_column(
+        Enum(AccessSubject, name="access_subject"), nullable=False
+    )
+    #: Deliberately NOT a foreign key. The row has to outlive the record it
+    #: describes: "who read this pupil's file" is most worth asking about a
+    #: pupil who has since been deleted, and a FK would cascade the answer away
+    #: with the question.
+    subject_id: Mapped[uuid.UUID] = mapped_column(PgUUID(as_uuid=True), nullable=False)
+    #: A short verb, from `access_log.py`'s own set. Not free text and not
+    #: `EventKind` — see the class docstring.
+    action: Mapped[str] = mapped_column(String(40), nullable=False)
+    occurred_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    #: Ties a row to the request that made it, and to everything that request
+    #: logged. NULL for a write from a worker or the CLI, which have no request.
+    request_id: Mapped[str | None] = mapped_column(String(64))
 
 
 class PromptLog(Base, TimestampMixin, SchoolScopedMixin):

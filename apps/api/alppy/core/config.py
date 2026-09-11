@@ -257,6 +257,14 @@ class Settings(BaseSettings):
     process and a preview paginates inside the request handler, so this guards
     the API box rather than the provider bill."""
 
+    # --- Access log (the read audit trail) -------------------------------
+    #: Days to keep `AccessLog`. 0 or less means keep forever.
+    #:
+    #: 365, not the prompt log's 30, and opt-OUT rather than opt-in: a trail
+    #: that expires inside a school year cannot answer a question asked at the
+    #: end of one, and "who read my child's file" is asked late or not at all.
+    access_log_retention_days: int = 365
+
     # --- Prompt log (debugging; NOT the audit trail) ---------------------
     # `ModelCall` stays content-free whatever these say. This is the separate,
     # opt-in store of what was actually sent — see models.PromptLog.

@@ -744,7 +744,7 @@ def _live_pages(db: Session, scan: Scan) -> list[ScanPage]:
         db.execute(
             select(ScanPage)
             .where(ScanPage.scan_id == scan.id)
-            .where(ScanPage.discarded.is_(False))
+            .where(ScanPage.discarded_at.is_(None))
             .where(ScanPage.wrong_class.is_(False))
         ).scalars()
     )
@@ -883,7 +883,7 @@ def process_scan(
         for uid, count in db.execute(
             select(ScanPage.detected_uid, func.count())
             .where(ScanPage.scan_id == scan.id)
-            .where(ScanPage.discarded.is_(False))
+            .where(ScanPage.discarded_at.is_(None))
             .where(ScanPage.detected_uid.is_not(None))
             .group_by(ScanPage.detected_uid)
         ).all():

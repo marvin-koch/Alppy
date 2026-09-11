@@ -56,7 +56,14 @@ from alppy.ai.audit import flush as flush_ai_log
 from alppy.ai.client import AiClient, load_prompt, parse_json_response
 from alppy.ai.scrub import scrub, to_ref
 from alppy.core.logging import get_logger
-from alppy.models import Attempt, Detection, Exercise, MisconceptionNote, Student
+from alppy.models import (
+    Attempt,
+    Competency,
+    Detection,
+    Exercise,
+    MisconceptionNote,
+    Student,
+)
 from alppy.models.enums import DetectionOutcome, ExerciseType
 
 log = get_logger(__name__)
@@ -280,7 +287,14 @@ def generate_for_student(
         )
         return None
 
-    competency_ids = [str(m.competency_id) for m in mistakes if m.competency_id is not None]
+    # Rows, not strings (0046). Deduplicated and resolved against `competency`
+    # in one query: the join table has a foreign key, so an id the grader
+    # produced for a competency that has since been deleted is refused at the
+    # INSERT rather than stored and handed to a client that cannot resolve it.
+    wanted = {m.competency_id for m in mistakes if m.competency_id is not None}
+    covered = (
+        list(db.scalars(select(Competency).where(Competency.id.in_(wanted)))) if wanted else []
+    )
     note = MisconceptionNote(
         id=uuid.uuid4(),
         school_id=school_id,
@@ -289,7 +303,7 @@ def generate_for_student(
         based_on_sheet_id=source_sheet_id,
         language=language,
         notes=notes,
-        competency_ids=sorted(set(competency_ids)),
+        competencies=sorted(covered, key=lambda c: c.code),
         approved_at=None,
         generation_meta={
             "prompt": f"{prompt.name}.{prompt.version}",

@@ -182,6 +182,32 @@ def _purge_prompt_logs() -> int:
     return 0
 
 
+def _purge_access_log() -> int:
+    """Delete access-log rows past ``ALPPY_ACCESS_LOG_RETENTION_DAYS``.
+
+    The read audit trail's one other writer (`services/access_log.py`). Meant
+    for the same cron as ``purge-prompt-logs`` — a retention window nothing
+    enforces is not a window, and this table grows with every profile a teacher
+    opens.
+
+    Unlike the prompt log this defaults to keeping rather than deleting: 0 or
+    less means forever, and the shipped default is a year.
+    """
+    from alppy.services.access_log import purge_expired
+
+    db = admin_session()
+    try:
+        deleted = purge_expired(db)
+        log.info("access_log.purge.done", deleted=deleted)
+    except Exception:
+        db.rollback()
+        log.exception("access_log.purge.failed")
+        raise
+    finally:
+        db.close()
+    return 0
+
+
 #: Whether a reaped job of this kind is safe to run again, decided per kind
 #: rather than uniformly (audit 03, B9). This is a statement about *cost and
 #: idempotence*, not about likelihood of success:
@@ -370,6 +396,10 @@ def main(argv: list[str] | None = None) -> int:
         "purge-prompt-logs",
         help="Delete prompt-log rows past the configured retention window.",
     )
+    subparsers.add_parser(
+        "purge-access-log",
+        help="Delete read-audit rows past ALPPY_ACCESS_LOG_RETENTION_DAYS.",
+    )
     reap_parser = subparsers.add_parser(
         "reap-jobs",
         help="Fail RUNNING jobs that stopped reporting past ALPPY_JOB_STALE_AFTER_S.",
@@ -408,6 +438,9 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "purge-prompt-logs":
         return _purge_prompt_logs()
+
+    if args.command == "purge-access-log":
+        return _purge_access_log()
 
     if args.command == "reap-jobs":
         return _reap_jobs(dry_run=args.dry_run)

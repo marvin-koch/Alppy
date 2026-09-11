@@ -166,7 +166,7 @@ def student_sheet_breakdown(
         .where(Scan.sheet_id == sheet.id)
         .where(Scan.school_id == school_id)
         .where(ScanPage.student_id == student_id)
-        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.discarded_at.is_(None))
         .where(ScanPage.wrong_class.is_(False))
         .where(Detection.exercise_id.is_not(None))
     )

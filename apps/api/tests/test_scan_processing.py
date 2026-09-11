@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import uuid
 from collections.abc import Callable
+from datetime import UTC, timedelta
 
 import cv2
 import numpy as np
@@ -441,6 +442,51 @@ def test_rescanning_supersedes_instead_of_duplicating(
     assert result.attempts_superseded == 2
     assert db.query(Attempt).count() == 2, "one row per student x exercise x sheet"
     # The re-scan corrected the record rather than accumulating beside it.
+    assert not any(a.correct for a in db.query(Attempt).all())
+
+
+def test_a_rescan_on_another_day_still_supersedes(
+    db: Session, storage: LocalStorage, tenant: Tenant, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The guarantee 0045 moved out of the database and into this test.
+
+    ``answered_at`` joined ``uq_attempt_person_exercise_sheet`` so the table can
+    be partitioned by time later (M7), and ``answered_at`` is the SCAN's
+    timestamp — so two uploads of one pile on different days no longer collide
+    in the database at all. Nothing stops a duplicate but ``confirm_scan``,
+    whose lookup deliberately omits the column.
+
+    The sibling test above cannot prove this: both its piles are created inside
+    one test and may land in the same second, in which case the old constraint
+    would still have caught a duplicate. This one forces the days apart, so it
+    fails if a future path ever inserts where it should supersede. It is the
+    backstop; do not delete it without putting the constraint back.
+    """
+    sheet, _ = _sheet(db, tenant, answers=[0, 1])
+    uid = tenant.students[0].uid
+
+    first = _run(db, storage, tenant, sheet, _render_copy(db, sheet, uid), monkeypatch)
+    scan_service.confirm_scan(db, tenant.scope, first.id)
+    db.commit()
+    assert db.query(Attempt).count() == 2
+
+    second = _run(
+        db, storage, tenant, sheet, _render_copy(db, sheet, uid, all_correct=False), monkeypatch
+    )
+    # A fortnight between the two uploads, which is an ordinary gap between
+    # losing a pile and finding it again.
+    started = first.created_at
+    if started.tzinfo is None:  # SQLite hands back a naive datetime
+        started = started.replace(tzinfo=UTC)
+    second.created_at = started - timedelta(days=14)
+    db.flush()
+
+    result = scan_service.confirm_scan(db, tenant.scope, second.id)
+    db.commit()
+
+    assert result.attempts_created == 0, "a second upload must not insert"
+    assert result.attempts_superseded == 2
+    assert db.query(Attempt).count() == 2, "still one row per pupil x exercise x sheet"
     assert not any(a.correct for a in db.query(Attempt).all())
 
 

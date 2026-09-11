@@ -60,7 +60,7 @@ from alppy.schemas import (
     StudentProfileOut,
     TreeMasteryOut,
 )
-from alppy.services import competency_out, student_out
+from alppy.services import access_log, competency_out, student_out
 from alppy.services.enrollment import (
     enrolled_student_ids,
     ever_shared_student_ids,
@@ -631,6 +631,11 @@ def _owned_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
     ).scalar_one_or_none()
     if student is None:
         raise errors.not_found("student", id=str(student_id))
+    # The gate that decided this teacher may see this child is also the only
+    # place that knows all three of actor, tenant and SUBJECT — which is why
+    # the read trail is written here and not in `get_membership`, where the
+    # plan first put it (audit H7). Best-effort by design; see access_log.py.
+    access_log.student_read(db, scope, student.id, access_log.PROFILE_READ)
     return student
 
 

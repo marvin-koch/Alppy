@@ -307,7 +307,10 @@ def append_pages(
         ).scalar_one_or_none()
         if superseded is None:
             raise errors.not_found("scan page", id=str(supersedes_page_id))
-        superseded.discarded = True
+        # A re-shot copy retires the failed page, and the teacher uploading the
+        # replacement is who did it (0047).
+        superseded.discarded_at = datetime.now(UTC)
+        superseded.discarded_by_id = scope.teacher_id
 
     job = Job(
         id=uuid.uuid4(),
@@ -608,7 +611,7 @@ def _newest_other_confirmed(
         .where(sheet_clause)
         .join(Student, Student.id == ScanPage.student_id)
         .where(Student.person_id == person_id)
-        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.discarded_at.is_(None))
         .where(ScanPage.wrong_class.is_(False))
         .where(Detection.exercise_id == exercise_id)
         .order_by(Scan.confirmed_at.desc().nullslast())
@@ -1158,7 +1161,8 @@ def assign_page_student(
     # Assigning by hand settles the question the UID could not: this page is
     # this student's, and it is part of this sheet.
     page.wrong_class = False
-    page.discarded = False
+    page.discarded_at = None
+    page.discarded_by_id = None
     if page.sheet_instance_id is None:
         scan = get_scan(db, scope, scan_id)
         if scan.sheet_id is not None:
@@ -1234,10 +1238,17 @@ def set_page_discarded(
         raise errors.conflict(
             "scan is already confirmed", code="scan_already_confirmed", scan_id=str(scan_id)
         )
-    page.discarded = discarded
     if discarded:
+        page.discarded_at = datetime.now(UTC)
+        page.discarded_by_id = scope.teacher_id
         page.student_id = None
         page.sheet_instance_id = None
+    else:
+        # Putting a page back clears the actor with the timestamp: the record
+        # is "this page is in the pile", and a stale name beside it would read
+        # as somebody having discarded it and nobody having undone that.
+        page.discarded_at = None
+        page.discarded_by_id = None
     db.flush()
     return page
 
@@ -1291,7 +1302,7 @@ def confidence_by_item(db: Session, scope: Scope, sheet_id: uuid.UUID) -> list[I
         .join(Scan, Scan.id == ScanPage.scan_id)
         .where(Scan.sheet_id == sheet.id)
         .where(Scan.school_id == school_id)
-        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.discarded_at.is_(None))
         .where(ScanPage.wrong_class.is_(False))
     ).all()
 

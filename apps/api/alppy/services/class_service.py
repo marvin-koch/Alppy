@@ -45,7 +45,7 @@ from alppy.schemas import (
     HomeOut,
     RosterCreate,
 )
-from alppy.services import class_out, subject_out, teacher_out
+from alppy.services import access_log, class_out, subject_out, teacher_out
 from alppy.services.enrollment import (
     enrolled_in_owned_classes,
     enrolled_student_ids,
@@ -645,6 +645,7 @@ def get_student(db: Session, scope: Scope, student_id: uuid.UUID) -> Student:
     ).scalar_one_or_none()
     if row is None:
         raise errors.not_found("student", id=str(student_id))
+    access_log.student_read(db, scope, row.id, access_log.RECORD_OPENED)
     return row
 
 

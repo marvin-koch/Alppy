@@ -101,7 +101,7 @@ def pending_detections(db: Session, scan_id: uuid.UUID) -> list[tuple[Detection,
         .join(ScanPage, ScanPage.id == Detection.scan_page_id)
         .join(Exercise, Exercise.id == Detection.exercise_id)
         .where(ScanPage.scan_id == scan_id)
-        .where(ScanPage.discarded.is_(False))
+        .where(ScanPage.discarded_at.is_(None))
         .where(ScanPage.wrong_class.is_(False))
         .where(Detection.outcome == DetectionOutcome.PENDING)
         .order_by(ScanPage.page_index.asc(), Detection.item_index.asc())

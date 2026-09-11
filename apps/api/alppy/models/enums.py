@@ -29,6 +29,46 @@ class ClassKind(StrEnum):
     COURSE = "course"
 
 
+class AccessSubject(StrEnum):
+    """What kind of record an `AccessLog` row is about.
+
+    Operational, not product prose — deliberately NOT an `EventKind`. The
+    agenda's vocabulary is written for a teacher to read; this is written for
+    somebody answering "who looked at this child's record", which is a
+    different question with a different reader and a different retention.
+    """
+
+    STUDENT = "student"
+    CLASS = "class"
+
+
+class StaffingRole(StrEnum):
+    """What a teacher IS to a class's branch, not merely that they take it.
+
+    `class_teacher_subject` says who teaches what where, and since 0027 it says
+    for how long. What it could not say is in what capacity — and the four
+    capacities are not interchangeable to anybody in the building.
+
+    The vocabulary is the Romand staffroom's, kept in French rather than
+    translated: these are the words on a timetable and in a décision
+    d'attribution, and an English paraphrase would be a different claim.
+    Rendering them is the UI's job through the message catalogues.
+    """
+
+    TITULAIRE = "titulaire"
+    """The branch is theirs. The default, and what every row before 0049 was."""
+
+    APPUI = "appui"
+    """Support teaching alongside the titulaire, usually for named pupils."""
+
+    REMPLACANT = "remplacant"
+    """Covering an absence. The reason 0027's `valid_to` exists in practice —
+    a cover from March to May is two dates on one row."""
+
+    CO_ENSEIGNANT = "co_enseignant"
+    """Two teachers, one branch, jointly. Not a titulaire and a helper."""
+
+
 class CurriculumKind(StrEnum):
     """Both Swiss curricula are first-class; neither is the default."""
 

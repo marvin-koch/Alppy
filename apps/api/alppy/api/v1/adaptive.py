@@ -533,7 +533,7 @@ def list_feedback(
                 based_on_sheet_id=row.based_on_sheet_id,
                 language=row.language,
                 notes=list(row.notes or []),
-                competency_ids=[uuid.UUID(c) for c in (row.competency_ids or [])],
+                competency_ids=[c.id for c in row.competencies],
                 approved_at=row.approved_at,
                 created_at=row.created_at,
             )

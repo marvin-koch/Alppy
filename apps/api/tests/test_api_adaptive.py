@@ -520,7 +520,6 @@ def test_the_feedback_uid_lookup_filters_on_the_school_itself(
                 based_on_sheet_id=uuid.UUID(sheet_id),
                 language="fr",
                 notes=["inverse les termes"],
-                competency_ids=[],
             )
         )
     db.commit()
