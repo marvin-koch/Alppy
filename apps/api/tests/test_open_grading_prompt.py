@@ -137,7 +137,8 @@ def test_the_two_prompt_versions_agree_on_every_existing_verdict_shape(
     prompt judges every answer, and only an evaluation against real handwriting
     can say whether v3 reads a genuine answer the way v2 did. That evaluation
     needs live vision calls on real crops; it is not something a unit suite can
-    stand in for, and it is why `PROMPT_VERSION` is still v2.
+    stand in for. That evaluation is what `tests/golden/` and its nightly gate
+    now exist for (T9/T12); `PROMPT_VERSION` is v3.
     """
     diffs: dict[str, tuple[object, object]] = {}
     for name, payload in _EXISTING_SHAPES.items():
