@@ -58,7 +58,10 @@ const state: MockState = {
   sections: structuredClone(fx.sourceSections),
   exercises: structuredClone(fx.exercises),
   pendingExtractions: new Set<string>(),
-  sheets: { [fx.sheet.id]: structuredClone(fx.sheet) },
+  sheets: {
+    [fx.sheet.id]: structuredClone(fx.sheet),
+    [fx.renderedSheet.id]: structuredClone(fx.renderedSheet),
+  },
   scans: { [fx.scan.id]: structuredClone(fx.scan) },
   jobs: {},
   approvals: new Set<string>(),
@@ -278,9 +281,20 @@ function unassign(klass: ClassOut, teacherId: string, subjectId: string): void {
   syncOwnBranches(klass);
 }
 
-/** How many sheets a branch holds, counted the way the API counts them. */
-function sheetsHeld(subjectId: string): number {
-  return Object.values(state.sheets).filter((s) => s.subject_id === subjectId).length;
+/**
+ * How many sheets a branch holds IN ONE CLASS, counted the way the API counts
+ * them — and the way the refusal sentence already claimed it did.
+ *
+ * It used to count every sheet in the school with that `subject_id` and report
+ * the total as sheets "in this class", which happened to agree while the fixtures
+ * held exactly one sheet. Adding a second (`renderedSheet`) made the two
+ * disagree: removing maths from 7B reported two sheets, one of which was not in
+ * 7B at all.
+ */
+function sheetsHeld(classId: string, subjectId: string): number {
+  return Object.values(state.sheets).filter(
+    (s) => s.subject_id === subjectId && s.class_id === classId,
+  ).length;
 }
 
 /** Resets everything between tests. Exposed on `window` in mock builds only. */
@@ -291,7 +305,10 @@ export function resetMockState(): void {
   state.sections = structuredClone(fx.sourceSections);
   state.exercises = structuredClone(fx.exercises);
   state.pendingExtractions = new Set<string>();
-  state.sheets = { [fx.sheet.id]: structuredClone(fx.sheet) };
+  state.sheets = {
+    [fx.sheet.id]: structuredClone(fx.sheet),
+    [fx.renderedSheet.id]: structuredClone(fx.renderedSheet),
+  };
   state.scans = { [fx.scan.id]: structuredClone(fx.scan) };
   state.jobs = {};
   state.approvals = new Set<string>();
@@ -299,6 +316,8 @@ export function resetMockState(): void {
   state.classes = structuredClone(fx.classes);
   state.classTeachers = structuredClone(fx.classTeachers);
   globalThis.__alppyMockCalls = [];
+  globalThis.__alppyMockFail = [];
+  globalThis.__alppyMockKeys = [];
   jobCounter = 0;
   regenerateCounter = 0;
 }
@@ -315,12 +334,60 @@ type Json = any;
  * lets a test tell the difference. Test-only: nothing in the app reads it.
  */
 declare global {
-   
   var __alppyMockCalls: string[] | undefined;
+
+  var __alppyMockFail: MockFailure[] | undefined;
+
+  var __alppyMockKeys: { call: string; key: string }[] | undefined;
 }
 
-function record(method: string, url: string): void {
+/**
+ * A failure a test asks the mock to produce, so an error path can be exercised
+ * on the real screen.
+ *
+ * Playwright's `page.route` cannot help here: in mock mode `apiRequest` never
+ * reaches `fetch` at all, it calls `handleMock` in-process. So a test that wants
+ * to know what a teacher sees when a correction comes back 500 has nowhere to
+ * inject the 500 — which is exactly how a mutation with no error reader passed
+ * for working. Same seam, same rule as `__alppyMockCalls`: test-only, nothing in
+ * the app reads it, and an empty list changes nothing.
+ *
+ * `method` and `pattern` are matched against the request; `pattern` is a
+ * substring of the URL, not a regex, because a test naming one route should not
+ * have to escape it. `times` spends itself, so a test can fail the first attempt
+ * and let the retry through.
+ */
+export interface MockFailure {
+  method: string;
+  pattern: string;
+  status: number;
+  code: string;
+  /** How many matching calls to fail. Absent fails every one. */
+  times?: number;
+}
+
+function failureFor(method: string, url: string): MockFailure | undefined {
+  const queued = globalThis.__alppyMockFail;
+  if (!queued || queued.length === 0) return undefined;
+  const hit = queued.find((f) => f.method === method && url.includes(f.pattern));
+  if (!hit) return undefined;
+  if (hit.times !== undefined) {
+    hit.times -= 1;
+    if (hit.times <= 0) queued.splice(queued.indexOf(hit), 1);
+  }
+  return hit;
+}
+
+function record(method: string, url: string, headers?: Record<string, string>): void {
   if (typeof globalThis === 'undefined') return;
+  // The idempotency key, kept separately: a test asserting that a retry reuses one
+  // key and a fresh intent mints another has to see the HEADER, and the call log
+  // is deliberately a flat list of readable strings. Test-only, same as the log.
+  const key = headers?.['Idempotency-Key'];
+  if (key !== undefined) {
+    globalThis.__alppyMockKeys ??= [];
+    globalThis.__alppyMockKeys.push({ call: `${method} ${url}`, key });
+  }
   globalThis.__alppyMockCalls ??= [];
   // The full URL, query string included. Recording only the path made a
   // filtered request indistinguishable from an unfiltered one in the log — the
@@ -329,10 +396,19 @@ function record(method: string, url: string): void {
   globalThis.__alppyMockCalls.push(`${method} ${url}`);
 }
 
-export async function handleMock<T>(method: string, url: string, body: unknown): Promise<T> {
+export async function handleMock<T>(
+  method: string,
+  url: string,
+  body: unknown,
+  headers?: Record<string, string>,
+): Promise<T> {
   const [rawPath, rawQuery] = url.split('?');
   const path = rawPath ?? '';
-  record(method, url);
+  record(method, url, headers);
+  // Before anything is mutated: a test asking for a 500 wants the state the
+  // teacher's screen was in, not that state with the write half-applied.
+  const failure = failureFor(method, url);
+  if (failure) throw new ApiError(failure.status, failure.code, `injected ${failure.status}`);
   // The query string used to be dropped on the floor, so a filtered or sorted
   // request was indistinguishable from an unfiltered one and no e2e test could
   // tell whether the controls did anything.
@@ -404,7 +480,16 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
 
   /* ---------------------------------------------------------- home --- */
   if (method === 'GET' && path === '/home') return { ...fx.home, teacher: state.teacher };
-  if (method === 'GET' && path === '/classes') return state.classes;
+  if (method === 'GET' && path === '/classes') {
+    // Honoured, not ignored. The client now sends `school_year_id` on this route
+    // and on `/home`, `/sheets` and `/scans`, and a fixture layer that dropped it
+    // would make a wired-up year indistinguishable from an unwired one — the
+    // exact confusion G3 is about.
+    const yearId = query.get('school_year_id');
+    return yearId
+      ? state.classes.filter((klass) => klass.school_year_id === yearId)
+      : state.classes;
+  }
   if (method === 'GET' && path === '/school-years') return fx.schoolYears;
   if (method === 'GET' && path === '/subjects') return fx.subjects;
   if (method === 'GET' && path === '/chapters') return fx.chapters;
@@ -475,7 +560,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     } else {
       // Maths carries the fixture's sheets, so the refusal path is reachable
       // in the browser and not only in a unit test.
-      const held = sheetsHeld(subjectId);
+      const held = sheetsHeld(classId, subjectId);
       if (held > 0) {
         throw new ApiError(
           409,
@@ -647,7 +732,10 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     if (update.approved) state.approvals.add(m[1] ?? '');
     const base =
       fx.exercises.find((e) => e.id === m?.[1]) ??
-      fx.adaptive.plans.flatMap((p) => p.generated).map((p) => p.exercise).find((e) => e.id === m?.[1]);
+      fx.adaptive.plans
+        .flatMap((p) => p.generated)
+        .map((p) => p.exercise)
+        .find((e) => e.id === m?.[1]);
     if (!base) throw new ApiError(404, 'not_found', 'exercise not found');
     return { ...base, ...update, approved_at: update.approved ? fx.NOW : base.approved_at };
   }
@@ -664,8 +752,16 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     // The list is scoped to a class now, so the fixture layer has to honour
     // `class_id` or the screen would look unscoped in the screenshot suite.
     const classId = query.get('class_id');
-    const all = Object.values(state.sheets);
-    return classId ? all.filter((sheet) => sheet.class_id === classId) : all;
+    // And to a year, for the same reason `/classes` is: a sheet belongs to the
+    // year of the class it was printed for, resolved through the class rather
+    // than stored on the sheet — which is how the API answers it too.
+    const yearId = query.get('school_year_id');
+    const yearOf = (sheetClassId: string) =>
+      state.classes.find((klass) => klass.id === sheetClassId)?.school_year_id ?? null;
+    const all = Object.values(state.sheets)
+      .filter((sheet) => (classId ? sheet.class_id === classId : true))
+      .filter((sheet) => (yearId ? yearOf(sheet.class_id) === yearId : true));
+    return all;
   }
   if (method === 'GET' && path === '/scans') {
     const sheetId = query.get('sheet_id');
@@ -782,8 +878,7 @@ function route(method: string, path: string, body: unknown, query: URLSearchPara
     const page = target?.pages.find((p) => p.id === m?.[2]);
     if (!page) throw new ApiError(404, 'not_found', 'page not found');
     page.student_id = (body as { student_id: string }).student_id;
-    page.detected_uid =
-      fx.students.find((s) => s.id === page.student_id)?.uid ?? page.detected_uid;
+    page.detected_uid = fx.students.find((s) => s.id === page.student_id)?.uid ?? page.detected_uid;
     return page;
   }
   m = match(path, /^\/scans\/([^/]+)\/confirm$/);

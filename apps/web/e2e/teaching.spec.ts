@@ -96,7 +96,11 @@ test('removing a branch that still holds sheets is refused, with the count', asy
   // The count is the whole message: "no longer possible in the current state"
   // names nothing the teacher can act on.
   await expect(page.getByRole('alert').filter({ hasText: 'Mathématiques' })).toHaveCount(0);
-  await expect(page.getByText(/porte encore 1 fiche dans la 7B/)).toBeVisible();
+  // Two, not one: `fixtures.renderedSheet` added a second maths sheet to 7B so
+  // that `/scans/new` has a printed sheet to offer at all. The count is the point
+  // of the message, and it is still the count — `sheetsHeld` was also corrected
+  // to count per class, which is what this sentence always claimed it did.
+  await expect(page.getByText(/porte encore 2 fiches dans la 7B/)).toBeVisible();
   // And the confirm goes cold: pressing it again cannot succeed until the
   // sheets move, so a live button would just do nothing.
   await expect(confirm).toBeDisabled();

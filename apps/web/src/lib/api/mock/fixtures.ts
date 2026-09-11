@@ -33,7 +33,7 @@ import type {
   SubjectOut,
   TeacherOut,
   TimelineOut,
-  TreeThemeOut
+  TreeThemeOut,
 } from '../types';
 
 const NOW = '2026-03-16T08:00:00+01:00';
@@ -52,11 +52,22 @@ export const teacher: TeacherOut = {
     { id: id(2), name: 'Collège de démonstration', canton: 'VD', default_curriculum: 'PER' },
     { id: id(3), name: 'Oberstufe Chur', canton: 'GR', default_curriculum: 'LP21' },
   ],
-  preferences: { locale: 'fr', theme: null, contrast: null, motion: null, calm: null, discreet: null },
+  preferences: {
+    locale: 'fr',
+    theme: null,
+    contrast: null,
+    motion: null,
+    calm: null,
+    discreet: null,
+  },
 };
 
 export const subjects: SubjectOut[] = [
-  { id: id(10), key: 'maths', labels: { fr: 'Mathématiques', de: 'Mathematik', en: 'Mathematics' } },
+  {
+    id: id(10),
+    key: 'maths',
+    labels: { fr: 'Mathématiques', de: 'Mathematik', en: 'Mathematics' },
+  },
   { id: id(11), key: 'french', labels: { fr: 'Français', de: 'Französisch', en: 'French' } },
   // History is declared by 7B and taught by NOBODY; German is not declared at
   // all. The teaching screen needs both: one shows the gap a co-taught class
@@ -156,14 +167,47 @@ export const classes: ClassOut[] = [
     is_head: true,
     teachers: classTeachers[id(21)],
   },
+  /**
+   * Last year's class, in `schoolYears[1]`.
+   *
+   * Without it the year selector had nothing to prove: every fixture class sat in
+   * the current year, so switching year returned the identical list and a test
+   * could not tell a working `school_year_id` filter from an ignored one — which
+   * is precisely the failure G3 is about.
+   */
+  {
+    id: id(22),
+    code: '7A',
+    label: 'Classe de M. Rey (2025/26)',
+    school_year_id: id(31),
+    student_count: 19,
+    subject_ids: [id(10)],
+    declared_subject_ids: [id(10)],
+    head_teacher_id: teacher.id,
+    is_head: true,
+    teachers: classTeachers[id(20)],
+  },
 ];
 
 const NAMES: Array<[string, string]> = [
-  ['Léa', 'Aebischer'], ['Noah', 'Berger'], ['Emma', 'Chevalley'], ['Liam', 'Dubois'],
-  ['Chloé', 'Egger'], ['Nino', 'Ferrari'], ['Alice', 'Girard'], ['Elias', 'Huber'],
-  ['Sofia', 'Isler'], ['Théo', 'Jaquet'], ['Mila', 'Kohler'], ['Louis', 'Lambert'],
-  ['Zoé', 'Meyer'], ['Adam', 'Nicolet', ], ['Anna', 'Oberli'], ['Gabriel', 'Perret'],
-  ['Nora', 'Quinche'], ['Samuel', 'Rossier'],
+  ['Léa', 'Aebischer'],
+  ['Noah', 'Berger'],
+  ['Emma', 'Chevalley'],
+  ['Liam', 'Dubois'],
+  ['Chloé', 'Egger'],
+  ['Nino', 'Ferrari'],
+  ['Alice', 'Girard'],
+  ['Elias', 'Huber'],
+  ['Sofia', 'Isler'],
+  ['Théo', 'Jaquet'],
+  ['Mila', 'Kohler'],
+  ['Louis', 'Lambert'],
+  ['Zoé', 'Meyer'],
+  ['Adam', 'Nicolet'],
+  ['Anna', 'Oberli'],
+  ['Gabriel', 'Perret'],
+  ['Nora', 'Quinche'],
+  ['Samuel', 'Rossier'],
 ];
 
 export const students: StudentOut[] = NAMES.map(([first, last], index) => {
@@ -207,33 +251,41 @@ export const competencies: CompetencyOut[] = [
 export const chapters: ChapterOut[] = [
   ['fractions', 'Fractions', 'Brüche', 'Fractions', [0]],
   ['proportion', 'Proportionnalité', 'Proportionalität', 'Proportionality', [1]],
-  ['algebra', 'Calcul littéral et équations', 'Algebra und Gleichungen', 'Algebra and equations', [2, 3]],
+  [
+    'algebra',
+    'Calcul littéral et équations',
+    'Algebra und Gleichungen',
+    'Algebra and equations',
+    [2, 3],
+  ],
   ['geometry', 'Géométrie plane', 'Ebene Geometrie', 'Plane geometry', [4, 5]],
-].map(([key, fr, de, en, refs], index) => ({
-  id: id(300 + index),
-  key: String(key),
-  labels: { fr: String(fr), de: String(de), en: String(en) },
-  position: index,
-  competency_ids: (refs as number[]).map((r) => id(200 + r)),
-  // The Competence this Theme hangs from: the first code it tags, as the seed
-  // loader resolves it for a PER school.
-  primary_competency_id: id(200 + (refs as number[])[0]) as string | null,
-})).concat([
-  {
-    // The per-subject `unfiled` bucket. It exists in every real school and the
-    // settings screen explains it, so a mock without one showed a sentence
-    // about a row that was not there.
-    //
-    // `primary_competency_id: null` is what keeps it out of the tree and
-    // undeletable — the key alone would not, because a school may relabel it.
-    id: id(299),
-    key: 'unfiled',
-    labels: { fr: 'Non classé', de: 'Nicht zugeordnet', en: 'Unfiled' },
-    position: 999,
-    competency_ids: [],
-    primary_competency_id: null,
-  },
-]);
+]
+  .map(([key, fr, de, en, refs], index) => ({
+    id: id(300 + index),
+    key: String(key),
+    labels: { fr: String(fr), de: String(de), en: String(en) },
+    position: index,
+    competency_ids: (refs as number[]).map((r) => id(200 + r)),
+    // The Competence this Theme hangs from: the first code it tags, as the seed
+    // loader resolves it for a PER school.
+    primary_competency_id: id(200 + (refs as number[])[0]) as string | null,
+  }))
+  .concat([
+    {
+      // The per-subject `unfiled` bucket. It exists in every real school and the
+      // settings screen explains it, so a mock without one showed a sentence
+      // about a row that was not there.
+      //
+      // `primary_competency_id: null` is what keeps it out of the tree and
+      // undeletable — the key alone would not, because a school may relabel it.
+      id: id(299),
+      key: 'unfiled',
+      labels: { fr: 'Non classé', de: 'Nicht zugeordnet', en: 'Unfiled' },
+      position: 999,
+      competency_ids: [],
+      primary_competency_id: null,
+    },
+  ]);
 
 /**
  * The curriculum tree, built from the chapters above so the mock cannot drift
@@ -290,11 +342,11 @@ export function classTree(classId: string): ClassTreeOut {
         competences: chapters
           .filter((chapter) => chapter.primary_competency_id !== null)
           .map((chapter, index) => ({
-          competency_id: chapter.primary_competency_id ?? id(200 + index),
-          code: competencies[index]?.code ?? `MSN 3${index + 1}`,
-          labels: competencies[index]?.labels ?? chapter.labels,
-          mastery: themeOf(chapter, index).mastery,
-          themes: [themeOf(chapter, index)],
+            competency_id: chapter.primary_competency_id ?? id(200 + index),
+            code: competencies[index]?.code ?? `MSN 3${index + 1}`,
+            labels: competencies[index]?.labels ?? chapter.labels,
+            mastery: themeOf(chapter, index).mastery,
+            themes: [themeOf(chapter, index)],
           })),
         unfiled_sheet_count: 2,
         // Rendered even at zero in the picker; non-zero here so the mock shows
@@ -563,21 +615,31 @@ export const exercises: ExerciseOut[] = [
   exercise(0),
   exercise(1, {
     type: 'true_false',
-    statement: "Une fraction dont le numérateur est plus grand que le dénominateur est supérieure à 1.",
+    statement:
+      'Une fraction dont le numérateur est plus grand que le dénominateur est supérieure à 1.',
     options: null,
     answer_index: null,
     answer_bool: true,
   }),
-  exercise(2, { statement: 'Simplifie la fraction 18/24.', options: ['3/4', '9/12', '2/3', '6/8'] }),
+  exercise(2, {
+    statement: 'Simplifie la fraction 18/24.',
+    options: ['3/4', '9/12', '2/3', '6/8'],
+  }),
   exercise(3, {
     type: 'open',
-    statement: "Explique avec tes mots pourquoi 0,25 et 1/4 représentent la même quantité.",
+    statement: 'Explique avec tes mots pourquoi 0,25 et 1/4 représentent la même quantité.',
     options: null,
     answer_index: null,
     answer_text: 'Réponse libre.',
   }),
-  exercise(4, { statement: 'Convertis 3/8 en écriture décimale.', options: ['0,375', '0,38', '0,83', '2,67'] }),
-  exercise(5, { statement: 'Range dans l’ordre croissant : 2/3 ; 0,6 ; 5/8.', options: ['0,6 < 5/8 < 2/3', '2/3 < 0,6 < 5/8', '5/8 < 0,6 < 2/3', '0,6 < 2/3 < 5/8'] }),
+  exercise(4, {
+    statement: 'Convertis 3/8 en écriture décimale.',
+    options: ['0,375', '0,38', '0,83', '2,67'],
+  }),
+  exercise(5, {
+    statement: 'Range dans l’ordre croissant : 2/3 ; 0,6 ; 5/8.',
+    options: ['0,6 < 5/8 < 2/3', '2/3 < 0,6 < 5/8', '5/8 < 0,6 < 2/3', '0,6 < 2/3 < 5/8'],
+  }),
   // A second populated chapter, so the outline shows more than one state that
   // matters and switching chapters visibly changes the list.
   ...Array.from({ length: 9 }, (_, i) =>
@@ -629,7 +691,7 @@ function proposal(ex: ExerciseOut, score: number, reason: string): ExercisePropo
       excerpt:
         ex.source_id === null
           ? 'Généré à partir des compétences ciblées, sans extrait source.'
-          : "Additionner deux fractions demande de les réduire au même dénominateur avant d’additionner les numérateurs.",
+          : 'Additionner deux fractions demande de les réduire au même dénominateur avant d’additionner les numérateurs.',
       similarity: ex.source_id ? score : null,
       reason,
     },
@@ -675,17 +737,19 @@ export const sheet: SheetOut = {
   default_points_penalty: 0.25,
   // Item 3 is worth more than the rest, so the builder's "modifié" summary and
   // the printed "(3 pts)" both have something to show in the mock.
-  items: [exercises[0], exercises[2], exercises[4], exercises[1], exercises[5]].map((ex, index) => ({
-    id: id(610 + index),
-    position: index,
-    statement_override: null,
-    answer_box_lines: null,
-    answer_box_fill: null,
-    expected_answer: null,
-    points_correct: index === 2 ? 3 : null,
-    points_penalty: index === 2 ? 0 : null,
-    exercise: ex as ExerciseOut,
-  })),
+  items: [exercises[0], exercises[2], exercises[4], exercises[1], exercises[5]].map(
+    (ex, index) => ({
+      id: id(610 + index),
+      position: index,
+      statement_override: null,
+      answer_box_lines: null,
+      answer_box_fill: null,
+      expected_answer: null,
+      points_correct: index === 2 ? 3 : null,
+      points_penalty: index === 2 ? 0 : null,
+      exercise: ex as ExerciseOut,
+    }),
+  ),
   instances: students.slice(0, 3).map((student, index) => ({
     id: id(630 + index),
     student_id: student.id,
@@ -705,13 +769,58 @@ export const sheet: SheetOut = {
   created_at: '2026-03-12T14:30:00+01:00',
 };
 
+/**
+ * A second sheet, already rendered and already printed.
+ *
+ * `sheet` above has `rendered_at: null`, and the upload screen only offers
+ * sheets that have been rendered — so in fixture mode `/scans/new` showed
+ * "Aucune fiche imprimée" and the upload form had NO e2e coverage at all
+ * outside the live-API project. A client-side size check and a downscale that
+ * no test can reach are a client-side size check nobody has run.
+ *
+ * It carries no items, no instances and no scans on purpose: it exists to be
+ * *choosable*, and giving it contents would change the counts every other
+ * fixture-based assertion already depends on.
+ */
+export const renderedSheet: SheetOut = {
+  ...sheet,
+  // NOT id(601): `POST /sheets` in the handlers mints that one, so a fixture
+  // sitting there would be overwritten the first time a test creates a sheet.
+  id: id(607),
+  title: 'Fractions — test',
+  intent: 'test de fin de chapitre',
+  items: [],
+  instances: [],
+  scans: [],
+  blank_pdf_url: 'https://example.invalid/mock/fractions-test.pdf',
+  answer_key_pdf_url: null,
+  feedback_pdf_url: null,
+  rendered_at: '2026-03-14T09:00:00+01:00',
+  printed_at: '2026-03-14T09:12:00+01:00',
+  created_at: '2026-03-13T16:00:00+01:00',
+};
+
 const detections: DetectionOut[] = [
   { index: 0, detected: 0, confidence: 0.97, outcome: 'detected' as const, tf: false, open: false },
-  { index: 1, detected: 2, confidence: 0.41, outcome: 'low_confidence' as const, tf: false, open: false },
+  {
+    index: 1,
+    detected: 2,
+    confidence: 0.41,
+    outcome: 'low_confidence' as const,
+    tf: false,
+    open: false,
+  },
   { index: 2, detected: null, confidence: 0.12, outcome: 'blank' as const, tf: false, open: false },
   { index: 3, detected: 3, confidence: 0.93, outcome: 'detected' as const, tf: false, open: false },
   { index: 4, detected: 1, confidence: 0.55, outcome: 'multiple' as const, tf: true, open: false },
-  { index: 5, detected: null, confidence: 0.91, outcome: 'detected' as const, tf: false, open: true },
+  {
+    index: 5,
+    detected: null,
+    confidence: 0.91,
+    outcome: 'detected' as const,
+    tf: false,
+    open: true,
+  },
 ].map((raw) => ({
   id: id(700 + raw.index),
   item_index: raw.index,
@@ -738,11 +847,7 @@ const detections: DetectionOut[] = [
     : `Question ${raw.index + 1} — une fraction a simplifier`,
   options: raw.tf || raw.open ? null : ['1/2', '2/4', '3/6', '4/8'],
   option_letters: raw.open ? null : raw.tf ? 'VF' : 'ABCD',
-  exercise_type: raw.open
-    ? ('open' as const)
-    : raw.tf
-      ? ('true_false' as const)
-      : ('mcq' as const),
+  exercise_type: raw.open ? ('open' as const) : raw.tf ? ('true_false' as const) : ('mcq' as const),
   ai_generated: false,
   answer_index: raw.open ? null : raw.tf ? 0 : 1,
   // The written answer: the box cut from the page and what the model read.
@@ -926,7 +1031,7 @@ export function classPoints(classId: string): ClassPointsOut {
       const ungraded = sheetIndex === 1 && index % 7 === 3;
       return {
         student_id: student.id,
-        points_earned: ungraded ? null : ((index * 3 + sheetIndex * 2) % (sheet.possible + 1)),
+        points_earned: ungraded ? null : (index * 3 + sheetIndex * 2) % (sheet.possible + 1),
         points_possible: sheet.possible,
       };
     });
@@ -945,9 +1050,7 @@ export function classPoints(classId: string): ClassPointsOut {
   return {
     class_id: classId,
     students: students.map((student) => {
-      const mine = sheetsOut.flatMap((s) =>
-        s.students.filter((p) => p.student_id === student.id),
-      );
+      const mine = sheetsOut.flatMap((s) => s.students.filter((p) => p.student_id === student.id));
       const graded = mine.filter((p) => p.points_earned !== null);
       return {
         student_id: student.id,
@@ -1000,10 +1103,7 @@ export function sheetMastery(sheetId: string): SheetMasteryOut {
 }
 
 /** The drill-down behind one matrix cell. */
-export function competencyAttempts(
-  studentId: string,
-  competencyId: string,
-): CompetencyAttemptsOut {
+export function competencyAttempts(studentId: string, competencyId: string): CompetencyAttemptsOut {
   const student = students.find((s) => s.id === studentId) ?? (students[0] as StudentOut);
   const competency =
     competencies.find((c) => c.id === competencyId) ?? (competencies[0] as CompetencyOut);
@@ -1018,9 +1118,7 @@ export function competencyAttempts(
     origin: index === 3 ? ('ai_generated' as const) : ('textbook' as const),
     correct: index !== 1,
     difficulty: (index % 5) + 1,
-    answered_at: new Date(
-      Date.parse('2026-03-16T09:10:00Z') - offset * 86_400_000,
-    ).toISOString(),
+    answered_at: new Date(Date.parse('2026-03-16T09:10:00Z') - offset * 86_400_000).toISOString(),
     sheet_id: id(600),
     sheet_title: 'Fractions — controle 1',
     scan_id: index < 2 ? id(800) : null,
@@ -1166,8 +1264,16 @@ export const adaptive: AdaptiveProposeResponse = {
     group_index: null,
     feedback_id: null,
     retrieved: [
-      proposal(exercises[index % exercises.length] as ExerciseOut, 0.86, 'Cible la lacune principale.'),
-      proposal(exercises[(index + 2) % exercises.length] as ExerciseOut, 0.79, 'Consolide un acquis fragile.'),
+      proposal(
+        exercises[index % exercises.length] as ExerciseOut,
+        0.86,
+        'Cible la lacune principale.',
+      ),
+      proposal(
+        exercises[(index + 2) % exercises.length] as ExerciseOut,
+        0.79,
+        'Consolide un acquis fragile.',
+      ),
     ],
     generated:
       index < 2
@@ -1248,10 +1354,7 @@ function escapeHtml(value: string): string {
  * have something to do — a chapter that came back with three rows would let a
  * broken paginator pass.
  */
-export function exercisesForSection(
-  section: SourceSectionOut,
-  offset: number,
-): ExerciseOut[] {
+export function exercisesForSection(section: SourceSectionOut, offset: number): ExerciseOut[] {
   const span = Math.max(1, section.page_to - section.page_from);
   return Array.from({ length: 24 }, (_, i) => {
     const kind: ExerciseType = i % 3 === 0 ? 'mcq' : i % 3 === 1 ? 'true_false' : 'open';
