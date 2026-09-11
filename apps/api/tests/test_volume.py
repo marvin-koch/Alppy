@@ -67,7 +67,7 @@ class QueryCounter:
 def count_queries(db: Session) -> Iterator[QueryCounter]:
     counter = QueryCounter()
 
-    def before(_conn, _cursor, statement, _params, _context, _many) -> None:  # noqa: ANN001
+    def before(_conn, _cursor, statement, _params, _context, _many) -> None:
         counter.statements.append(statement)
 
     engine = db.get_bind()
@@ -306,7 +306,7 @@ def test_a_thirty_page_pile_grades_every_page(db: Session, tenant: Tenant) -> No
     )
 
 
-def scan_confirm(db: Session, tenant: Tenant, scan_id: uuid.UUID):  # noqa: ANN201
+def scan_confirm(db: Session, tenant: Tenant, scan_id: uuid.UUID):
     from alppy.services import scan_service
 
     return scan_service.confirm_scan(db, tenant.scope, scan_id)

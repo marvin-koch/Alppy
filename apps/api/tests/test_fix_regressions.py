@@ -23,13 +23,17 @@ from test_api_fixtures import Tenant, login, make_exercise
 from alppy.models import Competency, MasteryBranchSnapshot, MasterySnapshot
 from alppy.models.enums import MasteryBand
 
-
 # --- 7658dd5 · the bulk snapshot write that flaked one run in three ---------
 
 
 def _competency(db: Session, tenant: Tenant, code: str) -> Competency:
     row = Competency(
         id=uuid.uuid4(),
+        # The edition the fixture's own competency belongs to. A curriculum is
+        # published in editions now, and a competency without one is not a
+        # competency — inventing a fresh edition here would put these rows in a
+        # curriculum nothing else references.
+        edition_id=tenant.competency.edition_id,
         curriculum="PER",
         code=code,
         subject_key="mathematics",
