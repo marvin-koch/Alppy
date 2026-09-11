@@ -3051,3 +3051,111 @@ all three locales, asserts they agree, and asserts no decimal comma is ever
 emitted. It is also why G2's comma-INPUT support is not a nicety: a field may
 display `0.25` now, but a Romand keyboard still produces `0,5`, and a teacher's
 own separator has to be readable whatever the display convention is.
+
+---
+
+### D102 · Capability that reached the types and stopped there
+
+Audit 05 names a pattern rather than a bug: the backend added a school-year
+dimension, an `as_of` parameter and an idempotency-key mechanism; the generated
+types and the endpoint wrappers knew about all three; nothing above that layer
+touched any of them. This is worse than an honest absence, because a reader who
+finds `asOf` typed in `endpoints.ts` reasonably concludes it is wired up. Four
+instances were found, three of them named in the audit and one not.
+
+**The school year (G3).** `GET /school-years` was served, `school_year_id` typed
+on four routes and `as_of` on five, and `grep -n "schoolYear\|asOf" queries.ts
+scope.tsx ScopeSwitcher.tsx` returned nothing. Now wired, and two decisions inside
+it are the interesting part.
+
+*`as_of` is not `school_year_id`.* The id says which year's objects to list; `as_of`
+rewinds the mastery model — attempts after it are dropped, the decay is measured to
+it, and the roster moves with it. Selecting a past year and leaving `as_of` at "now"
+would decay that year's attempts by however long ago it ended and show a class that
+had learnt nothing. So the year derives both: the id for `/home`, `/classes`,
+`/sheets` and `/scans`; `ends_on` at **end of day** for the mastery reads, because
+the date alone parses to midnight and would drop the final day. The current year
+sends no `as_of` at all, since "now" is what every read meant before this existed.
+
+*The year is in the KEY, not just the request.* Without that, switching year serves
+the year you left out of cache and a teacher reads last year's figures under this
+year's heading — the failure mode that makes this worse than no feature. `home` and
+`classes` grew a segment, so the bare arrays became `homePrefix`/`classesPrefix` for
+invalidation; TypeScript found all fourteen sites. The class list key is
+`['classes', 'list', year]` and not `['classes', year]` on purpose: `klass(id)` is
+`['classes', id]`, and a year id in the same slot as a class id is a collision
+waiting for the first invalidation that guesses wrong.
+
+*It is its own module, and its own provider.* `lib/scope.tsx` imports from
+`lib/api/queries`, so `queries` cannot import `scope` — and the year has to reach
+the hooks. Threading it through eighteen call sites is eighteen chances to forget
+one. So `lib/school-year-context.ts` holds the context and imports nothing but
+React and the API types; `lib/school-year.tsx` holds the provider, which needs the
+router for `?year=`. That split is not tidiness: with them together, `queries.ts`
+— and so every consumer of `queryKeys`, including its unit test — transitively
+required a Next router, and `query-keys.test.ts` went red.
+
+The year is also not a filter. Class, subject, Competence and Theme narrow what you
+see within one context; the year replaces the context. Keeping it in `ScopeValue`
+would have invited the same "just another chip" treatment, and this is the one
+selection that must never be quiet — hence a full-width bar on every screen, naming
+the year in words with the way back beside it, not a chip.
+
+**The idempotency key (G4).** `RequestOptions` had no `headers` field at all, so the
+key could not be sent from anywhere, while the API had claimed one on four routes
+and two translated refusal sentences sat in the catalogue waiting for a request
+that never arrived. The part worth getting right is that the key belongs to the
+teacher's **intent**, not to the request: minted per request it is a new key on the
+retry, which is the case the mechanism exists to collapse. `useIdempotencyKey`
+holds it in a ref, `clear()` runs on success only, and `restart()` exists for the
+one case a retry must not cover — a different file selection, where reusing the key
+would have the server answer with the pile built from the previous one. Passing
+`api.renderSheet` bare became a type error in the process, which is luck worth
+noting: react-query calls `mutationFn` with its own context object, and it would
+have gone out as `Idempotency-Key: [object Object]`.
+
+**`pupilLabel` (not in the audit).** The audit describes it as "already
+unit-tested", which is true, and implies it is in use, which it was not: it had no
+production caller anywhere. Its `Pupil` type also required non-null names, so it
+could not accept a real `StudentOut` — which is part of why nobody had called it,
+and why `CellDrillDown` formatted a name by hand and would have rendered a literal
+`"null null"` for a pupil anonymised by an erasure request. Widened to the real
+shape, and the visible case now delegates to `studentName` so the two answers to
+"what goes where a pupil's name goes" cannot drift.
+
+**What stays unwired, deliberately.** `updateSheet` has no caller and gets none:
+the absence of a client edit path is what closes the re-render-after-print risk.
+`SourceOut.error` and `.notice` are teacher-facing prose but English-only and
+hard-coded server-side (two error values, two notices); rendering them off a code
+needs `error_code`/`notice_code` on the schema, and building the client half first
+would be one more instance of the very pattern this entry is about.
+`ScanPage.registration_error` stopped being rendered outright — see D103.
+
+---
+
+### D103 · The detector's English stops reaching the wall
+
+`ScanPage.registration_error` was rendered straight onto the scan review screen.
+Its three possible values, from `scan/detector.py`:
+
+- `"sheet was printed with layout v1, which this detector has no geometry for"`
+- `"registration quality 0.42 is below 0.55: the four marks found do not form a page"`
+- `str(exc)`, from a `RegistrationError`
+
+The third is the case D86 exists to forbid — *an exception's own text is never
+assigned to a field a browser reads* — and this is the screen a teacher projects
+onto a classroom wall while correcting a pile. The second is a threshold nobody
+outside this repository can act on. All three are English in a French product.
+
+It is no longer rendered. The two sentences already above it (`registrationWhy`,
+`registrationHelp`) say everything actionable, in the teacher's language, and the
+retake control beside them is the action. Putting the reason back means
+`registration_error_code` on `ScanPageOut` plus a catalogue entry per value, the
+way `Job.error` already works through `FAILURE_CODES` — the field keeps its place
+in the API's own logs meanwhile.
+
+Worth naming: `Source.error` is **not** the same case and was left alone.
+`ingest/pipeline.py:_teacher_facing_error` is a deliberate two-value map with a
+docstring saying passing an exception's text through it is not allowed, so that
+field is prose written for a teacher. Its remaining fault is that the prose is
+English, which is a schema change and not a rendering one.
