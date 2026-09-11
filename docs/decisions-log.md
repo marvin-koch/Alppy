@@ -3605,3 +3605,87 @@ find out it was wrong. It also records the consequence that is easy to miss: a
 backup window is the window in which an erasure is not really complete, so a
 restore has to re-apply every erasure since the restore point — from a log kept
 outside the database being restored, which does not exist yet.
+
+---
+
+## Phase 7 — the remaining fixable findings
+
+**Provisioning is a command, and the two reasons are stated rather than worked
+around (D12).** There was no way to create a teacher, reset a password or revoke
+access — five auth routes and none of them provisioned anybody, so onboarding an
+establishment meant hand-written SQL. It could have been an admin screen. It is
+not, because (1) there is **no e-mail transport** in this product, so a
+self-service reset is either useless or a way to take over an account by knowing
+an address; and (2) membership of a school **is** the permission model (D85), so
+an "administrator" who may create accounts is a concept this schema does not
+have, and inventing one inside a service module would put an authorisation
+decision somewhere nobody would look for it. Both are real limitations. A screen
+that pretended otherwise would be worse than a command that says so.
+
+Creating an account and joining the staffroom is **one act**, because a `Teacher`
+row without a `teacher_school` membership holds a valid cookie and can act on
+nothing — which presents as signing in successfully and finding an empty
+product, the most confusing possible first impression.
+
+**The one account operation a teacher can do for themselves is an endpoint.**
+`POST /auth/password` needs neither e-mail nor a role. It verifies the current
+password even though the caller already holds a session, because the session is
+the *weaker* claim: a cookie is what an unlocked laptop in a staffroom hands to
+whoever sits down next, and the old password is the thing that person does not
+have. It is rate-limited on the sign-in buckets, because otherwise an
+authenticated session is an unlimited oracle for guessing the password it already
+implies. And it does **not** sign other sessions out — said in the docstring, in
+a test, and on the screen, because it is the opposite of what a teacher changing
+a password they believe is known would assume.
+
+**The class export takes the roster as it stands (D36).** `privacy.md` §4 has
+promised a class export since it was written and only the per-pupil route
+existed. The obvious implementation — everyone who ever sat in this class — would
+have invented a third access rule inside an export: `ever_shared_student_ids`
+gates reading a past pupil on the teacher's window having **overlapped** theirs,
+deliberately narrower than "ever enrolled", and an export that ignored that would
+hand a teacher who arrived in March the record of a pupil who left in October.
+So it exports exactly the pupils the caller may already act on, and each one is
+rendered by the existing `student_export` so the two documents cannot drift.
+
+**The access log carries the route, not the row (D33).** A request path in this
+product routinely carries a student's primary key, and those lines go to whatever
+aggregates stdout under a retention policy that is not ours — the one place a
+pupil was identified in plain text outside the tables designed to hold them.
+`scrub_path` matches on **shape** rather than redacting known-sensitive segments,
+so a route added next year is covered without anybody remembering. The route
+survives because that is the line's whole diagnostic value; a scrubber that took
+it too would be turned off within a week.
+
+**The erasure log is a log line precisely because it must outlive the database.**
+A backup window is also the window in which an erasure is not really complete:
+restore to the 1st after erasing on the 3rd and the child is back, with a request
+honoured and then quietly undone. Re-applying erasures after a restore needs a
+record of them, and a record kept in the database being restored is a record the
+restore takes away. So `privacy.erasure` goes to stdout, carrying a `person_id`
+and a UID and **never the name** — the point of the line is to say which pupil to
+re-erase, and the name is the thing that was just removed. The remaining gap is
+recorded rather than papered over: stdout goes nowhere durable until there is an
+aggregator.
+
+**`ModelCall` gets a long window rather than none.** No window at all, on the one
+table written for every single model call, is an unbounded table rather than a
+decision to keep forever. Three years and opt-out: long, because it is what a
+school shows an auditor to answer "did any of our data go to provider X" and that
+question arrives late — a procurement review asks about the year before last;
+affordable, because the row is content-free by construction.
+
+**The golden set's provider key moves behind an environment (D31).** Any same-repo
+pull request touching four paths ran with a live key in its environment, and a
+pull request is by construction code that has not been reviewed yet — one line
+added to the runner script exfiltrates it, and the run looks like a normal green
+check. The setup step is one-off and is written into the workflow: it must be an
+**environment** secret with required reviewers, because a repository secret stays
+visible to every workflow and the gate would do nothing.
+
+**Image scanning fails on HIGH and CRITICAL only (D32).** `pip-audit` and
+`pnpm audit` read the manifests we wrote; nothing had ever looked at the operating
+system underneath, which is where a digest-pinned base quietly accumulates CVEs
+between Dependabot bumps. A scanner that fails a merge on a medium advisory in a
+transitive Debian package is a scanner somebody disables, and a disabled scanner
+reports success forever.
