@@ -21,6 +21,7 @@ import {
   SegmentedControl,
   Select,
   Spinner,
+  useToast,
   type ScanMark,
   type ScanMarkState,
 } from '@alppy/ui';
@@ -105,13 +106,98 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const sheet = useSheet(scan.data?.sheet_id ?? null);
   const job = useJob(jobId);
   const students = useScanStudents(scanId);
-  const correct = useCorrectDetection(scanId);
+  // Destructured: the mutation RESULT is a new object every render, and an
+  // unstable `onCorrect` would defeat any memo a page card is given. `mutate` is
+  // stable. Nothing here reads `isPending` — one flag cannot speak for a screen
+  // holding hundreds of controls, which is what `pendingCorrections` is for.
+  const { mutate: correctDetection } = useCorrectDetection(scanId);
   const confirm = useConfirmScan(scanId);
   const reopen = useReopenScan(scanId);
   const [selected, setSelected] = useState<Uuid | null>(null);
   /** First click arms, second reopens. Disarms itself on the way out. */
   const [reopenArmed, setReopenArmed] = useState(false);
   const rowRefs = useRef(new Map<Uuid, HTMLLIElement>());
+  const { toast } = useToast();
+
+  /**
+   * Corrections in flight, and corrections that failed.
+   *
+   * Both exist because the verdict controls are driven by server data: a
+   * mutation that comes back 500 leaves the cached detection untouched, so the
+   * control silently re-renders the MACHINE's reading and the teacher walks away
+   * believing they overruled it. The machine's verdict then becomes the grade
+   * when the pile is confirmed, with no record that anyone disagreed.
+   *
+   * `pendingCorrections` is what the teacher pressed, shown until the server
+   * agrees. `unsavedCorrections` is what the server refused, and it stays marked
+   * on the row until a later attempt succeeds — the toast announces the failure
+   * but cannot be the record of it: `ToastProvider` holds three at a time and
+   * drops the oldest, and a teacher working through thirty pages will have
+   * scrolled well past wherever the bad item was.
+   *
+   * Keyed per detection rather than read off the mutation's own `isPending`,
+   * which is one flag for a screen holding hundreds of controls.
+   */
+  const [pendingCorrections, setPendingCorrections] = useState<
+    ReadonlyMap<Uuid, DetectionCorrection>
+  >(() => new Map());
+  const [unsavedCorrections, setUnsavedCorrections] = useState<
+    ReadonlyMap<Uuid, DetectionCorrection>
+  >(() => new Map());
+
+  /**
+   * Send one correction, and make its outcome visible either way.
+   *
+   * The retry in the toast re-enters here, so the call is reached through a ref:
+   * a `useCallback` cannot name itself.
+   */
+  const submitRef = useRef<(id: Uuid, body: DetectionCorrection, label: string) => void>(() => {});
+  const submitCorrection = useCallback(
+    (detectionId: Uuid, body: DetectionCorrection, label: string) => {
+      setPendingCorrections((m) => new Map(m).set(detectionId, body));
+      correctDetection(
+        { detectionId, body },
+        {
+          onSettled: () =>
+            setPendingCorrections((m) => {
+              const next = new Map(m);
+              next.delete(detectionId);
+              return next;
+            }),
+          onSuccess: () =>
+            setUnsavedCorrections((m) => {
+              if (!m.has(detectionId)) return m;
+              const next = new Map(m);
+              next.delete(detectionId);
+              return next;
+            }),
+          onError: () => {
+            // The body is kept, not just the id: the retry has to resend what the
+            // teacher pressed, and by now the control is showing the machine's
+            // value again.
+            setUnsavedCorrections((m) => new Map(m).set(detectionId, body));
+            toast({
+              title: t('correctFailed.title'),
+              description: t('correctFailed.body', { item: label }),
+              variant: 'danger',
+              // Kept until dismissed: a correction that did not land is not a
+              // notice that should expire on its own. The row's marker is what
+              // survives the dismissal.
+              duration: 0,
+              action: {
+                label: tc('retry'),
+                onClick: () => submitRef.current(detectionId, body, label),
+              },
+            });
+          },
+        },
+      );
+    },
+    [correctDetection, toast, t, tc],
+  );
+  useEffect(() => {
+    submitRef.current = submitCorrection;
+  }, [submitCorrection]);
 
   const status = scan.data?.status;
   const processing = status === 'uploaded' || status === 'processing';
@@ -181,10 +267,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
         // ITSELF that needs attention.
         .filter(
           (page) =>
-            page.detections.length > 0 ||
-            page.wrong_class ||
-            !page.registered ||
-            page.discarded,
+            page.detections.length > 0 || page.wrong_class || !page.registered || page.discarded,
         ),
     [pages, outcomeFilter, copyFilter],
   );
@@ -511,7 +594,9 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
               if (el) rowRefs.current.set(id, el);
               else rowRefs.current.delete(id);
             }}
-            onCorrect={(detectionId, body) => correct.mutate({ detectionId, body })}
+            onCorrect={submitCorrection}
+            pendingCorrections={pendingCorrections}
+            unsavedCorrections={unsavedCorrections}
             students={students.data ?? []}
           />
         ))}
@@ -530,6 +615,8 @@ function PageCard({
   selected,
   onSelect,
   onCorrect,
+  pendingCorrections,
+  unsavedCorrections,
   registerRow,
   students,
 }: {
@@ -540,7 +627,11 @@ function PageCard({
   processing: boolean;
   selected: Uuid | null;
   onSelect: (id: Uuid) => void;
-  onCorrect: (detectionId: Uuid, body: DetectionCorrection) => void;
+  onCorrect: (detectionId: Uuid, body: DetectionCorrection, label: string) => void;
+  /** What the teacher pressed and the server has not answered for yet. */
+  pendingCorrections: ReadonlyMap<Uuid, DetectionCorrection>;
+  /** What the server refused. Marked on the row until an attempt succeeds. */
+  unsavedCorrections: ReadonlyMap<Uuid, DetectionCorrection>;
   registerRow: (id: Uuid, el: HTMLLIElement | null) => void;
   students: { id: Uuid; uid: string; first_name: string | null; last_name: string | null }[];
 }) {
@@ -592,9 +683,20 @@ function PageCard({
         <>
           <p className="text-body-s text-ink-700">{t('registrationWhy')}</p>
           <p className="text-body-s text-ink-700">{t('registrationHelp')}</p>
-          {page.registration_error ? (
-            <p className="mt-1 text-body-s text-ink-500">{page.registration_error}</p>
-          ) : null}
+          {/* `page.registration_error` is deliberately NOT rendered.
+              It is the detector's own English, and one of its three possible
+              values is `str(exc)` from a `RegistrationError` — which is the case
+              D86 exists to forbid: "an exception's own text is never assigned to
+              a field a browser reads", on a screen that is regularly projected
+              onto a classroom wall. The other two are a layout-version note and
+              "registration quality 0.42 is below 0.55: the four marks found do
+              not form a page" — a threshold a teacher cannot act on.
+
+              The two sentences above already say everything actionable, in the
+              teacher's language. Putting the detector's reason back needs
+              `registration_error_code` on `ScanPageOut` and a catalogue entry per
+              value, the way `Job.error` already works through `FAILURE_CODES`
+              (audit 05 G6). Until then the field stays for the API's own logs. */}
           {/* Somewhere to act on the advice. Without this the only route was
               `/scans/new`, which makes a SECOND pile against the same sheet —
               one class's submission split across two reviews and two
@@ -692,7 +794,9 @@ function PageCard({
                     readOnly={confirmed || page.discarded}
                     lowConfidence={LOW_CONFIDENCE}
                     onSelect={() => onSelect(d.id)}
-                    onCorrect={(body) => onCorrect(d.id, body)}
+                    onCorrect={(body) => onCorrect(d.id, body, itemLabel(d))}
+                    pendingCorrection={pendingCorrections.get(d.id)}
+                    unsaved={unsavedCorrections.has(d.id)}
                   />
                 ) : (
                   <DetectionRow
@@ -700,7 +804,9 @@ function PageCard({
                     selected={selected === d.id}
                     readOnly={confirmed || page.discarded}
                     onSelect={() => onSelect(d.id)}
-                    onCorrect={(index) => onCorrect(d.id, { detected_index: index })}
+                    onCorrect={(index) => onCorrect(d.id, { detected_index: index }, itemLabel(d))}
+                    pending={pendingCorrections.get(d.id)}
+                    unsaved={unsavedCorrections.has(d.id)}
                   />
                 )}
               </li>
@@ -720,12 +826,18 @@ function DetectionRow({
   readOnly,
   onSelect,
   onCorrect,
+  pending,
+  unsaved,
 }: {
   detection: DetectionOut;
   selected: boolean;
   readOnly: boolean;
   onSelect: () => void;
   onCorrect: (index: number | null) => void;
+  /** In flight. The control shows this, not the server's value. */
+  pending: DetectionCorrection | undefined;
+  /** The server refused the last attempt, and has not been told again since. */
+  unsaved: boolean;
 }) {
   const t = useTranslations('scans');
   // The glyphs the student saw on the paper: ABCD for an MCQ, V/F, R/F or T/F
@@ -746,6 +858,10 @@ function DetectionRow({
         </span>
         <div className="flex items-center gap-2">
           {detection.ai_generated ? <AiBadge label={t('aiGenerated')} size="sm" /> : null}
+          {/* Outranks the outcome badge, and sits before it: the outcome is what
+              the server believes, and this says the server never heard the
+              teacher. */}
+          {unsaved ? <Badge variant="danger">{t('correctFailed.badge')}</Badge> : null}
           <Badge variant={badgeVariant(detection.outcome)}>
             {t(`outcome.${detection.outcome}`)}
           </Badge>
@@ -805,7 +921,7 @@ function DetectionRow({
               size="md" and block: 44px touch targets, which the sm variant
               cannot give on a 390px screen. */}
           <SegmentedControl
-            value={String(detection.detected_index ?? '')}
+            value={String((pending ? pending.detected_index : detection.detected_index) ?? '')}
             onValueChange={(v) => onCorrect(v === '' ? null : Number(v))}
             label={t('detected')}
             block
@@ -824,6 +940,11 @@ function DetectionRow({
 }
 
 /* ----------------------------------------------------------------- utils --- */
+
+/** How an item is named to a teacher — the number on the paper, not its id. */
+function itemLabel(d: DetectionOut): string {
+  return String(d.number ?? d.item_index + 1);
+}
 
 /** An item the teacher has to look at before anything is written down. */
 function needsAHuman(d: DetectionOut): boolean {

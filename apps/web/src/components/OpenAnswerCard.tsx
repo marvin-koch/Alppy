@@ -26,6 +26,21 @@ function verdictOf(d: DetectionOut): Verdict {
   return 'unsure';
 }
 
+/**
+ * The verdict a correction in flight asserts, or `undefined` if it asserts none.
+ *
+ * A transcription edit travels through the same `onCorrect` and says nothing
+ * about the verdict, so it must leave the verdict control where it was.
+ * Collapsing "no verdict in this body" into `unsure` would move the control to
+ * a value the teacher never pressed — the very thing `unsaved` exists to stop.
+ */
+function pendingVerdict(c: DetectionCorrection | undefined): Verdict | undefined {
+  if (!c || c.verdict_correct === undefined) return undefined;
+  if (c.verdict_correct === true) return 'correct';
+  if (c.verdict_correct === false) return 'wrong';
+  return 'unsure';
+}
+
 export interface OpenAnswerCardProps {
   detection: DetectionOut;
   selected: boolean;
@@ -34,6 +49,15 @@ export interface OpenAnswerCardProps {
   lowConfidence: number;
   onSelect: () => void;
   onCorrect: (body: DetectionCorrection) => void;
+  /** A correction in flight. The control shows this instead of the server's
+   *  verdict, so the teacher sees what they pressed while it travels.
+   *  Not `pending`: that word is already taken here by the grader's own
+   *  outcome, which is a different thing entirely. */
+  pendingCorrection?: DetectionCorrection | undefined;
+  /** The server refused the last correction. Marked here until one lands:
+   *  otherwise the control quietly returns to the model's verdict and that
+   *  verdict becomes the grade. */
+  unsaved?: boolean;
 }
 
 /**
@@ -54,6 +78,8 @@ export function OpenAnswerCard({
   lowConfidence,
   onSelect,
   onCorrect,
+  pendingCorrection,
+  unsaved = false,
 }: OpenAnswerCardProps) {
   const t = useTranslations('scans');
   const to = useTranslations('scans.openAnswer');
@@ -63,9 +89,14 @@ export function OpenAnswerCard({
   const pending = detection.outcome === 'pending';
   const blank = detection.outcome === 'blank';
   const hasVerdict = detection.verdict_correct !== null;
-  const machineRead = detection.machine_transcription !== null || detection.machine_verdict_correct !== null;
+  const machineRead =
+    detection.machine_transcription !== null || detection.machine_verdict_correct !== null;
   const verdictWord = (value: boolean | null) =>
-    value === true ? to('verdictCorrect') : value === false ? to('verdictWrong') : to('verdictNone');
+    value === true
+      ? to('verdictCorrect')
+      : value === false
+        ? to('verdictWrong')
+        : to('verdictNone');
 
   return (
     <Panel
@@ -81,6 +112,9 @@ export function OpenAnswerCard({
         <div className="flex flex-wrap items-center gap-2">
           {detection.ai_generated ? <AiBadge label={t('aiGenerated')} size="sm" /> : null}
           {machineRead ? <AiBadge label={to('readByAi')} size="sm" /> : null}
+          {/* Before the outcome badge: the outcome is what the server believes,
+              and this says the server never heard the teacher. */}
+          {unsaved ? <Badge variant="danger">{t('correctFailed.badge')}</Badge> : null}
           <Badge variant={badgeVariant(detection.outcome)}>
             {t(`outcome.${detection.outcome}`)}
           </Badge>
@@ -204,7 +238,7 @@ export function OpenAnswerCard({
 
           {!readOnly ? (
             <SegmentedControl<Verdict>
-              value={verdictOf(detection)}
+              value={pendingVerdict(pendingCorrection) ?? verdictOf(detection)}
               onValueChange={(value) =>
                 onCorrect({
                   verdict_correct: value === 'correct' ? true : value === 'wrong' ? false : null,
