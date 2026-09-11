@@ -19,6 +19,7 @@ from arq.connections import RedisSettings
 
 from alppy.core.config import get_settings
 from alppy.core.logging import configure_logging, get_logger
+from alppy.worker.cron import cron_jobs as _build_cron_jobs
 from alppy.worker.tasks import (
     extract_section,
     generate_adaptive,
@@ -62,6 +63,13 @@ class WorkerSettings:
     redis_settings = _redis_settings()
     on_startup = on_startup
     on_shutdown = on_shutdown
+
+    # The schedule (D2). Four correct, tested maintenance commands existed and
+    # nothing ran any of them: every retention window was a promise kept by
+    # somebody remembering, and a stuck grading pile waited for a human to
+    # notice. See `alppy/worker/cron.py` for what each one does and why it runs
+    # when it does.
+    cron_jobs: ClassVar = _build_cron_jobs()
 
     # A stuck pipeline (a wedged model call, a hung Chromium render) must
     # never hold a worker slot forever.

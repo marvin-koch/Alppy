@@ -209,14 +209,28 @@ is a debugging aid a school opts into, not a record it is asked to keep.
   before any real deployment, not fixed by this document; it must be configurable per school
   because retention expectations vary by canton.
 
-  **What actually happens today (2026-09-10): nothing is deleted.** The mechanism now exists —
-  `Storage.delete`, `python -m alppy.cli purge-scan-images`, and `delete_student` removing a
-  pupil's page images and crops as part of erasure — but `ALPPY_SCAN_IMAGE_RETENTION_DAYS`
-  defaults to **0, meaning keep forever**, and the purge command *refuses to run* without a
-  window rather than inventing one. That refusal is deliberate: a retention period guessed by a
-  developer would destroy the evidence behind a contested mark in the week before a parent asks
-  about it. Until a number is set, this row of the inventory below should be read as
-  "kept indefinitely", not "bounded window".
+  **What actually happens today (2026-09-11): 400 days, swept nightly.**
+  `ALPPY_SCAN_IMAGE_RETENTION_DAYS` defaults to **400 — a school year plus one term** — and
+  `alppy/worker/cron.py` runs `purge-scan-images` at 03:30 every night. Both halves are new and
+  neither works without the other: the window used to default to 0 (keep forever), and even a
+  window that was set would have been enforced by nobody, because there was no scheduler
+  anywhere in the repository (audit 07, D2/D3).
+
+  The old default of 0 was right for as long as the alternative was "a number a developer
+  invented", which would have destroyed the evidence behind a contested mark the week before a
+  parent asked about it. It stopped being right once the real alternative was an unbounded,
+  permanently growing store of photographs of named children's handwriting. 400 days is a
+  starting position chosen so a mark given in June is still appealable against the page the
+  following spring; a school that states a shorter one is making the easier argument, not the
+  harder, and sets the variable.
+
+  **Still not supported: a per-school or per-canton window.** This is one number for the
+  deployment. Making it vary is a column on `School` read per pile by the purge, and it is
+  flagged rather than built. Until then, a canton demanding a shorter window than 400 days is
+  served by setting the deployment's number to theirs.
+
+  `delete_student` still removes a pupil's page images and crops immediately as part of erasure,
+  independently of this window.
 
   When a window is set, a purge takes the crops first and the page images second, and takes
   neither from a pile still in review. The grade, the transcription and the verdict live on

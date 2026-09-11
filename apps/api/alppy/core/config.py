@@ -374,21 +374,38 @@ class Settings(BaseSettings):
     storage_max_retries: int = 3
 
     # --- Uploads --------------------------------------------------------
-    scan_image_retention_days: int = 0
-    """How long a scanned page image is kept. **0 means keep forever**, which
-    is today's behaviour and the current default (audit 03, B14).
+    scan_image_retention_days: int = 400
+    """How long a scanned page image is kept. 0 or less means keep forever.
 
-    Off by default on purpose: the number is a policy decision about how long a
-    contested grade can be appealed, not a technical one, and a retention
-    window guessed by a developer is worse than none — it silently destroys the
-    evidence behind a mark the week before a parent asks about it. The audit
-    suggests "a school year plus one term"; until a school states its own, the
-    command that reads this refuses to run.
+    **400 days: a school year plus one term** (audit 07, D3). This used to
+    default to 0, and that was the right call for exactly as long as nothing was
+    scheduled to enforce any number — a window a developer invented would have
+    silently destroyed the evidence behind a mark the week before a parent
+    contested it. What changed is that the alternative stopped being "no
+    deletion yet" and started being "an unbounded, permanently growing store of
+    photographs of named children's handwriting", which fails nLPD
+    proportionality on the first pilot day and is the one liability that grows
+    on its own.
+
+    So: a default, deliberately on the generous side, chosen so a mark given in
+    June is still appealable against the page the following spring, and a
+    pupil's October copy is gone the November after. It is a starting position,
+    not a school's policy — a school that states its own sets
+    `ALPPY_SCAN_IMAGE_RETENTION_DAYS`, and a shorter one is the easier argument
+    to make, not the harder.
+
+    Per-school and per-canton windows are NOT supported: this is one number for
+    the deployment. Making it vary is a schema change (a column on `School`,
+    read by `purge-scan-images` per pile) and belongs with the data model rather
+    than here — flagged, not built.
 
     Note what a purge does and does not take. The grade, the transcription and
     the verdict live on `Detection` and survive: what is lost is the ability to
     re-crop or to look at the page again. B7's generation pinning is what makes
-    re-cropping unnecessary, so this is a narrower loss than it was."""
+    re-cropping unnecessary, so this is a narrower loss than it was.
+
+    Enforced nightly at 03:30 by `alppy/worker/cron.py` (D2). Before that
+    landed, setting this changed nothing at all."""
 
     max_image_pixels: int = 50_000_000
     """Ceiling on an uploaded image's DECLARED pixel count (audit 03, B15).
