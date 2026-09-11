@@ -16,6 +16,8 @@ import { Link } from '@/i18n/navigation';
 import { useCompetencyAttempts } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
 import { useBandLabels } from '@/lib/bands';
+import { useDiscretion } from '@/lib/discreet';
+import { pupilLabel } from '@/lib/pupil-label';
 import { useFormatters } from '@/lib/format';
 
 export interface CellDrillDownProps {
@@ -47,6 +49,11 @@ export function CellDrillDown({
   const locale = useLocale();
   const fmt = useFormatters();
   const bandLabels = useBandLabels();
+  // This panel is one click from the matrix and was the last identity-hiding
+  // path that did not ask: it rendered the pupil's full name as its title while
+  // the grid behind it was showing UIDs, so projector mode leaked exactly where
+  // a teacher is most likely to click during a lesson (DC-content, D94).
+  const { hideNames } = useDiscretion();
 
   const { data, isLoading, isError, refetch } = useCompetencyAttempts(studentId, competencyId);
 
@@ -61,9 +68,7 @@ export function CellDrillDown({
       }}
       side="right"
       closeLabel={tc('close')}
-      title={
-        data ? `${data.student.first_name} ${data.student.last_name}` : t('title')
-      }
+      title={data ? pupilLabel(data.student, hideNames) : t('title')}
       description={data ? `${data.competency.code} · ${competencyLabel}` : undefined}
       footer={
         <Button variant="primary" onClick={onOpenProfile}>

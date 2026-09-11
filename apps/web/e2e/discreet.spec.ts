@@ -49,6 +49,28 @@ test.describe('discreet mode', () => {
     await expect(page.getByText(UID).first()).toBeVisible();
   });
 
+  /**
+   * One click deeper than the matrix, and the last path that did not ask.
+   *
+   * `CellDrillDown` is the panel a teacher opens by clicking a cell — mid-lesson,
+   * with the grid on the wall — and it rendered `first_name last_name` directly.
+   * It was the only identity-bearing component in the app that never imported
+   * `useDiscretion`, so the matrix behind it showed UIDs while the panel over the
+   * top of it named the child.
+   */
+  test('the panel behind a matrix cell shows the code too', async ({ page }) => {
+    await project(page);
+    await gotoStable(page, matrixPath('fr'));
+    await page.locator('table tbody tr td button').first().click();
+
+    const panel = page.getByRole('dialog');
+    await expect(panel).toBeVisible();
+    await expect(panel.getByText(UID).first()).toBeVisible();
+    // Absent from the panel, and still absent from the page behind it.
+    await expect(panel.getByText(NAME)).toHaveCount(0);
+    await expect(page.getByText(NAME)).toHaveCount(0);
+  });
+
   test('the results screen shows codes instead of names', async ({ page }) => {
     await project(page);
     await gotoStable(page, '/fr/results');
