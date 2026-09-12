@@ -19,7 +19,7 @@ import tempfile
 import uuid
 from functools import lru_cache
 from pathlib import Path
-from typing import Protocol
+from typing import Any, Protocol
 
 from alppy.core.config import Settings, get_settings
 from alppy.core.logging import get_logger
@@ -185,23 +185,32 @@ class S3Storage:
             read_timeout=settings.storage_read_timeout_s,
             retries={"max_attempts": settings.storage_max_retries, "mode": "standard"},
         )
-        creds = {
-            "region_name": settings.s3_region,
-            "aws_access_key_id": settings.s3_access_key,
-            "aws_secret_access_key": settings.s3_secret_key,
-            "config": boto_config,
-        }
+        # One factory rather than a `creds` dict unpacked twice. The dict was
+        # inferred as `dict[str, object]` — it mixes strings with a `Config` —
+        # and `**`-unpacking it defeated overload resolution on `boto3.client`,
+        # so both calls type-checked as "no overload variant matches" and any
+        # real mistake in either would have been reported the same unhelpful
+        # way. The two clients still differ in exactly one argument, which is
+        # the property worth being able to see at a glance.
+        def _s3(endpoint_url: str) -> Any:
+            return boto3.client(
+                "s3",
+                endpoint_url=endpoint_url,
+                region_name=settings.s3_region,
+                aws_access_key_id=settings.s3_access_key,
+                aws_secret_access_key=settings.s3_secret_key,
+                config=boto_config,
+            )
+
         # Reads and writes go over the internal endpoint.
-        self._client = boto3.client("s3", endpoint_url=settings.s3_endpoint_url, **creds)
+        self._client = _s3(settings.s3_endpoint_url)
 
         # Download links are handed to a browser, which cannot resolve the
         # compose network's hostname. SigV4 signs the Host header, so the origin
         # cannot be swapped after signing — the URL has to be *signed* against
         # the public origin by a second client that differs only in endpoint.
         public = settings.s3_public_endpoint_url
-        self._url_client = (
-            boto3.client("s3", endpoint_url=public, **creds) if public else self._client
-        )
+        self._url_client = _s3(public) if public else self._client
 
     def put_bytes(self, key: str, data: bytes, content_type: str) -> str:
         self._client.put_object(

@@ -10,10 +10,12 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import inspect
 import json
 import math
 import re
 import unicodedata
+from functools import lru_cache
 from typing import TYPE_CHECKING, Any, cast
 
 from alppy.ai.base import (
@@ -222,15 +224,49 @@ class AnthropicChatProvider:
         )
 
     def complete(self, request: ChatRequest) -> ChatResponse:
-        message = self._client.messages.create(
-            model=self._model,
-            max_tokens=request.max_tokens,
-            temperature=request.temperature,
-            system=request.system,
-            messages=[{"role": "user", "content": _user_content(request)}],
-            **({"stop_sequences": list(request.stop)} if request.stop else {}),
-            **({"timeout": request.timeout_s} if request.timeout_s else {}),
-        )
+        # Built as one dict rather than as inline `**({...} if ... else {})`
+        # unpackings: three of those in a row defeat overload resolution on the
+        # SDK's `create`, which is why this call was type-checked as
+        # `dict[str, object]` and every real signature error in it — including
+        # the one below — was reported as an unhelpful "no overload variant
+        # matches" instead of by name.
+        kwargs: dict[str, Any] = {
+            "model": self._model,
+            "max_tokens": request.max_tokens,
+            "system": request.system,
+            "messages": [{"role": "user", "content": _user_content(request)}],
+        }
+        if request.stop:
+            kwargs["stop_sequences"] = list(request.stop)
+        if request.timeout_s:
+            kwargs["timeout"] = request.timeout_s
+
+        # `temperature` is not always a parameter this SDK HAS.
+        #
+        # `pyproject.toml` asks for `anthropic>=0.40.0` and does not pin, and
+        # the parameter was removed from `messages.create` — with no `**kwargs`
+        # to absorb it. So on a current install this call raised
+        # `TypeError: Messages.create() got an unexpected keyword argument
+        # 'temperature'` **before reaching the network**, and every Anthropic
+        # call failed. Nothing noticed because the default provider is `echo`
+        # (`docker compose up` must work with no account anywhere), so the
+        # broken path is the one that only runs at a school that configured a
+        # key.
+        #
+        # Asked of the installed SDK rather than gated on a version string: the
+        # dependency is a range, both generations are legal here, and the
+        # question "does this accept the argument" is the one that actually
+        # matters. Dropping it and saying so is the same answer this file
+        # already gives for a reasoning model that refuses the parameter
+        # (`_warn_dropped`) — the call still happens, and the log is what lets
+        # somebody notice that `grade_open_answer.v2.md`'s "temperature 0.0 — a
+        # grade must be reproducible, never creative" is not being honoured.
+        if _anthropic_accepts_temperature():
+            kwargs["temperature"] = request.temperature
+        else:
+            self._warn_dropped(request)
+
+        message = self._client.messages.create(**kwargs)
         text = "".join(
             block.text for block in message.content if getattr(block, "type", "") == "text"
         )
@@ -245,6 +281,9 @@ class AnthropicChatProvider:
             # configured value is the fallback, for a response that carries none.
             model=str(getattr(message, "model", "") or self._model),
         )
+
+    def _warn_dropped(self, request: ChatRequest) -> None:
+        _warn_temperature_dropped(self.name, self._model, request)
 
 
 def _user_content(request: ChatRequest) -> str | list[dict[str, object]]:
@@ -281,6 +320,50 @@ _MODELS_WITHOUT_TEMPERATURE: tuple[str, ...] = ("o1", "o3", "o4")
 
 def _accepts_temperature(model: str) -> bool:
     return not model.startswith(_MODELS_WITHOUT_TEMPERATURE)
+
+
+@lru_cache(maxsize=1)
+def _anthropic_accepts_temperature() -> bool:
+    """Whether the INSTALLED Anthropic SDK takes ``temperature`` at all.
+
+    Not a version comparison. ``pyproject.toml`` asks for ``anthropic>=0.40.0``
+    and does not pin, the parameter was removed from ``messages.create`` along
+    the way, and the method takes no ``**kwargs`` to absorb it — so on a current
+    install the call raised ``TypeError`` before reaching the network and every
+    Anthropic request failed. Asking the signature keeps both SDK generations
+    working and answers the question that actually matters.
+
+    Cached: it is a property of the installed package, and it is consulted once
+    per model call. A signature that cannot be read at all is treated as
+    accepting the parameter — that is the older, longer-lived shape, and being
+    wrong that way produces a clear ``TypeError`` rather than a grade quietly
+    taken at the provider's default sampling.
+    """
+    try:
+        from anthropic.resources.messages import Messages
+
+        return "temperature" in inspect.signature(Messages.create).parameters
+    except Exception:  # pragma: no cover - the SDK is an optional dependency
+        return True
+
+
+def _warn_temperature_dropped(provider: str, model: str, request: ChatRequest) -> None:
+    """Say so, every time.
+
+    ``grade_open_answer.v2.md`` states "temperature 0.0 — a grade must be
+    reproducible, never creative", and a provider that will not take the
+    parameter cannot honour that. The call still happens; the log is what lets
+    somebody notice the contract is not being kept. Shared by both providers,
+    which reach this state for different reasons — a reasoning model that
+    refuses the parameter, and an SDK that no longer has it.
+    """
+    log.warning(
+        "ai.temperature.dropped",
+        provider=provider,
+        model=model,
+        purpose=request.purpose,
+        requested=request.temperature,
+    )
 
 
 class OpenAiChatProvider:
@@ -382,17 +465,7 @@ class OpenAiChatProvider:
         )
 
     def _warn_dropped(self, request: ChatRequest) -> None:
-        """Say so, every time. `grade_open_answer.v2.md` states "temperature 0.0
-        — a grade must be reproducible, never creative", and a model that will
-        not take the parameter cannot honour that. The call still happens; the
-        log is what lets somebody notice the contract is not being kept."""
-        log.warning(
-            "ai.temperature.dropped",
-            provider=self.name,
-            model=self._model,
-            purpose=request.purpose,
-            requested=request.temperature,
-        )
+        _warn_temperature_dropped(self.name, self._model, request)
 
 
 def _is_temperature_refusal(exc: Exception) -> bool:
