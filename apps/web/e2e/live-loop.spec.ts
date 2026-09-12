@@ -80,6 +80,19 @@ test.describe('@live the F1 loop against a real API', () => {
     // class + subject + source document. The builder is document-first now, so
     // the retrieval path lives behind its own tab.
     await expect(page.locator('main select').first()).toBeVisible();
+
+    // A Theme first: it is the builder's root, and a sheet cannot be filed
+    // under "Sans thème" (D60), so `canFile` keeps "Générer la feuille"
+    // disabled until one is chosen. Without this the spec ticked exercises,
+    // then waited three minutes on a button the product is never going to
+    // enable — which is a stale test, not a broken build. The picker is a
+    // Radix modal, so it portals out of `main`: scope to the dialog.
+    await page.getByRole('button', { name: /changer de thème/i }).click();
+    const themes = page.getByRole('dialog');
+    await expect(themes).toBeVisible();
+    await themes.getByRole('button', { name: /^Fractions$/ }).click();
+    await expect(themes).toBeHidden();
+
     await page.getByRole('tab', { name: /proposer pour moi/i }).click();
     await page.getByPlaceholder(/révision fractions/i).fill('fractions');
     await page.getByRole('button', { name: /^proposer des exercices$/i }).click();
@@ -198,7 +211,14 @@ test.describe('@live the F2 scan loop against a real API', () => {
     // A confidence bar per item, and the question it belongs to — not a bare
     // "#7 / low confidence / A B C D", which nobody can adjudicate.
     await expect(page.locator('[role="meter"]').first()).toBeVisible();
-    const rowText = await page.locator('main li').first().innerText();
+    // The detection row is the `li` that carries the meter, not simply the
+    // first `li` under `main`: the screen grew a breadcrumb, whose items are
+    // also list items, so "the first one" became the "…" crumb and this read
+    // as the row having lost its statement. Ask for the row by what makes it
+    // one.
+    const row = page.locator('main li').filter({ has: page.locator('[role="meter"]') }).first();
+    await expect(row).toBeVisible();
+    const rowText = await row.innerText();
     expect(rowText.length).toBeGreaterThan(20);
   });
 });
