@@ -30,6 +30,7 @@ export const API_ERROR_CODES = [
   'rate_limited',
   'scan_already_confirmed',
   'scan_confirmed',
+  'scan_low_confidence_unreviewed',
   'scan_matches_no_sheet',
   'scan_no_sheet',
   'scan_not_confirmed',
@@ -79,3 +80,32 @@ export const SWISS_CANTONS = [
 ] as const;
 
 export type SwissCanton = (typeof SWISS_CANTONS)[number];
+
+/**
+ * Every kind of event the agenda can be handed.
+ *
+ * `scripts/check-i18n.mjs` asserts that each one has a label in all three
+ * catalogues, for the same reason it does for the error codes: the screen
+ * renders `timeline.kind.<value>`, and a member with no label reaches the
+ * teacher as that raw key.
+ */
+export const EVENT_KINDS = [
+  'adaptive_exported',
+  'adaptive_proposed',
+  'chapter_read',
+  'exercise_approved',
+  'exercise_edited',
+  'feedback_approved',
+  'feedback_written',
+  'scan_confirmed',
+  'scan_reopened',
+  'scan_uploaded',
+  'sheet_created',
+  'sheet_printed',
+  'sheet_rendered',
+  'source_imported',
+  'teacher_joined',
+  'teacher_left',
+] as const;
+
+export type EventKind = (typeof EVENT_KINDS)[number];

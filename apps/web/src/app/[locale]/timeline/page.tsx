@@ -29,19 +29,36 @@ import { requestIdOf } from '@/lib/api/error-message';
 
 const PAGE = 20;
 
-/** Every kind, in the order a teaching cycle actually runs. */
+/**
+ * Every kind, in the order a teaching cycle actually runs.
+ *
+ * EVERY kind: a chip is only offered when its facet count is above zero, so a
+ * member missing from this list can never be filtered no matter how many of
+ * them the agenda holds. Five were missing — reopening a pile, editing or
+ * approving an exercise, and a colleague joining or leaving a class — which is
+ * how the agenda came to show six entries above five chips that summed to
+ * five. The catalogue half of the same gap is now held by
+ * `scripts/check-i18n.mjs`, which asserts a label for every member of
+ * `EVENT_KINDS`; this list is the half a checker cannot hold, because the
+ * ORDER is editorial.
+ */
 const KINDS: EventKind[] = [
   'source_imported',
   'chapter_read',
+  'exercise_edited',
+  'exercise_approved',
   'sheet_created',
   'sheet_rendered',
   'sheet_printed',
   'scan_uploaded',
   'scan_confirmed',
+  'scan_reopened',
   'adaptive_proposed',
   'adaptive_exported',
   'feedback_written',
   'feedback_approved',
+  'teacher_joined',
+  'teacher_left',
 ];
 
 /**

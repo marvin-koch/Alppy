@@ -62,21 +62,19 @@ function loadLocale(locale) {
  * one the generator writes and a test would notice if it changed — an empty
  * result fails loudly below rather than passing vacuously.
  */
-function apiErrorCodes() {
+function generatedList(name) {
   const path = new URL('../packages/shared/src/api-constants.generated.ts', import.meta.url);
   const source = readFileSync(path, 'utf8');
-  // Only the error-code block: the same file also lists the cantons, which
-  // are uppercase and therefore cannot match, but slicing says so out loud.
-  const block = source.slice(
-    source.indexOf('API_ERROR_CODES = ['),
-    source.indexOf('] as const;', source.indexOf('API_ERROR_CODES = [')),
-  );
-  const codes = [...block.matchAll(/^ {2}'([a-z_]+)',$/gm)].map((m) => m[1]);
-  if (codes.length === 0) {
-    console.error('✗ could not read any error codes from api-constants.generated.ts');
+  // Only the named block: the same file also lists the cantons, which are
+  // uppercase and therefore cannot match, but slicing says so out loud.
+  const start = source.indexOf(`${name} = [`);
+  const block = source.slice(start, source.indexOf('] as const;', start));
+  const values = [...block.matchAll(/^ {2}'([a-z_]+)',$/gm)].map((m) => m[1]);
+  if (values.length === 0) {
+    console.error(`✗ could not read any ${name} from api-constants.generated.ts`);
     process.exit(1);
   }
-  return codes;
+  return values;
 }
 
 function main() {
@@ -132,12 +130,29 @@ function main() {
   // refusal and a dead API all read "L'envoi a échoué. Réessayez." The code
   // list is generated from the API itself, so a new `code="..."` fails here
   // rather than silently joining the fallback.
-  for (const code of apiErrorCodes()) {
+  for (const code of generatedList('API_ERROR_CODES')) {
     const key = `errors.code.${code}`;
     const missingIn = present.filter((l) => !l.keys.has(key)).map((l) => l.locale);
     if (missingIn.length > 0) {
       hasDrift = true;
       console.error(`✗ API error code "${code}" has no sentence in [${missingIn.join(', ')}]`);
+    }
+  }
+
+  // And every kind of event the agenda can be handed has a label, for exactly
+  // the same reason and with exactly the same blind spot.
+  //
+  // The timeline renders `timeline.kind.<value>`. Three members of `EventKind`
+  // had no label in ANY locale — so cross-locale sync saw nothing wrong — and
+  // `scan_reopened` is produced by the Rouvrir button on the review screen:
+  // reopening a pile wrote the raw key `timeline.kind.scan_reopened` into the
+  // teacher's agenda, with a MISSING_MESSAGE in the console and a green gate.
+  for (const kind of generatedList('EVENT_KINDS')) {
+    const key = `timeline.kind.${kind}`;
+    const missingIn = present.filter((l) => !l.keys.has(key)).map((l) => l.locale);
+    if (missingIn.length > 0) {
+      hasDrift = true;
+      console.error(`✗ event kind "${kind}" has no label in [${missingIn.join(', ')}]`);
     }
   }
 

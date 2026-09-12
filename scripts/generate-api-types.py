@@ -409,7 +409,23 @@ def collect_cantons() -> list[str]:
     return sorted(SWISS_CANTONS)
 
 
-def render_constants(codes: list[str], cantons: list[str]) -> str:
+def collect_event_kinds() -> list[str]:
+    """Every kind of thing the agenda can be asked to name.
+
+    The timeline renders `timeline.kind.<value>` for each event it is handed,
+    and nothing checked that the catalogues covered the enum. Three members had
+    no label in any locale — `scan_reopened`, `teacher_joined`, `teacher_left` —
+    so reopening a pile, which is a button on the review screen, put the raw key
+    `timeline.kind.scan_reopened` in the teacher's agenda and a MISSING_MESSAGE
+    in the console. Emitting the list here is what lets `check-i18n.mjs` hold
+    the same rule it already holds for the error codes.
+    """
+    from alppy.models.enums import EventKind
+
+    return sorted(kind.value for kind in EventKind)
+
+
+def render_constants(codes: list[str], cantons: list[str], kinds: list[str]) -> str:
     lines = [
         "// AUTO-GENERATED — DO NOT EDIT.",
         "// Source of truth: apps/api/alppy/api/errors.py, plus every",
@@ -441,6 +457,22 @@ def render_constants(codes: list[str], cantons: list[str]) -> str:
         "] as const;",
         "",
         "export type SwissCanton = (typeof SWISS_CANTONS)[number];",
+        "",
+        "/**",
+        " * Every kind of event the agenda can be handed.",
+        " *",
+        " * `scripts/check-i18n.mjs` asserts that each one has a label in all three",
+        " * catalogues, for the same reason it does for the error codes: the screen",
+        " * renders `timeline.kind.<value>`, and a member with no label reaches the",
+        " * teacher as that raw key.",
+        " */",
+        "export const EVENT_KINDS = [",
+    ]
+    lines += [f"  '{kind}'," for kind in kinds]
+    lines += [
+        "] as const;",
+        "",
+        "export type EventKind = (typeof EVENT_KINDS)[number];",
     ]
     return "\n".join(lines) + "\n"
 
@@ -471,10 +503,11 @@ def main() -> int:
     _write(ROUTES_PATH, render_routes(spec), f"{routes} routes")
     codes = collect_error_codes()
     cantons = collect_cantons()
+    kinds = collect_event_kinds()
     _write(
         CONSTANTS_PATH,
-        render_constants(codes, cantons),
-        f"{len(codes)} error codes, {len(cantons)} cantons",
+        render_constants(codes, cantons, kinds),
+        f"{len(codes)} error codes, {len(cantons)} cantons, {len(kinds)} event kinds",
     )
     return 0
 

@@ -298,6 +298,16 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -e "apps/api[dev]"
+      # The generator writes THREE files and this step used to diff two of
+      # them. `api-constants.generated.ts` carries `API_ERROR_CODES`, and
+      # `scripts/check-i18n.mjs` reads that list to decide which codes need a
+      # translated sentence — so a stale constants file made the i18n gate
+      # check a list that no longer matched the API. `scan_low_confidence_
+      # unreviewed` (T24) drifted in exactly that gap: the API refuses a
+      # confirmation with it, no catalogue had a sentence for it, and both
+      # gates stayed green while the teacher got "L'envoi a échoué. Réessayez."
+      # for a refusal that retrying cannot fix.
+      #
       # `apps/api/alppy/schemas/__init__.py` is the only place a wire shape is
       # declared. The web app used to hand-mirror it in 1 162 lines, which
       # compiled on both sides whatever either one said: four models had
@@ -307,7 +317,7 @@ jobs:
       - name: Regenerate and diff
         run: |
           PYTHONPATH=apps/api python scripts/generate-api-types.py
-          if ! git diff --exit-code -- packages/shared/src/api-types.generated.ts packages/shared/src/api-routes.generated.ts; then
+          if ! git diff --exit-code -- packages/shared/src/api-types.generated.ts packages/shared/src/api-routes.generated.ts packages/shared/src/api-constants.generated.ts; then
             echo "::error::the generated contract is stale — run scripts/generate-api-types.py and commit"
             exit 1
           fi
