@@ -25,6 +25,7 @@ from sqlalchemy import select, text
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
+from alppy.api.deps import Scope
 from alppy.core.logging import get_logger
 from alppy.core.security import hash_password
 from alppy.core.uid import format_uid
@@ -109,6 +110,30 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
         db, school, year, colleague, code=COLLEAGUE_CLASS_CODE, label="Classe de Beatrice"
     )
     _get_or_create_students(db, school, year, colleague_class, roster=COLLEAGUE_ROSTER)
+
+    # Say who teaches what. Without this the demo cannot build a sheet at all.
+    #
+    # `Class → Branch → Competence → Theme` is read from `class_subject`, which
+    # `declare_subject` writes — and the one place the product writes it by
+    # itself is `create_sheet`, the very thing that is blocked. So a seed that
+    # never declared anything produced a class whose curriculum tree was
+    # `branches: []`: the builder's Theme picker offered only "Sans thème (0)",
+    # `canFile` correctly refuses that (it is for FINDING untagged exercises,
+    # never for storing a sheet nobody classified — D60), and "Générer la
+    # feuille" stayed disabled forever. `docker compose up` shipped 63
+    # exercises, 7 chapters and 34 competencies that nothing could reach.
+    #
+    # 7B only. 9A keeps its roster and no teaching on purpose — the "class with
+    # students but nothing taught yet" empty state is meant to be reachable
+    # from `docker compose up` without anyone having to fabricate it, and that
+    # is exactly what this call would destroy if it were made for both.
+    class_service.assign_branch(
+        db,
+        Scope(school_id=school.id, teacher_id=teacher.id),
+        school_class,
+        teacher,
+        subject,
+    )
     db.flush()
 
     created = _simulate_history(db, school, students, moment)
@@ -135,6 +160,7 @@ def run_seed(db: Session, *, now: datetime | None = None) -> dict[str, Any]:
         "colleague": colleague.email,
         "colleague_class": colleague_class.code,
         "subjects": [subject.key, sciences.key],
+        "declared": f"{school_class.code}:{subject.key}",
         "students": len(students),
         "competencies": len(reference.competency_ids),
         "chapters": len(reference.chapter_ids),
