@@ -11,7 +11,18 @@ import { cx } from '../lib/cx';
 import { IconWarning } from '../icons/set';
 
 interface FieldContextValue {
-  controlId: string;
+  /**
+   * The id the ONE control below should take, or undefined for a fieldset.
+   *
+   * A `div` Field labels a single control and points `<label htmlFor>` at it,
+   * so handing that id down is the whole wiring. A `fieldset` labels a GROUP:
+   * its `<legend>` has no `htmlFor`, so the id buys nothing there — and every
+   * control under it took the same one, which is how the MCQ answer list came
+   * to render `id="…-control"` on all four answer inputs at once. Duplicate
+   * ids are invalid HTML, and they make `getElementById` and a label click
+   * resolve to whichever one happens to be first.
+   */
+  controlId: string | undefined;
   describedBy: string | undefined;
   invalid: boolean;
   required: boolean;
@@ -82,7 +93,16 @@ export const Field = forwardRef<HTMLDivElement, FieldProps>(function Field(
   );
 
   const body = (
-    <FieldContext.Provider value={{ controlId, describedBy, invalid, required }}>
+    <FieldContext.Provider
+      value={{
+        // A group's controls each keep their own id; only a single-control
+        // Field hands one down. See `FieldContextValue.controlId`.
+        controlId: as === 'fieldset' ? undefined : controlId,
+        describedBy,
+        invalid,
+        required,
+      }}
+    >
       {as === 'fieldset' ? (
         <legend className={cx('type-label mb-2 text-ink-700', hideLabel && 'visually-hidden')}>
           {labelNode}
