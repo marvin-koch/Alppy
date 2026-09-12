@@ -50,7 +50,7 @@ jobs:
       ALPPY_REQUIRE_PG_TESTS: "1"
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -104,7 +104,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - uses: pnpm/action-setup@v4
         with: { version: 9 }
@@ -242,7 +242,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       # The print CSS, the PDF renderer and the scan detector all read the same
       # millimetres. The generated TypeScript must match the Python source of
@@ -285,7 +285,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: ${{ env.PYTHON_VERSION }}
           cache: pip
@@ -338,7 +338,7 @@ jobs:
           --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - name: Install
         run: pip install -e "apps/api[dev]"
@@ -376,7 +376,7 @@ jobs:
           --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with: { python-version: "3.12" }
       - name: Install
         run: pip install -e "apps/api[dev]"
