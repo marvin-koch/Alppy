@@ -3371,3 +3371,145 @@ given the year that ended the day before, durably, because
 membership change, where being a couple of hours early costs nothing because no
 read path compares it to a wall clock finer than a day, and making it injectable
 would touch twenty call sites to fix a problem that is not one.
+
+---
+
+## Full-stack UI regression pass, 2026-09-12
+
+Six regressions found by running the shipped stack (`docker compose up`) and
+driving it in a browser against the real API. Every one of them was invisible to
+the suites, and the reason is the same in five of the six: **the tests exercise a
+layer, and these live in the seams between layers.**
+
+**A developer's `.env.local` shipped inside the production image, and the whole
+product became a demo.** `.dockerignore` listed `.env` and `.env.local` — patterns
+matched against the CONTEXT ROOT, so they excluded the repository's own two files
+and nothing else. `apps/web/.env.local` is git-ignored, so no reviewer ever sees
+it, and it carries `NEXT_PUBLIC_ALPPY_MOCK=1`. `next build` reads it from the app
+directory and inlines it. The image therefore served the invented fixtures to
+every visitor, the browser never called the API at all, and — because the session
+gate sits behind `if (MOCK === '1') return response` — the whole gate was
+dead-code-eliminated: a visitor with no cookie got the authenticated shell and a
+roster of invented children. `docker compose up` looked perfect. The patterns are
+now `**/.env*`; nothing in either image wants a machine's local environment.
+
+**`frame-ancestors 'self'` cannot be satisfied by a front end on another origin.**
+The API set it on every response so that the sheet preview could be framed "by
+us" — but `'self'` is the API's own origin, and the builder is never served from
+it. Under one reverse proxy that was right; under the arrangement this repository
+actually ships, web on :3000 and API on :8000, the browser refused every preview
+and the builder panel and both sheet tabs were blank with the only explanation in
+the console. The policy now names `cors_origins`, which is the list of front ends
+already trusted with a *credentialed* request — a strictly stronger trust than
+framing one HTML page — so the two cannot drift. A wildcard is dropped rather
+than translated: `frame-ancestors *` is the hole the header exists to close.
+
+**Uploading a pile 500'd on every real database, and could not fail on SQLite.**
+`create_scan` added the `Scan` and its `Job` and flushed once. `Job.scan_id` is a
+real foreign key, but `Job` declares no `relationship()` — it is a content-free
+audit row — and SQLAlchemy's unit of work orders a flush from RELATIONSHIPS, not
+from foreign-key columns. With nothing to sort on it falls back to the mapper
+sort key, the qualified class name, and `alppy.models.Job` sorts before
+`alppy.models.Scan`. Postgres refused the job insert. The suite could not see it:
+it builds its schema with `create_all()` on SQLite, which does not enforce
+foreign keys without `PRAGMA foreign_keys=ON`, and nothing sets it — the upload
+returned 202 there. The regression test therefore asserts the ORDER OF THE
+STATEMENTS, which is engine-independent and is the actual invariant, rather than
+an integrity error the test engine will never raise.
+
+**An absolutely-positioned `.visually-hidden` span escaped the matrix scroller.**
+The mastery matrix column headers each carry the competency's full label in a
+`.visually-hidden` span, and that utility is `position: absolute`. An absolutely
+positioned box is clipped by an ancestor's overflow only when that ancestor is in
+its containing-block chain — and the scroller was `static`, so six 1px invisible
+spans sat at their static position deep inside the 622px table and extended the
+DOCUMENT's scrollable width. On a 390px phone the page panned 241px sideways,
+sliding the shell off screen. `relative` on the scroller is the fix. The e2e spec
+asserts exactly this (`window.scrollX` must be 0) and passed throughout, because
+the fixture matrix is narrow enough that the spans never cleared the viewport.
+
+**Three catalogue gaps, one shape: a screen renders a key the API can produce and
+no catalogue has.** (a) `teaching.summary` took `{disciplines}` in `fr` while the
+code passes `branches` and `de`/`en` say `branches`; ICU raised FORMATTING_ERROR
+and the teacher read the literal string `teaching.summary`. (b) The API refuses a
+confirmation with `scan_low_confidence_unreviewed` (T24) and no locale had a
+sentence, so the teacher pressing Valider read the fallback — "L'envoi a échoué.
+Réessayez." — for a refusal that retrying cannot fix. (c) Five members of
+`EventKind` had no `timeline.kind.*` label in ANY locale, so reopening a pile
+wrote the raw key into the agenda; the same five were also missing from the
+timeline's hardcoded filter list, so those events could never be filtered.
+
+The gates that should have caught (b) and (c) were both real and both blind:
+
+* `check-i18n.mjs` reads the error codes from `api-constants.generated.ts`, and
+  CI's `api-contract` job regenerates three files and diffed **two**. The
+  constants file had drifted, so the i18n gate was checking a list that no longer
+  matched the API. CI now diffs all three.
+* Nothing asserted a label for an event kind. The generator now emits
+  `EVENT_KINDS` and the checker holds the same rule it already held for the error
+  codes — which found two further gaps (`exercise_edited`, `exercise_approved`)
+  the moment it was switched on.
+* Cross-locale sync could catch none of them: (b) and (c) were missing from all
+  three catalogues *consistently*, and (a) was a rename that kept the key.
+
+The timeline's `KINDS` list stays hand-written and is not generated: a checker
+can hold "every kind has a label", but the ORDER of that list is editorial — it
+is the order a teaching cycle runs in, not alphabetical — so it is commented to
+say that completeness is load-bearing rather than left to be inferred.
+
+**An unpinned SDK removed a parameter, and the test double accepted it anyway.**
+`anthropic>=0.40.0` is a range with no upper bound; `temperature` was removed
+from `messages.create`, which takes no `**kwargs` — so every Anthropic call
+raised `TypeError` at the call site, before the network. Three things hid it:
+`_FakeMessages.create` takes `**kwargs` and accepts anything, so every provider
+test passed; mypy reported it as a generic `[call-overload]` among four such
+errors, where it read as a stubs-version complaint; and the default provider is
+`echo`, so the broken path only runs at a school that paid for a key. The
+provider now asks the **installed** SDK whether it takes the parameter rather
+than gating on a version string — the dependency is a range and both
+generations are legal — and when it does not, the argument is dropped, the call
+still happens, and `ai.temperature.dropped` is logged. That is the answer this
+file already gave for a reasoning model that refuses the parameter; the two
+providers now share one `_warn_temperature_dropped`. The test that holds it
+checks the arguments actually sent against the installed signature, and first
+asserts the SDK still has no `**kwargs` — so it cannot quietly stop being able
+to catch anything.
+
+**The demo seed shipped a corpus nothing could reach.** `Class → Branch →
+Competence → Theme` is read from `class_subject`, and the only place the product
+writes it by itself is `create_sheet` — the very thing a teacher cannot reach
+without it. So `docker compose up` produced a class whose tree was `branches:
+[]`, a Theme picker offering only "Sans thème (0)", and a permanently disabled
+"Générer la feuille", on top of 63 exercises and 34 competencies. The seed now
+calls `assign_branch` for **7B and mathematics only**: 9A keeps its roster and
+no teaching, because the "class with students but nothing taught yet" empty
+state is meant to be reachable without anyone fabricating it, and declaring for
+both would have destroyed exactly that.
+
+**`mypy --strict` had never passed, and the noise was load-bearing.** Two sites
+unpacked a `**dict` into an overloaded function — `creds` into `boto3.client`,
+and three inline `**({...} if ... else {})` into `messages.create` — and in both
+cases mypy can only say "no overload variant matches". A real signature error
+was therefore reported as a generic complaint, which is how the Anthropic break
+above sat in plain sight. Both now pass their arguments explicitly.
+
+**A test whose own failure message asked to be fixed.**
+`test_the_box_moves_when_the_font_stack_does` asserts the answer box *moves*
+when the document is re-typeset — the argument for embedding the faces, since a
+box cropped a line off means part of a child's answer missing. Its statement
+wrapped to three lines in Nunito *and* in every fallback on a Linux host, where
+fontconfig answers `serif`, `monospace` and `Times New Roman` all with DejaVu.
+It now uses a longer statement, and makes two measurements: one between two
+faces the repository itself embeds, which cannot depend on the machine running
+the suite, and then the fallback case, which is the real-world scenario.
+
+**The not-found status stays 200, and the reason is now measured rather than
+assumed.** Two hypotheses were tested and both were wrong: removing
+`force-dynamic` does not change the status and does cost a nonce, and a path
+that skips the middleware matcher still returns 200. The cause is that
+`[locale]/[...rest]/page.tsx` *matches* — a path matching no route at all
+correctly returns 404. That catch-all is what makes a typo'd URL render the
+localised not-found inside the shell instead of Next's English default, so the
+status code is a price already paid knowingly. Having both would mean a route
+table in the middleware: a second source of truth that rots, with a real
+downside (a mistake 404s a valid page) for a benefit only a crawler sees.
