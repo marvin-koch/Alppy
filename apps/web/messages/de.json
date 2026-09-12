@@ -727,7 +727,7 @@
     "showPreview": "Vorschau anzeigen",
     "hidePreview": "Vorschau ausblenden",
     "preview": "Vorschau",
-    "pagesA4": "{count, plural, one {# A4-Seite} other {# A4-Seiten}}",
+    "pagesA4": "{count, plural, one {mindestens # A4-Seite} other {mindestens # A4-Seiten}}",
     "itemsOfMax": "{count} / max. {max}",
     "reorderHelp": "Zum Umsortieren ziehen oder die Pfeile benutzen.",
     "writtenByYou": "Von Ihnen geschrieben",

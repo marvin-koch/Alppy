@@ -727,7 +727,7 @@
     "showPreview": "Afficher l'aperçu",
     "hidePreview": "Masquer l'aperçu",
     "preview": "Aperçu",
-    "pagesA4": "{count, plural, one {# page A4} other {# pages A4}}",
+    "pagesA4": "{count, plural, one {au moins # page A4} other {au moins # pages A4}}",
     "itemsOfMax": "{count} / {max} max",
     "reorderHelp": "Glissez pour réordonner, ou utilisez les flèches.",
     "writtenByYou": "Écrit par vous",
