@@ -3513,3 +3513,71 @@ localised not-found inside the shell instead of Next's English default, so the
 status code is a price already paid knowingly. Having both would mean a route
 table in the middleware: a second source of truth that rots, with a real
 downside (a mistake 404s a valid page) for a benefit only a crawler sees.
+
+## MVP core-flow audit, 2026-09-13
+
+### D105 · A hand-written exercise credits the Theme it was filed under
+
+`POST /exercises` from the builder sent no `chapter_id` and no competencies, and
+`load_attempt_inputs` inner-joins `exercise_competency` — so every item a teacher
+wrote scored points in the results matrix and moved no mastery band, silently.
+The builder now sends the chosen Theme, and the API credits that chapter's
+**primary** competency when the caller names none. Not the tagging set
+(`chapter.competencies`): a Theme spans up to four codes across two curricula,
+and one MCQ would land as evidence four times; the ingest credits one per
+exercise and this matches it. Not D60's inferred guess either — the teacher
+picked the Theme before writing. `unfiled` has no primary and still credits
+nothing; explicit `competency_ids` win.
+
+### D106 · Two editions of one code are disambiguated, never merged
+
+The demo school has Themes on both PER 2010 (seed-invented) and PER 2023
+(official) rows of `MSN 34`, so the Theme picker, the competence filter and the
+tree showed two identical "MSN 34 · Mobiliser la mesure…" rows. The unique key
+is correct — the edition is in it on purpose. Merging by code was rejected
+because the model says the same code may mean different things in two editions.
+`TreeCompetenceOut` carries `edition`, and `lib/competenceCode.ts` appends it
+**only** where a code collides within the list. Branch coverage still counts the
+two rows separately, which is what the data says; finishing the seed's migration
+onto official codes is a curriculum-content task, not done here.
+
+### D107 · An unsaved correction survives the session expiring
+
+The 401 handler clears the cache and `router.replace`s to login in the same
+tick. The review screen's "non enregistré" record lived in component state and
+died with it, so a teacher signing back in found the machine's reading and no
+sign they had disagreed — and confirming would have graded it. The correction is
+now written to `sessionStorage` **before** the request and removed on success;
+entries the server already holds are dropped when the pile reloads. Session, not
+local, storage: a shared classroom machine must not show one teacher's pending
+verdicts to the next. The two `session-expiry` tests that asserted in place were
+racing that redirect (≈1 run in 3 red) and now assert after signing back in.
+
+Driving it against the live stack found two more things, both fixed. The marked
+row had no way to resend — the retry lived only in the toast, which the redirect
+had destroyed, and re-clicking a verdict that agrees with the machine's does
+nothing because that radio is already checked — so the row and the open-answer
+card now carry their own **Réessayer**. And corrections were submitted with
+`mutate()` and per-call callbacks, which TanStack Query runs only for the latest
+call on an observer; this hook's `onSuccess` awaits a refetch, so marking a second
+item before it finished skipped the first item's callbacks entirely (its pending
+entry and its storage record were never cleared). Each correction is now its own
+`mutateAsync` promise.
+
+### D108 · Smaller calls
+
+- **Points total.** The results screen summed the TOTAL column and class average
+  from `points.students`, whose `possible` spans every sheet (deliberately, and
+  test-locked on the API) while `earned` spans graded ones. It now aggregates the
+  per-sheet cells, so an uncorrected sheet stays out of the denominator (11/54,
+  20% — not 11/90, 12%). The API contract is unchanged.
+- **Page estimate** reads "au moins N page(s) A4": it is `ceil(items/16)`, a
+  floor, and a three-item sheet really prints two pages. The server preview stays
+  the authority.
+- **`Field as="fieldset"`** no longer hands its one `controlId` to every child;
+  a legend has no `htmlFor`, and the MCQ answer list rendered one id four times.
+- **Not changed:** a PER school's student profile listing an LP21 code. The
+  German items in the bilingual demo corpus credit LP21, and that attempt is real
+  evidence; hiding it would drop it. The seed never creates a sheet, so the scans
+  page's "create and print a sheet first" empty state on a fresh stack is
+  correct, not a bug (an earlier audit note said otherwise and was wrong).
