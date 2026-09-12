@@ -36,6 +36,26 @@ async function expireTheSession(
   }, times ?? undefined);
 }
 
+/**
+ * Wait for the 401 to land the teacher on the login screen, then sign back in.
+ *
+ * The login screen returns to `?from=`, client-side, so the fixture layer's
+ * state — the corrections that DID land — is still there on the way back. The
+ * injected failure is lifted first, or the review screen's own reads would be
+ * refused again.
+ */
+async function signBackIn(page: import('@playwright/test').Page): Promise<void> {
+  await expect(page).toHaveURL(/\/login/, { timeout: 10_000 });
+  await page.evaluate(() => {
+    (globalThis as { __alppyMockFail?: unknown[] }).__alppyMockFail = [];
+  });
+  await page.getByLabel(/e-?mail/i).fill('demo@alppy.ch');
+  await page.locator('input[type="password"]').fill('alppy-demo-2026');
+  await page.locator('button[type="submit"]').click();
+  await expect(page).toHaveURL(/\/scans\//, { timeout: 10_000 });
+  await showEveryItem(page);
+}
+
 test.describe('a session that expires mid-review', () => {
   test.beforeEach(async ({ page }) => {
     await withDisplay(page, {});
@@ -65,14 +85,32 @@ test.describe('a session that expires mid-review', () => {
     const card = page.locator('[data-open-answer]').first();
     await card.getByRole('radiogroup', { name: /verdict/i }).getByRole('radio', { name: /^faux$/i }).click();
 
-    // Before the redirect completes, the row says what happened to it — the same
-    // persistent marker a 500 leaves, because from the teacher's side the two
-    // are the same event: a judgement they made that the server does not have.
-    // A toast alone would not do: it is gone in seconds and they are thirty
-    // pages down.
+    // The row says what happened to it — the same persistent marker a 500
+    // leaves, because from the teacher's side the two are the same event: a
+    // judgement they made that the server does not have.
+    //
+    // Asserted AFTER signing back in, and that is the fix, not a loosening. The
+    // 401 handler redirects in the same tick, so the old in-place assertion was
+    // racing the navigation: it passed only when it caught the sub-100 ms
+    // window before the screen unmounted, and failed about one run in three.
+    // Worse, the window was all there was — the record lived in component
+    // state and died with the redirect, so a teacher who signed back in found
+    // the machine's reading and no sign they had ever disagreed. It is kept in
+    // the tab's storage now (`lib/unsavedCorrections.ts`), and this is where a
+    // teacher would actually look for it.
+    await signBackIn(page);
+    const returned = page.locator('[data-open-answer]').first();
+    await expect(returned.getByText(/non enregistré/i)).toBeVisible({ timeout: 10_000 });
+
+    // And it can be sent again from the card. The toast that carried the only
+    // retry did not survive the redirect, and re-pressing the verdict is no
+    // substitute when it agrees with the model's — that radio is already
+    // checked, and a click on it sends nothing.
+    await returned.getByRole('button', { name: /réessayer/i }).click();
+    await expect(returned.getByText(/non enregistré/i)).toBeHidden({ timeout: 10_000 });
     await expect(
-      card.getByText(/non enregistré/i).or(page.getByRole('status').getByText(/n'a pas été enregistrée/i)),
-    ).toBeVisible({ timeout: 10_000 });
+      returned.getByRole('radiogroup', { name: /verdict/i }).getByRole('radio', { name: /^faux$/i }),
+    ).toHaveAttribute('aria-checked', 'true');
   });
 
   test('corrections that landed before the expiry are still there on return', async ({ page }) => {
@@ -106,12 +144,17 @@ test.describe('a session that expires mid-review', () => {
         .click();
     }
 
-    // The one that landed still reads as landed. This is the assertion that
-    // would fail if the 401 handler cleared the whole query cache rather than
-    // the session — which is a plausible way to write it, and would throw away
-    // work the server already has.
+    // The one that landed still reads as landed — checked on the way back in,
+    // where "still there on return" can actually be observed. Reading it in
+    // place raced the redirect the 401 had just started, and failed with
+    // "element(s) not found" whenever the screen unmounted first.
+    await signBackIn(page);
     await expect(
-      first.getByRole('radiogroup', { name: /verdict/i }).getByRole('radio', { name: /^faux$/i }),
+      page
+        .locator('[data-open-answer]')
+        .first()
+        .getByRole('radiogroup', { name: /verdict/i })
+        .getByRole('radio', { name: /^faux$/i }),
     ).toHaveAttribute('aria-checked', 'true');
   });
 

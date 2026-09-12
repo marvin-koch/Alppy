@@ -72,6 +72,9 @@ export interface OpenAnswerCardProps {
    *  otherwise the control quietly returns to the model's verdict and that
    *  verdict becomes the grade. */
   unsaved?: boolean;
+  /** Resend the refused correction from the card. The toast's retry does not
+   *  survive an expired session's redirect; this does. */
+  onRetry?: (() => void) | undefined;
 }
 
 /**
@@ -93,8 +96,10 @@ export function OpenAnswerCard({
   onCorrect,
   pendingCorrection,
   unsaved = false,
+  onRetry,
 }: OpenAnswerCardProps) {
   const t = useTranslations('scans');
+  const tc = useTranslations('common');
   const to = useTranslations('scans.openAnswer');
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(detection.transcription ?? '');
@@ -131,6 +136,11 @@ export function OpenAnswerCard({
           {/* Before the outcome badge: the outcome is what the server believes,
               and this says the server never heard the teacher. */}
           {unsaved ? <Badge variant="danger">{t('correctFailed.badge')}</Badge> : null}
+          {unsaved && onRetry && !readOnly ? (
+            <Button size="sm" variant="secondary" onClick={onRetry}>
+              {tc('retry')}
+            </Button>
+          ) : null}
           <Badge variant={badgeVariant(detection.outcome)}>
             {t(`outcome.${detection.outcome}`)}
           </Badge>

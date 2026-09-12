@@ -51,6 +51,7 @@ import { OpenAnswerCard } from '@/components/OpenAnswerCard';
 import { RevealNames } from '@/components/RevealNames';
 import { badgeVariant } from '@/lib/detectionOutcome';
 import { useFormatters } from '@/lib/format';
+import { alreadyApplied, loadUnsaved, saveUnsaved } from '@/lib/unsavedCorrections';
 import { useDiscretion } from '@/lib/discreet';
 import { studentName } from '@/lib/studentName';
 import { pupilLabel } from '@/lib/pupil-label';
@@ -120,7 +121,7 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   // unstable `onCorrect` would defeat any memo a page card is given. `mutate` is
   // stable. Nothing here reads `isPending` — one flag cannot speak for a screen
   // holding hundreds of controls, which is what `pendingCorrections` is for.
-  const { mutate: correctDetection } = useCorrectDetection(scanId);
+  const { mutateAsync: correctDetection } = useCorrectDetection(scanId);
   const confirm = useConfirmScan(scanId);
   const reopen = useReopenScan(scanId);
   const [selected, setSelected] = useState<Uuid | null>(null);
@@ -151,9 +152,15 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const [pendingCorrections, setPendingCorrections] = useState<
     ReadonlyMap<Uuid, DetectionCorrection>
   >(() => new Map());
+  // Restored from the tab's storage: a correction that met an expired session
+  // is still on record when the teacher signs back in (`lib/unsavedCorrections`).
   const [unsavedCorrections, setUnsavedCorrections] = useState<
     ReadonlyMap<Uuid, DetectionCorrection>
-  >(() => new Map());
+  >(() => loadUnsaved(scanId));
+  // Storage is written explicitly — added before a request, removed when the
+  // server agrees — rather than mirrored from this map. Mirroring would erase a
+  // correction that is still in flight (it is on record but not yet marked)
+  // the moment any OTHER row's failure changed the map.
 
   /**
    * Send one correction, and make its outcome visible either way.
@@ -165,45 +172,59 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
   const submitCorrection = useCallback(
     (detectionId: Uuid, body: DetectionCorrection, label: string) => {
       setPendingCorrections((m) => new Map(m).set(detectionId, body));
-      correctDetection(
-        { detectionId, body },
-        {
-          onSettled: () =>
-            setPendingCorrections((m) => {
-              const next = new Map(m);
-              next.delete(detectionId);
-              return next;
-            }),
-          onSuccess: () =>
-            setUnsavedCorrections((m) => {
-              if (!m.has(detectionId)) return m;
-              const next = new Map(m);
-              next.delete(detectionId);
-              return next;
-            }),
-          onError: () => {
-            // The body is kept, not just the id: the retry has to resend what the
-            // teacher pressed, and by now the control is showing the machine's
-            // value again.
-            setUnsavedCorrections((m) => new Map(m).set(detectionId, body));
-            toast({
-              title: t('correctFailed.title'),
-              description: t('correctFailed.body', { item: label }),
-              variant: 'danger',
-              // Kept until dismissed: a correction that did not land is not a
-              // notice that should expire on its own. The row's marker is what
-              // survives the dismissal.
-              duration: 0,
-              action: {
-                label: tc('retry'),
-                onClick: () => submitRef.current(detectionId, body, label),
-              },
-            });
-          },
-        },
-      );
+      // On record BEFORE the request, not in `onError`. A 401 sends the teacher
+      // to the login screen in the same tick, and nothing guarantees the
+      // failure callback runs on a screen that is already leaving — so the
+      // record has to exist whatever happens next. `onSuccess` removes it.
+      const onRecord = new Map(loadUnsaved(scanId)).set(detectionId, body);
+      saveUnsaved(scanId, onRecord);
+      // `mutateAsync`, one promise per correction, not `mutate` with per-call
+      // callbacks. TanStack Query runs a `mutate()` call's own callbacks only
+      // for the LATEST call on the observer, and this hook's `onSuccess` awaits
+      // a refetch first — so a teacher who marked a second item before that
+      // refetch finished silently skipped the first item's callbacks: its
+      // pending entry never cleared and its storage record was never removed.
+      // Found by driving the live stack; a single-click spec cannot see it.
+      correctDetection({ detectionId, body })
+        .then(() => {
+          const stored = loadUnsaved(scanId);
+          stored.delete(detectionId);
+          saveUnsaved(scanId, stored);
+          setUnsavedCorrections((m) => {
+            if (!m.has(detectionId)) return m;
+            const next = new Map(m);
+            next.delete(detectionId);
+            return next;
+          });
+        })
+        .catch(() => {
+          // The body is kept, not just the id: the retry has to resend what the
+          // teacher pressed, and by now the control is showing the machine's
+          // value again.
+          setUnsavedCorrections((m) => new Map(m).set(detectionId, body));
+          toast({
+            title: t('correctFailed.title'),
+            description: t('correctFailed.body', { item: label }),
+            variant: 'danger',
+            // Kept until dismissed: a correction that did not land is not a
+            // notice that should expire on its own. The row's marker is what
+            // survives the dismissal.
+            duration: 0,
+            action: {
+              label: tc('retry'),
+              onClick: () => submitRef.current(detectionId, body, label),
+            },
+          });
+        })
+        .finally(() =>
+          setPendingCorrections((m) => {
+            const next = new Map(m);
+            next.delete(detectionId);
+            return next;
+          }),
+        );
     },
-    [correctDetection, toast, t, tc],
+    [correctDetection, toast, t, tc, scanId],
   );
   useEffect(() => {
     submitRef.current = submitCorrection;
@@ -215,6 +236,31 @@ export default function ScanReviewPage({ params }: { params: Promise<{ scanId: s
     if (el) rowRefs.current.set(id, el);
     else rowRefs.current.delete(id);
   }, []);
+
+  // A correction restored from storage may have landed after all — the request
+  // can succeed while the screen that sent it is being torn down. Once the pile
+  // is here, anything the server already holds is dropped, so a teacher is never
+  // asked to retry what is saved.
+  useEffect(() => {
+    if (!scan.data) return;
+    const detections = new Map(
+      scan.data.pages.flatMap((page) => page.detections.map((d) => [d.id, d] as const)),
+    );
+    setUnsavedCorrections((current) => {
+      let changed = false;
+      const next = new Map(current);
+      for (const [id, body] of current) {
+        const detection = detections.get(id);
+        if (detection && alreadyApplied(detection, body)) {
+          next.delete(id);
+          changed = true;
+        }
+      }
+      if (!changed) return current;
+      saveUnsaved(scanId, next);
+      return next;
+    });
+  }, [scan.data, scanId]);
 
   const status = scan.data?.status;
   const processing = status === 'uploaded' || status === 'processing';
@@ -803,6 +849,20 @@ const PageCard = memo(function PageCard({
 
   countRender(page.id);
   const marks = useMemo(() => toScanMarks(page.detections), [page.detections]);
+  /**
+   * Resend what the server refused, from the row itself.
+   *
+   * The toast carried the only retry, and a toast does not survive the thing
+   * that most often causes the refusal: an expired session redirects to the
+   * login screen, and the teacher comes back to a marked row with nothing to
+   * press. Re-clicking the control is no substitute — when the correction they
+   * made agrees with the machine's reading, that radio is already checked and
+   * a click on it sends nothing.
+   */
+  const retryFor = (d: DetectionOut) => {
+    const body = unsavedCorrections.get(d.id);
+    return body ? () => onCorrect(d.id, body, itemLabel(d)) : undefined;
+  };
 
   /**
    * `7B_15 · Léa Aebischer`, or `7B_15` alone when names are hidden.
@@ -977,6 +1037,7 @@ const PageCard = memo(function PageCard({
                     onCorrect={(body) => onCorrect(d.id, body, itemLabel(d))}
                     pendingCorrection={pendingCorrections.get(d.id)}
                     unsaved={unsavedCorrections.has(d.id)}
+                    onRetry={retryFor(d)}
                   />
                 ) : (
                   <DetectionRow
@@ -986,6 +1047,7 @@ const PageCard = memo(function PageCard({
                     onCorrect={(index) => onCorrect(d.id, { detected_index: index }, itemLabel(d))}
                     pending={pendingCorrections.get(d.id)}
                     unsaved={unsavedCorrections.has(d.id)}
+                    onRetry={retryFor(d)}
                   />
                 )}
               </li>
@@ -1006,17 +1068,21 @@ function DetectionRow({
   onCorrect,
   pending,
   unsaved,
+  onRetry,
 }: {
   detection: DetectionOut;
   selected: boolean;
   readOnly: boolean;
   onCorrect: (index: number | null) => void;
+  /** Resend the refused correction. Present only while `unsaved`. */
+  onRetry?: (() => void) | undefined;
   /** In flight. The control shows this, not the server's value. */
   pending: DetectionCorrection | undefined;
   /** The server refused the last attempt, and has not been told again since. */
   unsaved: boolean;
 }) {
   const t = useTranslations('scans');
+  const tc = useTranslations('common');
   // The glyphs the student saw on the paper: ABCD for an MCQ, V/F, R/F or T/F
   // for a true/false item. Labelling a true/false override "A / B" asks the
   // teacher to remember that bubble 0 means true.
@@ -1044,6 +1110,11 @@ function DetectionRow({
               the server believes, and this says the server never heard the
               teacher. */}
           {unsaved ? <Badge variant="danger">{t('correctFailed.badge')}</Badge> : null}
+          {unsaved && onRetry && !readOnly ? (
+            <Button size="sm" variant="secondary" onClick={onRetry}>
+              {tc('retry')}
+            </Button>
+          ) : null}
           <Badge variant={badgeVariant(detection.outcome)}>
             {t(`outcome.${detection.outcome}`)}
           </Badge>
