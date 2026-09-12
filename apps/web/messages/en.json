@@ -952,6 +952,7 @@
     "uid": "Identifier",
     "addOne": "Add one pupil",
     "addOneHelp": "A single pupil, without pasting a list. Their number follows the last one given.",
+    "export": "Export the data",
     "rosterHandoff": "The class was created, but the list could not be saved. Nothing is lost — it is below, send it again."
   },
   "teaching": {

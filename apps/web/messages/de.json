@@ -952,6 +952,7 @@
     "uid": "Kennung",
     "addOne": "Eine Schülerin hinzufügen",
     "addOneHelp": "Nur eine Person, ohne Liste. Die Nummer folgt auf die zuletzt vergebene.",
+    "export": "Daten exportieren",
     "rosterHandoff": "Die Klasse wurde erstellt, die Liste konnte aber nicht gespeichert werden. Nichts ist verloren – sie steht unten, senden Sie sie erneut."
   },
   "teaching": {

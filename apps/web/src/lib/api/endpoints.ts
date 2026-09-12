@@ -1,5 +1,6 @@
 import { apiRequest, apiRequestText, UPLOAD_TIMEOUT_MS } from './client';
 import type {
+  ClassExportOut,
   ClassTreeOut,
   AdaptiveApproveRequest,
   AdaptiveApproveResponse,
@@ -227,6 +228,19 @@ export const createRoster = (classId: Uuid, body: RosterCreate) =>
  */
 export const exportStudent = (studentId: Uuid) =>
   apiRequest<StudentExportOut>(`/students/${studentId}/export`);
+
+/**
+ * The whole class, in one document (D36).
+ *
+ * The mechanism a school uses to take its data with it, and what
+ * `docs/privacy.md` §4 has promised since it was written. Each pupil is the
+ * same shape `exportStudent` returns, so the two documents cannot drift.
+ *
+ * The roster **as it stands**: a pupil who has left is exported individually,
+ * under the access rule that governs them.
+ */
+export const exportClass = (classId: Uuid) =>
+  apiRequest<ClassExportOut>(`/classes/${classId}/export`);
 
 /**
  * Answer a parent's erasure request without destroying the evidence.

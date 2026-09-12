@@ -72,6 +72,14 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
+#: **This migration cannot be rolled back** (docs/runbook/rollback.md).
+#: Renames in place while splitting `Student` into `Person` + one year's
+#: enrolment. Old and new app versions cannot share the schema.
+#:
+#: Checked by scripts/check-migration-safety.py, so the rule is a gate
+#: rather than something a reviewer has to remember on a Friday.
+DESTRUCTIVE = True
+
 revision = "0028"
 down_revision = "0027"
 branch_labels = None

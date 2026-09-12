@@ -350,6 +350,22 @@ jobs:
           ALPPY_DISPOSABLE_DATABASE_URL: postgresql+psycopg://alppy:alppy@localhost:5432/alppy_drift
         run: python scripts/check-schema-drift.py
 
+  # `docs/runbook/rollback.md` states the policy — the application rolls back,
+  # the database rolls forward — and the consequence is a rule about releases:
+  # one carrying a migration that cannot be undone must say so, and ships on its
+  # own rather than bundled with a feature, because bundling removes the ability
+  # to roll the feature back. A rule a reviewer has to remember is a rule that
+  # holds until the Friday somebody is in a hurry (D14, D15).
+  migration-safety:
+    name: A one-way migration says it is one
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: "3.12" }
+      # Pure `ast` over the migration files — no database, no dependencies.
+      - run: python scripts/check-migration-safety.py
+
   row-level-security:
     name: The database holds the tenant boundary
     runs-on: ubuntu-latest

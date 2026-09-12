@@ -50,6 +50,14 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
+#: **This migration cannot be rolled back** (docs/runbook/rollback.md).
+#: Drops a column once its contents have been moved to rows. `downgrade()`
+#: restores the column and nothing puts the values back.
+#:
+#: Checked by scripts/check-migration-safety.py, so the rule is a gate
+#: rather than something a reviewer has to remember on a Friday.
+DESTRUCTIVE = True
+
 revision = "0046"
 down_revision = "0045"
 branch_labels = None

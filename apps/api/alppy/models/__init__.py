@@ -1844,6 +1844,23 @@ class Attempt(Base, TimestampMixin, SchoolScopedMixin):
         ),
     )
 
+    # No RETURNING on insert, for the same reason `MasterySnapshot` carries
+    # this and found by the same failure. `TimestampMixin` gives every table a
+    # `server_default`, SQLAlchemy fetches those back eagerly, and that turns a
+    # bulk insert into INSERT ... RETURNING handed to the `insertmanyvalues`
+    # correlation machinery — which on SQLite intermittently applies the wrong
+    # result processor and raises `'float' object has no attribute 'replace'`.
+    #
+    # `Attempt` is the largest bulk write in the product: a confirmed pile adds
+    # one row per item per pupil, and the staging seed adds thousands in a
+    # single flush. That is why `test_staging_seed.py` is where it surfaced,
+    # roughly one full-suite run in seven, on a table nobody had connected to
+    # the snapshot fix.
+    #
+    # Safe because nothing reads `Attempt.created_at`: the timestamp this table
+    # is queried on is `answered_at`, which is the SCAN's and is set explicitly.
+    __mapper_args__ = {"eager_defaults": False}  # noqa: RUF012  (read once, never mutated)
+
     id: Mapped[uuid.UUID] = _pk()
     person_id: Mapped[uuid.UUID] = _fk(
         "person.id",

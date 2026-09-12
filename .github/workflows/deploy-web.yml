@@ -20,6 +20,19 @@ jobs:
     name: Build and deploy to Workers
     if: vars.CF_DEPLOY_WEB == 'true'
     runs-on: ubuntu-latest
+    # The deploy window lives HERE, and it is a repository setting rather than
+    # a line of YAML (D28). This workflow fires on every push to `main`, and a
+    # broken deploy at 09:20 costs a lesson that cannot be re-run while the same
+    # deploy at 18:00 costs somebody an evening — see
+    # docs/runbook/support-model.md, which proposes 07:30–17:00 on school days
+    # as the window to stay out of.
+    #
+    # NOTE (setup, one-off): add a **required reviewer** to the `production`
+    # environment in the repository settings. That is what turns this from "it
+    # deploys when you push" into "somebody says yes first", and it is also the
+    # audit trail for who deployed what — today that is git history and nothing
+    # else. Declaring the environment without the rule, which is the state
+    # today, changes nothing at all.
     environment: production
     steps:
       - uses: actions/checkout@v4

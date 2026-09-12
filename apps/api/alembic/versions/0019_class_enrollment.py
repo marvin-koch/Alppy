@@ -50,6 +50,15 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
+#: **This migration cannot be rolled back** (docs/runbook/rollback.md).
+#: Renames a column in place, so the previous application version and this one
+#: cannot share the schema: a rolling deploy serves 500s from whichever half
+#: is behind. Nothing is lost, and it still cannot be rolled back.
+#:
+#: Checked by scripts/check-migration-safety.py, so the rule is a gate
+#: rather than something a reviewer has to remember on a Friday.
+DESTRUCTIVE = True
+
 revision = "0019"
 down_revision = "0018"
 branch_labels = None

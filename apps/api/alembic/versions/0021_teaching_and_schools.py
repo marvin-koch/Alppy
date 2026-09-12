@@ -67,6 +67,14 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
+#: **This migration cannot be rolled back** (docs/runbook/rollback.md).
+#: Two renames in place. Same shape as 0019 — old and new app versions cannot
+#: share this schema, so the release goes out on its own.
+#:
+#: Checked by scripts/check-migration-safety.py, so the rule is a gate
+#: rather than something a reviewer has to remember on a Friday.
+DESTRUCTIVE = True
+
 revision = "0021"
 down_revision = "0020"
 branch_labels = None

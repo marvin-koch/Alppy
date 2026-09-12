@@ -160,6 +160,20 @@ constraint, not a preference.
 it.** *(DC-print-07)* Changing a number is a **layout version bump**, not a tweak — old scans
 must keep registering against the layout they were printed with.
 
+**A table written in BULK needs `__mapper_args__ = {"eager_defaults": False}`.**
+`TimestampMixin` gives every table a `server_default`, SQLAlchemy fetches those
+back eagerly, and that turns a bulk insert into `INSERT ... RETURNING` handed to
+the `insertmanyvalues` correlation machinery — which on SQLite intermittently
+applies the wrong result processor and raises `'float' object has no attribute
+'replace'`, on a different test each time. It reads as flakiness, which is why it
+has now been diagnosed twice: once for `MasterySnapshot` and
+`MasteryBranchSnapshot`, and again for `Attempt`, the largest bulk write in the
+product. **The fix is per-table and the hazard is class-wide**, so a new table
+that is written in a loop and flushed at the end needs this too. It is only safe
+where nothing reads the row's `created_at` back in the same transaction — which
+is the usual case, `answered_at` and friends being the timestamps that mean
+something.
+
 **A partial index needs `sqlite_where` as well as `postgresql_where`.** The
 dialect kwarg is *dropped* on other dialects, and the suite builds its schema
 with `create_all` on SQLite — so a partial UNIQUE index silently becomes an

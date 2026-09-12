@@ -5,7 +5,9 @@ import { useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { ConfirmDestructive } from '@/components/ConfirmDestructive';
+import { ExportButton } from '@/components/ExportButton';
 import { LockedValue } from '@/components/LockedValue';
+import * as api from '@/lib/api/endpoints';
 import { apiErrorMessage } from '@/lib/api/error-message';
 import { useDeleteStudent, useUpdateStudent } from '@/lib/api/queries';
 import type { StudentOut, Uuid } from '@/lib/api/types';
@@ -82,6 +84,19 @@ export function StudentEditor({
           <Button variant="danger" type="button" onClick={() => setConfirming(true)}>
             {t('delete')}
           </Button>
+          {/* Beside the delete, because it is the same conversation. A parent
+              asking what is held about their child and a parent asking for it
+              to be erased arrive together, and until now only the second had a
+              button — which answers "what do you have on my child" with
+              "nothing, now" (D36). */}
+          <ExportButton
+            fetcher={() => api.exportStudent(student.id)}
+            subject={name}
+            label={t('export')}
+            busyLabel={tc('loading')}
+            translateError={tcode}
+            variant="ghost"
+          />
           <span className="flex-1" />
           <Button variant="ghost" type="button" onClick={onDone}>
             {tc('cancel')}

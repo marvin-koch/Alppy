@@ -43,6 +43,14 @@ from sqlalchemy.dialects import postgresql
 
 from alembic import op
 
+#: **This migration cannot be rolled back** (docs/runbook/rollback.md).
+#: Drops the boolean this replaces with a timestamp-and-actor. The timestamp
+#: can be recomputed into a boolean; the actor and the moment cannot.
+#:
+#: Checked by scripts/check-migration-safety.py, so the rule is a gate
+#: rather than something a reviewer has to remember on a Friday.
+DESTRUCTIVE = True
+
 revision = "0047"
 down_revision = "0046"
 branch_labels = None

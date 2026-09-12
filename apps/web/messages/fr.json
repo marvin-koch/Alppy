@@ -952,6 +952,7 @@
     "uid": "Identifiant",
     "addOne": "Ajouter un élève",
     "addOneHelp": "Un seul élève, sans coller de liste. Son numéro suit le dernier attribué.",
+    "export": "Exporter les données",
     "rosterHandoff": "La classe a bien été créée, mais la liste n'a pas pu être enregistrée. Rien n'est perdu : elle est ci-dessous, renvoyez-la."
   },
   "teaching": {

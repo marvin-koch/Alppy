@@ -3735,3 +3735,41 @@ CURRENT membership of the school being bound*. Login proves exactly what
 is no longer theirs binds nothing and gets an empty list — which is the honest
 report of the state they are in, since their cookie is about to be refused by
 every other route anyway.
+
+---
+
+## The suite flake, diagnosed a second time
+
+Roughly one full-suite run in seven failed in `test_staging_seed.py`. It is the
+same bug fixed in `7658dd5` for `MasterySnapshot` and `MasteryBranchSnapshot`,
+on a table nobody had connected to it: **`Attempt`**.
+
+`TimestampMixin` gives every table a `server_default`; SQLAlchemy fetches those
+back eagerly; that turns a bulk insert into `INSERT ... RETURNING` handed to the
+`insertmanyvalues` correlation machinery, which on SQLite intermittently applies
+the wrong result processor. `Attempt` is the largest bulk write in the product —
+a confirmed pile adds a row per item per pupil, and the staging seed adds
+thousands in one flush — which is why that file is where it surfaces.
+
+Two things are worth keeping from the second diagnosis.
+
+**The first fix was applied to the tables where it had been SEEN, not to the
+class of tables at risk.** That was a reasonable call at the time and it is why
+this came back. The hazard is any table written in a loop and flushed at the
+end; the remedy is per-table, so it is now stated in CLAUDE.md as a rule for new
+tables rather than left as two unexplained `__mapper_args__`.
+
+**It is not fixed globally on `Base`, deliberately.** `created_at` and
+`updated_at` are `server_default` with no Python-side default, so disabling
+eager defaults everywhere means the attribute is `None` after a flush until the
+row is refreshed. The application session expires on commit and would reload it;
+the TEST session factory sets `expire_on_commit=False` and would not. A change
+that makes a timestamp silently `None` in tests only is a worse bug than the one
+being fixed, so `Attempt` gets the guard on the stated grounds that nothing
+reads `Attempt.created_at` — the column that table is queried on is
+`answered_at`, and it is set explicitly.
+
+**Why it took a second pass to find.** The failure moves between tests and
+raises a type error rather than an assertion, so it reads as an unrelated flake.
+The thing that made it findable was noticing that the file it hit was one of the
+three the first fix had named.

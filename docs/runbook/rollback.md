@@ -15,8 +15,19 @@ things, and conflating them is how a rollback becomes a data-loss incident.
 
 **Consequence, and it is a rule rather than a preference:**
 
-> A release containing a destructive or irreversible migration **must say so in
-> its own commit message**, and **cannot be rolled back** once deployed.
+> A release containing a destructive or irreversible migration **must say so**,
+> and **cannot be rolled back** once deployed.
+
+**And this is enforced, not remembered.** A migration that drops a column or a
+table, or renames one in place, must carry a module-level `DESTRUCTIVE = True`
+with the reason beside it. `scripts/check-migration-safety.py` is a gating CI
+job: it parses `upgrade()` and fails the build on a migration that is one-way
+and does not say so. Five migrations carry the declaration today — `0019`,
+`0021` and `0028` rename in place, `0046` and `0047` drop a column.
+
+`drop_constraint` is deliberately **not** on the list: it loses no rows and is
+usually how a key gets widened. A gate that fires mostly on safe things is a
+gate whose declaration gets pasted in without being read.
 
 Which means such a release is deployed deliberately, in its own deploy, never
 bundled with a feature — because bundling removes the ability to roll back the

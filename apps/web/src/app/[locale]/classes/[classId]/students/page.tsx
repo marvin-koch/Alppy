@@ -18,8 +18,10 @@ import { use, useMemo } from 'react';
 
 import { Link } from '@/i18n/navigation';
 import { useBandLabels } from '@/lib/bands';
+import * as api from '@/lib/api/endpoints';
 import { useClass, useClassMastery } from '@/lib/api/queries';
 import type { MasteryCell, Uuid } from '@/lib/api/types';
+import { ExportButton } from '@/components/ExportButton';
 import { RevealNames } from '@/components/RevealNames';
 import { useDiscretion } from '@/lib/discreet';
 import { studentSortName } from '@/lib/studentName';
@@ -62,6 +64,8 @@ export default function StudentsPage({ params }: { params: Promise<{ classId: st
   const t = useTranslations('students');
   const { hideNames } = useDiscretion();
   const tc = useTranslations('classes');
+  const tcode = useTranslations('errors.code');
+  const tcommon = useTranslations('common');
   const te = useTranslations('errors.generic');
   const a11y = useTranslations('a11y');
   const bandLabels = useBandLabels();
@@ -137,6 +141,17 @@ export default function StudentsPage({ params }: { params: Promise<{ classId: st
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <RevealNames />
+          {/* The class export (D36). `privacy.md` §4 has promised it since it
+              was written, the route has existed since the last pass, and
+              nothing in the product could reach either — so a school taking its
+              data elsewhere ended at "ask whoever runs the server". */}
+          <ExportButton
+            fetcher={() => api.exportClass(classId as Uuid)}
+            subject={klass.data?.code ?? 'class'}
+            label={t('export')}
+            busyLabel={tcommon('loading')}
+            translateError={tcode}
+          />
           <Link href={`/classes/${classId}/roster`}>
             <Button variant="primary">{tc('addStudents')}</Button>
           </Link>
