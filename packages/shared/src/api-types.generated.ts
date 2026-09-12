@@ -1288,6 +1288,7 @@ export interface TreeCompetenceOut {
   competency_id: Uuid;
   code: string;
   labels: Record<string, string>;
+  edition: string | null;
   mastery: TreeMasteryOut;
   themes: TreeThemeOut[];
 }

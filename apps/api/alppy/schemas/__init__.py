@@ -1177,6 +1177,16 @@ class TreeCompetenceOut(ApiModel):
     competency_id: uuid.UUID
     code: str
     labels: LocalisedText
+    #: Which published edition this Competence belongs to, e.g. ``"2023"``.
+    #:
+    #: A curriculum is revised, and `uq_competency_code` carries the edition
+    #: precisely so both wordings can coexist — "the same code means different
+    #: things in two editions". A school part-way through a migration therefore
+    #: has Themes hanging off BOTH, and the tree rendered two Competences with
+    #: an identical code and an identical label and no way to tell them apart.
+    #: The rows are not merged — the model says they may not mean the same
+    #: thing — so the edition travels with them and the client disambiguates.
+    edition: str | None = None
     mastery: TreeMasteryOut
     themes: list[TreeThemeOut] = []
 

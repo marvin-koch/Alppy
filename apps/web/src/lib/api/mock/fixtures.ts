@@ -341,9 +341,19 @@ export function classTree(classId: string): ClassTreeOut {
         // called "Non classé" and put its sheets back into a mastery number.
         competences: chapters
           .filter((chapter) => chapter.primary_competency_id !== null)
-          .map((chapter, index) => ({
+          .map((chapter, index, all) => ({
             competency_id: chapter.primary_competency_id ?? id(200 + index),
-            code: competencies[index]?.code ?? `MSN 3${index + 1}`,
+            // The LAST row deliberately repeats the previous row's code under
+            // a different edition. A school part-way through a curriculum
+            // migration really does have Themes hanging off both revisions —
+            // the demo database has two "MSN 34" Competences — and the tree
+            // used to render them as two identical, indistinguishable rows.
+            // A fixture where every code is unique would let that back in.
+            code:
+              index === all.length - 1
+                ? (competencies[index - 1]?.code ?? 'MSN 34')
+                : (competencies[index]?.code ?? `MSN 3${index + 1}`),
+            edition: index === all.length - 1 ? '2010' : '2023',
             labels: competencies[index]?.labels ?? chapter.labels,
             mastery: themeOf(chapter, index).mastery,
             themes: [themeOf(chapter, index)],

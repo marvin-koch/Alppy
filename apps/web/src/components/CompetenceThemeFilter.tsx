@@ -6,6 +6,7 @@ import { useEffect } from 'react';
 
 import { useCurriculumTree } from '@/lib/api/queries';
 import type { Uuid } from '@/lib/api/types';
+import { competenceCodes } from '@/lib/competenceCode';
 
 interface Props {
   classId: Uuid | null;
@@ -53,6 +54,9 @@ export function CompetenceThemeFilter({
 
   const branch = tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
   const competences = branch?.competences ?? [];
+  // Two editions of one code are two rows with the same code and the same
+  // label; the edition is appended only where that actually happens.
+  const codeOf = competenceCodes(competences);
   const selected = competences.find((c) => c.competency_id === competencyId) ?? null;
   // With no Competence chosen, every Theme in the Branch is offerable.
   const themes = selected ? selected.themes : competences.flatMap((c) => c.themes);
@@ -105,7 +109,7 @@ export function CompetenceThemeFilter({
           { value: '', label: tm('allCompetences') },
           ...competences.map((competence) => ({
             value: competence.competency_id,
-            label: `${competence.code} · ${label(competence.labels, competence.code)}`,
+            label: `${codeOf.get(competence.competency_id) ?? competence.code} · ${label(competence.labels, competence.code)}`,
           })),
         ]}
       >
@@ -114,7 +118,7 @@ export function CompetenceThemeFilter({
             {tm('filterCompetency')}
           </span>
           <span className="min-w-0 flex-1 truncate text-body-s font-semibold">
-            {selected ? selected.code : tm('allCompetences')}
+            {selected ? (codeOf.get(selected.competency_id) ?? selected.code) : tm('allCompetences')}
           </span>
           <IconChevronDown size={16} className="shrink-0 text-ink-500" />
         </span>

@@ -6,6 +6,7 @@ import { Link } from '@/i18n/navigation';
 import { useLocale, useTranslations } from 'next-intl';
 
 import { useBandLabels } from '@/lib/bands';
+import { competenceCodes } from '@/lib/competenceCode';
 import type { TreeBranchOut, Uuid } from '@/lib/api/types';
 
 interface Props {
@@ -61,6 +62,10 @@ export function CurriculumTree({
     );
   }
 
+  // Two editions of one curriculum code are two Competences with the same code
+  // and the same sentence; the edition is appended only where that collides.
+  const codeOf = competenceCodes(branch.competences);
+
   return (
     <Card className="flex flex-col gap-4">
       <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -113,7 +118,7 @@ export function CurriculumTree({
             >
               <span className="flex items-center gap-2">
                 <span className="font-mono text-label text-ink-700">
-                  {competence.code}
+                  {codeOf.get(competence.competency_id) ?? competence.code}
                 </span>
                 <span className="flex-1" />
                 <MasteryBandTag

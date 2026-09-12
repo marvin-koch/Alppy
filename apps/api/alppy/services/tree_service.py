@@ -35,6 +35,7 @@ from alppy.models import (
     UNFILED_CHAPTER_KEY,
     Chapter,
     Competency,
+    CurriculumEdition,
     Exercise,
     Sheet,
     Subject,
@@ -206,6 +207,17 @@ def _branch(
         row.id: row
         for row in db.scalars(select(Competency).where(Competency.id.in_(competence_order)))
     }
+    # The edition each Competence belongs to, so two revisions of one code can
+    # be told apart on screen. One query for the handful of editions in play,
+    # not one per node.
+    editions = {
+        row.id: row.edition
+        for row in db.scalars(
+            select(CurriculumEdition).where(
+                CurriculumEdition.id.in_({c.edition_id for c in competencies.values()})
+            )
+        )
+    }
 
     competences: list[TreeCompetenceOut] = []
     # Kept alongside the serialised nodes: the Branch rolls up from these
@@ -226,6 +238,7 @@ def _branch(
                 competency_id=node.id,
                 code=node.code,
                 labels=dict(node.labels or {}),
+                edition=editions.get(node.edition_id),
                 mastery=mastery_out(rolled_competence, theme_results),
                 themes=[
                     TreeThemeOut(

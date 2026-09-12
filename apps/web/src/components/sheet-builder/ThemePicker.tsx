@@ -5,6 +5,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { useState } from 'react';
 
 import { useCurriculumTree } from '@/lib/api/queries';
+import { competenceCodes } from '@/lib/competenceCode';
 import type { TreeThemeOut, Uuid } from '@/lib/api/types';
 
 /**
@@ -46,6 +47,10 @@ export function ThemePicker({
   const tree = useCurriculumTree(classId, subjectId ? { subjectId } : {});
 
   const branch = tree.data?.branches.find((b) => b.subject_id === subjectId) ?? null;
+  // Two editions of one curriculum code are two Competences carrying the same
+  // code and the same sentence, each with its own Themes. The edition is shown
+  // only on the rows where that collision is real.
+  const codeOf = competenceCodes(branch?.competences ?? []);
   const label = (labels: Record<string, string> | undefined, fallback: string) =>
     labels?.[locale] ?? labels?.fr ?? fallback;
 
@@ -82,7 +87,9 @@ export function ThemePicker({
             <section key={competence.competency_id} className="flex flex-col gap-2">
               <header className="flex min-h-11 items-center gap-2 px-1">
                 <IconChevronDown size={16} className="shrink-0 text-ink-500" aria-hidden />
-                <span className="font-mono text-label text-ink-700">{competence.code}</span>
+                <span className="font-mono text-label text-ink-700">
+                  {codeOf.get(competence.competency_id) ?? competence.code}
+                </span>
                 <h3 className="min-w-0 flex-1 truncate text-body-s font-bold text-ink-700">
                   {label(competence.labels, competence.code)}
                 </h3>
