@@ -785,3 +785,50 @@ def test_a_pile_still_being_read_refuses_another_page(
         ).status_code
         == 202
     )
+
+
+def test_the_pile_is_inserted_before_the_job_that_points_at_it(
+    client: TestClient, tenant: Tenant, sheet_id: str
+) -> None:
+    """`INSERT INTO scan` must precede `INSERT INTO job`, and only Postgres cares.
+
+    `Job.scan_id` is a real foreign key, but `Job` declares no `relationship()`
+    and SQLAlchemy's unit of work orders a flush from relationships rather than
+    from foreign-key columns. With nothing to sort on it uses the mapper sort
+    key — the qualified class name — and `alppy.models.Job` sorts before
+    `alppy.models.Scan`. Every upload of a pile therefore answered 500 against a
+    real database: "insert or update on table job violates foreign key
+    constraint fk_job_scan_id_scan".
+
+    This suite never saw it. It builds its schema with `create_all()` on SQLite,
+    which does not enforce foreign keys unless `PRAGMA foreign_keys=ON`, and
+    nothing sets it — so the wrong order was simply accepted. The assertion is
+    therefore on the ORDER OF THE STATEMENTS, which is engine-independent and is
+    the actual invariant, rather than on an integrity error SQLite will not
+    raise.
+    """
+    from sqlalchemy import event
+    from sqlalchemy.engine import Engine
+
+    seen: list[str] = []
+
+    def record(conn, cursor, statement, parameters, context, executemany):  # type: ignore[no-untyped-def]
+        head = " ".join(statement.split())[:40].lower()
+        if head.startswith("insert into scan ") or head.startswith("insert into job "):
+            seen.append("scan" if head.startswith("insert into scan ") else "job")
+
+    event.listen(Engine, "before_cursor_execute", record)
+    try:
+        login(client, tenant.teacher.email)
+        response = client.post(
+            "/api/v1/scans",
+            files={"files": ("copies.pdf", PDF_BYTES, "application/pdf")},
+            data={"sheet_id": sheet_id},
+        )
+    finally:
+        event.remove(Engine, "before_cursor_execute", record)
+
+    assert response.status_code == 202
+    assert seen[:2] == ["scan", "job"], (
+        f"the job was written before the pile it references: {seen}"
+    )

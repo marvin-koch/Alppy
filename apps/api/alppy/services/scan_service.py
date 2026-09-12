@@ -193,6 +193,23 @@ def create_scan(
         status=ScanStatus.UPLOADED,
     )
     db.add(scan)
+    # The pile must exist before the job that points at it, and the ORM will
+    # NOT arrange that for us.
+    #
+    # `Job.scan_id` carries a real foreign key, but `Job` deliberately declares
+    # no `relationship()` — it is a content-free audit row — and the unit of
+    # work orders a flush from RELATIONSHIPS, not from foreign-key columns.
+    # With no dependency to sort on it falls back to the mapper sort key, which
+    # is the qualified class name: `alppy.models.Job` sorts before
+    # `alppy.models.Scan`. So a single flush emitted `INSERT INTO job` first and
+    # Postgres refused it — "Key is not present in table scan" — and every
+    # upload of a pile answered 500.
+    #
+    # Nothing caught it because the unit suite builds its schema with
+    # `create_all()` on SQLite, which does not enforce foreign keys unless
+    # `PRAGMA foreign_keys=ON` is set, and nothing sets it. The wrong order is
+    # simply accepted there.
+    db.flush()
 
     job = Job(
         id=uuid.uuid4(),
