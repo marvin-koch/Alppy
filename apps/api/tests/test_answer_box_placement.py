@@ -209,6 +209,20 @@ def test_the_box_moves_when_the_font_stack_does() -> None:
     browser, that browser's print dialog. This test does not assert *how far*
     the box moves; it asserts that it moves at all, which is the whole argument
     for carrying the faces inside the document.
+
+    Two measurements, and the first one is the load-bearing one:
+
+    * **Between two faces the repository itself embeds.** Both documents carry
+      `fonts.css`, so both faces are guaranteed present and the result cannot
+      depend on what is installed on the machine running the suite.
+    * **Against the fallback**, which is the real-world scenario — a renderer
+      that never had the design system's type at all.
+
+    The statement is long on purpose. The short one this test used to carry
+    wrapped to three lines in Nunito *and* in every fallback on a Linux host
+    with no Times New Roman, where fontconfig answers `serif` with DejaVu
+    Serif — so the assertion failed for a reason that had nothing to do with
+    the property being tested, and the test said so in its own failure message.
     """
     _skip_without_browser()
     data = SheetData(
@@ -217,27 +231,43 @@ def test_the_box_moves_when_the_font_stack_does() -> None:
             Item(
                 key="e1", type=ExerciseType.OPEN, language="fr", open_lines=3,
                 statement=(
-                    "Explique, en rédigeant ta démarche complète, pourquoi la somme "
-                    "des angles d'un triangle vaut toujours 180 degrés, puis "
-                    "vérifie-le sur le triangle ci-dessous."
+                    "Un cycliste parcourt 24 km en 1 h 30 min, puis 18 km "
+                    "supplémentaires en 45 minutes. Détermine sa vitesse moyenne "
+                    "sur l'ensemble du trajet, en justifiant chaque étape de ton "
+                    "raisonnement, puis explique pourquoi cette valeur n'est pas "
+                    "la moyenne arithmétique des deux vitesses."
                 ),
             ),
         )),),
     )
     html = render_sheet_html(data, kind=SheetKind.BLANK)
-
-    # The same document, typeset in a face with different metrics — standing in
-    # for a renderer that never had the design system's type.
-    start = html.index("<style>/* packages/ui/src/design/fonts.css")
-    end = html.index("</style>", start) + len("</style>\n")
-    other = (html[:start] + html[end:]).replace(
-        "--font-sans: 'Nunito Variable', system-ui, -apple-system, 'Segoe UI', sans-serif;",
-        "--font-sans: 'Times New Roman', serif;",
+    sans = (
+        "--font-sans: 'Nunito Variable', system-ui, -apple-system, "
+        "'Segoe UI', sans-serif;"
     )
-    assert "@font-face" not in other
+    assert sans in html
 
     [ours] = render.measure_answer_boxes(html)
-    [theirs] = render.measure_answer_boxes(other)
+
+    # 1 · Deterministic: the same document, typeset in another face that ships
+    #     inside it. Nothing here depends on the host's installed fonts.
+    embedded = html.replace(sans, "--font-sans: 'JetBrains Mono Variable', monospace;")
+    assert "@font-face" in embedded
+    [other_embedded] = render.measure_answer_boxes(embedded)
+    assert abs(ours.y_mm - other_embedded.y_mm) > 2.0, (
+        "two faces the repository embeds wrapped this statement identically — "
+        "the box must move when the metrics do"
+    )
+
+    # 2 · The real scenario: a renderer that never had the design system's type.
+    start = html.index("<style>/* packages/ui/src/design/fonts.css")
+    end = html.index("</style>", start) + len("</style>\n")
+    fallback = (html[:start] + html[end:]).replace(
+        sans, "--font-sans: 'Times New Roman', serif;"
+    )
+    assert "@font-face" not in fallback
+
+    [theirs] = render.measure_answer_boxes(fallback)
 
     # Both pass the region guard: this is invisible to every check that exists.
     assert abs(ours.y_mm - theirs.y_mm) > 2.0, (
