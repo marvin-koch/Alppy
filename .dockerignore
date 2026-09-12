@@ -15,5 +15,23 @@ playwright-report
 storage
 tmp
 *.log
+
+# Every dotenv file, at every depth — not just the two at the root.
+#
+# A .dockerignore pattern is matched against the path from the build context
+# root, so a bare `.env.local` excluded the repository's own and nothing else.
+# `apps/web/.env.local` is git-ignored, so it is a developer's private file that
+# no reviewer ever sees — and `next build` reads it from the app directory and
+# INLINES what it finds. One developer's `NEXT_PUBLIC_ALPPY_MOCK=1` therefore
+# shipped inside the production image: every screen rendered the invented
+# fixtures, the browser never called the API at all, and the middleware's
+# session gate was dead-code-eliminated behind `MOCK === '1'`, so a visitor with
+# no cookie got the whole authenticated shell. `docker compose up` looked
+# perfect and was serving a demo.
+#
+# Nothing in either image legitimately wants a machine's local environment:
+# configuration arrives as build args (apps/web/Dockerfile) and as the compose
+# environment (apps/api).
 .env
-.env.local
+**/.env
+**/.env.*
