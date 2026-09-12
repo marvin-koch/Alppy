@@ -38,16 +38,41 @@ _REQUEST_ID_RE = re.compile(r"\A[A-Za-z0-9._-]{1,64}\Z")
 # which serves teacher-uploaded exercise figures and scanned pages straight
 # from the object store. `nosniff` is what stops a file uploaded as a figure
 # being interpreted as script — `api/v1/health.py` already reasoned about it
-# being set, and it was not. `frame-ancestors 'self'` is deliberately not
-# 'none': the preview is *supposed* to be framed, by us.
+# being set, and it was not.
 #
 # The web app sets its own, richer policy in `apps/web/src/middleware.ts`;
 # these cover the API when it is reached directly rather than through it.
 SECURITY_HEADERS = {
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "strict-origin-when-cross-origin",
-    "Content-Security-Policy": "frame-ancestors 'self'",
 }
+
+
+def frame_ancestors(settings: Settings) -> str:
+    """Who may frame the preview: us, and the front ends we are configured for.
+
+    `frame-ancestors 'self'` was deliberately not `'none'` because the preview
+    is *supposed* to be framed by the builder — but `'self'` is the API's OWN
+    origin, and the builder is not served from it. Under one reverse proxy
+    that is the same origin and the policy was right; under the arrangement
+    this repository actually ships — `docker compose up`, web on :3000 and API
+    on :8000, and `next.config.ts`'s "in development the API runs on its own
+    port" — it is a different origin, so the browser refused every preview and
+    the builder's preview panel and the sheet screen's two tabs were blank with
+    the only explanation in the console.
+
+    `cors_origins` is the list of front ends this API is configured to trust
+    with a credentialed request, which is a strictly stronger trust than being
+    allowed to frame one HTML page. Reusing it keeps the two from drifting;
+    naming the origins again in a second variable is how they would.
+
+    A wildcard is dropped rather than translated. `_refuse_unsafe_deployment`
+    already refuses one in staging and production, and `frame-ancestors *` is
+    the clickjacking hole this header exists to close — so on a local instance
+    that permits `"*"` for CORS, framing still falls back to `'self'` alone.
+    """
+    origins = [origin for origin in settings.cors_origins if "*" not in origin]
+    return " ".join(["frame-ancestors", "'self'", *origins])
 
 DESCRIPTION = """
 Alppy — teacher-facing tooling for Swiss compulsory school (Sek I, cycle 3).
@@ -57,7 +82,8 @@ session cookie, and every scoped query filters on the school resolved from it.
 """
 
 
-def _install_request_id(app: FastAPI) -> None:
+def _install_request_id(app: FastAPI, settings: Settings) -> None:
+    csp = frame_ancestors(settings)
     @app.middleware("http")
     async def request_context(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
@@ -71,6 +97,7 @@ def _install_request_id(app: FastAPI) -> None:
             response.headers[REQUEST_ID_HEADER] = request_id
             for header, value in SECURITY_HEADERS.items():
                 response.headers.setdefault(header, value)
+            response.headers.setdefault("Content-Security-Policy", csp)
             log.info(
                 "http.request",
                 method=request.method,
@@ -122,7 +149,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         allow_headers=["*"],
         expose_headers=[REQUEST_ID_HEADER],
     )
-    _install_request_id(app)
+    _install_request_id(app, resolved)
     install_error_handlers(app)
     app.include_router(api_router)
     return app

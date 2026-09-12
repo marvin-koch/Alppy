@@ -5,7 +5,8 @@ from __future__ import annotations
 import pytest
 from fastapi.testclient import TestClient
 
-from alppy.main import REQUEST_ID_HEADER, create_app
+from alppy.core.config import get_settings
+from alppy.main import REQUEST_ID_HEADER, create_app, frame_ancestors
 
 
 @pytest.fixture()
@@ -44,4 +45,41 @@ def test_security_headers_are_on_every_response(client: TestClient) -> None:
     response = client.get("/api/v1/health")
     assert response.headers["X-Content-Type-Options"] == "nosniff"
     assert response.headers["Referrer-Policy"] == "strict-origin-when-cross-origin"
-    assert response.headers["Content-Security-Policy"] == "frame-ancestors 'self'"
+    # `frame-ancestors` now NAMES the front ends, because 'self' alone is the
+    # API's own origin and the builder is never served from it. The previous
+    # assertion — exactly `frame-ancestors 'self'` — was the bug written down:
+    # it passed while every sheet preview in the shipped compose arrangement
+    # was refused by the browser.
+    policy = response.headers["Content-Security-Policy"]
+    assert policy.startswith("frame-ancestors 'self'")
+    for origin in get_settings().cors_origins:
+        assert origin in policy
+
+
+def test_the_web_origin_may_frame_the_preview() -> None:
+    """The preview is framed by the builder, which is a different origin.
+
+    `docker compose up` serves the web app on :3000 and the API on :8000, and
+    `next.config.ts` describes the same split for local development. Under
+    `frame-ancestors 'self'` the browser blocked the frame and the preview
+    panel was blank, with the explanation only in the console.
+    """
+    settings = get_settings().model_copy(
+        update={"cors_origins": ("http://localhost:3000", "https://alppy.example")}
+    )
+    policy = frame_ancestors(settings)
+    assert policy == (
+        "frame-ancestors 'self' http://localhost:3000 https://alppy.example"
+    )
+
+
+def test_a_wildcard_origin_never_becomes_a_framing_permission() -> None:
+    """CORS may be wildcarded on a laptop; framing must not follow it there.
+
+    `frame-ancestors *` is precisely the clickjacking hole this header exists
+    to close, so a `"*"` is dropped rather than translated.
+    """
+    settings = get_settings().model_copy(
+        update={"cors_origins": ("*", "http://localhost:3000")}
+    )
+    assert frame_ancestors(settings) == "frame-ancestors 'self' http://localhost:3000"
