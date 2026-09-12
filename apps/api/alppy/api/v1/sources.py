@@ -545,6 +545,7 @@ def create_exercise(payload: ExerciseCreate, school_id: TenantDep, db: DbDep) ->
     if subject is None:
         raise errors.not_found("subject", id=str(payload.subject_id))
 
+    chapter: Chapter | None = None
     if payload.chapter_id is not None:
         chapter = db.execute(
             select(Chapter)
@@ -579,6 +580,28 @@ def create_exercise(payload: ExerciseCreate, school_id: TenantDep, db: DbDep) ->
                 select(Competency).where(Competency.id.in_(payload.competency_ids))
             ).scalars()
         )
+    elif chapter is not None and chapter.primary_competency_id is not None:
+        # An exercise that credits nothing is invisible to the mastery model:
+        # `load_attempt_inputs` INNER JOINs `exercise_competency`, so attempts
+        # on an untagged exercise produce no evidence at all — silently. Every
+        # sheet a teacher built from their own items therefore scored points in
+        # the results matrix and moved no band anywhere.
+        #
+        # The Theme the teacher filed this under is a stated fact, not the
+        # inferred `Exercise.chapter_id` D60 refuses to promote: they picked it
+        # in the builder before writing the item. So it credits that Theme's
+        # PRIMARY competency — the one node the Competence level rolls up
+        # through, resolved per school from `School.default_curriculum` (D56).
+        #
+        # Deliberately not `chapter.competencies`: that is the tagging set, and
+        # a Theme legitimately spans four codes across two curricula, so one
+        # hand-written MCQ would land as evidence four times. The textbook
+        # ingest credits one competency per exercise and this matches it.
+        #
+        # The `unfiled` bucket carries no primary, so it still credits nothing.
+        primary = db.get(Competency, chapter.primary_competency_id)
+        if primary is not None:
+            exercise.competencies = [primary]
     db.add(exercise)
     db.commit()
     db.refresh(exercise)

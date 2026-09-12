@@ -406,6 +406,12 @@ export default function SheetBuilderPage() {
           onOpenChange={setAdding}
           subjectId={activeSubject}
           language={sheetLanguage}
+          // The Theme the teacher has already chosen for this sheet. An
+          // exercise that credits no competency is invisible to the mastery
+          // model, so a hand-written item used to score points and move no
+          // band. `unfiled` is not a filing, so it sends nothing — which is
+          // the same exercise-with-no-Theme the API already handles.
+          chapterId={canFile(theme) ? theme.chapter_id : null}
           onCreated={(exercise) => draft.add(exercise)}
         />
       ) : null}

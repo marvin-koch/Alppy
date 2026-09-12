@@ -184,3 +184,104 @@ def test_the_bank_pages(client: TestClient, db: Session, tenant: Tenant) -> None
 
     second = _bank(client, "?limit=2&offset=2")
     assert {i["id"] for i in second["items"]}.isdisjoint({i["id"] for i in first["items"]})
+
+
+def test_a_hand_written_exercise_credits_the_theme_it_was_filed_under(
+    client: TestClient, db: Session, tenant: Tenant
+) -> None:
+    """Otherwise it scores points and moves no band, silently.
+
+    `mastery_service.load_attempt_inputs` INNER JOINs `exercise_competency`, so
+    an exercise that credits nothing produces no mastery evidence at all. The
+    builder sends the Theme the teacher chose before writing the item, and the
+    API credits that Theme's PRIMARY competency — one node, resolved per school
+    from `School.default_curriculum` (D56).
+    """
+    chapter = make_chapter(  # noqa: F405
+        db,
+        tenant,
+        key="fractions",
+        competencies=[tenant.competency],
+        primary_competency=tenant.competency,
+    )
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/exercises",
+        json={
+            "subject_id": str(tenant.subject.id),
+            "type": "mcq",
+            "language": "fr",
+            "statement": "Combien font 1/2 + 1/4 ?",
+            "options": ["3/4", "2/6"],
+            "answer_index": 0,
+            "chapter_id": str(chapter.id),
+        },
+    )
+    assert response.status_code == 201, response.text
+    body = response.json()
+    assert body["origin"] == "teacher"
+    assert body["competency_ids"] == [str(tenant.competency.id)]
+
+
+def test_the_teachers_own_competencies_win_over_the_themes_primary(
+    client: TestClient, db: Session, tenant: Tenant
+) -> None:
+    """The chapter's primary is a default, not an override."""
+    other = Competency(
+        id=uuid.uuid4(),
+        curriculum="PER",
+        edition_id=ensure_edition(db),
+        code="MSN 99.9",
+        subject_key="mathematics",
+        cycle=3,
+        labels={"fr": "Autre"},
+    )
+    db.add(other)
+    chapter = make_chapter(  # noqa: F405
+        db,
+        tenant,
+        key="fractions-2",
+        competencies=[tenant.competency],
+        primary_competency=tenant.competency,
+    )
+    db.commit()
+
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/exercises",
+        json={
+            "subject_id": str(tenant.subject.id),
+            "type": "true_false",
+            "language": "fr",
+            "statement": "1/2 vaut 0,5.",
+            "answer_bool": True,
+            "chapter_id": str(chapter.id),
+            "competency_ids": [str(other.id)],
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["competency_ids"] == [str(other.id)]
+
+
+def test_an_exercise_filed_under_nothing_still_credits_nothing(
+    client: TestClient, db: Session, tenant: Tenant
+) -> None:
+    """The `unfiled` bucket carries no primary, and must not invent one: a
+    sheet nobody has classified stays out of every mastery number (D60)."""
+    login(client, tenant.teacher.email)
+    response = client.post(
+        "/api/v1/exercises",
+        json={
+            "subject_id": str(tenant.subject.id),
+            "type": "mcq",
+            "language": "fr",
+            "statement": "Sans thème.",
+            "options": ["a", "b"],
+            "answer_index": 0,
+            "chapter_id": str(tenant.unfiled_chapter_id),
+        },
+    )
+    assert response.status_code == 201, response.text
+    assert response.json()["competency_ids"] == []

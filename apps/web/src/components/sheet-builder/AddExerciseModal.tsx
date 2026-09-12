@@ -29,6 +29,15 @@ interface Props {
   onOpenChange: (open: boolean) => void;
   subjectId: Uuid;
   language: ApiLocale;
+  /**
+   * The Theme this sheet is filed under, or null when the teacher has not
+   * chosen one (or chose the `unfiled` pseudo-node, which is not a filing).
+   *
+   * It travels with the exercise so the API can credit that Theme's primary
+   * competency: an exercise tagged with nothing produces no mastery evidence
+   * at all, because `load_attempt_inputs` inner-joins `exercise_competency`.
+   */
+  chapterId?: Uuid | null;
   onCreated: (exercise: ExerciseOut) => void;
 }
 
@@ -45,6 +54,7 @@ export function AddExerciseModal({
   onOpenChange,
   subjectId,
   language,
+  chapterId = null,
   onCreated,
 }: Props) {
   const t = useTranslations('newExercise');
@@ -109,6 +119,7 @@ export function AddExerciseModal({
         subject_id: subjectId,
         type,
         language: itemLanguage,
+        ...(chapterId ? { chapter_id: chapterId } : {}),
         statement: statement.trim(),
         difficulty,
         ...(type === 'mcq'
