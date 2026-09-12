@@ -157,7 +157,17 @@ function MatrixInner<Row extends MatrixRowBase, Column extends MatrixColumnBase>
       ref={ref}
       data-matrix-scroll=""
       className={cx(
-        'w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain',
+        // `relative` is load-bearing, not cosmetic. Every column header carries a
+        // `.visually-hidden` span with the competency's full label, and that utility
+        // is `position: absolute` (base.css). An absolutely-positioned box is clipped
+        // by an ancestor's overflow ONLY when that ancestor is in its containing-block
+        // chain — so while this scroller was `static`, those six spans escaped the
+        // `overflow-x-auto` below and sat at their static position deep inside the
+        // wide table. They are 1px and invisible, and they still extended the
+        // DOCUMENT's scrollable width: on a 390px phone the whole page panned 241px
+        // sideways, sliding the shell off-screen. Making this the containing block is
+        // what brings them back under the clip that was always meant to hold them.
+        'relative w-full min-w-0 max-w-full overflow-x-auto overscroll-x-contain',
         bleed && '-mx-4 px-4 md:mx-0 md:px-0',
         className,
       )}
