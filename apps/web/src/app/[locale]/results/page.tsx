@@ -57,14 +57,6 @@ export default function ResultsPage() {
   });
   const students = useStudents(classId);
 
-  const byStudent = useMemo(() => {
-    const index = new Map<string, PointsSummary>();
-    for (const row of points.data?.students ?? []) {
-      index.set(row.student_id, { earned: row.points_earned, possible: row.points_possible });
-    }
-    return index;
-  }, [points.data]);
-
   const byCell = useMemo(() => {
     const index = new Map<string, PointsSummary>();
     for (const sheet of points.data?.sheets ?? []) {
@@ -77,6 +69,33 @@ export default function ResultsPage() {
     }
     return index;
   }, [points.data]);
+
+  /**
+   * The TOTAL column, summed from the per-sheet cells rather than read off
+   * `points.students`.
+   *
+   * The API's per-student rollup accumulates `possible` over every sheet the
+   * class was given and `earned` only where a grade exists — deliberately, and
+   * `class_points_totals` documents it: an unscanned copy is still paper the
+   * pupil was handed. That pair is not safe to divide. Doing so put a sheet
+   * nobody has corrected into the denominator, so a class that scored 11 of 54
+   * on the one marked sheet read as 11/90 — 12% instead of 20%, with the
+   * uncorrected sheet counted as a room full of zeros.
+   *
+   * `aggregatePoints` drops the ungraded entries first, so the total is "of the
+   * paper that has been marked, this is the score" — which is the rule this
+   * screen states at the top and the one the API's own docstring asks for.
+   */
+  const byStudent = useMemo(() => {
+    const index = new Map<string, PointsSummary>();
+    for (const row of points.data?.students ?? []) {
+      const cells = (points.data?.sheets ?? [])
+        .map((sheet) => byCell.get(`${row.student_id}:${sheet.sheet_id}`))
+        .filter((cell): cell is PointsSummary => cell !== undefined);
+      index.set(row.student_id, aggregatePoints(cells));
+    }
+    return index;
+  }, [points.data, byCell]);
 
   const columns = useMemo(() => {
     const sheets = (points.data?.sheets ?? []).map((sheet) => ({
